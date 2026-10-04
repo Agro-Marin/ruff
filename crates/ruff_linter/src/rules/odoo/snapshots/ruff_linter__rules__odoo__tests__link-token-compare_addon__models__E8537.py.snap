@@ -1,0 +1,57 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8537 A bearer token compared with `==`/`!=` outside `access.link`'s resolver
+  --> E8537.py:9:12
+   |
+ 8 |     def open(self, token):
+ 9 |         if self.access_token == token:  # E8537
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |             return self
+11 |         if consteq(self.booking_token, token):  # E8537
+   |
+help: Open the record through `access.link`
+
+E8537 A bearer token compared outside `access.link`'s resolver
+  --> E8537.py:11:12
+   |
+ 9 |         if self.access_token == token:  # E8537
+10 |             return self
+11 |         if consteq(self.booking_token, token):  # E8537
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |             return self
+13 |         if self.push_token == token:  # OK: a device's credential
+   |
+help: Open the record through `access.link`
+
+E8537 A record looked up by its bearer token (`access_token`) outside `access.link`'s resolver
+  --> E8537.py:17:16
+   |
+15 |         if consteq(self.access_token, self.iot_token):  # OK: the stored side is a credential
+16 |             return None
+17 |         return self.search([("access_token", "=", token)])  # E8537
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+18 |
+19 |     def lookups(self, token):
+   |
+help: Open the record through `access.link`
+
+E8537 A record looked up by its bearer token (`order_id.document_token`) outside `access.link`'s resolver
+  --> E8537.py:20:9
+   |
+19 |     def lookups(self, token):
+20 |         self.search_count([("order_id.document_token", "in", [token])])  # E8537
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 |         self.search([("access_token", "=", False)])  # OK: rows without a token
+22 |         self.search([("api_token", "=", token)])  # OK: not a link
+   |
+help: Open the record through `access.link`
+
+E8537 A bearer token compared with `==`/`!=` outside `access.link`'s resolver
+  --> E8537.py:23:16
+   |
+21 |         self.search([("access_token", "=", False)])  # OK: rows without a token
+22 |         self.search([("api_token", "=", token)])  # OK: not a link
+23 |         return self._generate_access_token() == token  # E8537: a call is skipped, the other side is a token
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Open the record through `access.link`
