@@ -17,7 +17,7 @@ use crate::rules::{
     flake8_future_annotations, flake8_gettext, flake8_implicit_str_concat, flake8_logging,
     flake8_logging_format, flake8_pie, flake8_print, flake8_pyi, flake8_pytest_style, flake8_self,
     flake8_simplify, flake8_tidy_imports, flake8_type_checking, flake8_use_pathlib, flynt, numpy,
-    pandas_vet, pep8_naming, pycodestyle, pyflakes, pylint, pyupgrade, refurb, ruff,
+    odoo, pandas_vet, pep8_naming, pycodestyle, pyflakes, pylint, pyupgrade, refurb, ruff,
 };
 use ruff_python_ast::PythonVersion;
 
@@ -404,6 +404,9 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
             {
                 ruff::rules::shared_clock_attribute(checker, attribute);
             }
+            if checker.is_rule_enabled(Rule::RowCounterInTest) {
+                odoo::rules::row_counter_in_test(checker, attribute);
+            }
             if attribute.ctx == ExprContext::Load {
                 if checker.any_rule_enabled(&[
                     Rule::SuspiciousPickleUsage,
@@ -548,6 +551,12 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
         ) => {
             call_with_qualified_name(checker, call);
 
+            if checker.is_rule_enabled(Rule::AbolishedMethodCall) {
+                odoo::rules::abolished_method_call(checker, call);
+            }
+            if checker.is_rule_enabled(Rule::ConfigChainmapPatch) {
+                odoo::rules::config_chainmap_patch(checker, call);
+            }
             if checker.any_rule_enabled(&[
                 // pylint
                 Rule::BadStringFormatCharacter,

@@ -1,0 +1,25 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8541 A route returns an HTTP exception it should raise
+  --> controllers.py:34:13
+   |
+32 |     def missing(self):
+33 |         if not request.env.user:
+34 |             return NotFound()  # E8541
+   |             ^^^^^^^^^^^^^^^^^
+35 |         return request.prepare_not_found_error()  # E8541
+   |
+help: Raise it: `raise request.prepare_not_found_error()`, `raise NotFound()`
+
+E8541 A route returns an HTTP exception it should raise
+  --> controllers.py:35:9
+   |
+33 |         if not request.env.user:
+34 |             return NotFound()  # E8541
+35 |         return request.prepare_not_found_error()  # E8541
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+36 |
+37 |     @http.route("/raised", type="http", auth="user")
+   |
+help: Raise it: `raise request.prepare_not_found_error()`, `raise NotFound()`

@@ -1,0 +1,24 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8535 `ensure_one()` does not exist in this fork: the call raises `AttributeError`
+ --> E8535.py:8:9
+  |
+7 |     def action(self):
+8 |         self.ensure_one()  # E8535
+  |         ^^^^^^^^^^^^^^^^^
+9 |         return self.env["ir.actions.actions"]._for_xml_id("fixture.action")  # E8535
+  |
+help: Use `check_singleton()`
+
+E8535 `_for_xml_id()` does not exist in this fork: the call raises `AttributeError`
+  --> E8535.py:9:16
+   |
+ 7 |     def action(self):
+ 8 |         self.ensure_one()  # E8535
+ 9 |         return self.env["ir.actions.actions"]._for_xml_id("fixture.action")  # E8535
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |
+11 |     def checked(self):
+   |
+help: Use `env["ir.actions.actions"]._get_action_dict_by_xml_id(xml_id)`

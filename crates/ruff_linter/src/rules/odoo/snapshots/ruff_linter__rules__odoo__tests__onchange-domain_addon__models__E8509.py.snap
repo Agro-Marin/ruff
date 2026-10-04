@@ -1,0 +1,38 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8509 Probable dynamic domain returned from an onchange
+  --> E8509.py:9:16
+   |
+ 7 |     @api.onchange("partner_id")
+ 8 |     def _onchange_partner(self):
+ 9 |         return {"domain": {"user_id": [("partner_id", "=", self.partner_id.id)]}}  # E8509
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |
+11 |     @api.onchange("user_id")
+   |
+help: Declare the domain on the field
+
+E8509 Probable dynamic domain returned from an onchange
+  --> E8509.py:14:9
+   |
+12 |     def _onchange_user(self):
+13 |         result = {}
+14 |         result["domain"] = {"partner_id": []}  # E8509
+   |         ^^^^^^^^^^^^^^^^
+15 |         result["domain"] = {"partner_id": []}  # OK: one per method
+16 |         return result
+   |
+help: Declare the domain on the field
+
+E8509 Probable dynamic domain returned from an onchange
+  --> E8509.py:20:16
+   |
+18 |     @onchange("team_id")
+19 |     def _onchange_team(self):
+20 |         return dict(domain={"user_id": []})  # E8509
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 |
+22 |     @api.onchange("state")
+   |
+help: Declare the domain on the field
