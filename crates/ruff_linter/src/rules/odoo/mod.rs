@@ -36,6 +36,12 @@ mod tests {
     #[test_case(Rule::RowCounterInTest, Path::new("addon/models/E8516.py"))]
     #[test_case(Rule::RawEgress, Path::new("addon/egress.py"))]
     #[test_case(Rule::SecretInEnviron, Path::new("addon/egress.py"))]
+    #[test_case(Rule::CredentialStorage, Path::new("addons/shipping/models/E8520.py"))]
+    #[test_case(
+        Rule::CredentialStorage,
+        Path::new("addons/credential/models/E8520.py")
+    )]
+    #[test_case(Rule::CredentialStorage, Path::new("addons/website/models/E8520.py"))]
     #[test_case(Rule::FieldRedeclared, Path::new("addon/models/E8521.py"))]
     #[test_case(Rule::DefaultEvaluatedAtImport, Path::new("addon/models/E8522.py"))]
     #[test_case(Rule::SelectionDuplicateKey, Path::new("addon/models/E8523.py"))]
