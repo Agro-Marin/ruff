@@ -1,0 +1,37 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8511 `ValueError` reaches a reader as a traceback, not as UI
+  --> gettext.py:42:15
+   |
+41 |     def developer(self, value):
+42 |         raise ValueError(_("Bad value"))  # E8511
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+43 |         raise KeyError(_("Missing %s") % value)  # E8511
+44 |         raise RuntimeError(_lt("Failed {}").format(value))  # E8511
+   |
+help: Drop the `_()` and use an f-string
+
+E8511 `KeyError` reaches a reader as a traceback, not as UI
+  --> gettext.py:43:15
+   |
+41 |     def developer(self, value):
+42 |         raise ValueError(_("Bad value"))  # E8511
+43 |         raise KeyError(_("Missing %s") % value)  # E8511
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+44 |         raise RuntimeError(_lt("Failed {}").format(value))  # E8511
+45 |         raise ValueError(f"Bad value {value}")  # OK
+   |
+help: Drop the `_()` and use an f-string
+
+E8511 `RuntimeError` reaches a reader as a traceback, not as UI
+  --> gettext.py:44:15
+   |
+42 |         raise ValueError(_("Bad value"))  # E8511
+43 |         raise KeyError(_("Missing %s") % value)  # E8511
+44 |         raise RuntimeError(_lt("Failed {}").format(value))  # E8511
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+45 |         raise ValueError(f"Bad value {value}")  # OK
+46 |         raise ValueError(value)  # OK
+   |
+help: Drop the `_()` and use an f-string
