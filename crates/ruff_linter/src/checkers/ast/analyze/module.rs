@@ -30,6 +30,9 @@ pub(crate) fn module(suite: &Suite, checker: &Checker) {
     if checker.is_rule_enabled(Rule::CredentialStorage) {
         odoo::rules::credential_storage(checker, suite);
     }
+    if checker.is_rule_enabled(Rule::SqlInjection) {
+        odoo::rules::sql_injection(checker, suite);
+    }
     if checker.is_rule_enabled(Rule::InvalidFormatterSuppressionComment) {
         ruff::rules::ignored_formatter_suppression_comment(checker, suite);
     }

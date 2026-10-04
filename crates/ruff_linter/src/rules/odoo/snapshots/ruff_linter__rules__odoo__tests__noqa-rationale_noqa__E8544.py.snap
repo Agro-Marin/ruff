@@ -1,0 +1,107 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8544 `noqa` without a rationale
+ --> E8544.py:1:12
+  |
+1 | import os  # noqa: F401
+  |            ^^^^^^^^^^^^
+2 | import re  # noqa: F401  re-exported for the addons
+3 | import sys  # noqa: F401 E402
+  |
+help: Write the reason after the codes: `# noqa: F401  re-exported by __init__`
+
+E8544 `noqa` without a rationale
+ --> E8544.py:3:13
+  |
+1 | import os  # noqa: F401
+2 | import re  # noqa: F401  re-exported for the addons
+3 | import sys  # noqa: F401 E402
+  |             ^^^^^^^^^^^^^^^^^
+4 | import json  # noqa: F401, E402 - kept for the legacy importer
+5 | import csv  # noqa
+  |
+help: Write the reason after the codes: `# noqa: F401  re-exported by __init__`
+
+E8544 `noqa` without a rationale
+ --> E8544.py:5:13
+  |
+3 | import sys  # noqa: F401 E402
+4 | import json  # noqa: F401, E402 - kept for the legacy importer
+5 | import csv  # noqa
+  |             ^^^^^^
+6 | import io  # noqa  reason
+7 | import abc  # NOQA: F401 ok
+  |
+help: Write the reason after the codes: `# noqa: F401  re-exported by __init__`
+
+E8544 `noqa` without a rationale
+ --> E8544.py:6:12
+  |
+4 | import json  # noqa: F401, E402 - kept for the legacy importer
+5 | import csv  # noqa
+6 | import io  # noqa  reason
+  |            ^^^^^^^^^^^^^^
+7 | import abc  # NOQA: F401 ok
+8 | import ast  # noqa: F401 -- why
+  |
+help: Write the reason after the codes: `# noqa: F401  re-exported by __init__`
+
+E8544 `noqa` without a rationale
+ --> E8544.py:7:13
+  |
+5 | import csv  # noqa
+6 | import io  # noqa  reason
+7 | import abc  # NOQA: F401 ok
+  |             ^^^^^^^^^^^^^^^
+8 | import ast  # noqa: F401 -- why
+9 | import dis  # noqa: F401 — the bytecode dump tool
+  |
+help: Write the reason after the codes: `# noqa: F401  re-exported by __init__`
+
+E8544 `noqa` without a rationale
+  --> E8544.py:8:13
+   |
+ 6 | import io  # noqa  reason
+ 7 | import abc  # NOQA: F401 ok
+ 8 | import ast  # noqa: F401 -- why
+   |             ^^^^^^^^^^^^^^^^^^^
+ 9 | import dis  # noqa: F401 — the bytecode dump tool
+10 | import gc  # noqa:F401,E402 garbage collector hooks
+   |
+help: Write the reason after the codes: `# noqa: F401  re-exported by __init__`
+
+E8544 `noqa` without a rationale
+  --> E8544.py:12:8
+   |
+10 | import gc  # noqa:F401,E402 garbage collector hooks
+11 | import nis  # noqaX this is not a directive
+12 | x = 1  # some comment # noqa: E501
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 | y = 2  # noqa: E501 1234
+14 | z = 3  # noqa: E501 # # #
+   |
+help: Write the reason after the codes: `# noqa: F401  re-exported by __init__`
+
+E8544 `noqa` without a rationale
+  --> E8544.py:13:8
+   |
+11 | import nis  # noqaX this is not a directive
+12 | x = 1  # some comment # noqa: E501
+13 | y = 2  # noqa: E501 1234
+   |        ^^^^^^^^^^^^^^^^^
+14 | z = 3  # noqa: E501 # # #
+15 | w = 4  # noqa: E501 déjà vu
+   |
+help: Write the reason after the codes: `# noqa: F401  re-exported by __init__`
+
+E8544 `noqa` without a rationale
+  --> E8544.py:14:8
+   |
+12 | x = 1  # some comment # noqa: E501
+13 | y = 2  # noqa: E501 1234
+14 | z = 3  # noqa: E501 # # #
+   |        ^^^^^^^^^^^^^^^^^^
+15 | w = 4  # noqa: E501 déjà vu
+   |
+help: Write the reason after the codes: `# noqa: F401  re-exported by __init__`

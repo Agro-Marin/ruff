@@ -14,6 +14,7 @@ use crate::noqa::{
 };
 use crate::registry::Rule;
 use crate::rule_redirects::get_redirect_target;
+use crate::rules::odoo;
 use crate::rules::pygrep_hooks;
 use crate::rules::ruff;
 use crate::rules::ruff::rules::{UnusedCodes, UnusedNOQA};
@@ -43,6 +44,7 @@ pub(crate) fn check_noqa(
     let mut noqa_directives = NoqaDirectives::from_commented_ranges(comment_ranges, path, locator);
 
     if file_noqa_directives.is_empty() && noqa_directives.is_empty() && suppressions.is_empty() {
+        noqa_rationale(context, comment_ranges, locator);
         return Vec::new();
     }
 
@@ -270,6 +272,8 @@ pub(crate) fn check_noqa(
         ruff::rules::redirected_file_noqa(context, &file_noqa_directives);
     }
 
+    noqa_rationale(context, comment_ranges, locator);
+
     if context.is_rule_enabled(Rule::BlanketNOQA) && !exemption.enumerates(Rule::BlanketNOQA) {
         pygrep_hooks::rules::blanket_noqa(
             context,
@@ -293,4 +297,13 @@ pub(crate) fn check_noqa(
 
     ignored_diagnostics.sort_unstable();
     ignored_diagnostics
+}
+
+/// `test_lint`'s rationale check reads every comment, whether or not ruff parses a
+/// directive in it, and reports after the suppressions were applied, so no
+/// `noqa` (a blanket one included) silences it.
+fn noqa_rationale(context: &LintContext, comment_ranges: &CommentRanges, locator: &Locator) {
+    if context.is_rule_enabled(Rule::NoqaRationale) {
+        odoo::rules::noqa_rationale(context, comment_ranges, locator);
+    }
 }
