@@ -1,0 +1,60 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8505 Static string passed to `UserError` without a gettext call
+  --> gettext.py:30:15
+   |
+29 |     def missing(self, value):
+30 |         raise UserError("The order is locked")  # E8505
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+31 |         raise ValidationError("Locked: " + value)  # E8505: a word in the concatenation
+32 |         raise AccessError(f"No access to {value}")  # E8505
+   |
+help: Wrap the message in `_()`
+
+E8505 Static string passed to `ValidationError` without a gettext call
+  --> gettext.py:31:15
+   |
+29 |     def missing(self, value):
+30 |         raise UserError("The order is locked")  # E8505
+31 |         raise ValidationError("Locked: " + value)  # E8505: a word in the concatenation
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+32 |         raise AccessError(f"No access to {value}")  # E8505
+33 |         raise UserError(value)  # OK: a name
+   |
+help: Wrap the message in `_()`
+
+E8505 Static string passed to `AccessError` without a gettext call
+  --> gettext.py:32:15
+   |
+30 |         raise UserError("The order is locked")  # E8505
+31 |         raise ValidationError("Locked: " + value)  # E8505: a word in the concatenation
+32 |         raise AccessError(f"No access to {value}")  # E8505
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+33 |         raise UserError(value)  # OK: a name
+34 |         raise UserError(self.env._("Locked"))  # OK
+   |
+help: Wrap the message in `_()`
+
+E8505 Static string passed to `UserError` without a gettext call
+  --> gettext.py:38:15
+   |
+36 |         raise UserError(f"{value}: %s")  # OK: only a placeholder
+37 |         raise UserError(value if value else self.name)  # OK
+38 |         raise UserError(value or "Locked")  # E8505: a constant in the BoolOp
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+39 |         raise UserError(*value)  # E8505: a starred argument
+   |
+help: Wrap the message in `_()`
+
+E8505 Static string passed to `UserError` without a gettext call
+  --> gettext.py:39:15
+   |
+37 |         raise UserError(value if value else self.name)  # OK
+38 |         raise UserError(value or "Locked")  # E8505: a constant in the BoolOp
+39 |         raise UserError(*value)  # E8505: a starred argument
+   |               ^^^^^^^^^^^^^^^^^
+40 |
+41 |     def developer(self, value):
+   |
+help: Wrap the message in `_()`

@@ -1,0 +1,49 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8503 Translated message with multiple unnamed placeholders
+  --> gettext.py:15:11
+   |
+14 |     def placeholders(self):
+15 |         _("%s of %s")  # E8503
+   |           ^^^^^^^^^^
+16 |         _("%i of %i")  # E8503: every conversion Python accepts
+17 |         _("%%%s and %s")  # E8503: an escaped percent, then two
+   |
+help: Use `%(name)s` rather than a second bare `%s`
+
+E8503 Translated message with multiple unnamed placeholders
+  --> gettext.py:16:11
+   |
+14 |     def placeholders(self):
+15 |         _("%s of %s")  # E8503
+16 |         _("%i of %i")  # E8503: every conversion Python accepts
+   |           ^^^^^^^^^^
+17 |         _("%%%s and %s")  # E8503: an escaped percent, then two
+18 |         _("%(done)s of %(total)s")  # OK: named
+   |
+help: Use `%(name)s` rather than a second bare `%s`
+
+E8503 Translated message with multiple unnamed placeholders
+  --> gettext.py:17:11
+   |
+15 |         _("%s of %s")  # E8503
+16 |         _("%i of %i")  # E8503: every conversion Python accepts
+17 |         _("%%%s and %s")  # E8503: an escaped percent, then two
+   |           ^^^^^^^^^^^^^
+18 |         _("%(done)s of %(total)s")  # OK: named
+19 |         _("100%% of %s")  # OK: one placeholder
+   |
+help: Use `%(name)s` rather than a second bare `%s`
+
+E8503 Translated message with multiple unnamed placeholders
+  --> gettext.py:27:11
+   |
+25 |         _("Bad value %(value)r")  # E8504
+26 |         _("Bad value %%r")  # OK: escaped
+27 |         _("%r and %s")  # E8503 and E8504
+   |           ^^^^^^^^^^^
+28 |
+29 |     def missing(self, value):
+   |
+help: Use `%(name)s` rather than a second bare `%s`

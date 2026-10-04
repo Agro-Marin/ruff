@@ -1,0 +1,34 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8504 `%r` in a translated message
+  --> gettext.py:24:11
+   |
+23 |     def representation(self):
+24 |         _("Bad value %r")  # E8504
+   |           ^^^^^^^^^^^^^^
+25 |         _("Bad value %(value)r")  # E8504
+26 |         _("Bad value %%r")  # OK: escaped
+   |
+
+E8504 `%r` in a translated message
+  --> gettext.py:25:11
+   |
+23 |     def representation(self):
+24 |         _("Bad value %r")  # E8504
+25 |         _("Bad value %(value)r")  # E8504
+   |           ^^^^^^^^^^^^^^^^^^^^^
+26 |         _("Bad value %%r")  # OK: escaped
+27 |         _("%r and %s")  # E8503 and E8504
+   |
+
+E8504 `%r` in a translated message
+  --> gettext.py:27:11
+   |
+25 |         _("Bad value %(value)r")  # E8504
+26 |         _("Bad value %%r")  # OK: escaped
+27 |         _("%r and %s")  # E8503 and E8504
+   |           ^^^^^^^^^^^
+28 |
+29 |     def missing(self, value):
+   |

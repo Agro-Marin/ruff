@@ -1,0 +1,33 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8502 `_()` takes a literal; a variable cannot be extracted into the `.pot`
+  --> gettext.py:9:9
+   |
+ 8 |     def variable(self, message):
+ 9 |         _(message)  # E8502
+   |         ^^^^^^^^^^
+10 |         self.env._(f"Order {self.name}")  # E8502: an f-string is not a literal
+11 |         _lt()  # E8502: no literal at all
+   |
+
+E8502 `_()` takes a literal; a variable cannot be extracted into the `.pot`
+  --> gettext.py:10:9
+   |
+ 8 |     def variable(self, message):
+ 9 |         _(message)  # E8502
+10 |         self.env._(f"Order {self.name}")  # E8502: an f-string is not a literal
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |         _lt()  # E8502: no literal at all
+12 |         _("Order %s", self.name)  # OK
+   |
+
+E8502 `_lt()` takes a literal; a variable cannot be extracted into the `.pot`
+  --> gettext.py:11:9
+   |
+ 9 |         _(message)  # E8502
+10 |         self.env._(f"Order {self.name}")  # E8502: an f-string is not a literal
+11 |         _lt()  # E8502: no literal at all
+   |         ^^^^^
+12 |         _("Order %s", self.name)  # OK
+   |
