@@ -563,6 +563,9 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
             if checker.is_rule_enabled(Rule::MarkupPreformatted) {
                 odoo::rules::markup_preformatted(checker, call);
             }
+            if checker.is_rule_enabled(Rule::LinkTokenCompare) {
+                odoo::rules::link_token_call(checker, call);
+            }
             if checker.any_rule_enabled(&[
                 Rule::GettextVariable,
                 Rule::GettextPlaceholders,
@@ -1455,6 +1458,12 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
             }
         }
         Expr::Compare(compare) => {
+            if checker.is_rule_enabled(Rule::TokenCompare) {
+                odoo::rules::token_compare(checker, compare);
+            }
+            if checker.is_rule_enabled(Rule::LinkTokenCompare) {
+                odoo::rules::link_token_compare(checker, compare);
+            }
             if checker.any_rule_enabled(&[Rule::NoneComparison, Rule::TrueFalseComparison]) {
                 pycodestyle::rules::literal_comparisons(checker, compare);
             }

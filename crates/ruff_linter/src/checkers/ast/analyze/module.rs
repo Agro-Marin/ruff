@@ -18,6 +18,9 @@ pub(crate) fn module(suite: &Suite, checker: &Checker) {
     if checker.is_rule_enabled(Rule::WsgiEnvironOptionalKey) {
         odoo::rules::wsgi_environ_optional_key(checker, suite);
     }
+    if checker.is_rule_enabled(Rule::TaxCompanySingular) {
+        odoo::rules::tax_company_singular(checker, suite);
+    }
     if checker.is_rule_enabled(Rule::InvalidFormatterSuppressionComment) {
         ruff::rules::ignored_formatter_suppression_comment(checker, suite);
     }

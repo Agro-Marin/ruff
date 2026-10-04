@@ -1,0 +1,61 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8536 A token compared with `==`/`!=` leaks how many leading characters matched through the time it takes
+  --> E8536.py:10:12
+   |
+ 9 |     def check(self, presented, signature, key, payload):
+10 |         if self.api_token == presented:  # E8536
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |             return True
+12 |         if signature != hmac.new(key, payload, "sha256").hexdigest():  # E8536
+   |
+help: Compare with `consteq`
+
+E8536 A token compared with `==`/`!=` leaks how many leading characters matched through the time it takes
+  --> E8536.py:12:12
+   |
+10 |         if self.api_token == presented:  # E8536
+11 |             return True
+12 |         if signature != hmac.new(key, payload, "sha256").hexdigest():  # E8536
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |             return False
+14 |         if self._generate_refresh_token() == presented:  # E8536
+   |
+help: Compare with `consteq`
+
+E8536 A token compared with `==`/`!=` leaks how many leading characters matched through the time it takes
+  --> E8536.py:14:12
+   |
+12 |         if signature != hmac.new(key, payload, "sha256").hexdigest():  # E8536
+13 |             return False
+14 |         if self._generate_refresh_token() == presented:  # E8536
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 |             return True
+16 |         expected = self._sign_token(payload)
+   |
+help: Compare with `consteq`
+
+E8536 A token compared with `==`/`!=` leaks how many leading characters matched through the time it takes
+  --> E8536.py:17:12
+   |
+15 |             return True
+16 |         expected = self._sign_token(payload)
+17 |         if presented == expected:  # E8536: a local holding a computed secret
+   |            ^^^^^^^^^^^^^^^^^^^^^
+18 |             return True
+19 |         if self.state == "done":  # OK
+   |
+help: Compare with `consteq`
+
+E8536 A token compared with `==`/`!=` leaks how many leading characters matched through the time it takes
+  --> E8536.py:25:12
+   |
+23 |         if self.access_token == presented:  # OK: a link token is E8537's
+24 |             return False
+25 |         if self.headers["api_token"] == presented:  # E8536: a subscript by a token name
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+26 |             return True
+27 |         return self.name == presented  # OK
+   |
+help: Compare with `consteq`
