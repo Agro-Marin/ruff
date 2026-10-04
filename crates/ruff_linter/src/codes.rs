@@ -1254,6 +1254,9 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Ruff, "990") => rules::ruff::rules::PanicyTestRule,
 
 
+        // odoo (Agro-Marin fork)
+        (Odoo, "08") => rules::odoo::rules::OrmImport,
+
         // flake8-django
         (Flake8Django, "001") => rules::flake8_django::rules::DjangoNullableModelStringField,
         (Flake8Django, "003") => rules::flake8_django::rules::DjangoLocalsInRenderFunction,

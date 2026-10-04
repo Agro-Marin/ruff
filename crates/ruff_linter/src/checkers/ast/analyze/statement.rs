@@ -7,7 +7,7 @@ use crate::checkers::ast::Checker;
 use crate::preview::is_standalone_mock_non_existent_enabled;
 use crate::registry::Rule;
 use crate::rules::{
-    airflow, fastapi, flake8_async, flake8_bandit, flake8_boolean_trap, flake8_bugbear,
+    airflow, fastapi, odoo, flake8_async, flake8_bandit, flake8_boolean_trap, flake8_bugbear,
     flake8_builtins, flake8_debugger, flake8_django, flake8_errmsg, flake8_import_conventions,
     flake8_pie, flake8_pyi, flake8_pytest_style, flake8_raise, flake8_return, flake8_simplify,
     flake8_slots, flake8_tidy_imports, flake8_type_checking, mccabe, pandas_vet, pep8_naming,
@@ -554,6 +554,9 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
             range: _,
             node_index: _,
         }) => {
+            if checker.is_rule_enabled(Rule::OrmImport) {
+                odoo::rules::orm_import(checker, stmt);
+            }
             if checker.is_rule_enabled(Rule::MultipleImportsOnOneLine) {
                 pycodestyle::rules::multiple_imports_on_one_line(checker, stmt, names);
             }
@@ -719,6 +722,9 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
         ) => {
             let level = *level;
             let module = module.as_deref();
+            if checker.is_rule_enabled(Rule::OrmImport) {
+                odoo::rules::orm_import(checker, stmt);
+            }
             if checker.is_rule_enabled(Rule::ModuleImportNotAtTopOfFile) {
                 pycodestyle::rules::module_import_not_at_top_of_file(checker, stmt);
             }
