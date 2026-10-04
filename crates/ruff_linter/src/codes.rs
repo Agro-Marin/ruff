@@ -1255,7 +1255,10 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
 
 
         // odoo (Agro-Marin fork)
+        (Odoo, "07") => rules::odoo::rules::NPlusOneQuery,
         (Odoo, "08") => rules::odoo::rules::OrmImport,
+        (Odoo, "30") => rules::odoo::rules::CompanyFieldOutsideConfig,
+        (Odoo, "32") => rules::odoo::rules::HandRolledRange,
 
         // flake8-django
         (Flake8Django, "001") => rules::flake8_django::rules::DjangoNullableModelStringField,

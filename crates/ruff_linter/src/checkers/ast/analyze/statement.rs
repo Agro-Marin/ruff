@@ -389,6 +389,12 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
                 node_index: _,
             },
         ) => {
+            if checker.is_rule_enabled(Rule::CompanyFieldOutsideConfig) {
+                odoo::rules::company_field_outside_config(checker, class_def);
+            }
+            if checker.is_rule_enabled(Rule::HandRolledRange) {
+                odoo::rules::hand_rolled_range(checker, class_def);
+            }
             if checker.is_rule_enabled(Rule::NoClassmethodDecorator) {
                 pylint::rules::no_classmethod_decorator(checker, stmt);
             }
