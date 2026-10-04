@@ -208,6 +208,9 @@ pub enum Linter {
     /// Ruff-specific rules
     #[prefix = "RUF"]
     Ruff,
+    /// [Odoo](https://github.com/Agro-Marin/odoo)
+    #[prefix = "E85"]
+    Odoo,
     /// [tryceratops](https://pypi.org/project/tryceratops/)
     #[prefix = "TRY"]
     Tryceratops,
