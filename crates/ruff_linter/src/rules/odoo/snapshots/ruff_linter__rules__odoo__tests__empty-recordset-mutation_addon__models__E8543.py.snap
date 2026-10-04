@@ -1,0 +1,56 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8543 `env["res.partner"].unlink()` runs on the empty recordset and changes nothing
+ --> E8543.py:5:5
+  |
+4 | def post_init(env):
+5 |     env["res.partner"].unlink()  # E8543
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6 |     env["res.partner"].sudo().with_context(active_test=False).write({"active": False})  # E8543
+7 |     env["res.config.settings"].update({"group_x": True})  # E8543
+  |
+help: Call it on the records it is meant to change
+
+E8543 `env["res.partner"].write()` runs on the empty recordset and changes nothing
+ --> E8543.py:6:5
+  |
+4 | def post_init(env):
+5 |     env["res.partner"].unlink()  # E8543
+6 |     env["res.partner"].sudo().with_context(active_test=False).write({"active": False})  # E8543
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 |     env["res.config.settings"].update({"group_x": True})  # E8543
+  |
+help: Call it on the records it is meant to change
+
+E8543 `env["res.config.settings"].update()` runs on the empty recordset and changes nothing
+ --> E8543.py:7:5
+  |
+5 |     env["res.partner"].unlink()  # E8543
+6 |     env["res.partner"].sudo().with_context(active_test=False).write({"active": False})  # E8543
+7 |     env["res.config.settings"].update({"group_x": True})  # E8543
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Call it on the records it is meant to change
+
+E8543 `env["fixture.line"].action_archive()` runs on the empty recordset and changes nothing
+  --> E8543.py:14:9
+   |
+13 |     def clean(self):
+14 |         self.env["fixture.line"].action_archive()  # E8543
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 |         self.env[self._name].copy()  # E8543
+16 |         self.env["fixture.line"].search([]).unlink()  # OK: the records it names
+   |
+help: Call it on the records it is meant to change
+
+E8543 `env[self._name].copy()` runs on the empty recordset and changes nothing
+  --> E8543.py:15:9
+   |
+13 |     def clean(self):
+14 |         self.env["fixture.line"].action_archive()  # E8543
+15 |         self.env[self._name].copy()  # E8543
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |         self.env["fixture.line"].search([]).unlink()  # OK: the records it names
+17 |         self.env["fixture.line"].browse(self.ids).write({})  # OK
+   |
+help: Call it on the records it is meant to change

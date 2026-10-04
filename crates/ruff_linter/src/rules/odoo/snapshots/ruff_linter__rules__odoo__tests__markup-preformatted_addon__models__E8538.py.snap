@@ -1,0 +1,105 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8538 `Markup()` wraps a concatenation: the values were interpolated before the wrap, so none of them was escaped
+  --> E8538.py:10:9
+   |
+ 9 |     def bad(self, name, url):
+10 |         Markup("<b>" + name + "</b>")  # E8538
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |         Markup(self.env._("Hello %(name)s", name=name))  # E8538
+12 |         Markup(_("Hello %s", name))  # E8538
+   |
+help: Wrap the template, then format it
+
+E8538 `Markup()` wraps a gettext call: the values were interpolated before the wrap, so none of them was escaped
+  --> E8538.py:11:9
+   |
+ 9 |     def bad(self, name, url):
+10 |         Markup("<b>" + name + "</b>")  # E8538
+11 |         Markup(self.env._("Hello %(name)s", name=name))  # E8538
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |         Markup(_("Hello %s", name))  # E8538
+13 |         Markup("<b>%s</b>" % name)  # E8538
+   |
+help: Wrap the template, then format it
+
+E8538 `Markup()` wraps a gettext call: the values were interpolated before the wrap, so none of them was escaped
+  --> E8538.py:12:9
+   |
+10 |         Markup("<b>" + name + "</b>")  # E8538
+11 |         Markup(self.env._("Hello %(name)s", name=name))  # E8538
+12 |         Markup(_("Hello %s", name))  # E8538
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |         Markup("<b>%s</b>" % name)  # E8538
+14 |         Markup(_("<b>%s</b>") % (name, url))  # E8538
+   |
+help: Wrap the template, then format it
+
+E8538 `Markup()` wraps a string formatted with %: the values were interpolated before the wrap, so none of them was escaped
+  --> E8538.py:13:9
+   |
+11 |         Markup(self.env._("Hello %(name)s", name=name))  # E8538
+12 |         Markup(_("Hello %s", name))  # E8538
+13 |         Markup("<b>%s</b>" % name)  # E8538
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |         Markup(_("<b>%s</b>") % (name, url))  # E8538
+15 |         Markup("<a href='{}'>{}</a>".format(url, name))  # E8538
+   |
+help: Wrap the template, then format it
+
+E8538 `Markup()` wraps a gettext result formatted with %: the values were interpolated before the wrap, so none of them was escaped
+  --> E8538.py:14:9
+   |
+12 |         Markup(_("Hello %s", name))  # E8538
+13 |         Markup("<b>%s</b>" % name)  # E8538
+14 |         Markup(_("<b>%s</b>") % (name, url))  # E8538
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 |         Markup("<a href='{}'>{}</a>".format(url, name))  # E8538
+16 |         Markup(f"<b>{name}</b>")  # E8538
+   |
+help: Wrap the template, then format it
+
+E8538 `Markup()` wraps str.format: the values were interpolated before the wrap, so none of them was escaped
+  --> E8538.py:15:9
+   |
+13 |         Markup("<b>%s</b>" % name)  # E8538
+14 |         Markup(_("<b>%s</b>") % (name, url))  # E8538
+15 |         Markup("<a href='{}'>{}</a>".format(url, name))  # E8538
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |         Markup(f"<b>{name}</b>")  # E8538
+17 |         markupsafe.Markup("<b>%(n)s</b>" % {"n": name})  # E8538
+   |
+help: Wrap the template, then format it
+
+E8538 `Markup()` wraps an f-string: the values were interpolated before the wrap, so none of them was escaped
+  --> E8538.py:16:9
+   |
+14 |         Markup(_("<b>%s</b>") % (name, url))  # E8538
+15 |         Markup("<a href='{}'>{}</a>".format(url, name))  # E8538
+16 |         Markup(f"<b>{name}</b>")  # E8538
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+17 |         markupsafe.Markup("<b>%(n)s</b>" % {"n": name})  # E8538
+   |
+help: Wrap the template, then format it
+
+E8538 `Markup()` wraps a string formatted with %: the values were interpolated before the wrap, so none of them was escaped
+  --> E8538.py:17:9
+   |
+15 |         Markup("<a href='{}'>{}</a>".format(url, name))  # E8538
+16 |         Markup(f"<b>{name}</b>")  # E8538
+17 |         markupsafe.Markup("<b>%(n)s</b>" % {"n": name})  # E8538
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+18 |
+19 |     def good(self, name, flag):
+   |
+help: Wrap the template, then format it
+
+E8538 `Markup()` wraps a string formatted with %: the values were interpolated before the wrap, so none of them was escaped
+  --> E8538.py:26:9
+   |
+24 |         Markup(f"<b>constant</b>")  # OK: nothing interpolated
+25 |         Markup(_("Hello"))  # OK: a gettext call without values
+26 |         Markup("<b>%s</b>" % {**values})  # E8538: an unpacked mapping is one value
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Wrap the template, then format it

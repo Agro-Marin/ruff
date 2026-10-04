@@ -2,6 +2,7 @@
 pub(crate) mod helpers;
 pub(crate) mod model;
 pub(crate) mod rules;
+pub(crate) mod strings;
 
 #[cfg(test)]
 mod tests {
@@ -22,6 +23,7 @@ mod tests {
     #[test_case(Rule::OrmImport, Path::new("framework/E8508.py"))]
     #[test_case(Rule::OnchangeDomain, Path::new("addon/models/E8509.py"))]
     #[test_case(Rule::ConfigChainmapPatch, Path::new("addon/models/E8510.py"))]
+    #[test_case(Rule::ShadowedDefinition, Path::new("addon/models/E8513.py"))]
     #[test_case(Rule::HttpJsonString, Path::new("addon/controllers.py"))]
     #[test_case(Rule::RowCounterInTest, Path::new("addon/tests/test_E8516.py"))]
     #[test_case(Rule::RowCounterInTest, Path::new("addon/models/E8516.py"))]
@@ -48,8 +50,15 @@ mod tests {
     )]
     #[test_case(Rule::HandRolledRange, Path::new("addon/models/E8532.py"))]
     #[test_case(Rule::HandRolledRange, Path::new("addons/base/models/E8532.py"))]
+    #[test_case(Rule::RouteUntyped, Path::new("addon/controllers_typed.py"))]
+    #[test_case(Rule::SqlBoundPlaceholder, Path::new("addon/models/E8534.py"))]
     #[test_case(Rule::AbolishedMethodCall, Path::new("addon/models/E8535.py"))]
+    #[test_case(Rule::MarkupPreformatted, Path::new("addon/models/E8538.py"))]
+    #[test_case(Rule::UserCacheWithoutGroups, Path::new("addon/models/E8540.py"))]
     #[test_case(Rule::HttpExceptionReturned, Path::new("addon/controllers.py"))]
+    #[test_case(Rule::WsgiEnvironOptionalKey, Path::new("addon/wsgi.py"))]
+    #[test_case(Rule::WsgiEnvironOptionalKey, Path::new("addon/wsgi_os.py"))]
+    #[test_case(Rule::EmptyRecordsetMutation, Path::new("addon/models/E8543.py"))]
     fn rules(rule_code: Rule, path: &Path) -> Result<()> {
         let snapshot = format!(
             "{}_{}",

@@ -1,0 +1,26 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8540 `_menus` is cached per user but not per what the user holds
+  --> E8540.py:8:6
+   |
+ 6 |     _inherit = "res.users"
+ 7 |
+ 8 |     @tools.ormcache("self.env.uid")  # E8540
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |     def _menus(self):
+10 |         return []
+   |
+help: Key the cache on `self.env.access_signature`
+
+E8540 `_labels` is cached per user but not per what the user holds
+  --> E8540.py:12:6
+   |
+10 |         return []
+11 |
+12 |     @ormcache("uid", "lang")  # E8540
+   |      ^^^^^^^^^^^^^^^^^^^^^^^
+13 |     def _labels(self, uid, lang):
+14 |         return []
+   |
+help: Key the cache on `self.env.access_signature`

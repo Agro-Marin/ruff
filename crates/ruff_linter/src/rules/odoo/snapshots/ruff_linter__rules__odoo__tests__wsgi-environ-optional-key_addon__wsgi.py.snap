@@ -1,0 +1,26 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8542 `environ["REMOTE_ADDR"]` is not guaranteed by WSGI
+ --> wsgi.py:4:14
+  |
+2 | def application(environ, start_response):
+3 |     method = environ["REQUEST_METHOD"]  # OK: guaranteed
+4 |     remote = environ["REMOTE_ADDR"]  # E8542
+  |              ^^^^^^^^^^^^^^^^^^^^^^
+5 |     host = request.httprequest.environ["HTTP_HOST"]  # E8542
+6 |     agent = environ.get("HTTP_USER_AGENT")  # OK
+  |
+help: Read it with `.get()` or the request's own accessor
+
+E8542 `environ["HTTP_HOST"]` is not guaranteed by WSGI
+ --> wsgi.py:5:12
+  |
+3 |     method = environ["REQUEST_METHOD"]  # OK: guaranteed
+4 |     remote = environ["REMOTE_ADDR"]  # E8542
+5 |     host = request.httprequest.environ["HTTP_HOST"]  # E8542
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6 |     agent = environ.get("HTTP_USER_AGENT")  # OK
+7 |     home = os.environ["HOME"]  # OK: the process environment
+  |
+help: Read it with `.get()` or the request's own accessor
