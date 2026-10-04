@@ -58,16 +58,25 @@ pub(crate) fn orm_import(checker: &Checker, stmt: &Stmt) {
             for alias in names {
                 if is_orm(alias.name.as_str()) {
                     checker.report_diagnostic(
-                        OrmImport { statement: format!("import {}", alias.name) },
+                        OrmImport {
+                            statement: format!("import {}", alias.name),
+                        },
                         stmt.range(),
                     );
                 }
             }
         }
-        Stmt::ImportFrom(StmtImportFrom { module: Some(module), names, level: 0, .. }) => {
+        Stmt::ImportFrom(StmtImportFrom {
+            module: Some(module),
+            names,
+            level: 0,
+            ..
+        }) => {
             if module.as_str() == "odoo" && names.iter().any(|alias| alias.name.as_str() == "orm") {
                 checker.report_diagnostic(
-                    OrmImport { statement: "from odoo import orm".to_string() },
+                    OrmImport {
+                        statement: "from odoo import orm".to_string(),
+                    },
                     stmt.range(),
                 );
             } else if is_orm(module.as_str()) {
@@ -77,7 +86,9 @@ pub(crate) fn orm_import(checker: &Checker, stmt: &Stmt) {
                     .collect::<Vec<_>>()
                     .join(", ");
                 checker.report_diagnostic(
-                    OrmImport { statement: format!("from {module} import {imported}") },
+                    OrmImport {
+                        statement: format!("from {module} import {imported}"),
+                    },
                     stmt.range(),
                 );
             }

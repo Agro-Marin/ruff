@@ -1,0 +1,61 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8523 `state`: selection key `draft` appears 2 times
+  --> E8523.py:8:19
+   |
+ 7 |     state = fields.Selection(
+ 8 |         selection=[("draft", "Draft"), ("done", "Done"), ("draft", "Again")],  # E8523
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |     )
+10 |     kind = fields.Selection([("a", "A"), ("b", "B"), ("a", "A2"), ("b", "B2")])  # E8523 x2
+   |
+help: Give each selection key one label
+
+E8523 `kind`: selection key `a` appears 2 times
+  --> E8523.py:10:29
+   |
+ 8 |         selection=[("draft", "Draft"), ("done", "Done"), ("draft", "Again")],  # E8523
+ 9 |     )
+10 |     kind = fields.Selection([("a", "A"), ("b", "B"), ("a", "A2"), ("b", "B2")])  # E8523 x2
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |     level = fields.Selection(
+12 |         selection=(("low", "Low"), ["low", "Lower"], ("x", "y", "z"), ("x", "X")),  # E8523
+   |
+help: Give each selection key one label
+
+E8523 `kind`: selection key `b` appears 2 times
+  --> E8523.py:10:29
+   |
+ 8 |         selection=[("draft", "Draft"), ("done", "Done"), ("draft", "Again")],  # E8523
+ 9 |     )
+10 |     kind = fields.Selection([("a", "A"), ("b", "B"), ("a", "A2"), ("b", "B2")])  # E8523 x2
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |     level = fields.Selection(
+12 |         selection=(("low", "Low"), ["low", "Lower"], ("x", "y", "z"), ("x", "X")),  # E8523
+   |
+help: Give each selection key one label
+
+E8523 `level`: selection key `low` appears 2 times
+  --> E8523.py:12:19
+   |
+10 |     kind = fields.Selection([("a", "A"), ("b", "B"), ("a", "A2"), ("b", "B2")])  # E8523 x2
+11 |     level = fields.Selection(
+12 |         selection=(("low", "Low"), ["low", "Lower"], ("x", "y", "z"), ("x", "X")),  # E8523
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |     )
+14 |     target = fields.Reference(selection=[("res.partner", "P"), ("res.partner", "Q")])  # E8523
+   |
+help: Give each selection key one label
+
+E8523 `target`: selection key `res.partner` appears 2 times
+  --> E8523.py:14:41
+   |
+12 |         selection=(("low", "Low"), ["low", "Lower"], ("x", "y", "z"), ("x", "X")),  # E8523
+13 |     )
+14 |     target = fields.Reference(selection=[("res.partner", "P"), ("res.partner", "Q")])  # E8523
+   |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 |
+16 |     unique = fields.Selection(selection=[("a", "A"), ("b", "B")])  # OK
+   |
+help: Give each selection key one label
