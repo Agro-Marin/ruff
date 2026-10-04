@@ -7,10 +7,10 @@ use crate::checkers::ast::Checker;
 use crate::preview::is_standalone_mock_non_existent_enabled;
 use crate::registry::Rule;
 use crate::rules::{
-    airflow, fastapi, odoo, flake8_async, flake8_bandit, flake8_boolean_trap, flake8_bugbear,
+    airflow, fastapi, flake8_async, flake8_bandit, flake8_boolean_trap, flake8_bugbear,
     flake8_builtins, flake8_debugger, flake8_django, flake8_errmsg, flake8_import_conventions,
     flake8_pie, flake8_pyi, flake8_pytest_style, flake8_raise, flake8_return, flake8_simplify,
-    flake8_slots, flake8_tidy_imports, flake8_type_checking, mccabe, pandas_vet, pep8_naming,
+    flake8_slots, flake8_tidy_imports, flake8_type_checking, mccabe, odoo, pandas_vet, pep8_naming,
     perflint, pycodestyle, pyflakes, pygrep_hooks, pylint, pyupgrade, refurb, ruff, tryceratops,
 };
 use ruff_python_ast::PythonVersion;
@@ -394,6 +394,18 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
             }
             if checker.is_rule_enabled(Rule::HandRolledRange) {
                 odoo::rules::hand_rolled_range(checker, class_def);
+            }
+            if checker.any_rule_enabled(&[
+                Rule::FieldRedeclared,
+                Rule::DefaultEvaluatedAtImport,
+                Rule::SelectionDuplicateKey,
+                Rule::FieldHookPrefix,
+                Rule::FieldPositionalArgument,
+                Rule::FieldAttributeOrder,
+                Rule::DeadFieldAttribute,
+                Rule::StoredRelated,
+            ]) {
+                odoo::rules::field_declaration(checker, class_def);
             }
             if checker.is_rule_enabled(Rule::NoClassmethodDecorator) {
                 pylint::rules::no_classmethod_decorator(checker, stmt);

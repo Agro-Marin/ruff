@@ -1,0 +1,96 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8527 `line_ids`: `index=` on a field with no column
+ --> E8527.py:7:16
+  |
+5 |     _name = "fixture.order"
+6 |
+7 |     line_ids = fields.One2many(comodel_name="fixture.line", inverse_name="order_id", index=True)  # E8527
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |     tag_ids = fields.Many2many(comodel_name="fixture.tag", index="btree")  # E8527
+9 |     total = fields.Float(compute="_compute_total", index=True)  # E8527
+  |
+help: Drop the attribute
+
+E8527 `tag_ids`: `index=` on a field with no column
+  --> E8527.py:8:15
+   |
+ 7 |     line_ids = fields.One2many(comodel_name="fixture.line", inverse_name="order_id", index=True)  # E8527
+ 8 |     tag_ids = fields.Many2many(comodel_name="fixture.tag", index="btree")  # E8527
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |     total = fields.Float(compute="_compute_total", index=True)  # E8527
+10 |     amount = fields.Float(compute="_compute_amount", precompute=True)  # E8527
+   |
+help: Drop the attribute
+
+E8527 `total`: `index=` on a field with no column
+  --> E8527.py:9:13
+   |
+ 7 |     line_ids = fields.One2many(comodel_name="fixture.line", inverse_name="order_id", index=True)  # E8527
+ 8 |     tag_ids = fields.Many2many(comodel_name="fixture.tag", index="btree")  # E8527
+ 9 |     total = fields.Float(compute="_compute_total", index=True)  # E8527
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     amount = fields.Float(compute="_compute_amount", precompute=True)  # E8527
+11 |     stored = fields.Float(compute="_compute_stored", store=0, precompute=True)  # E8527
+   |
+help: Drop the attribute
+
+E8527 `amount`: `precompute=` without `store=True` is dropped at setup
+  --> E8527.py:10:14
+   |
+ 8 |     tag_ids = fields.Many2many(comodel_name="fixture.tag", index="btree")  # E8527
+ 9 |     total = fields.Float(compute="_compute_total", index=True)  # E8527
+10 |     amount = fields.Float(compute="_compute_amount", precompute=True)  # E8527
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |     stored = fields.Float(compute="_compute_stored", store=0, precompute=True)  # E8527
+12 |     name = fields.Char(related="partner_id.name", compute="_compute_name")  # E8527
+   |
+help: Drop the attribute
+
+E8527 `stored`: `precompute=` without `store=True` is dropped at setup
+  --> E8527.py:11:14
+   |
+ 9 |     total = fields.Float(compute="_compute_total", index=True)  # E8527
+10 |     amount = fields.Float(compute="_compute_amount", precompute=True)  # E8527
+11 |     stored = fields.Float(compute="_compute_stored", store=0, precompute=True)  # E8527
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |     name = fields.Char(related="partner_id.name", compute="_compute_name")  # E8527
+13 |     both = fields.Char(compute="_compute_both", index=True, precompute=True)  # E8527 x2
+   |
+help: Drop the attribute
+
+E8527 `name`: `compute=` on a related field is replaced by the related path's own compute
+  --> E8527.py:12:12
+   |
+10 |     amount = fields.Float(compute="_compute_amount", precompute=True)  # E8527
+11 |     stored = fields.Float(compute="_compute_stored", store=0, precompute=True)  # E8527
+12 |     name = fields.Char(related="partner_id.name", compute="_compute_name")  # E8527
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |     both = fields.Char(compute="_compute_both", index=True, precompute=True)  # E8527 x2
+   |
+help: Drop the attribute
+
+E8527 `both`: `index=` on a field with no column
+  --> E8527.py:13:12
+   |
+11 |     stored = fields.Float(compute="_compute_stored", store=0, precompute=True)  # E8527
+12 |     name = fields.Char(related="partner_id.name", compute="_compute_name")  # E8527
+13 |     both = fields.Char(compute="_compute_both", index=True, precompute=True)  # E8527 x2
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |
+15 |     kept = fields.Float(compute="_compute_kept", store=True, index=True, precompute=True)  # OK
+   |
+help: Drop the attribute
+
+E8527 `both`: `precompute=` without `store=True` is dropped at setup
+  --> E8527.py:13:12
+   |
+11 |     stored = fields.Float(compute="_compute_stored", store=0, precompute=True)  # E8527
+12 |     name = fields.Char(related="partner_id.name", compute="_compute_name")  # E8527
+13 |     both = fields.Char(compute="_compute_both", index=True, precompute=True)  # E8527 x2
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |
+15 |     kept = fields.Float(compute="_compute_kept", store=True, index=True, precompute=True)  # OK
+   |
+help: Drop the attribute

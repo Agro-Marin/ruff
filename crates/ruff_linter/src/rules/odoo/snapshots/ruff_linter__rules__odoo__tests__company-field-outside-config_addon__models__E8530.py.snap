@@ -1,0 +1,48 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8530 `res.company.sale_note` belongs to the application's `mixin.company.config` model
+  --> E8530.py:10:5
+   |
+ 8 |     _credential_holder_field = "vault_id"
+ 9 |
+10 |     sale_note = fields.Text()  # E8530
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |     sale_discount = fields.Float(compute="_compute_discount", store=True)  # E8530: stored
+12 |     sale_amount = fields.Float(compute="_compute_amount", inverse="_inverse_amount")  # E8530: writable
+   |
+help: Declare it on the configuration model, linked through `<app>_config_id`
+
+E8530 `res.company.sale_discount` belongs to the application's `mixin.company.config` model
+  --> E8530.py:11:5
+   |
+10 |     sale_note = fields.Text()  # E8530
+11 |     sale_discount = fields.Float(compute="_compute_discount", store=True)  # E8530: stored
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |     sale_amount = fields.Float(compute="_compute_amount", inverse="_inverse_amount")  # E8530: writable
+13 |     sale_flag = fields.Boolean(related="partner_id.active", store=STORE)  # E8530: store may be true
+   |
+help: Declare it on the configuration model, linked through `<app>_config_id`
+
+E8530 `res.company.sale_amount` belongs to the application's `mixin.company.config` model
+  --> E8530.py:12:5
+   |
+10 |     sale_note = fields.Text()  # E8530
+11 |     sale_discount = fields.Float(compute="_compute_discount", store=True)  # E8530: stored
+12 |     sale_amount = fields.Float(compute="_compute_amount", inverse="_inverse_amount")  # E8530: writable
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |     sale_flag = fields.Boolean(related="partner_id.active", store=STORE)  # E8530: store may be true
+   |
+help: Declare it on the configuration model, linked through `<app>_config_id`
+
+E8530 `res.company.sale_flag` belongs to the application's `mixin.company.config` model
+  --> E8530.py:13:5
+   |
+11 |     sale_discount = fields.Float(compute="_compute_discount", store=True)  # E8530: stored
+12 |     sale_amount = fields.Float(compute="_compute_amount", inverse="_inverse_amount")  # E8530: writable
+13 |     sale_flag = fields.Boolean(related="partner_id.active", store=STORE)  # E8530: store may be true
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |
+15 |     sale_config_id = fields.Many2one(comodel_name="sale.company.config")  # OK: the link
+   |
+help: Declare it on the configuration model, linked through `<app>_config_id`
