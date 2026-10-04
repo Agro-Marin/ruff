@@ -1,0 +1,38 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8516 `sql_log_count` counts rows, not round trips
+ --> test_E8516.py:6:18
+  |
+4 | class TestCounts(TransactionCase):
+5 |     def test_rows(self):
+6 |         before = self.cr.sql_log_count  # E8516
+  |                  ^^^^^^^^^^^^^^^^^^^^^
+7 |         self.env["res.partner"].create([{"name": "a"}, {"name": "b"}])
+8 |         self.assertEqual(self.cr.sql_log_count - before, 2)  # E8516
+  |
+help: Read `cr.sql_statement_count`
+
+E8516 `sql_log_count` counts rows, not round trips
+  --> test_E8516.py:8:26
+   |
+ 6 |         before = self.cr.sql_log_count  # E8516
+ 7 |         self.env["res.partner"].create([{"name": "a"}, {"name": "b"}])
+ 8 |         self.assertEqual(self.cr.sql_log_count - before, 2)  # E8516
+   |                          ^^^^^^^^^^^^^^^^^^^^^
+ 9 |         del self.cr.sql_log_count  # E8516
+10 |         self.cr.sql_log_count = 0  # OK: an assignment
+   |
+help: Read `cr.sql_statement_count`
+
+E8516 `sql_log_count` counts rows, not round trips
+  --> test_E8516.py:9:13
+   |
+ 7 |         self.env["res.partner"].create([{"name": "a"}, {"name": "b"}])
+ 8 |         self.assertEqual(self.cr.sql_log_count - before, 2)  # E8516
+ 9 |         del self.cr.sql_log_count  # E8516
+   |             ^^^^^^^^^^^^^^^^^^^^^
+10 |         self.cr.sql_log_count = 0  # OK: an assignment
+11 |         self.assertEqual(self.cr.sql_statement_count, 1)  # OK
+   |
+help: Read `cr.sql_statement_count`

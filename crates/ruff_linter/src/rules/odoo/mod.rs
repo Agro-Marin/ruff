@@ -14,11 +14,17 @@ mod tests {
     use crate::test::test_path;
     use crate::{assert_diagnostics, settings};
 
+    #[test_case(Rule::RaiseUnlinkOverride, Path::new("addon/models/E8506.py"))]
     #[test_case(Rule::NPlusOneQuery, Path::new("addon/models/E8507.py"))]
     #[test_case(Rule::NPlusOneQuery, Path::new("addon/tests/test_E8507.py"))]
     #[test_case(Rule::OrmImport, Path::new("addon/models/E8508.py"))]
     #[test_case(Rule::OrmImport, Path::new("addon/tests/test_E8508.py"))]
     #[test_case(Rule::OrmImport, Path::new("framework/E8508.py"))]
+    #[test_case(Rule::OnchangeDomain, Path::new("addon/models/E8509.py"))]
+    #[test_case(Rule::ConfigChainmapPatch, Path::new("addon/models/E8510.py"))]
+    #[test_case(Rule::HttpJsonString, Path::new("addon/controllers.py"))]
+    #[test_case(Rule::RowCounterInTest, Path::new("addon/tests/test_E8516.py"))]
+    #[test_case(Rule::RowCounterInTest, Path::new("addon/models/E8516.py"))]
     #[test_case(Rule::FieldRedeclared, Path::new("addon/models/E8521.py"))]
     #[test_case(Rule::DefaultEvaluatedAtImport, Path::new("addon/models/E8522.py"))]
     #[test_case(Rule::SelectionDuplicateKey, Path::new("addon/models/E8523.py"))]
@@ -28,14 +34,22 @@ mod tests {
     #[test_case(Rule::FieldPositionalArgument, Path::new("framework/fields.py"))]
     #[test_case(Rule::FieldAttributeOrder, Path::new("addon/models/E8526.py"))]
     #[test_case(Rule::DeadFieldAttribute, Path::new("addon/models/E8527.py"))]
+    #[test_case(Rule::ReceiverFailOpen, Path::new("addon/controllers.py"))]
     #[test_case(Rule::StoredRelated, Path::new("addon/models/E8529.py"))]
     #[test_case(Rule::CompanyFieldOutsideConfig, Path::new("addon/models/E8530.py"))]
     #[test_case(
         Rule::CompanyFieldOutsideConfig,
         Path::new("addons/base/models/E8530.py")
     )]
+    #[test_case(Rule::AuthMethodOutsideOwner, Path::new("addon/models/E8531.py"))]
+    #[test_case(
+        Rule::AuthMethodOutsideOwner,
+        Path::new("addons/integration/models/E8531.py")
+    )]
     #[test_case(Rule::HandRolledRange, Path::new("addon/models/E8532.py"))]
     #[test_case(Rule::HandRolledRange, Path::new("addons/base/models/E8532.py"))]
+    #[test_case(Rule::AbolishedMethodCall, Path::new("addon/models/E8535.py"))]
+    #[test_case(Rule::HttpExceptionReturned, Path::new("addon/controllers.py"))]
     fn rules(rule_code: Rule, path: &Path) -> Result<()> {
         let snapshot = format!(
             "{}_{}",

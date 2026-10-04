@@ -2,6 +2,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
+use ruff_python_ast::statement_visitor::{StatementVisitor, walk_stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_trivia::{SimpleTokenKind, SimpleTokenizer};
+use ruff_text_size::{Ranged, TextSize};
+
 /// A test file: a path part named `tests`, or one starting with `test_`.
 pub(crate) fn is_test_path(path: &Path) -> bool {
     path.components().any(|component| {
@@ -40,4 +45,60 @@ pub(crate) fn in_addon(path: &Path) -> bool {
         below = entry.parent();
     }
     false
+}
+
+/// Where a function's `def` (or `async def`) keyword starts: the position Python
+/// gives a function, after its decorators.
+pub(crate) fn def_start(function: &ast::StmtFunctionDef, source: &str) -> TextSize {
+    let after_decorators = function
+        .decorator_list
+        .last()
+        .map_or(function.start(), Ranged::end);
+    SimpleTokenizer::starts_at(after_decorators, source)
+        .skip_trivia()
+        .find(|token| matches!(token.kind, SimpleTokenKind::Def | SimpleTokenKind::Async))
+        .map_or(function.start(), |token| token.start())
+}
+
+/// The last name of a callee: `route` for both `http.route` and `route`.
+pub(crate) fn callee_name(func: &Expr) -> &str {
+    match func {
+        Expr::Attribute(attribute) => attribute.attr.as_str(),
+        Expr::Name(name) => name.id.as_str(),
+        _ => "",
+    }
+}
+
+/// The first decorator that calls something whose name ends with `route`.
+pub(crate) fn route_decorator(function: &ast::StmtFunctionDef) -> Option<&ast::ExprCall> {
+    function
+        .decorator_list
+        .iter()
+        .find_map(|decorator| match &decorator.expression {
+            Expr::Call(call) if callee_name(&call.func).ends_with("route") => Some(call),
+            _ => None,
+        })
+}
+
+/// The `return` statements of a function body, not those of the functions it
+/// defines.
+pub(crate) fn returns(function: &ast::StmtFunctionDef) -> Vec<&ast::StmtReturn> {
+    #[derive(Default)]
+    struct Returns<'a> {
+        found: Vec<&'a ast::StmtReturn>,
+    }
+
+    impl<'a> StatementVisitor<'a> for Returns<'a> {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            match stmt {
+                Stmt::FunctionDef(_) => {}
+                Stmt::Return(ret) => self.found.push(ret),
+                _ => walk_stmt(self, stmt),
+            }
+        }
+    }
+
+    let mut visitor = Returns::default();
+    visitor.visit_body(&function.body);
+    visitor.found
 }

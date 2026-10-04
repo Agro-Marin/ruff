@@ -1,0 +1,23 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8528 `hook`: `auth="public"` with `csrf=False` takes calls from machines without declaring who may make them
+  --> controllers.py:45:5
+   |
+44 |     @http.route("/hook", type="http", auth="public", csrf=False)
+45 |     def hook(self):  # E8528
+   |     ^^^^^^^^
+46 |         return ""
+   |
+help: Authenticate the caller with `auth="receiver"`
+
+E8528 `probe`: `auth="none"` with `csrf=False` takes calls from machines without declaring who may make them
+  --> controllers.py:54:5
+   |
+52 |         csrf=False,
+53 |     )
+54 |     async def probe(self):  # E8528
+   |     ^^^^^^^^^^^^^^^
+55 |         return ""
+   |
+help: Authenticate the caller with `auth="receiver"`

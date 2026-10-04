@@ -1,0 +1,23 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8531 `_auth_method_partner_token`: a new `auth=` scheme outside `base` and `integration`
+ --> E8531.py:8:5
+  |
+7 |     @classmethod
+8 |     def _auth_method_partner_token(cls):  # E8531
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+9 |         return None
+  |
+help: Authenticate behind `auth="receiver"` or `auth="link"`
+
+E8531 `_auth_method_helper`: a new `auth=` scheme outside `base` and `integration`
+  --> E8531.py:15:5
+   |
+13 |         return super()._auth_method_public()
+14 |
+15 |     def _auth_method_helper(self):  # E8531
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+16 |         return None
+   |
+help: Authenticate behind `auth="receiver"` or `auth="link"`
