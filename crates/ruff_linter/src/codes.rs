@@ -1255,8 +1255,13 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
 
 
         // odoo (Agro-Marin fork)
+        (Odoo, "06") => rules::odoo::rules::RaiseUnlinkOverride,
         (Odoo, "07") => rules::odoo::rules::NPlusOneQuery,
         (Odoo, "08") => rules::odoo::rules::OrmImport,
+        (Odoo, "09") => rules::odoo::rules::OnchangeDomain,
+        (Odoo, "10") => rules::odoo::rules::ConfigChainmapPatch,
+        (Odoo, "15") => rules::odoo::rules::HttpJsonString,
+        (Odoo, "16") => rules::odoo::rules::RowCounterInTest,
         (Odoo, "21") => rules::odoo::rules::FieldRedeclared,
         (Odoo, "22") => rules::odoo::rules::DefaultEvaluatedAtImport,
         (Odoo, "23") => rules::odoo::rules::SelectionDuplicateKey,
@@ -1264,9 +1269,13 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Odoo, "25") => rules::odoo::rules::FieldPositionalArgument,
         (Odoo, "26") => rules::odoo::rules::FieldAttributeOrder,
         (Odoo, "27") => rules::odoo::rules::DeadFieldAttribute,
+        (Odoo, "28") => rules::odoo::rules::ReceiverFailOpen,
         (Odoo, "29") => rules::odoo::rules::StoredRelated,
         (Odoo, "30") => rules::odoo::rules::CompanyFieldOutsideConfig,
+        (Odoo, "31") => rules::odoo::rules::AuthMethodOutsideOwner,
         (Odoo, "32") => rules::odoo::rules::HandRolledRange,
+        (Odoo, "35") => rules::odoo::rules::AbolishedMethodCall,
+        (Odoo, "41") => rules::odoo::rules::HttpExceptionReturned,
 
         // flake8-django
         (Flake8Django, "001") => rules::flake8_django::rules::DjangoNullableModelStringField,

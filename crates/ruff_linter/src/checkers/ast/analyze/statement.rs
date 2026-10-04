@@ -64,6 +64,21 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
             if checker.is_rule_enabled(Rule::DjangoNonLeadingReceiverDecorator) {
                 flake8_django::rules::non_leading_receiver_decorator(checker, decorator_list);
             }
+            if checker.is_rule_enabled(Rule::OnchangeDomain) {
+                odoo::rules::onchange_domain(checker, stmt, function_def);
+            }
+            if checker.is_rule_enabled(Rule::HttpJsonString) {
+                odoo::rules::http_json_string(checker, function_def);
+            }
+            if checker.is_rule_enabled(Rule::HttpExceptionReturned) {
+                odoo::rules::http_exception_returned(checker, function_def);
+            }
+            if checker.is_rule_enabled(Rule::ReceiverFailOpen) {
+                odoo::rules::receiver_fail_open(checker, function_def);
+            }
+            if checker.is_rule_enabled(Rule::AuthMethodOutsideOwner) {
+                odoo::rules::auth_method_outside_owner(checker, function_def);
+            }
             if checker.is_rule_enabled(Rule::IncorrectDecoratorOrder) {
                 ruff::rules::incorrect_decorator_order(checker, decorator_list);
             }
@@ -394,6 +409,9 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
             }
             if checker.is_rule_enabled(Rule::HandRolledRange) {
                 odoo::rules::hand_rolled_range(checker, class_def);
+            }
+            if checker.is_rule_enabled(Rule::RaiseUnlinkOverride) {
+                odoo::rules::raise_unlink_override(checker, class_def);
             }
             if checker.any_rule_enabled(&[
                 Rule::FieldRedeclared,

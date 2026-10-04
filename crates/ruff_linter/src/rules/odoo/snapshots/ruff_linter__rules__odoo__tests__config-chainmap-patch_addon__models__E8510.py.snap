@@ -1,0 +1,49 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8510 `patch.dict` flattens the `config.options` ChainMap into `_override_options`
+ --> E8510.py:6:6
+  |
+4 | from odoo.tools import config
+5 |
+6 | with patch.dict(config.options, {"workers": 2}):  # E8510
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 |     pass
+8 | with mock.patch.dict(odoo.tools.config.options, workers=2):  # E8510
+  |
+help: Use `config.patch(**values)`
+
+E8510 `patch.dict` flattens the `config.options` ChainMap into `_override_options`
+  --> E8510.py:8:6
+   |
+ 6 | with patch.dict(config.options, {"workers": 2}):  # E8510
+ 7 |     pass
+ 8 | with mock.patch.dict(odoo.tools.config.options, workers=2):  # E8510
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |     pass
+10 | with patch.dict("odoo.tools.config.options", {"workers": 2}):  # E8510
+   |
+help: Use `config.patch(**values)`
+
+E8510 `patch.dict` flattens the `config.options` ChainMap into `_override_options`
+  --> E8510.py:10:6
+   |
+ 8 | with mock.patch.dict(odoo.tools.config.options, workers=2):  # E8510
+ 9 |     pass
+10 | with patch.dict("odoo.tools.config.options", {"workers": 2}):  # E8510
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |     pass
+12 | with patch.dict("config.options", {"workers": 2}):  # E8510
+   |
+help: Use `config.patch(**values)`
+
+E8510 `patch.dict` flattens the `config.options` ChainMap into `_override_options`
+  --> E8510.py:12:6
+   |
+10 | with patch.dict("odoo.tools.config.options", {"workers": 2}):  # E8510
+11 |     pass
+12 | with patch.dict("config.options", {"workers": 2}):  # E8510
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |     pass
+   |
+help: Use `config.patch(**values)`

@@ -1,0 +1,26 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8506 Raise inside an `unlink` override
+  --> E8506.py:11:13
+   |
+ 9 |     def unlink(self):
+10 |         if self.filtered("locked"):
+11 |             raise UserError("Locked orders cannot be deleted")  # E8506
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |         try:
+13 |             return super().unlink()
+   |
+help: Refuse in a method decorated `@api.ondelete(at_uninstall=False)`
+
+E8506 Raise inside an `unlink` override
+  --> E8506.py:24:13
+   |
+22 |     def unlink(self):
+23 |         def check():
+24 |             raise ValueError("nested")  # E8506: still inside the override
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+25 |
+26 |         check()
+   |
+help: Refuse in a method decorated `@api.ondelete(at_uninstall=False)`
