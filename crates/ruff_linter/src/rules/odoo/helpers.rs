@@ -4,7 +4,7 @@ use std::sync::{LazyLock, Mutex};
 
 use ruff_python_ast::statement_visitor::{StatementVisitor, walk_stmt};
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_python_trivia::{SimpleTokenKind, SimpleTokenizer};
+use ruff_python_trivia::SimpleTokenizer;
 use ruff_text_size::{Ranged, TextSize};
 
 /// A test file: a path part named `tests`, or one starting with `test_`.
@@ -50,14 +50,24 @@ pub(crate) fn in_addon(path: &Path) -> bool {
 /// Where a function's `def` (or `async def`) keyword starts: the position Python
 /// gives a function, after its decorators.
 pub(crate) fn def_start(function: &ast::StmtFunctionDef, source: &str) -> TextSize {
-    let after_decorators = function
-        .decorator_list
-        .last()
-        .map_or(function.start(), Ranged::end);
-    SimpleTokenizer::starts_at(after_decorators, source)
+    header_start(&function.decorator_list, function.start(), source)
+}
+
+/// Where a class's `class` keyword starts, after its decorators.
+pub(crate) fn class_start(class: &ast::StmtClassDef, source: &str) -> TextSize {
+    header_start(&class.decorator_list, class.start(), source)
+}
+
+/// The first token after a definition's decorators: ruff's range of a decorated
+/// definition starts at its first `@`, Python's at the keyword.
+fn header_start(decorators: &[ast::Decorator], start: TextSize, source: &str) -> TextSize {
+    let Some(last) = decorators.last() else {
+        return start;
+    };
+    SimpleTokenizer::starts_at(last.end(), source)
         .skip_trivia()
-        .find(|token| matches!(token.kind, SimpleTokenKind::Def | SimpleTokenKind::Async))
-        .map_or(function.start(), |token| token.start())
+        .next()
+        .map_or(start, |token| token.start())
 }
 
 /// The last name of a callee: `route` for both `http.route` and `route`.

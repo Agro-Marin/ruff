@@ -1,0 +1,68 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8518 `requests.get()` dials out of Odoo outside `ir.egress`
+  --> egress.py:15:5
+   |
+14 | def fetch(url):
+15 |     requests.get(url, timeout=5)  # E8518
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |     client.AsyncClient()  # E8518
+17 |     RequestsSession()  # E8518
+   |
+help: Send the call through `env['ir.egress']`
+
+E8518 `httpx.AsyncClient()` dials out of Odoo outside `ir.egress`
+  --> egress.py:16:5
+   |
+14 | def fetch(url):
+15 |     requests.get(url, timeout=5)  # E8518
+16 |     client.AsyncClient()  # E8518
+   |     ^^^^^^^^^^^^^^^^^^^^
+17 |     RequestsSession()  # E8518
+18 |     urllib.request.urlopen(url)  # E8518
+   |
+help: Send the call through `env['ir.egress']`
+
+E8518 `requests.Session()` dials out of Odoo outside `ir.egress`
+  --> egress.py:17:5
+   |
+15 |     requests.get(url, timeout=5)  # E8518
+16 |     client.AsyncClient()  # E8518
+17 |     RequestsSession()  # E8518
+   |     ^^^^^^^^^^^^^^^^^
+18 |     urllib.request.urlopen(url)  # E8518
+19 |     httpx.get(url)  # OK: httpx is not imported under that name
+   |
+help: Send the call through `env['ir.egress']`
+
+E8518 `urllib.request.urlopen()` dials out of Odoo outside `ir.egress`
+  --> egress.py:18:5
+   |
+16 |     client.AsyncClient()  # E8518
+17 |     RequestsSession()  # E8518
+18 |     urllib.request.urlopen(url)  # E8518
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+19 |     httpx.get(url)  # OK: httpx is not imported under that name
+20 |     client.Timeout(5)  # OK: builds a value
+   |
+help: Send the call through `env['ir.egress']`
+
+E8518 `Mailer` subclasses `smtplib.SMTP`, so every instance dials out of Odoo outside `ir.egress`
+  --> egress.py:23:1
+   |
+23 | class Mailer(smtplib.SMTP):  # E8518: subclasses a dialing client
+   | ^^^^^^^^^^^^
+24 |     pass
+   |
+help: Send the call through `env['ir.egress']`
+
+E8518 `PinnedIMAP` subclasses `imaplib.IMAP4`, so every instance dials out of Odoo outside `ir.egress`
+  --> egress.py:36:1
+   |
+36 | class PinnedIMAP(imaplib.IMAP4):  # E8518: the hook does not dial through netguard
+   | ^^^^^^^^^^^^^^^^
+37 |     def _create_socket(self, timeout):
+38 |         return super()._create_socket(timeout)
+   |
+help: Send the call through `env['ir.egress']`

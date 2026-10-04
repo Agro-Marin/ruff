@@ -1,0 +1,32 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8539 Route `order` takes an `access_token` and opens nothing through a door
+  --> controllers_link.py:11:5
+   |
+ 9 | class Portal(http.Controller):
+10 |     @http.route("/my/order/<int:order_id>", type="http", auth="public")
+11 |     def order(self, order_id, access_token=None):  # E8539
+   |     ^^^^^^^^^
+12 |         order = request.env["sale.order"].browse(order_id)
+13 |         if order.access_token != access_token:
+   |
+help: Declare `auth="link"`, or reach a door such as `_open_record`
+
+E8539 Route `keyword_only` takes an `access_token` and opens nothing through a door
+  --> controllers_link.py:34:5
+   |
+33 |     @http.route("/my/kw", type="http", auth="public")
+34 |     def keyword_only(self, *, access_token):  # E8539
+   |     ^^^^^^^^^^^^^^^^
+35 |         return access_token
+   |
+help: Declare `auth="link"`, or reach a door such as `_open_record`
+
+E8539 `_document_check_access` is gone
+  --> controllers_link.py:38:16
+   |
+37 |     def legacy(self, record):
+38 |         return record._document_check_access("sale.order", record.id)  # E8539
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: A route declares `auth="link"`; other code calls `env['access.link']._open_record`
