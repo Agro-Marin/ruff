@@ -15,6 +15,7 @@ mod tests {
     use crate::test::test_path;
     use crate::{assert_diagnostics, settings};
 
+    #[test_case(Rule::SqlInjection, Path::new("addon/models/E8501.py"))]
     #[test_case(Rule::GettextVariable, Path::new("addon/models/gettext.py"))]
     #[test_case(Rule::GettextPlaceholders, Path::new("addon/models/gettext.py"))]
     #[test_case(Rule::GettextRepr, Path::new("addon/models/gettext.py"))]
@@ -77,6 +78,7 @@ mod tests {
     #[test_case(Rule::WsgiEnvironOptionalKey, Path::new("addon/wsgi.py"))]
     #[test_case(Rule::WsgiEnvironOptionalKey, Path::new("addon/wsgi_os.py"))]
     #[test_case(Rule::EmptyRecordsetMutation, Path::new("addon/models/E8543.py"))]
+    #[test_case(Rule::NoqaRationale, Path::new("noqa/E8544.py"))]
     fn rules(rule_code: Rule, path: &Path) -> Result<()> {
         let snapshot = format!(
             "{}_{}",

@@ -1,0 +1,176 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:22:9
+   |
+20 |         self.env.cr.execute("SELECT id FROM %s" % TABLE)  # OK: a module constant
+21 |         self.env.cr.execute("SELECT id FROM res_partner LIMIT %d" % len(ids))  # OK: %d
+22 |         self._cr.execute(f"SELECT {self._fields['name'].name} FROM res_partner")  # E8501: a subscript hides the field receiver
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+23 |         self.env.cr.execute(sql.SQL("SELECT {}").format(sql.Identifier("x")))  # OK: psycopg
+24 |         SQL("SELECT %s", ids)  # OK
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:28:9
+   |
+27 |     def injections(self, value, ids):
+28 |         self.env.cr.execute("SELECT id FROM res_partner WHERE name = '%s'" % value)  # E8501
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+29 |         self.env.cr.execute("SELECT id FROM res_partner WHERE name = '" + value + "'")  # E8501
+30 |         self.env.cr.execute("SELECT {} FROM res_partner".format(value))  # E8501
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:29:9
+   |
+27 |     def injections(self, value, ids):
+28 |         self.env.cr.execute("SELECT id FROM res_partner WHERE name = '%s'" % value)  # E8501
+29 |         self.env.cr.execute("SELECT id FROM res_partner WHERE name = '" + value + "'")  # E8501
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+30 |         self.env.cr.execute("SELECT {} FROM res_partner".format(value))  # E8501
+31 |         self.env.cr.execute(f"SELECT id FROM res_partner WHERE name = '{value}'")  # E8501
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:30:9
+   |
+28 |         self.env.cr.execute("SELECT id FROM res_partner WHERE name = '%s'" % value)  # E8501
+29 |         self.env.cr.execute("SELECT id FROM res_partner WHERE name = '" + value + "'")  # E8501
+30 |         self.env.cr.execute("SELECT {} FROM res_partner".format(value))  # E8501
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+31 |         self.env.cr.execute(f"SELECT id FROM res_partner WHERE name = '{value}'")  # E8501
+32 |         cursor.execute("SELECT %s" % self.name)  # E8501: a record's name
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:31:9
+   |
+29 |         self.env.cr.execute("SELECT id FROM res_partner WHERE name = '" + value + "'")  # E8501
+30 |         self.env.cr.execute("SELECT {} FROM res_partner".format(value))  # E8501
+31 |         self.env.cr.execute(f"SELECT id FROM res_partner WHERE name = '{value}'")  # E8501
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+32 |         cursor.execute("SELECT %s" % self.name)  # E8501: a record's name
+33 |         SQL("SELECT %s" % value)  # E8501
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:32:9
+   |
+30 |         self.env.cr.execute("SELECT {} FROM res_partner".format(value))  # E8501
+31 |         self.env.cr.execute(f"SELECT id FROM res_partner WHERE name = '{value}'")  # E8501
+32 |         cursor.execute("SELECT %s" % self.name)  # E8501: a record's name
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+33 |         SQL("SELECT %s" % value)  # E8501
+34 |         self.pool.cursor().execute("SELECT %s" % value)  # OK: not a known cursor spelling
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:33:9
+   |
+31 |         self.env.cr.execute(f"SELECT id FROM res_partner WHERE name = '{value}'")  # E8501
+32 |         cursor.execute("SELECT %s" % self.name)  # E8501: a record's name
+33 |         SQL("SELECT %s" % value)  # E8501
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+34 |         self.pool.cursor().execute("SELECT %s" % value)  # OK: not a known cursor spelling
+35 |         self.env.cr.execute(query="SELECT %s" % value)  # E8501: the query keyword
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:35:9
+   |
+33 |         SQL("SELECT %s" % value)  # E8501
+34 |         self.pool.cursor().execute("SELECT %s" % value)  # OK: not a known cursor spelling
+35 |         self.env.cr.execute(query="SELECT %s" % value)  # E8501: the query keyword
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+36 |         self.env.cr.get_rows_autocommit("SELECT %s" % value)  # E8501: any receiver
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:36:9
+   |
+34 |         self.pool.cursor().execute("SELECT %s" % value)  # OK: not a known cursor spelling
+35 |         self.env.cr.execute(query="SELECT %s" % value)  # E8501: the query keyword
+36 |         self.env.cr.get_rows_autocommit("SELECT %s" % value)  # E8501: any receiver
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+37 |
+38 |     def names(self, value, flag):
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:40:9
+   |
+38 |     def names(self, value, flag):
+39 |         query = "SELECT id FROM res_partner WHERE name = %s" % value
+40 |         self.env.cr.execute(query)  # E8501: resolved through its one binding
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+41 |         clause = "active" if flag else "TRUE"
+42 |         self.env.cr.execute("SELECT id FROM res_partner WHERE %s" % clause)  # OK: both branches constant
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:45:9
+   |
+43 |         column = "name"
+44 |         column += value
+45 |         self.env.cr.execute("SELECT %s FROM res_partner" % column)  # E8501: one binding is not constant
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+46 |         for table in ("res_partner", "res_users"):
+47 |             self.env.cr.execute("SELECT id FROM %s" % table)  # OK: the loop iterates constants
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:50:9
+   |
+48 |         first, second = "a", value
+49 |         self.env.cr.execute("SELECT %s" % first)  # OK: its tuple position is constant
+50 |         self.env.cr.execute("SELECT %s" % second)  # E8501
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+51 |         self.env.cr.execute("SELECT %s" % ORDER)  # OK: a call the module does not define is trusted
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 `_bad_helper` returns a value not known to be constant, and builds a query at line 59
+  --> E8501.py:65:5
+   |
+63 |         return "res_partner"
+64 |
+65 |     def _bad_helper(self, value):  # E8501: used to build a query in helpers()
+   |     ^^^^^^^^^^^^^^^
+66 |         return value
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 `_later` returns a value not known to be constant, and builds a query at line 69
+  --> E8501.py:71:5
+   |
+69 |         self.env.cr.execute("SELECT %s" % self._later(value))  # OK here, reported at _later
+70 |
+71 |     def _later(self, value):  # E8501: used to build a query in early()
+   |     ^^^^^^^^^^
+72 |         return "x" + value
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 `_echo` returns a value not known to be constant, and builds a query at line 76
+  --> E8501.py:78:5
+   |
+76 |         self.env.cr.execute("SELECT %s" % self._echo(value))  # reported at _echo
+77 |
+78 |     def _echo(self, argument):  # E8501: used with a non-constant argument in params()
+   |     ^^^^^^^^^
+79 |         return argument
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter

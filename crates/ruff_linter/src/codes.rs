@@ -1267,6 +1267,7 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
 
 
         // odoo (Agro-Marin fork)
+        (Odoo, "01") => rules::odoo::rules::SqlInjection,
         (Odoo, "02") => rules::odoo::rules::GettextVariable,
         (Odoo, "03") => rules::odoo::rules::GettextPlaceholders,
         (Odoo, "04") => rules::odoo::rules::GettextRepr,
@@ -1307,6 +1308,7 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Odoo, "41") => rules::odoo::rules::HttpExceptionReturned,
         (Odoo, "42") => rules::odoo::rules::WsgiEnvironOptionalKey,
         (Odoo, "43") => rules::odoo::rules::EmptyRecordsetMutation,
+        (Odoo, "44") => rules::odoo::rules::NoqaRationale,
 
         // flake8-django
         (Flake8Django, "001") => rules::flake8_django::rules::DjangoNullableModelStringField,
