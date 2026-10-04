@@ -1260,6 +1260,7 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Odoo, "08") => rules::odoo::rules::OrmImport,
         (Odoo, "09") => rules::odoo::rules::OnchangeDomain,
         (Odoo, "10") => rules::odoo::rules::ConfigChainmapPatch,
+        (Odoo, "13") => rules::odoo::rules::ShadowedDefinition,
         (Odoo, "15") => rules::odoo::rules::HttpJsonString,
         (Odoo, "16") => rules::odoo::rules::RowCounterInTest,
         (Odoo, "21") => rules::odoo::rules::FieldRedeclared,
@@ -1274,8 +1275,14 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Odoo, "30") => rules::odoo::rules::CompanyFieldOutsideConfig,
         (Odoo, "31") => rules::odoo::rules::AuthMethodOutsideOwner,
         (Odoo, "32") => rules::odoo::rules::HandRolledRange,
+        (Odoo, "33") => rules::odoo::rules::RouteUntyped,
+        (Odoo, "34") => rules::odoo::rules::SqlBoundPlaceholder,
         (Odoo, "35") => rules::odoo::rules::AbolishedMethodCall,
+        (Odoo, "38") => rules::odoo::rules::MarkupPreformatted,
+        (Odoo, "40") => rules::odoo::rules::UserCacheWithoutGroups,
         (Odoo, "41") => rules::odoo::rules::HttpExceptionReturned,
+        (Odoo, "42") => rules::odoo::rules::WsgiEnvironOptionalKey,
+        (Odoo, "43") => rules::odoo::rules::EmptyRecordsetMutation,
 
         // flake8-django
         (Flake8Django, "001") => rules::flake8_django::rules::DjangoNullableModelStringField,
