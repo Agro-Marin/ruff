@@ -1,0 +1,56 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8524 `total`: `compute="compute_total"` names a method outside the `_compute_*` family
+ --> E8524.py:7:13
+  |
+5 |     _name = "fixture.order"
+6 |
+7 |     total = fields.Float(compute="compute_total")  # E8524
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |     name = fields.Char(
+9 |         compute="_compute_name",
+  |
+help: Rename the method to `_compute_*`
+
+E8524 `name`: `inverse="set_name"` names a method outside the `_inverse_*` family
+  --> E8524.py:8:12
+   |
+ 7 |       total = fields.Float(compute="compute_total")  # E8524
+ 8 |       name = fields.Char(
+   |  ____________^
+ 9 | |         compute="_compute_name",
+10 | |         inverse="set_name",  # E8524 (reported on the call)
+11 | |         search="find_name",  # E8524 (reported on the call)
+12 | |     )
+   | |_____^
+13 |       state = fields.Selection(selection="get_states")  # E8524
+   |
+help: Rename the method to `_inverse_*`
+
+E8524 `name`: `search="find_name"` names a method outside the `_search_*` family
+  --> E8524.py:8:12
+   |
+ 7 |       total = fields.Float(compute="compute_total")  # E8524
+ 8 |       name = fields.Char(
+   |  ____________^
+ 9 | |         compute="_compute_name",
+10 | |         inverse="set_name",  # E8524 (reported on the call)
+11 | |         search="find_name",  # E8524 (reported on the call)
+12 | |     )
+   | |_____^
+13 |       state = fields.Selection(selection="get_states")  # E8524
+   |
+help: Rename the method to `_search_*`
+
+E8524 `state`: `selection="get_states"` names a method outside the `_selection_*` family
+  --> E8524.py:13:13
+   |
+11 |         search="find_name",  # E8524 (reported on the call)
+12 |     )
+13 |     state = fields.Selection(selection="get_states")  # E8524
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |
+15 |     amount = fields.Float(compute="_compute_amount", inverse="_inverse_amount")  # OK
+   |
+help: Rename the method to `_selection_*`

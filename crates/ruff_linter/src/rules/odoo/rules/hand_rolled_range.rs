@@ -81,7 +81,10 @@ pub(crate) fn hand_rolled_range(checker: &Checker, class: &ast::StmtClassDef) {
             && numeric.iter().any(|(other, _)| *other == partner)
         {
             checker.report_diagnostic(
-                HandRolledRange { name: (*name).to_string(), partner },
+                HandRolledRange {
+                    name: (*name).to_string(),
+                    partner,
+                },
                 statement.range(),
             );
         }

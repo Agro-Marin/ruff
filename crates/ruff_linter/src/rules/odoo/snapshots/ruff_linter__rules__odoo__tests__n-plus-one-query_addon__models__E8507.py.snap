@@ -1,0 +1,72 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8507 ORM query `search()` inside a loop: potential N+1
+  --> E8507.py:9:13
+   |
+ 7 |     def per_record(self):
+ 8 |         for order in self:
+ 9 |             order.env["sale.order"].search([("partner_id", "=", order.partner_id.id)])  # E8507
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |             self.env["res.partner"].search_count([])  # E8507
+   |
+help: Hoist the query before the loop and index the result in memory
+
+E8507 ORM query `search_count()` inside a loop: potential N+1
+  --> E8507.py:10:13
+   |
+ 8 |         for order in self:
+ 9 |             order.env["sale.order"].search([("partner_id", "=", order.partner_id.id)])  # E8507
+10 |             self.env["res.partner"].search_count([])  # E8507
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |
+12 |     def nested(self, partners):
+   |
+help: Hoist the query before the loop and index the result in memory
+
+E8507 ORM query `_read_group()` inside a loop: potential N+1
+  --> E8507.py:15:17
+   |
+13 |         for partner in partners:
+14 |             for line in partner.line_ids:
+15 |                 self.env["account.move"]._read_group([], ["partner_id"])  # E8507, once
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |
+17 |     def comprehension(self):
+   |
+help: Hoist the query before the loop and index the result in memory
+
+E8507 ORM query `search_read()` inside a loop: potential N+1
+  --> E8507.py:18:17
+   |
+17 |     def comprehension(self):
+18 |         return [self.env["res.partner"].search_read([]) for record in self]  # E8507
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+19 |
+20 |     def over_a_list(self, values):
+   |
+help: Hoist the query before the loop and index the result in memory
+
+E8507 ORM query `search_fetch()` inside a loop: potential N+1
+  --> E8507.py:23:13
+   |
+21 |         for value in values:
+22 |             value.search([])  # OK: `search` on a non-ORM receiver
+23 |             self.env["res.partner"].search_fetch([], ["name"])  # E8507: always an ORM read
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+24 |
+25 |     def hook(self, env):
+   |
+help: Hoist the query before the loop and index the result in memory
+
+E8507 ORM query `search()` inside a loop: potential N+1
+  --> E8507.py:27:13
+   |
+25 |     def hook(self, env):
+26 |         for record in env["res.partner"].search([]):
+27 |             env["res.partner"].search([("id", "=", record.id)])  # E8507: env model over records
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+28 |
+29 |     def chained(self):
+   |
+help: Hoist the query before the loop and index the result in memory

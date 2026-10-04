@@ -1,0 +1,13 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8525 `name`: 1 positional argument(s)
+ --> fields.py:7:12
+  |
+5 |     _name = "fixture.framework"
+6 |
+7 |     name = fields.Char("Name")  # E8525: outside an addon too
+  |            ^^^^^^^^^^^^^^^^^^^
+8 |     partner_name = fields.Char(related="partner_id.name", store=True)  # E8529
+  |
+help: Spell them as `string=`

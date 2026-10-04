@@ -1,0 +1,110 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8526 `name`: keywords read required, string; the order is string, required
+  --> E8526.py:7:12
+   |
+ 5 |       _name = "fixture.order"
+ 6 |
+ 7 |       name = fields.Char(
+   |  ____________^
+ 8 | |         required=True,
+ 9 | |         string="Name",  # E8526: string= comes before required=
+10 | |     )
+   | |_____^
+11 |       note = fields.Text(
+12 |           help="Help",
+   |
+help: Run `_sort_field_attributes.py`
+
+E8526 `note`: keywords read help, groups; the order is groups, help
+  --> E8526.py:11:12
+   |
+ 9 |           string="Name",  # E8526: string= comes before required=
+10 |       )
+11 |       note = fields.Text(
+   |  ____________^
+12 | |         help="Help",
+13 | |         groups="base.group_user",  # E8526: groups= comes before help=
+14 | |     )
+   | |_____^
+15 |       code = fields.Char(
+16 |           string="Code",
+   |
+help: Run `_sort_field_attributes.py`
+
+E8526 `code`: keywords read string, zeta, alpha; the order is string, alpha, zeta
+  --> E8526.py:15:12
+   |
+13 |           groups="base.group_user",  # E8526: groups= comes before help=
+14 |       )
+15 |       code = fields.Char(
+   |  ____________^
+16 | |         string="Code",
+17 | |         zeta=1,
+18 | |         alpha=2,  # E8526: unknown keywords sort alphabetically
+19 | |     )
+   | |_____^
+20 |       tail = fields.Char(
+21 |           groups="base.group_user",
+   |
+help: Run `_sort_field_attributes.py`
+
+E8526 `tail`: keywords read groups, unknown; the order is unknown, groups
+  --> E8526.py:20:12
+   |
+18 |           alpha=2,  # E8526: unknown keywords sort alphabetically
+19 |       )
+20 |       tail = fields.Char(
+   |  ____________^
+21 | |         groups="base.group_user",
+22 | |         unknown=True,  # E8526: unknown keywords come before the tail
+23 | |     )
+   | |_____^
+24 |       inline = fields.Char(string="Inline", required=True)  # E8526: keywords on the call's line
+25 |       shared = fields.Char(
+   |
+help: Run `_sort_field_attributes.py`
+
+E8526 `inline`: 2 keywords share a line; one per line, none on the line of the call
+  --> E8526.py:24:14
+   |
+22 |         unknown=True,  # E8526: unknown keywords come before the tail
+23 |     )
+24 |     inline = fields.Char(string="Inline", required=True)  # E8526: keywords on the call's line
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+25 |     shared = fields.Char(
+26 |         string="Shared", required=True,  # E8526: two keywords on a line
+   |
+help: Run `_sort_field_attributes.py`
+
+E8526 `shared`: 2 keywords share a line; one per line, none on the line of the call
+  --> E8526.py:25:14
+   |
+23 |       )
+24 |       inline = fields.Char(string="Inline", required=True)  # E8526: keywords on the call's line
+25 |       shared = fields.Char(
+   |  ______________^
+26 | |         string="Shared", required=True,  # E8526: two keywords on a line
+27 | |     )
+   | |_____^
+28 |       spread = fields.Char(
+29 |           string="Spread",
+   |
+help: Run `_sort_field_attributes.py`
+
+E8526 `spread`: 3 keywords share a line; one per line, none on the line of the call
+  --> E8526.py:28:14
+   |
+26 |           string="Shared", required=True,  # E8526: two keywords on a line
+27 |       )
+28 |       spread = fields.Char(
+   |  ______________^
+29 | |         string="Spread",
+30 | |         **EXTRA, required=True,  # E8526: an unpacking shares the line
+31 | |     )
+   | |_____^
+32 |
+33 |       ordered = fields.Char(
+   |
+help: Run `_sort_field_attributes.py`

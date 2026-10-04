@@ -43,7 +43,9 @@ pub(crate) fn is_literal(expr: &Expr) -> bool {
             matches!(op, ast::UnaryOp::USub | ast::UnaryOp::UAdd)
                 && matches!(&**operand, Expr::NumberLiteral(_))
         }
-        Expr::BinOp(ast::ExprBinOp { left, op, right, .. }) => {
+        Expr::BinOp(ast::ExprBinOp {
+            left, op, right, ..
+        }) => {
             matches!(op, ast::Operator::Add | ast::Operator::Sub)
                 && is_literal(left)
                 && matches!(&**right, Expr::NumberLiteral(_))
@@ -61,7 +63,12 @@ pub(crate) fn field_call(expr: &Expr) -> Option<&ast::ExprCall> {
         return None;
     };
     let is_fields = matches!(&*attribute.value, Expr::Name(name) if name.id.as_str() == "fields");
-    let capitalised = attribute.attr.as_str().chars().next().is_some_and(char::is_uppercase);
+    let capitalised = attribute
+        .attr
+        .as_str()
+        .chars()
+        .next()
+        .is_some_and(char::is_uppercase);
     (is_fields && capitalised).then_some(call)
 }
 
@@ -82,8 +89,11 @@ pub(crate) fn class_attributes(
             [Expr::Name(name)] => Some((name.id.as_str(), &**value, statement)),
             _ => None,
         },
-        Stmt::AnnAssign(ast::StmtAnnAssign { target, value: Some(value), .. }) => match &**target
-        {
+        Stmt::AnnAssign(ast::StmtAnnAssign {
+            target,
+            value: Some(value),
+            ..
+        }) => match &**target {
             Expr::Name(name) => Some((name.id.as_str(), &**value, statement)),
             _ => None,
         },

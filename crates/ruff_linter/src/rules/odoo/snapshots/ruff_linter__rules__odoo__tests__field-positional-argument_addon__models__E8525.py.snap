@@ -1,0 +1,72 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8525 `name`: 1 positional argument(s)
+ --> E8525.py:7:12
+  |
+5 |     _name = "fixture.order"
+6 |
+7 |     name = fields.Char("Name")  # E8525
+  |            ^^^^^^^^^^^^^^^^^^^
+8 |     partner_id = fields.Many2one("res.partner", "Partner")  # E8525
+9 |     line_ids = fields.One2many("fixture.order.line", "order_id")  # E8525
+  |
+help: Spell them as `string=`
+
+E8525 `partner_id`: 2 positional argument(s)
+  --> E8525.py:8:18
+   |
+ 7 |     name = fields.Char("Name")  # E8525
+ 8 |     partner_id = fields.Many2one("res.partner", "Partner")  # E8525
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |     line_ids = fields.One2many("fixture.order.line", "order_id")  # E8525
+10 |     state = fields.Selection([("a", "A")], "State")  # E8525
+   |
+help: Spell them as `comodel_name=`, `string=`
+
+E8525 `line_ids`: 2 positional argument(s)
+  --> E8525.py:9:16
+   |
+ 7 |     name = fields.Char("Name")  # E8525
+ 8 |     partner_id = fields.Many2one("res.partner", "Partner")  # E8525
+ 9 |     line_ids = fields.One2many("fixture.order.line", "order_id")  # E8525
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     state = fields.Selection([("a", "A")], "State")  # E8525
+11 |     amount = fields.Float("Amount", (16, 2), 4, "extra")  # E8525
+   |
+help: Spell them as `comodel_name=`, `inverse_name=`
+
+E8525 `state`: 2 positional argument(s)
+  --> E8525.py:10:13
+   |
+ 8 |     partner_id = fields.Many2one("res.partner", "Partner")  # E8525
+ 9 |     line_ids = fields.One2many("fixture.order.line", "order_id")  # E8525
+10 |     state = fields.Selection([("a", "A")], "State")  # E8525
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |     amount = fields.Float("Amount", (16, 2), 4, "extra")  # E8525
+12 |     spread = fields.Char(*ARGUMENTS)  # E8525
+   |
+help: Spell them as `selection=`, `string=`
+
+E8525 `amount`: 4 positional argument(s)
+  --> E8525.py:11:14
+   |
+ 9 |     line_ids = fields.One2many("fixture.order.line", "order_id")  # E8525
+10 |     state = fields.Selection([("a", "A")], "State")  # E8525
+11 |     amount = fields.Float("Amount", (16, 2), 4, "extra")  # E8525
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |     spread = fields.Char(*ARGUMENTS)  # E8525
+   |
+help: Spell them as `string=`, `digits=`, `min_display_digits=`, ?
+
+E8525 `spread`: 1 positional argument(s)
+  --> E8525.py:12:14
+   |
+10 |     state = fields.Selection([("a", "A")], "State")  # E8525
+11 |     amount = fields.Float("Amount", (16, 2), 4, "extra")  # E8525
+12 |     spread = fields.Char(*ARGUMENTS)  # E8525
+   |              ^^^^^^^^^^^^^^^^^^^^^^^
+13 |
+14 |     label = fields.Char(string="Label")  # OK
+   |
+help: Spell them as

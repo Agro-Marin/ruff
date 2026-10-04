@@ -1,0 +1,48 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8522 `date`: `default=fields.Date.today()` ran once, when the module was imported
+  --> E8522.py:9:32
+   |
+ 7 |     _name = "fixture.order"
+ 8 |
+ 9 |     date = fields.Date(default=fields.Date.today())  # E8522
+   |                                ^^^^^^^^^^^^^^^^^^^
+10 |     moment = fields.Datetime(default=fields.Datetime.now())  # E8522
+11 |     token = fields.Char(default=uuid.uuid4())  # E8522
+   |
+help: Pass the callable: `default=fields.Date.today`
+
+E8522 `moment`: `default=fields.Datetime.now()` ran once, when the module was imported
+  --> E8522.py:10:38
+   |
+ 9 |     date = fields.Date(default=fields.Date.today())  # E8522
+10 |     moment = fields.Datetime(default=fields.Datetime.now())  # E8522
+   |                                      ^^^^^^^^^^^^^^^^^^^^^
+11 |     token = fields.Char(default=uuid.uuid4())  # E8522
+12 |     label = fields.Char(default=_("New"))  # E8522
+   |
+help: Pass the callable: `default=fields.Datetime.now`
+
+E8522 `token`: `default=uuid.uuid4()` ran once, when the module was imported
+  --> E8522.py:11:33
+   |
+ 9 |     date = fields.Date(default=fields.Date.today())  # E8522
+10 |     moment = fields.Datetime(default=fields.Datetime.now())  # E8522
+11 |     token = fields.Char(default=uuid.uuid4())  # E8522
+   |                                 ^^^^^^^^^^^^
+12 |     label = fields.Char(default=_("New"))  # E8522
+   |
+help: Pass the callable: `default=uuid.uuid4`
+
+E8522 `label`: `default=_("New")` ran once, when the module was imported
+  --> E8522.py:12:33
+   |
+10 |     moment = fields.Datetime(default=fields.Datetime.now())  # E8522
+11 |     token = fields.Char(default=uuid.uuid4())  # E8522
+12 |     label = fields.Char(default=_("New"))  # E8522
+   |                                 ^^^^^^^^
+13 |
+14 |     day = fields.Date(default=fields.Date.today)  # OK: the callable
+   |
+help: Pass the callable: `default=_`

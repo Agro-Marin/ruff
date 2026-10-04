@@ -1,0 +1,57 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8521 `Partner.name` is declared again here, so the declaration at line 7 is dead
+  --> E8521.py:8:5
+   |
+ 7 |     name = fields.Char()
+ 8 |     name = fields.Char(required=True)  # E8521: a field over a field
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |
+10 |     code = fields.Char()
+   |
+help: Declare the field once
+
+E8521 `Partner.code` is declared again here, so the declaration at line 10 is dead
+  --> E8521.py:11:5
+   |
+10 |     code = fields.Char()
+11 |     code = "constant"  # E8521: a plain value over a field
+   |     ^^^^^^^^^^^^^^^^^
+12 |
+13 |     label = "constant"
+   |
+help: Declare the field once
+
+E8521 `Partner.label` is declared again here, so the declaration at line 13 is dead
+  --> E8521.py:14:5
+   |
+13 |     label = "constant"
+14 |     label = fields.Char()  # E8521: a field over a plain value
+   |     ^^^^^^^^^^^^^^^^^^^^^
+15 |
+16 |     flag = True
+   |
+help: Declare the field once
+
+E8521 `Partner.second` is declared again here, so the declaration at line 19 is dead
+  --> E8521.py:20:5
+   |
+19 |     first = second = fields.Integer()
+20 |     second = fields.Integer()  # E8521: chained targets bind both names
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+21 |
+22 |     amount: float = fields.Float()
+   |
+help: Declare the field once
+
+E8521 `Partner.amount` is declared again here, so the declaration at line 22 is dead
+  --> E8521.py:23:5
+   |
+22 |     amount: float = fields.Float()
+23 |     amount: float = fields.Float(digits=(16, 2))  # E8521: annotated assignments count
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+24 |
+25 |     note: str  # OK: a bare annotation binds nothing
+   |
+help: Declare the field once
