@@ -549,6 +549,11 @@ impl<'a> Checker<'a> {
     }
 
     /// Returns whether the file under analysis is an `__init__.py` file.
+    /// The path of the file being checked.
+    pub(crate) const fn path(&self) -> &'a Path {
+        self.path
+    }
+
     pub(crate) fn in_init_module(&self) -> bool {
         *self
             .in_init_module
