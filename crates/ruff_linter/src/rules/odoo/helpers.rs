@@ -102,3 +102,18 @@ pub(crate) fn returns(function: &ast::StmtFunctionDef) -> Vec<&ast::StmtReturn> 
     visitor.visit_body(&function.body);
     visitor.found
 }
+
+/// Python's `str.isupper()`: at least one cased character, and every cased
+/// character upper case.
+pub(crate) fn is_upper(name: &str) -> bool {
+    let mut cased = name
+        .chars()
+        .filter(|c| c.is_uppercase() || c.is_lowercase())
+        .peekable();
+    cased.peek().is_some() && cased.all(char::is_uppercase)
+}
+
+/// A side of a comparison that holds no secret: a literal, or a named constant.
+pub(crate) fn is_constant_side(expr: &Expr) -> bool {
+    expr.is_literal_expr() || matches!(expr, Expr::Name(name) if is_upper(name.id.as_str()))
+}

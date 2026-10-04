@@ -8,7 +8,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::Violation;
 use crate::checkers::ast::Checker;
 use crate::codes::Category;
-use crate::rules::odoo::helpers::is_test_path;
+use crate::rules::odoo::helpers::{is_test_path, is_upper};
 
 /// ## What it does
 /// Checks for an ORM read issued once per iteration of a loop or comprehension.
@@ -71,20 +71,7 @@ const RECORDSET_METHODS: &[&str] = &[
 
 /// Python's `name[0].isupper() and not name.isupper()`.
 fn is_class_like(name: &str) -> bool {
-    let Some(first) = name.chars().next() else {
-        return false;
-    };
-    let first_upper = first.is_uppercase();
-    let cased = name
-        .chars()
-        .filter(|c| c.is_uppercase() || c.is_lowercase());
-    let mut any_cased = false;
-    let mut all_upper = true;
-    for c in cased {
-        any_cased = true;
-        all_upper &= c.is_uppercase();
-    }
-    first_upper && !(any_cased && all_upper)
+    name.chars().next().is_some_and(char::is_uppercase) && !is_upper(name)
 }
 
 fn has_self_root(expr: &Expr) -> bool {
