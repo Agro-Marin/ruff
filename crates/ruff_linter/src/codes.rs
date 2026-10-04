@@ -1267,11 +1267,16 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
 
 
         // odoo (Agro-Marin fork)
+        (Odoo, "02") => rules::odoo::rules::GettextVariable,
+        (Odoo, "03") => rules::odoo::rules::GettextPlaceholders,
+        (Odoo, "04") => rules::odoo::rules::GettextRepr,
+        (Odoo, "05") => rules::odoo::rules::MissingGettext,
         (Odoo, "06") => rules::odoo::rules::RaiseUnlinkOverride,
         (Odoo, "07") => rules::odoo::rules::NPlusOneQuery,
         (Odoo, "08") => rules::odoo::rules::OrmImport,
         (Odoo, "09") => rules::odoo::rules::OnchangeDomain,
         (Odoo, "10") => rules::odoo::rules::ConfigChainmapPatch,
+        (Odoo, "11") => rules::odoo::rules::GettextDeveloperError,
         (Odoo, "13") => rules::odoo::rules::ShadowedDefinition,
         (Odoo, "15") => rules::odoo::rules::HttpJsonString,
         (Odoo, "16") => rules::odoo::rules::RowCounterInTest,

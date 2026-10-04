@@ -559,6 +559,15 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                 odoo::rules::markup_preformatted(checker, call);
             }
             if checker.any_rule_enabled(&[
+                Rule::GettextVariable,
+                Rule::GettextPlaceholders,
+                Rule::GettextRepr,
+                Rule::MissingGettext,
+                Rule::GettextDeveloperError,
+            ]) {
+                odoo::rules::gettext(checker, call);
+            }
+            if checker.any_rule_enabled(&[
                 // pylint
                 Rule::BadStringFormatCharacter,
                 // pyflakes

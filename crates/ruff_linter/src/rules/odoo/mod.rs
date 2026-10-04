@@ -15,6 +15,11 @@ mod tests {
     use crate::test::test_path;
     use crate::{assert_diagnostics, settings};
 
+    #[test_case(Rule::GettextVariable, Path::new("addon/models/gettext.py"))]
+    #[test_case(Rule::GettextPlaceholders, Path::new("addon/models/gettext.py"))]
+    #[test_case(Rule::GettextRepr, Path::new("addon/models/gettext.py"))]
+    #[test_case(Rule::MissingGettext, Path::new("addon/models/gettext.py"))]
+    #[test_case(Rule::MissingGettext, Path::new("addon/tests/test_gettext.py"))]
     #[test_case(Rule::RaiseUnlinkOverride, Path::new("addon/models/E8506.py"))]
     #[test_case(Rule::NPlusOneQuery, Path::new("addon/models/E8507.py"))]
     #[test_case(Rule::NPlusOneQuery, Path::new("addon/tests/test_E8507.py"))]
@@ -23,6 +28,7 @@ mod tests {
     #[test_case(Rule::OrmImport, Path::new("framework/E8508.py"))]
     #[test_case(Rule::OnchangeDomain, Path::new("addon/models/E8509.py"))]
     #[test_case(Rule::ConfigChainmapPatch, Path::new("addon/models/E8510.py"))]
+    #[test_case(Rule::GettextDeveloperError, Path::new("addon/models/gettext.py"))]
     #[test_case(Rule::ShadowedDefinition, Path::new("addon/models/E8513.py"))]
     #[test_case(Rule::HttpJsonString, Path::new("addon/controllers.py"))]
     #[test_case(Rule::RowCounterInTest, Path::new("addon/tests/test_E8516.py"))]
