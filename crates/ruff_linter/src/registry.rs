@@ -171,6 +171,9 @@ pub enum Linter {
     /// NumPy-specific rules
     #[prefix = "NPY"]
     Numpy,
+    /// [Odoo](https://github.com/Agro-Marin/odoo)
+    #[prefix = "E85"]
+    Odoo,
     /// [pandas-vet](https://pypi.org/project/pandas-vet/)
     #[prefix = "PD"]
     PandasVet,
@@ -208,9 +211,6 @@ pub enum Linter {
     /// Ruff-specific rules
     #[prefix = "RUF"]
     Ruff,
-    /// [Odoo](https://github.com/Agro-Marin/odoo)
-    #[prefix = "E85"]
-    Odoo,
     /// [tryceratops](https://pypi.org/project/tryceratops/)
     #[prefix = "TRY"]
     Tryceratops,
@@ -255,6 +255,7 @@ impl Rule {
             Rule::InvalidPyprojectToml | Rule::RuleCodesInSelectors => LintSource::Toml,
             Rule::BlanketNOQA
             | Rule::NoqaComments
+            | Rule::NoqaRationale
             | Rule::RedirectedNOQA
             | Rule::RuleCodesInSuppressionComments
             | Rule::UnusedNOQA => LintSource::Noqa,
