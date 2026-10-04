@@ -12,6 +12,12 @@ pub(crate) fn module(suite: &Suite, checker: &Checker) {
     if checker.is_rule_enabled(Rule::NPlusOneQuery) {
         odoo::rules::n_plus_one_query(checker, suite);
     }
+    if checker.is_rule_enabled(Rule::SqlBoundPlaceholder) {
+        odoo::rules::sql_bound_placeholder(checker, suite);
+    }
+    if checker.is_rule_enabled(Rule::WsgiEnvironOptionalKey) {
+        odoo::rules::wsgi_environ_optional_key(checker, suite);
+    }
     if checker.is_rule_enabled(Rule::InvalidFormatterSuppressionComment) {
         ruff::rules::ignored_formatter_suppression_comment(checker, suite);
     }

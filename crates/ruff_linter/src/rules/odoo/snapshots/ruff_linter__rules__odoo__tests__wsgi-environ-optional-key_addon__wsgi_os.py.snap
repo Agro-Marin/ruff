@@ -1,0 +1,10 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8542 `environ["HTTP_HOST"]` is not guaranteed by WSGI
+ --> wsgi_os.py:4:9
+  |
+3 | home = environ["HOME"]  # OK: `environ` is imported from os at the top
+4 | other = request.environ["HTTP_HOST"]  # E8542
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Read it with `.get()` or the request's own accessor

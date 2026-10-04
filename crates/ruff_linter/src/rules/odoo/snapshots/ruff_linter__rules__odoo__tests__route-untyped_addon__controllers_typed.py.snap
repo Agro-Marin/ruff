@@ -1,0 +1,45 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8533 `orders`: `type="json2"` takes its parameters from a program without declaring them
+ --> controllers_typed.py:7:5
+  |
+5 | class Api(http.Controller):
+6 |     @http.route("/api/orders", type="json2", auth="user")
+7 |     def orders(self, limit):  # E8533: not typed
+  |     ^^^^^^^^^^
+8 |         return []
+  |
+help: Declare `typed=True` and annotate every parameter
+
+E8533 `hook`: `auth="bearer"` is typed but note, flag carries no annotation
+  --> controllers_typed.py:11:5
+   |
+10 |     @route("/api/hook", auth="bearer", typed=True)
+11 |     def hook(self, order_id: int, note, *, flag):  # E8533: two parameters undeclared
+   |     ^^^^^^^^
+12 |         return []
+   |
+help: Annotate every parameter
+
+E8533 `twice`: `type="json2"` takes its parameters from a program without declaring them
+  --> controllers_typed.py:28:5
+   |
+26 |     @http.route("/api/one", type="json2", typed=1)
+27 |     @http.route("/api/two", auth="bearer", typed=True)
+28 |     def twice(self, value):  # E8533 x2: each route is judged
+   |     ^^^^^^^^^
+29 |         return ""
+   |
+help: Declare `typed=True` and annotate every parameter
+
+E8533 `twice`: `auth="bearer"` is typed but value carries no annotation
+  --> controllers_typed.py:28:5
+   |
+26 |     @http.route("/api/one", type="json2", typed=1)
+27 |     @http.route("/api/two", auth="bearer", typed=True)
+28 |     def twice(self, value):  # E8533 x2: each route is judged
+   |     ^^^^^^^^^
+29 |         return ""
+   |
+help: Annotate every parameter
