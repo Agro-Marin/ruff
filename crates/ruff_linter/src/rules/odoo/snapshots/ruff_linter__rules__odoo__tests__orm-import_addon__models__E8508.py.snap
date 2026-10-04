@@ -1,0 +1,58 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8508 Addon code imports the ORM's internals: `import odoo.orm`
+ --> E8508.py:1:1
+  |
+1 | import odoo.orm  # E8508
+  | ^^^^^^^^^^^^^^^
+2 | import odoo.orm.fields as orm_fields  # E8508
+3 | from odoo import orm  # E8508
+  |
+help: Import through `odoo.api`, `odoo.fields` or `odoo.models`
+
+E8508 Addon code imports the ORM's internals: `import odoo.orm.fields`
+ --> E8508.py:2:1
+  |
+1 | import odoo.orm  # E8508
+2 | import odoo.orm.fields as orm_fields  # E8508
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 | from odoo import orm  # E8508
+4 | from odoo.orm import models  # E8508
+  |
+help: Import through `odoo.api`, `odoo.fields` or `odoo.models`
+
+E8508 Addon code imports the ORM's internals: `from odoo import orm`
+ --> E8508.py:3:1
+  |
+1 | import odoo.orm  # E8508
+2 | import odoo.orm.fields as orm_fields  # E8508
+3 | from odoo import orm  # E8508
+  | ^^^^^^^^^^^^^^^^^^^^
+4 | from odoo.orm import models  # E8508
+5 | from odoo.orm.fields import Char  # E8508
+  |
+help: Import through `odoo.api`, `odoo.fields` or `odoo.models`
+
+E8508 Addon code imports the ORM's internals: `from odoo.orm import models`
+ --> E8508.py:4:1
+  |
+2 | import odoo.orm.fields as orm_fields  # E8508
+3 | from odoo import orm  # E8508
+4 | from odoo.orm import models  # E8508
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 | from odoo.orm.fields import Char  # E8508
+6 | from typing import TYPE_CHECKING
+  |
+help: Import through `odoo.api`, `odoo.fields` or `odoo.models`
+
+E8508 Addon code imports the ORM's internals: `from odoo.orm.fields import Char`
+ --> E8508.py:5:1
+  |
+3 | from odoo import orm  # E8508
+4 | from odoo.orm import models  # E8508
+5 | from odoo.orm.fields import Char  # E8508
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6 | from typing import TYPE_CHECKING
+  |
+help: Import through `odoo.api`, `odoo.fields` or `odoo.models`

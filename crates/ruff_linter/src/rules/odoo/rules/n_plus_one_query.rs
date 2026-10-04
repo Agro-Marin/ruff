@@ -75,7 +75,9 @@ fn is_class_like(name: &str) -> bool {
         return false;
     };
     let first_upper = first.is_uppercase();
-    let cased = name.chars().filter(|c| c.is_uppercase() || c.is_lowercase());
+    let cased = name
+        .chars()
+        .filter(|c| c.is_uppercase() || c.is_lowercase());
     let mut any_cased = false;
     let mut all_upper = true;
     for c in cased {
@@ -97,9 +99,7 @@ fn has_self_root(expr: &Expr) -> bool {
 
 fn looks_like_orm_receiver(expr: &Expr) -> bool {
     match expr {
-        Expr::Subscript(subscript)
-            if matches!(&*subscript.value, Expr::Attribute(a) if a.attr.as_str() == "env") =>
-        {
+        Expr::Subscript(subscript) if matches!(&*subscript.value, Expr::Attribute(a) if a.attr.as_str() == "env") => {
             true
         }
         Expr::Name(name) if name.id.as_str() == "self" => true,
@@ -197,7 +197,8 @@ impl<'a> Visitor<'a> for Collector<'_> {
             }
             Expr::Call(call) => {
                 if let Some((method, name_start)) = query_call(call, self.over_records) {
-                    self.found.push((call.range(), name_start, method.to_string()));
+                    self.found
+                        .push((call.range(), name_start, method.to_string()));
                 }
                 visitor::walk_expr(self, expr);
             }
@@ -255,7 +256,11 @@ impl<'a> Visitor<'a> for Walker {
                 Expr::Generator(c) => Some((&c.generators, vec![&*c.elt])),
                 Expr::DictComp(c) => Some((
                     &c.generators,
-                    c.key.as_deref().into_iter().chain(std::iter::once(&*c.value)).collect(),
+                    c.key
+                        .as_deref()
+                        .into_iter()
+                        .chain(std::iter::once(&*c.value))
+                        .collect(),
                 )),
                 _ => None,
             };

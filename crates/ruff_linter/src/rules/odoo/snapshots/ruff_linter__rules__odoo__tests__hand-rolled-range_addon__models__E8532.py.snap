@@ -1,0 +1,26 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8532 `score_min`/`score_max` is a hand-rolled range
+ --> E8532.py:7:5
+  |
+5 |     _name = "fixture.rule"
+6 |
+7 |     score_min = fields.Integer()  # E8532
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |     score_max = fields.Integer()
+9 |     min_amount = fields.Monetary()  # E8532
+  |
+help: A range that classifies a value is a `mixin.band`
+
+E8532 `min_amount`/`max_amount` is a hand-rolled range
+  --> E8532.py:9:5
+   |
+ 7 |     score_min = fields.Integer()  # E8532
+ 8 |     score_max = fields.Integer()
+ 9 |     min_amount = fields.Monetary()  # E8532
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     max_amount = fields.Float()
+11 |     weight_min = fields.Float()  # OK: no partner
+   |
+help: A range that classifies a value is a `mixin.band`

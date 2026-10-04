@@ -1269,6 +1269,14 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         // odoo (Agro-Marin fork)
         (Odoo, "07") => rules::odoo::rules::NPlusOneQuery,
         (Odoo, "08") => rules::odoo::rules::OrmImport,
+        (Odoo, "21") => rules::odoo::rules::FieldRedeclared,
+        (Odoo, "22") => rules::odoo::rules::DefaultEvaluatedAtImport,
+        (Odoo, "23") => rules::odoo::rules::SelectionDuplicateKey,
+        (Odoo, "24") => rules::odoo::rules::FieldHookPrefix,
+        (Odoo, "25") => rules::odoo::rules::FieldPositionalArgument,
+        (Odoo, "26") => rules::odoo::rules::FieldAttributeOrder,
+        (Odoo, "27") => rules::odoo::rules::DeadFieldAttribute,
+        (Odoo, "29") => rules::odoo::rules::StoredRelated,
         (Odoo, "30") => rules::odoo::rules::CompanyFieldOutsideConfig,
         (Odoo, "32") => rules::odoo::rules::HandRolledRange,
 

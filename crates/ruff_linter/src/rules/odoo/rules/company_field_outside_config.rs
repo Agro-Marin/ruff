@@ -51,7 +51,9 @@ fn is_related_through_config(call: &ast::ExprCall) -> bool {
     match keyword(call, "related") {
         Some(Expr::StringLiteral(path)) => {
             let path = path.value.to_str();
-            path.split('.').next().is_some_and(|head| head.ends_with("_config_id"))
+            path.split('.')
+                .next()
+                .is_some_and(|head| head.ends_with("_config_id"))
         }
         _ => false,
     }
@@ -69,7 +71,11 @@ fn reads_without_writing(call: &ast::ExprCall) -> bool {
     let mut derives = false;
     for keyword in &call.arguments.keywords {
         match keyword.arg.as_ref().map(ast::Identifier::as_str) {
-            Some("store") if matches!(keyword.value, Expr::BooleanLiteral(ast::ExprBooleanLiteral { value: false, .. })) => {}
+            Some("store")
+                if matches!(
+                    keyword.value,
+                    Expr::BooleanLiteral(ast::ExprBooleanLiteral { value: false, .. })
+                ) => {}
             Some("inverse" | "store") => return false,
             Some("compute" | "related") => derives = true,
             _ => {}
@@ -81,14 +87,16 @@ fn reads_without_writing(call: &ast::ExprCall) -> bool {
 /// `_credential_holder_field = "<name>"`: the link to the company's vault.
 fn credential_holder_link(class: &ast::StmtClassDef) -> Option<&str> {
     class.body.iter().find_map(|statement| match statement {
-        Stmt::Assign(ast::StmtAssign { targets, value, .. }) => match (targets.as_slice(), &**value) {
-            ([Expr::Name(target)], Expr::StringLiteral(name))
-                if target.id.as_str() == "_credential_holder_field" =>
-            {
-                Some(name.value.to_str())
+        Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
+            match (targets.as_slice(), &**value) {
+                ([Expr::Name(target)], Expr::StringLiteral(name))
+                    if target.id.as_str() == "_credential_holder_field" =>
+                {
+                    Some(name.value.to_str())
+                }
+                _ => None,
             }
-            _ => None,
-        },
+        }
         _ => None,
     })
 }
@@ -99,22 +107,24 @@ fn credential_doors(class: &ast::StmtClassDef) -> Vec<&str> {
         .body
         .iter()
         .find_map(|statement| match statement {
-            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => match (targets.as_slice(), &**value) {
-                ([Expr::Name(target)], Expr::Dict(dict))
-                    if target.id.as_str() == "_CREDENTIAL_FIELDS" =>
-                {
-                    Some(
-                        dict.items
-                            .iter()
-                            .filter_map(|item| match &item.key {
-                                Some(Expr::StringLiteral(key)) => Some(key.value.to_str()),
-                                _ => None,
-                            })
-                            .collect(),
-                    )
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
+                match (targets.as_slice(), &**value) {
+                    ([Expr::Name(target)], Expr::Dict(dict))
+                        if target.id.as_str() == "_CREDENTIAL_FIELDS" =>
+                    {
+                        Some(
+                            dict.items
+                                .iter()
+                                .filter_map(|item| match &item.key {
+                                    Some(Expr::StringLiteral(key)) => Some(key.value.to_str()),
+                                    _ => None,
+                                })
+                                .collect(),
+                        )
+                    }
+                    _ => None,
                 }
-                _ => None,
-            },
+            }
             _ => None,
         })
         .unwrap_or_default()
@@ -126,7 +136,10 @@ pub(crate) fn company_field_outside_config(checker: &Checker, class: &ast::StmtC
     if !in_addon(path) || is_test_path(path) || path.to_string_lossy().contains("/addons/base/") {
         return;
     }
-    if !inherited(class).iter().any(|parent| parent == "res.company") {
+    if !inherited(class)
+        .iter()
+        .any(|parent| parent == "res.company")
+    {
         return;
     }
     let doors = credential_doors(class);
@@ -142,7 +155,9 @@ pub(crate) fn company_field_outside_config(checker: &Checker, class: &ast::StmtC
             continue;
         }
         checker.report_diagnostic(
-            CompanyFieldOutsideConfig { name: name.to_string() },
+            CompanyFieldOutsideConfig {
+                name: name.to_string(),
+            },
             statement.range(),
         );
     }
