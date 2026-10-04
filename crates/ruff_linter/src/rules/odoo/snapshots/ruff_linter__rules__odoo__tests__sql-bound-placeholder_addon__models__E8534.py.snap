@@ -1,0 +1,71 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8534 `IN %s` binds a parameter where PostgreSQL parses syntax, so the statement never runs
+ --> E8534.py:5:16
+  |
+4 | def bad(cr, ids):
+5 |     cr.execute("SELECT id FROM res_partner WHERE id IN %s", [tuple(ids)])  # E8534
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6 |     cr.execute("SELECT now() - interval %(days)s", {"days": "1 day"})  # E8534
+7 |     query = "UPDATE res_partner SET active = false WHERE id in %s"  # E8534
+  |
+help: Build it with `SQL()` (a tuple expands, `SQL.literal` inlines) or pass a value the driver adapts
+
+E8534 `INTERVAL %s` binds a parameter where PostgreSQL parses syntax, so the statement never runs
+ --> E8534.py:6:16
+  |
+4 | def bad(cr, ids):
+5 |     cr.execute("SELECT id FROM res_partner WHERE id IN %s", [tuple(ids)])  # E8534
+6 |     cr.execute("SELECT now() - interval %(days)s", {"days": "1 day"})  # E8534
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 |     query = "UPDATE res_partner SET active = false WHERE id in %s"  # E8534
+8 |     cr.execute(query, [ids])
+  |
+help: Build it with `SQL()` (a tuple expands, `SQL.literal` inlines) or pass a value the driver adapts
+
+E8534 `IN %s` binds a parameter where PostgreSQL parses syntax, so the statement never runs
+ --> E8534.py:7:13
+  |
+5 |     cr.execute("SELECT id FROM res_partner WHERE id IN %s", [tuple(ids)])  # E8534
+6 |     cr.execute("SELECT now() - interval %(days)s", {"days": "1 day"})  # E8534
+7 |     query = "UPDATE res_partner SET active = false WHERE id in %s"  # E8534
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |     cr.execute(query, [ids])
+9 |     cr.executemany(query, [[ids]])  # OK: the literal is reported once
+  |
+help: Build it with `SQL()` (a tuple expands, `SQL.literal` inlines) or pass a value the driver adapts
+
+E8534 `IN %s` binds a parameter where PostgreSQL parses syntax, so the statement never runs
+  --> E8534.py:10:40
+   |
+ 8 |     cr.execute(query, [ids])
+ 9 |     cr.executemany(query, [[ids]])  # OK: the literal is reported once
+10 |     cr.execute(f"SELECT id FROM {table} WHERE id IN %s", [ids])  # E8534: f-string text
+   |                                        ^^^^^^^^^^^^^^^
+help: Build it with `SQL()` (a tuple expands, `SQL.literal` inlines) or pass a value the driver adapts
+
+E8534 `IN %s` binds a parameter where PostgreSQL parses syntax, so the statement never runs
+  --> E8534.py:16:39
+   |
+14 |       cr.execute(
+15 |           "SELECT id FROM res_partner "
+16 |           f"WHERE company_id = {company} "
+   |  _______________________________________^
+17 | |         "AND id IN %s",  # E8534: one constant from the second piece on
+   | |______________________^
+18 |           [ids],
+19 |       )
+   |
+help: Build it with `SQL()` (a tuple expands, `SQL.literal` inlines) or pass a value the driver adapts
+
+E8534 `IN %s` binds a parameter where PostgreSQL parses syntax, so the statement never runs
+  --> E8534.py:24:14
+   |
+22 | def augmented(cr, ids):
+23 |     query = "SELECT id FROM res_partner WHERE TRUE"
+24 |     query += " AND id IN %s"  # E8534
+   |              ^^^^^^^^^^^^^^^
+25 |     cr.execute(query, [ids])
+   |
+help: Build it with `SQL()` (a tuple expands, `SQL.literal` inlines) or pass a value the driver adapts

@@ -552,6 +552,12 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
             if checker.is_rule_enabled(Rule::ConfigChainmapPatch) {
                 odoo::rules::config_chainmap_patch(checker, call);
             }
+            if checker.is_rule_enabled(Rule::EmptyRecordsetMutation) {
+                odoo::rules::empty_recordset_mutation(checker, call);
+            }
+            if checker.is_rule_enabled(Rule::MarkupPreformatted) {
+                odoo::rules::markup_preformatted(checker, call);
+            }
             if checker.any_rule_enabled(&[
                 // pylint
                 Rule::BadStringFormatCharacter,

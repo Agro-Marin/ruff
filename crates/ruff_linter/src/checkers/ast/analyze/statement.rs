@@ -79,6 +79,12 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
             if checker.is_rule_enabled(Rule::AuthMethodOutsideOwner) {
                 odoo::rules::auth_method_outside_owner(checker, function_def);
             }
+            if checker.is_rule_enabled(Rule::RouteUntyped) {
+                odoo::rules::route_untyped(checker, function_def);
+            }
+            if checker.is_rule_enabled(Rule::UserCacheWithoutGroups) {
+                odoo::rules::user_cache_without_groups(checker, function_def);
+            }
             if checker.is_rule_enabled(Rule::IncorrectDecoratorOrder) {
                 ruff::rules::incorrect_decorator_order(checker, decorator_list);
             }
@@ -415,6 +421,9 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
             }
             if checker.is_rule_enabled(Rule::RaiseUnlinkOverride) {
                 odoo::rules::raise_unlink_override(checker, class_def);
+            }
+            if checker.is_rule_enabled(Rule::ShadowedDefinition) {
+                odoo::rules::shadowed_definition(checker, class_def);
             }
             if checker.any_rule_enabled(&[
                 Rule::FieldRedeclared,

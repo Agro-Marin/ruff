@@ -1,0 +1,43 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8513 `Order.action` is defined again here, so the definition at line 10 never runs
+  --> E8513.py:14:5
+   |
+13 |     @api.model
+14 |     def action(self):  # E8513
+   |     ^^^^^^^^^^
+15 |         return 2
+   |
+help: Define the member once
+
+E8513 `Order.triple` is defined again here, so the definition at line 17, line 20 never runs
+  --> E8513.py:23:5
+   |
+21 |         return 2
+22 |
+23 |     async def triple(self):  # E8513: names both earlier lines
+   |     ^^^^^^^^^^^^^^^^
+24 |         return 3
+   |
+help: Define the member once
+
+E8513 `Order.total` is defined again here, so the definition at line 44 never runs
+  --> E8513.py:48:5
+   |
+47 |     @amount.setter
+48 |     def total(self, value):  # E8513: re-decorates another property
+   |     ^^^^^^^^^
+49 |         pass
+   |
+help: Define the member once
+
+E8513 `Order.handle` is defined again here, so the definition at line 52 never runs
+  --> E8513.py:64:5
+   |
+63 |     @handle.register(float)
+64 |     def handle(self, value):  # E8513: under the dispatcher's own name it replaces it
+   |     ^^^^^^^^^^
+65 |         return value
+   |
+help: Define the member once
