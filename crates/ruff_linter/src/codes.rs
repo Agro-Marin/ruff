@@ -1283,6 +1283,7 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Odoo, "16") => rules::odoo::rules::RowCounterInTest,
         (Odoo, "18") => rules::odoo::rules::RawEgress,
         (Odoo, "19") => rules::odoo::rules::SecretInEnviron,
+        (Odoo, "20") => rules::odoo::rules::CredentialStorage,
         (Odoo, "21") => rules::odoo::rules::FieldRedeclared,
         (Odoo, "22") => rules::odoo::rules::DefaultEvaluatedAtImport,
         (Odoo, "23") => rules::odoo::rules::SelectionDuplicateKey,
