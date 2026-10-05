@@ -1,0 +1,8 @@
+from odoo import _, api, fields, http, models, tools
+
+
+class Planted(models.Model):
+    _name = "planted.model"
+
+    def unlink(self):
+        raise UserError(_('no'))

@@ -1,0 +1,8 @@
+self.env["hr.attendance"].unlink()
+self.env["product.pricelist"].action_archive()
+cls.env["res.config.settings"].write({"group_x": True})
+env["res.partner"].sudo().unlink()
+request.env[model].with_context(active_test=False).action_unarchive()
+self.env["x"].with_company(c).with_user(u).action_archive()
+self.env["x"].update({"name": "y"})
+self.env["x"].copy()
