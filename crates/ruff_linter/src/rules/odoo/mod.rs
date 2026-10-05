@@ -6,13 +6,15 @@ pub(crate) mod strings;
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write;
     use std::path::Path;
 
     use anyhow::Result;
     use test_case::test_case;
 
-    use crate::registry::Rule;
-    use crate::test::test_path;
+    use crate::registry::{Linter, Rule};
+    use crate::rule_selector::{PreviewOptions, RuleSelector};
+    use crate::test::{test_path, test_resource_path};
     use crate::{assert_diagnostics, settings};
 
     #[test_case(Rule::SqlInjection, Path::new("addon/models/E8501.py"))]
@@ -28,6 +30,7 @@ mod tests {
     #[test_case(Rule::OrmImport, Path::new("addon/tests/test_E8508.py"))]
     #[test_case(Rule::OrmImport, Path::new("framework/E8508.py"))]
     #[test_case(Rule::OnchangeDomain, Path::new("addon/models/E8509.py"))]
+    #[test_case(Rule::OnchangeDomain, Path::new("framework/E8509.py"))]
     #[test_case(Rule::ConfigChainmapPatch, Path::new("addon/models/E8510.py"))]
     #[test_case(Rule::GettextDeveloperError, Path::new("addon/models/gettext.py"))]
     #[test_case(Rule::ShadowedDefinition, Path::new("addon/models/E8513.py"))]
@@ -70,6 +73,7 @@ mod tests {
     #[test_case(Rule::SqlBoundPlaceholder, Path::new("addon/models/E8534.py"))]
     #[test_case(Rule::AbolishedMethodCall, Path::new("addon/models/E8535.py"))]
     #[test_case(Rule::TokenCompare, Path::new("addon/models/E8536.py"))]
+    #[test_case(Rule::TokenCompare, Path::new("addon/tests/test_E8536.py"))]
     #[test_case(Rule::LinkTokenCompare, Path::new("addon/models/E8537.py"))]
     #[test_case(Rule::MarkupPreformatted, Path::new("addon/models/E8538.py"))]
     #[test_case(Rule::LinkDoorDeclared, Path::new("addon/controllers_link.py"))]
@@ -90,6 +94,42 @@ mod tests {
             &settings::LinterSettings::for_rule(rule_code),
         )?;
         assert_diagnostics!(snapshot, diagnostics);
+        Ok(())
+    }
+
+    /// Every source snippet that `test_lint`'s checker unit tests parsed, linted
+    /// with every Odoo rule: the cases those tests encoded, kept as a regression
+    /// corpus once the Python checkers were retired. Each line is
+    /// `<file>:<line>:<column> <code>`.
+    #[test]
+    fn lint_cases() -> Result<()> {
+        let settings = settings::LinterSettings::for_rules(
+            RuleSelector::Linter(Linter::Odoo).rules(&PreviewOptions::default()),
+        );
+        let mut names = std::fs::read_dir(test_resource_path("fixtures/odoo/lint_cases/models"))?
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<Result<Vec<_>, _>>()?;
+        names.sort();
+        let mut listing = String::new();
+        for name in names {
+            let path = Path::new("odoo/lint_cases/models").join(&name);
+            for diagnostic in test_path(&path, &settings)? {
+                let (Some(location), Some(code)) = (
+                    diagnostic.ruff_start_location(),
+                    diagnostic.secondary_code(),
+                ) else {
+                    continue;
+                };
+                writeln!(
+                    listing,
+                    "{}:{}:{} {code}",
+                    name.to_string_lossy(),
+                    location.line,
+                    location.column
+                )?;
+            }
+        }
+        insta::assert_snapshot!(listing);
         Ok(())
     }
 }
