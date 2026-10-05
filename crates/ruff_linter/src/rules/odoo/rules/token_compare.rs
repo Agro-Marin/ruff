@@ -9,7 +9,7 @@ use ruff_text_size::Ranged;
 use crate::Violation;
 use crate::checkers::ast::Checker;
 use crate::codes::Category;
-use crate::rules::odoo::helpers::is_constant_side;
+use crate::rules::odoo::helpers::{in_addon, is_constant_side, is_test_path};
 use crate::rules::odoo::rules::is_link_token;
 
 /// ## What it does
@@ -140,6 +140,10 @@ fn is_link_token_side(side: &Expr) -> bool {
 
 /// E8536
 pub(crate) fn token_compare(checker: &Checker, compare: &ast::ExprCompare) {
+    let path = checker.path();
+    if !in_addon(path) || is_test_path(path) {
+        return;
+    }
     let ([op], [right]) = (&*compare.ops, &*compare.comparators) else {
         return;
     };
