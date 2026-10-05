@@ -6,6 +6,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::Violation;
 use crate::checkers::ast::Checker;
 use crate::codes::Category;
+use crate::rules::odoo::helpers::in_addon;
 
 /// ## What it does
 /// Checks for an `@api.onchange` method that builds a mapping with a `domain`
@@ -85,7 +86,7 @@ impl<'a> Visitor<'a> for FirstDomainMapping {
 
 /// E8509
 pub(crate) fn onchange_domain(checker: &Checker, stmt: &Stmt, function: &ast::StmtFunctionDef) {
-    if !function.decorator_list.iter().any(is_onchange_decorator) {
+    if !in_addon(checker.path()) || !function.decorator_list.iter().any(is_onchange_decorator) {
         return;
     }
     let mut visitor = FirstDomainMapping::default();
