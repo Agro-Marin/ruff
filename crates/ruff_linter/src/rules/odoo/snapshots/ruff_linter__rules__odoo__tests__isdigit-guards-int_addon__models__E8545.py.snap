@@ -1,0 +1,161 @@
+---
+source: crates/ruff_linter/src/rules/odoo/mod.rs
+---
+E8545 [*] `LINE.isdigit()` admits characters `int()` rejects
+ --> E8545.py:4:29
+  |
+3 | LINE = "42"
+4 | LINE_ID = int(LINE) if LINE.isdigit() else 0  # E8545: module level
+  |                             ^^^^^^^
+help: Use `isdecimal()`, the characters `int()` accepts
+  |
+3 | LINE = "42"
+  - LINE_ID = int(LINE) if LINE.isdigit() else 0  # E8545: module level
+4 + LINE_ID = int(LINE) if LINE.isdecimal() else 0  # E8545: module level
+5 |
+  |
+note: This is an unsafe fix and may change runtime behavior
+
+E8545 [*] `part.isdigit()` admits characters `int()` rejects
+  --> E8545.py:11:62
+   |
+10 |     def _ids_from(self, raw):
+11 |         return [int(part) for part in raw.split(",") if part.isdigit()]  # E8545
+   |                                                              ^^^^^^^
+12 |
+13 |     def _one(self, value):
+   |
+help: Use `isdecimal()`, the characters `int()` accepts
+   |
+10 |     def _ids_from(self, raw):
+   -         return [int(part) for part in raw.split(",") if part.isdigit()]  # E8545
+11 +         return [int(part) for part in raw.split(",") if part.isdecimal()]  # E8545
+12 |
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+E8545 [*] `value.isdigit()` admits characters `int()` rejects
+  --> E8545.py:14:22
+   |
+13 |     def _one(self, value):
+14 |         if not value.isdigit():  # E8545: the conversion is later
+   |                      ^^^^^^^
+15 |             return None
+16 |         return self.browse(int(value))
+   |
+help: Use `isdecimal()`, the characters `int()` accepts
+   |
+13 |     def _one(self, value):
+   -         if not value.isdigit():  # E8545: the conversion is later
+14 +         if not value.isdecimal():  # E8545: the conversion is later
+15 |             return None
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+E8545 [*] `str(value).isdigit()` admits characters `int()` rejects
+  --> E8545.py:19:41
+   |
+18 |     def _stringified(self, value):
+19 |         return int(value) if str(value).isdigit() else None  # E8545
+   |                                         ^^^^^^^
+20 |
+21 |     def _defaulted(self, pid):
+   |
+help: Use `isdecimal()`, the characters `int()` accepts
+   |
+18 |     def _stringified(self, value):
+   -         return int(value) if str(value).isdigit() else None  # E8545
+19 +         return int(value) if str(value).isdecimal() else None  # E8545
+20 |
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+E8545 [*] `str(pid or "").isdigit()` admits characters `int()` rejects
+  --> E8545.py:22:27
+   |
+21 |     def _defaulted(self, pid):
+22 |         if str(pid or "").isdigit():  # E8545
+   |                           ^^^^^^^
+23 |             return int(pid)
+24 |         return None
+   |
+help: Use `isdecimal()`, the characters `int()` accepts
+   |
+21 |     def _defaulted(self, pid):
+   -         if str(pid or "").isdigit():  # E8545
+22 +         if str(pid or "").isdecimal():  # E8545
+23 |             return int(pid)
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+E8545 [*] `pid.strip().isdigit()` admits characters `int()` rejects
+  --> E8545.py:27:48
+   |
+26 |     def _stripped(self, pid):
+27 |         return int(pid.strip()) if pid.strip().isdigit() else 0  # E8545
+   |                                                ^^^^^^^
+28 |
+29 |     def _subscripted(self, searches):
+   |
+help: Use `isdecimal()`, the characters `int()` accepts
+   |
+26 |     def _stripped(self, pid):
+   -         return int(pid.strip()) if pid.strip().isdigit() else 0  # E8545
+27 +         return int(pid.strip()) if pid.strip().isdecimal() else 0  # E8545
+28 |
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+E8545 [*] `searches["type"].isdigit()` admits characters `int()` rejects
+  --> E8545.py:30:29
+   |
+29 |     def _subscripted(self, searches):
+30 |         if searches["type"].isdigit():  # E8545: the same subscript, quoted alike or not
+   |                             ^^^^^^^
+31 |             return int(searches['type'])
+32 |         return None
+   |
+help: Use `isdecimal()`, the characters `int()` accepts
+   |
+29 |     def _subscripted(self, searches):
+   -         if searches["type"].isdigit():  # E8545: the same subscript, quoted alike or not
+30 +         if searches["type"].isdecimal():  # E8545: the same subscript, quoted alike or not
+31 |             return int(searches['type'])
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+E8545 [*] `key.isdigit()` admits characters `int()` rejects
+  --> E8545.py:35:63
+   |
+34 |     def _in_a_lambda(self, rows):
+35 |         return self.browse(int(key) for (key,) in rows if key.isdigit())  # E8545
+   |                                                               ^^^^^^^
+36 |
+37 |     def _checksum(self, vat):
+   |
+help: Use `isdecimal()`, the characters `int()` accepts
+   |
+34 |     def _in_a_lambda(self, rows):
+   -         return self.browse(int(key) for (key,) in rows if key.isdigit())  # E8545
+35 +         return self.browse(int(key) for (key,) in rows if key.isdecimal())  # E8545
+36 |
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+E8545 [*] `vat.isdigit()` admits characters `int()` rejects
+  --> E8545.py:38:38
+   |
+37 |     def _checksum(self, vat):
+38 |         if len(vat) != 11 or not vat.isdigit():  # E8545: a character of it
+   |                                      ^^^^^^^
+39 |             return False
+40 |         return sum(int(vat[i]) for i in range(10)) % 11 == int(vat[10])
+   |
+help: Use `isdecimal()`, the characters `int()` accepts
+   |
+37 |     def _checksum(self, vat):
+   -         if len(vat) != 11 or not vat.isdigit():  # E8545: a character of it
+38 +         if len(vat) != 11 or not vat.isdecimal():  # E8545: a character of it
+39 |             return False
+   |
+note: This is an unsafe fix and may change runtime behavior

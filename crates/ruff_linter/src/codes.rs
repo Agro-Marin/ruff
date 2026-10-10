@@ -1309,6 +1309,7 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Odoo, "42") => rules::odoo::rules::WsgiEnvironOptionalKey,
         (Odoo, "43") => rules::odoo::rules::EmptyRecordsetMutation,
         (Odoo, "44") => rules::odoo::rules::NoqaRationale,
+        (Odoo, "45") => rules::odoo::rules::IsdigitGuardsInt,
 
         // flake8-django
         (Flake8Django, "001") => rules::flake8_django::rules::DjangoNullableModelStringField,
