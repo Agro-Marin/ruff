@@ -555,6 +555,9 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
             if checker.is_rule_enabled(Rule::EmptyRecordsetMutation) {
                 odoo::rules::empty_recordset_mutation(checker, call);
             }
+            if checker.is_rule_enabled(Rule::IsdigitGuardsInt) {
+                odoo::rules::isdigit_guards_int(checker, call);
+            }
             if checker.is_rule_enabled(Rule::MarkupPreformatted) {
                 odoo::rules::markup_preformatted(checker, call);
             }
