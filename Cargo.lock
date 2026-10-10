@@ -3092,7 +3092,7 @@ dependencies = [
 
 [[package]]
 name = "ruff"
-version = "0.16.10+marin.1"
+version = "0.16.10+marin.2"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -3368,7 +3368,7 @@ dependencies = [
 
 [[package]]
 name = "ruff_linter"
-version = "0.16.10+marin.1"
+version = "0.16.10+marin.2"
 dependencies = [
  "aho-corasick",
  "anyhow",
