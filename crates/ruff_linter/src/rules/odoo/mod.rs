@@ -83,6 +83,7 @@ mod tests {
     #[test_case(Rule::WsgiEnvironOptionalKey, Path::new("addon/wsgi_os.py"))]
     #[test_case(Rule::EmptyRecordsetMutation, Path::new("addon/models/E8543.py"))]
     #[test_case(Rule::NoqaRationale, Path::new("noqa/E8544.py"))]
+    #[test_case(Rule::IsdigitGuardsInt, Path::new("addon/models/E8545.py"))]
     fn rules(rule_code: Rule, path: &Path) -> Result<()> {
         let snapshot = format!(
             "{}_{}",
