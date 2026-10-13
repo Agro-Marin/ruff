@@ -17,7 +17,7 @@ use crate::codes::Category;
 /// ## Why is this bad?
 /// These models carry `company_ids` (a many2many), not `company_id`: reading it
 /// raises `AttributeError`, and a domain leaf on it matches nothing and raises.
-/// `filtered_domain(env['account.tax']._check_company_domain(company))` selects
+/// `filtered_domain(env['account.tax']._get_domain_company_compatible(company))` selects
 /// a company's taxes.
 #[derive(ViolationMetadata)]
 #[violation_metadata(stable_since = "0.16.7", category = Category::Correctness)]
@@ -36,7 +36,10 @@ impl Violation for TaxCompanySingular {
     }
 
     fn fix_title(&self) -> Option<String> {
-        Some("Use `filtered_domain(env['account.tax']._check_company_domain(company))`".to_string())
+        Some(
+            "Use `filtered_domain(env['account.tax']._get_domain_company_compatible(company))`"
+                .to_string(),
+        )
     }
 }
 
