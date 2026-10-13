@@ -10,7 +10,7 @@ E8514 `account.tax` has `company_ids` (many2many), not `company_id`
  9 |         self.product_id.taxes_id.filtered(lambda t, c=company: t.company_id.id == c.id)  # E8514
 10 |         self.tax_ids.filtered(lambda tax: tax.company_ids & company.parent_ids)  # OK
    |
-help: Use `filtered_domain(env['account.tax']._check_company_domain(company))`
+help: Use `filtered_domain(env['account.tax']._get_domain_company_compatible(company))`
 
 E8514 `account.tax` has `company_ids` (many2many), not `company_id`
   --> E8514.py:9:64
@@ -22,7 +22,7 @@ E8514 `account.tax` has `company_ids` (many2many), not `company_id`
 10 |         self.tax_ids.filtered(lambda tax: tax.company_ids & company.parent_ids)  # OK
 11 |         self.line_ids.filtered(lambda line: line.company_id == company)  # OK: not taxes
    |
-help: Use `filtered_domain(env['account.tax']._check_company_domain(company))`
+help: Use `filtered_domain(env['account.tax']._get_domain_company_compatible(company))`
 
 E8514 A `company_id` domain leaf against a model that carries `company_ids`
   --> E8514.py:15:41
@@ -33,7 +33,7 @@ E8514 A `company_id` domain leaf against a model that carries `company_ids`
 16 |         self.env["account.account"].sudo().search_count(
 17 |             domain=["|", ["company_id", "=", False], ("active", "=", True)],  # E8514
    |
-help: Use `filtered_domain(env['account.tax']._check_company_domain(company))`
+help: Use `filtered_domain(env['account.tax']._get_domain_company_compatible(company))`
 
 E8514 A `company_id` domain leaf against a model that carries `company_ids`
   --> E8514.py:17:26
@@ -45,7 +45,7 @@ E8514 A `company_id` domain leaf against a model that carries `company_ids`
 18 |         )
 19 |         for model in ("account.tax.group", "account.journal"):
    |
-help: Use `filtered_domain(env['account.tax']._check_company_domain(company))`
+help: Use `filtered_domain(env['account.tax']._get_domain_company_compatible(company))`
 
 E8514 A `company_id` domain leaf against a model that carries `company_ids`
   --> E8514.py:20:37
@@ -57,4 +57,4 @@ E8514 A `company_id` domain leaf against a model that carries `company_ids`
 21 |         self.env["account.journal"].search([("company_id", "=", company.id)])  # OK
 22 |         self.env["account.tax"].search([("company_ids", "in", company.ids)])  # OK
    |
-help: Use `filtered_domain(env['account.tax']._check_company_domain(company))`
+help: Use `filtered_domain(env['account.tax']._get_domain_company_compatible(company))`

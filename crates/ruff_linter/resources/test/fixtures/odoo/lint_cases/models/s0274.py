@@ -1,3 +1,3 @@
 taxes = self.env["account.tax"].search(
-    self.env["account.tax"]._check_company_domain(company)
+    self.env["account.tax"]._get_domain_company_compatible(company)
 )
