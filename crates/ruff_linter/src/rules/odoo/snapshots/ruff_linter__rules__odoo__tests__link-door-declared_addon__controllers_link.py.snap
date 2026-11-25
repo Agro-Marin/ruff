@@ -1,5 +1,6 @@
 ---
 source: crates/ruff_linter/src/rules/odoo/mod.rs
+assertion_line: 97
 ---
 E8539 Route `order` takes an `access_token` and opens nothing through a door
   --> controllers_link.py:11:5
@@ -29,4 +30,17 @@ E8539 `_document_check_access` is gone
 37 |     def legacy(self, record):
 38 |         return record._document_check_access("sale.order", record.id)  # E8539
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+39 |
+40 |     @http.route("/my/ticket/<int:ticket_id>", type="http", auth="public")
+   |
 help: A route declares `auth="link"`; other code calls `env['access.link']._open_record`
+
+E8539 Route `old` takes an `access_token` and opens nothing through a door
+  --> controllers_link.py:45:5
+   |
+44 |     @http.route("/my/old/<int:old_id>", type="http", auth="public")
+45 |     def old(self, old_id, access_token=None):  # E8539: _from_*_token is no longer a door
+   |     ^^^^^^^
+46 |         return request.env["sale.order"]._from_access_token(access_token)
+   |
+help: Declare `auth="link"`, or reach a door such as `_open_record`

@@ -3,7 +3,7 @@ from odoo.http import request
 
 
 def _check(record, access_token):
-    return record._from_access_token(access_token)
+    return record._open_by_access_token(access_token)
 
 
 class Portal(http.Controller):
@@ -36,3 +36,11 @@ class Portal(http.Controller):
 
     def legacy(self, record):
         return record._document_check_access("sale.order", record.id)  # E8539
+
+    @http.route("/my/ticket/<int:ticket_id>", type="http", auth="public")
+    def ticket(self, ticket_id, access_token=None):  # OK: an _open_by_<kind>_token door
+        return request.env["helpdesk.ticket"]._open_by_ticket_token(access_token, ticket_id)
+
+    @http.route("/my/old/<int:old_id>", type="http", auth="public")
+    def old(self, old_id, access_token=None):  # E8539: _from_*_token is no longer a door
+        return request.env["sale.order"]._from_access_token(access_token)

@@ -20,8 +20,10 @@ use crate::rules::odoo::helpers::{callee_name, def_start, in_addon, is_test_path
 /// expire or revoke. A route that reads an `access_token` declares
 /// `auth="link"` (`link="<model>:<path argument>"`), or reaches a door:
 /// `env['access.link']._open_record` for an RPC route or a helper, `_resolve`,
-/// a model's `_from_*_token`, or `tools.is_hmac_valid`, directly or through a
-/// function of the same file that does. `_document_check_access` is gone.
+/// a model's or controller's `_open_by_<kind>_token`, or `tools.is_hmac_valid`,
+/// directly or through a function of the same file that does. A door is
+/// declared by that name, so a new one needs no change here.
+/// `_document_check_access` is gone.
 ///
 /// A route whose token is no link takes a `noqa` naming its class.
 #[derive(ViolationMetadata)]
@@ -57,12 +59,17 @@ const DOORS: &[&str] = &[
     "is_hmac_valid",
     "is_access_token_valid",
     "_can_return_content",
-    "_from_booking_token",
-    "_from_invitation_token",
-    "_from_signer_token",
-    "_from_request_token",
-    "_from_access_token",
 ];
+
+const DOOR_PREFIX: &str = "_open_by_";
+const DOOR_SUFFIX: &str = "_token";
+
+/// A name `_open_by_<kind>_token` is a door wherever it is defined.
+fn is_named_door(name: &str) -> bool {
+    name.len() > DOOR_PREFIX.len() + DOOR_SUFFIX.len()
+        && name.starts_with(DOOR_PREFIX)
+        && name.ends_with(DOOR_SUFFIX)
+}
 
 const RETIRED: &str = "_document_check_access";
 
@@ -164,7 +171,12 @@ pub(crate) fn link_door_declared(checker: &Checker, suite: &Suite) {
         grew = false;
         for (function, facts) in &module.functions {
             let name = function.name.as_str();
-            if !doors.contains(name) && facts.called.iter().any(|called| doors.contains(called)) {
+            if !doors.contains(name)
+                && facts
+                    .called
+                    .iter()
+                    .any(|called| doors.contains(called) || is_named_door(called))
+            {
                 doors.insert(name);
                 grew = true;
             }
@@ -185,7 +197,10 @@ pub(crate) fn link_door_declared(checker: &Checker, suite: &Suite) {
             .any(|parameter| parameter.name().as_str() == "access_token");
         if !takes_token
             || declares_link(route)
-            || facts.called.iter().any(|called| doors.contains(called))
+            || facts
+                .called
+                .iter()
+                .any(|called| doors.contains(called) || is_named_door(called))
         {
             continue;
         }
