@@ -1,5 +1,6 @@
 ---
 source: crates/ruff_linter/src/rules/odoo/mod.rs
+assertion_line: 97
 ---
 E8524 `total`: `compute="compute_total"` names a method outside the `_compute_*` family
  --> E8524.py:7:13
@@ -54,3 +55,50 @@ E8524 `state`: `selection="get_states"` names a method outside the `_selection_*
 15 |     amount = fields.Float(compute="_compute_amount", inverse="_inverse_amount")  # OK
    |
 help: Rename the method to `_selection_*`
+
+E8524 `stage_id`: `group_expand="_read_group_stage_ids"` names a method outside the `_group_expand_*` family
+  --> E8524.py:23:16
+   |
+21 |     _name = "fixture.report"
+22 |
+23 |     stage_id = fields.Many2one(comodel_name="fixture.stage", group_expand="_read_group_stage_ids")  # E8524
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+24 |     team_id = fields.Many2one(comodel_name="fixture.team", group_expand="_read_group_expand_full")  # OK: the ORM's own
+25 |     phase_id = fields.Many2one(comodel_name="fixture.phase", group_expand="_group_expand_phase_id")  # OK
+   |
+help: Rename the method to `_group_expand_*`
+
+E8524 `margin`: `value_sql="_margin_sql"` names a method outside the `_value_sql_*` family
+  --> E8524.py:26:14
+   |
+24 |     team_id = fields.Many2one(comodel_name="fixture.team", group_expand="_read_group_expand_full")  # OK: the ORM's own
+25 |     phase_id = fields.Many2one(comodel_name="fixture.phase", group_expand="_group_expand_phase_id")  # OK
+26 |     margin = fields.Float(value_sql="_margin_sql")  # E8524
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+27 |     rank = fields.Integer(value_sql="_value_sql_rank", order_by_sql="_rank_order")  # E8524 (reported on the call)
+28 |     band = fields.Char(group_by_sql="_group_by_sql_band", aggregate_sql="_band_total_sql")  # E8524 (reported on the call)
+   |
+help: Rename the method to `_value_sql_*`
+
+E8524 `rank`: `order_by_sql="_rank_order"` names a method outside the `_order_by_sql_*` family
+  --> E8524.py:27:12
+   |
+25 |     phase_id = fields.Many2one(comodel_name="fixture.phase", group_expand="_group_expand_phase_id")  # OK
+26 |     margin = fields.Float(value_sql="_margin_sql")  # E8524
+27 |     rank = fields.Integer(value_sql="_value_sql_rank", order_by_sql="_rank_order")  # E8524 (reported on the call)
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+28 |     band = fields.Char(group_by_sql="_group_by_sql_band", aggregate_sql="_band_total_sql")  # E8524 (reported on the call)
+29 |     total = fields.Float(aggregate_sql="_aggregate_sql_total", order_by_sql="_order_by_sql_total")  # OK
+   |
+help: Rename the method to `_order_by_sql_*`
+
+E8524 `band`: `aggregate_sql="_band_total_sql"` names a method outside the `_aggregate_sql_*` family
+  --> E8524.py:28:12
+   |
+26 |     margin = fields.Float(value_sql="_margin_sql")  # E8524
+27 |     rank = fields.Integer(value_sql="_value_sql_rank", order_by_sql="_rank_order")  # E8524 (reported on the call)
+28 |     band = fields.Char(group_by_sql="_group_by_sql_band", aggregate_sql="_band_total_sql")  # E8524 (reported on the call)
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+29 |     total = fields.Float(aggregate_sql="_aggregate_sql_total", order_by_sql="_order_by_sql_total")  # OK
+   |
+help: Rename the method to `_aggregate_sql_*`

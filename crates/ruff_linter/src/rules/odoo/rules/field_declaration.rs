@@ -103,9 +103,13 @@ impl Violation for SelectionDuplicateKey {
 }
 
 /// ## What it does
-/// Checks for a `compute=`, `inverse=`, `search=` or `selection=` method name
-/// outside the family its attribute reserves: `_compute_*`, `_inverse_*`,
-/// `_search_*`, `_selection_*`.
+/// Checks for a `compute=`, `inverse=`, `search=`, `selection=`,
+/// `group_expand=`, `value_sql=`, `order_by_sql=`, `group_by_sql=` or
+/// `aggregate_sql=` method name outside the family its attribute reserves:
+/// `_compute_*`, `_inverse_*`, `_search_*`, `_selection_*`, `_group_expand_*`,
+/// `_value_sql_*`, `_order_by_sql_*`, `_group_by_sql_*`, `_aggregate_sql_*`.
+/// The ORM's own `_read_group_expand_full` is the one `group_expand=` outside
+/// its family.
 ///
 /// ## Why is this bad?
 /// A hook named for its family tells a reader, and the naming gates, a field
@@ -248,11 +252,16 @@ impl Violation for StoredRelated {
     }
 }
 
-const HOOK_PREFIXES: [(&str, &str); 4] = [
+const HOOK_PREFIXES: [(&str, &str); 9] = [
     ("compute", "_compute_"),
     ("inverse", "_inverse_"),
     ("search", "_search_"),
     ("selection", "_selection_"),
+    ("group_expand", "_group_expand_"),
+    ("value_sql", "_value_sql_"),
+    ("order_by_sql", "_order_by_sql_"),
+    ("group_by_sql", "_group_by_sql_"),
+    ("aggregate_sql", "_aggregate_sql_"),
 ];
 
 /// Calls whose value is meant per record, so `default=` wants the callable, not
@@ -530,10 +539,14 @@ fn check_selection(checker: &Checker, name: &str, call: &ast::ExprCall) {
     }
 }
 
+/// The ORM's expander for every group of a comodel, shared by many fields.
+const ORM_GROUP_EXPAND: &str = "_read_group_expand_full";
+
 fn check_hooks(checker: &Checker, name: &str, call: &ast::ExprCall) {
     for (attribute, prefix) in HOOK_PREFIXES {
         if let Some(method) = constant_str(keyword(call, attribute))
             && !method.starts_with(prefix)
+            && !(attribute == "group_expand" && method == ORM_GROUP_EXPAND)
         {
             checker.report_diagnostic(
                 FieldHookPrefix {
