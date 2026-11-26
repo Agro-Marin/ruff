@@ -46,8 +46,6 @@ impl super::SyncRequestHandler for ExecuteCommand {
             .with_failure_code(ErrorCode::InvalidParams)?;
 
         if command == SupportedCommand::Debug {
-            // TODO: Currently we only use the first argument i.e., the first document that's
-            // provided but we could expand this to consider all *open* documents.
             let argument: DebugCommandArgument = params
                 .arguments
                 .unwrap_or_default()
@@ -65,7 +63,6 @@ impl super::SyncRequestHandler for ExecuteCommand {
             )));
         }
 
-        // check if we can apply a workspace edit
         if !session.resolved_client_capabilities().apply_edit {
             return Err(anyhow::anyhow!(
                 "Cannot execute the '{}' command: \

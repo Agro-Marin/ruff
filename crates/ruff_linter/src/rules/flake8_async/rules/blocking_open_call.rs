@@ -80,21 +80,10 @@ pub(crate) fn is_open_call_from_pathlib(func: &Expr, semantic: &SemanticModel) -
         return false;
     }
 
-    // First: is this an inlined call to `pathlib.Path.open`?
-    // ```python
-    // from pathlib import Path
-    // Path("foo").open()
-    // ```
     if let Expr::Call(call) = value.as_ref() {
         return semantic.matches_qualified_name(&call.func, &["pathlib", "Path"]);
     }
 
-    // Second, is this a call to `pathlib.Path.open` via a variable?
-    // ```python
-    // from pathlib import Path
-    // path = Path("foo")
-    // path.open()
-    // ```
     let Expr::Name(name) = value.as_ref() else {
         return false;
     };

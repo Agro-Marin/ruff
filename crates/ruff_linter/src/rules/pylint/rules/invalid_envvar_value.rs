@@ -53,7 +53,6 @@ pub(crate) fn invalid_envvar_value(
     }
 
     if matches!(qualified_name.segments(), ["os", "getenv"]) {
-        // Find the `key` argument, if it exists.
         let Some(expr) = call.arguments.find_argument_value("key", 0) else {
             return;
         };

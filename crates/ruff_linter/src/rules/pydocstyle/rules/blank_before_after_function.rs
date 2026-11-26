@@ -149,9 +149,7 @@ pub(crate) fn blank_before_after_function(checker: &Checker, docstring: &Docstri
                 },
                 docstring.range(),
             );
-            // Do not offer fix if a \ would cause it to be a syntax error
             if !start_is_line_continuation {
-                // Delete the blank line before the docstring.
                 diagnostic.set_fix(Fix::safe_edit(Edit::deletion(
                     blank_lines_start,
                     docstring.line_start(),
@@ -165,7 +163,6 @@ pub(crate) fn blank_before_after_function(checker: &Checker, docstring: &Docstri
             .locator()
             .slice(TextRange::new(docstring.end(), function.end()));
 
-        // If the docstring is only followed by blank and commented lines, abort.
         let all_blank_after = after.universal_newlines().skip(1).all(|line| {
             line.trim_whitespace().is_empty() || line.trim_whitespace_start().starts_with('#')
         });
@@ -173,7 +170,6 @@ pub(crate) fn blank_before_after_function(checker: &Checker, docstring: &Docstri
             return;
         }
 
-        // Count the number of blank lines after the docstring.
         let mut blank_lines_after = 0usize;
         let mut lines = UniversalNewlineIterator::with_offset(after, docstring.end()).peekable();
         let first_line = lines.next();
@@ -191,7 +187,6 @@ pub(crate) fn blank_before_after_function(checker: &Checker, docstring: &Docstri
             }
         }
 
-        // Avoid violations for blank lines followed by inner functions or classes.
         if blank_lines_after == 1
             && lines
                 .find(|line| !line.trim_whitespace_start().starts_with('#'))
@@ -207,9 +202,7 @@ pub(crate) fn blank_before_after_function(checker: &Checker, docstring: &Docstri
                 },
                 docstring.range(),
             );
-            // Do not offer fix if a \ would cause it to be a syntax error
             if !first_line_line_continuation {
-                // Delete the blank line after the docstring.
                 diagnostic.set_fix(Fix::safe_edit(Edit::deletion(
                     first_line_end,
                     blank_lines_end,

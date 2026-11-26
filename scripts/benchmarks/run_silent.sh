@@ -1,9 +1,5 @@
 #!/usr/bin/env sh
 
-###
-# Benchmark Ruff's performance against a variety of similar tools, suppressing output as much as
-# possible (so as to reduce I/O overhead).
-###
 
 hyperfine --ignore-failure --warmup 5 \
   "./target/release/ruff check ./crates/ruff_linter/resources/test/cpython/ --no-cache --silent --exit-zero" \

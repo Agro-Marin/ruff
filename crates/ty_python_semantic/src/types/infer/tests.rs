@@ -482,7 +482,6 @@ fn pep695_type_params() {
     check_typevar("W", "TypeVar", None, None, Some("A"));
     check_typevar("X", "TypeVar", Some("A"), None, Some("A1"));
 
-    // a typevar with less than two constraints is treated as unconstrained
     check_typevar("Y", "TypeVar", None, None, None);
 }
 
@@ -677,20 +676,16 @@ fn comparison_truthiness_widens_across_sparse_cycle_results() -> anyhow::Result<
     };
 
     for (previous, current, expected) in [
-        // A previously widened condition stays ambiguous even when the new result omits its
-        // override and has a definite value-type fallback.
         (
             (Type::bool_literal(false), Some(Truthiness::Ambiguous)),
             (Type::bool_literal(false), None),
             Truthiness::Ambiguous,
         ),
-        // A new override is compared with the previous result's value-type fallback.
         (
             (Type::bool_literal(true), None),
             (Type::unknown(), Some(Truthiness::AlwaysFalse)),
             Truthiness::Ambiguous,
         ),
-        // Matching effective truthiness stays precise. Keep the override even though it agrees
         // with the current type: subsequent type widening can make that fallback ambiguous again.
         (
             (Type::unknown(), Some(Truthiness::AlwaysFalse)),
@@ -737,8 +732,6 @@ fn comparison_truthiness_widens_across_sparse_cycle_results() -> anyhow::Result<
 /// events as well as checking that each condition produces a diagnostic.
 #[test]
 fn redundant_condition_lookup_does_not_reenter_scope_inference() -> anyhow::Result<()> {
-    // Cover builtin names, including the numeric-compatibility special cases for `float` and
-    // `complex`, and attribute lookup using an already-inferred receiver type.
     for source in [
         "if isinstance({}, dict):\n    pass\n",
         "if isinstance(1.0, float):\n    pass\n",
@@ -758,8 +751,6 @@ fn redundant_condition_lookup_does_not_reenter_scope_inference() -> anyhow::Resu
             .build()?;
         let file = system_path_to_file(&db, "/src/main.py")?;
         let diagnostics = check_types(&db, program_file(&db, file));
-        // Require the diagnostic so the cycle check cannot pass merely because the redundant
-        // condition was never checked.
         assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:#?}");
 
         let events = db.take_salsa_events();
@@ -830,11 +821,8 @@ if value_{index}:
             .build()?;
         let file = system_path_to_file(&db, "/src/main.py")?;
         let diagnostics = check_types(&db, program_file(&db, file));
-        // Sharing the definition lookup must still leave a diagnostic on every condition.
         assert_eq!(diagnostics.len(), repetitions);
 
-        // Count actual query executions, excluding cache hits. This checks reuse deterministically
-        // without a timing threshold, which would depend on the machine running the test.
         let events = db.take_salsa_events();
         let lookups = events
             .iter()
@@ -860,12 +848,6 @@ if value_{index}:
 fn unbound_symbol_no_reachability_constraint_check() {
     let mut db = setup_db();
 
-    // If the bug we are testing for is not fixed, what happens is that when inferring the
-    // `flag: bool = True` definitions, we look up `bool` as a deferred name (thus from end of
-    // scope), and because of the early return its "unbound" binding has a reachability
-    // constraint of `~flag`, which we evaluate, meaning we have to evaluate the definition of
-    // `flag` -- and we are in a cycle. With the fix, we short-circuit evaluating reachability
-    // constraints on "unbound" if a symbol is otherwise not bound.
     db.write_dedented(
         "src/a.py",
         "
@@ -906,7 +888,6 @@ const FEW_NON_TERMINAL_CALLS: usize = 80;
 fn implicit_attribute_after_many_non_terminal_calls() -> anyhow::Result<()> {
     let handle = std::thread::Builder::new()
         .name("implicit-attribute-stack-test".into())
-        // Match the stack size used by ty's production worker threads.
         .stack_size(ruff_db::STACK_SIZE)
         .spawn(|| {
             let mut db = setup_db();
@@ -1135,7 +1116,6 @@ fn suppressed_call_error_skips_callable_description() -> anyhow::Result<()> {
 fn redundant_cast_without_closing_parenthesis() -> anyhow::Result<()> {
     let mut db = setup_db();
 
-    // A final newline changes the recovered argument range, so these files deliberately omit it.
     for suffix in ["", " # comment"] {
         let source =
             format!("from typing import cast\n\ndef f(x: int):\n    return cast(int, x{suffix}");
@@ -1146,7 +1126,6 @@ fn redundant_cast_without_closing_parenthesis() -> anyhow::Result<()> {
     Ok(())
 }
 
-// Incremental inference tests
 #[track_caller]
 fn first_public_binding<'db>(db: &'db TestDb, file: File, name: &str) -> Definition<'db> {
     let scope = global_scope(db, program_file(db, file));
@@ -1203,7 +1182,6 @@ fn dependency_public_symbol_type_change() -> anyhow::Result<()> {
         "int"
     );
 
-    // Change `x` to a different value
     db.write_file("/src/foo.py", "x: bool = True\ndef foo(): ...")?;
 
     let a = system_path_to_file(&db, "/src/a.py").unwrap();
@@ -1224,8 +1202,6 @@ fn undefined_reveal_fix_updates_after_source_changes() -> anyhow::Result<()> {
         .with_python_version(PythonVersion::PY311)
         .build()?;
 
-    // Recheck the same file after changing its imports and line endings. Both function
-    // scopes should use the current file's import locations and formatting.
     for (prefix, line_ending, fixed_prefix) in [
         (
             "from typing import Any\n\n",
@@ -1277,7 +1253,6 @@ fn redundant_elif_fix_preserves_line_endings_and_checks_cleanly() -> anyhow::Res
         .with_rule_selection(rules)
         .build()?;
 
-    // Reuse the file to check that edits use the current imports and source style.
     for (newline, indent, trailing_newline, existing_import) in [
         ("\n", "    ", true, false),
         ("\r\n", "\t", false, true),
@@ -1455,7 +1430,6 @@ fn lazy_parameter_defaults() -> anyhow::Result<()> {
         &events,
     );
 
-    // Display needs the actual default, unlike call checking.
     let function = global_symbol(&db, source, "f").place.expect_type();
     assert_eq!(
         function.display(&db, &db.program_environment()).to_string(),
@@ -1572,7 +1546,6 @@ class Model(ModelBase):
     ])?;
     assert_file_diagnostics(&db, "/src/main.py", &[]);
 
-    // This changes a default's value, not the field specifier's callable signature.
     db.write_file(
         "/src/fields.py",
         field_source.replace("init: bool = False", "init: bool = True"),
@@ -1590,9 +1563,6 @@ class Model(ModelBase):
 
 #[test]
 fn recursive_protocol_materialization_tracks_member_type_changes() -> anyhow::Result<()> {
-    // Changing an imported type must invalidate the cached proof even when the protocol and its
-    // consumer are unchanged. Cover both direct inspection and the type-parameter proof needed
-    // for growing specializations.
     const STATIC: &str = "Payload = int\n";
     const GRADUAL: &str = "from typing import Any\nPayload = Any\n";
     const FAILURE: &str =
@@ -1774,7 +1744,6 @@ fn dependency_implicit_alias_definition() -> anyhow::Result<()> {
 
     for (alias, unrelated, should_run) in [
         ("list[int]", 1, true),
-        // The alias's meaning is unchanged by edits elsewhere in its defining module.
         ("list[int]", 2, false),
         ("list[str]", 2, true),
     ] {
@@ -1829,8 +1798,6 @@ fn declared_instance_attribute_avoids_inferring_method_assignments() -> anyhow::
     assert_file_diagnostics(&db, "/src/main.py", &[]);
     let events = db.take_salsa_events();
 
-    // The declaration determines the result. Looking up `Model.value` should not even
-    // index modules that are only used by assignments to it in method bodies.
     assert_function_query_was_not_run(&db, semantic_index, program_file(&db, dependency), &events);
 
     Ok(())
@@ -1880,8 +1847,6 @@ fn dependency_implicit_instance_attribute() -> anyhow::Result<()> {
     fn x_rhs_expression(db: &TestDb) -> Expression<'_> {
         let file_main = system_path_to_file(db, "/src/main.py").unwrap();
         let ast = parsed_module(db, program_file(db, file_main).python_file(db)).load(db);
-        // Get the second statement in `main.py` (x = …) and extract the expression
-        // node on the right-hand side:
         let x_rhs_node = &ast.syntax().body[1].as_assign_stmt().unwrap().value;
 
         let index = semantic_index(db, program_file(db, file_main));
@@ -1914,7 +1879,6 @@ fn dependency_implicit_instance_attribute() -> anyhow::Result<()> {
         "int | None"
     );
 
-    // Change the type of `attr` to `str | None`; this should trigger the type of `x` to be re-inferred
     db.write_dedented(
         "/src/mod.py",
         r#"
@@ -1940,7 +1904,6 @@ fn dependency_implicit_instance_attribute() -> anyhow::Result<()> {
         &events,
     );
 
-    // Add a comment; this should not trigger the type of `x` to be re-inferred
     db.write_dedented(
         "/src/mod.py",
         r#"
@@ -1978,8 +1941,6 @@ fn dependency_own_instance_member() -> anyhow::Result<()> {
     fn x_rhs_expression(db: &TestDb) -> Expression<'_> {
         let file_main = system_path_to_file(db, "/src/main.py").unwrap();
         let ast = parsed_module(db, program_file(db, file_main).python_file(db)).load(db);
-        // Get the second statement in `main.py` (x = …) and extract the expression
-        // node on the right-hand side:
         let x_rhs_node = &ast.syntax().body[1].as_assign_stmt().unwrap().value;
 
         let index = semantic_index(db, program_file(db, file_main));
@@ -2014,7 +1975,6 @@ fn dependency_own_instance_member() -> anyhow::Result<()> {
         "int | None"
     );
 
-    // Change the type of `attr` to `str | None`; this should trigger the type of `x` to be re-inferred
     db.write_dedented(
         "/src/mod.py",
         r#"
@@ -2042,7 +2002,6 @@ fn dependency_own_instance_member() -> anyhow::Result<()> {
         &events,
     );
 
-    // Add a comment; this should not trigger the type of `x` to be re-inferred
     db.write_dedented(
         "/src/mod.py",
         r#"
@@ -2080,8 +2039,6 @@ fn dependency_implicit_class_member() -> anyhow::Result<()> {
     fn x_rhs_expression(db: &TestDb) -> Expression<'_> {
         let file_main = system_path_to_file(db, "/src/main.py").unwrap();
         let ast = parsed_module(db, program_file(db, file_main).python_file(db)).load(db);
-        // Get the third statement in `main.py` (x = …) and extract the expression
-        // node on the right-hand side:
         let x_rhs_node = &ast.syntax().body[2].as_assign_stmt().unwrap().value;
 
         let index = semantic_index(db, program_file(db, file_main));
@@ -2119,7 +2076,6 @@ fn dependency_implicit_class_member() -> anyhow::Result<()> {
         "int"
     );
 
-    // Change the type of `class_attr` to `str`; this should trigger the type of `x` to be re-inferred
     db.write_dedented(
         "/src/mod.py",
         r#"
@@ -2149,7 +2105,6 @@ fn dependency_implicit_class_member() -> anyhow::Result<()> {
         &events,
     );
 
-    // Add a comment; this should not trigger the type of `x` to be re-inferred
     db.write_dedented(
         "/src/mod.py",
         r#"
@@ -2227,8 +2182,6 @@ fn call_type_doesnt_rerun_when_only_callee_changed() -> anyhow::Result<()> {
         &events,
     );
 
-    // Add a docstring to foo to trigger a re-run.
-    // The bar-call site of foo should not be re-run because of that
     db.write_dedented(
         "src/foo.py",
         r#"

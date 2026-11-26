@@ -22,19 +22,15 @@ impl Overlong {
         task_tags: &[String],
         tab_size: IndentWidth,
     ) -> Option<Self> {
-        // A tab can span several columns. For a line without tabs, the byte length
-        // alone bounds its display width.
         if line.len() <= usize::from(limit.value()) && !line.as_bytes().contains(&b'\t') {
             return None;
         }
 
-        // Measure the line. If it's already below the limit, exit early.
         let width = measure(line.as_str(), tab_size);
         if width <= limit {
             return None;
         }
 
-        // Strip trailing comments and re-measure the line, if needed.
         let line = StrippedLine::from_line(line, comment_ranges, task_tags);
         let width = match &line {
             StrippedLine::WithoutPragma(line) => {
@@ -49,12 +45,9 @@ impl Overlong {
 
         let mut chunks = line.split_whitespace();
         let (Some(first_chunk), Some(second_chunk)) = (chunks.next(), chunks.next()) else {
-            // Single word / no printable chars - no way to make the line shorter.
             return None;
         };
 
-        // Do not enforce the line length for lines that end with a URL, as long as the URL
-        // begins before the limit.
         let last_chunk = chunks.last().unwrap_or(second_chunk);
         if last_chunk.contains("://") {
             if width.get() - measure(last_chunk, tab_size).get() <= limit.value() as usize {
@@ -71,7 +64,6 @@ impl Overlong {
             return None;
         }
 
-        // Obtain the start offset of the part of the line that exceeds the limit.
         let mut start_offset = line.start();
         let mut start_width = LineWidthBuilder::new(tab_size);
         for c in line.chars() {
@@ -119,19 +111,16 @@ impl<'a> StrippedLine<'a> {
             return Self::Unchanged(line);
         };
 
-        // Convert from absolute to relative range.
         let comment_range = comment_range - line.start();
         let comment = &line.as_str()[comment_range];
 
         // Ex) `# type: ignore` or `# some comment # noqa: F401`
         if let Some(offset) = find_trailing_pragma_offset(comment) {
-            // Strip the pragma from the line, preserving any preceding non-pragma comment text.
             let pragma_start = usize::from(comment_range.start()) + offset;
             let prefix = line[..pragma_start].trim_end();
             return Self::WithoutPragma(Line::new(prefix, line.start()));
         }
 
-        // Ex) `# TODO(charlie): ...`
         if !task_tags.is_empty() {
             let Some(trimmed) = comment.strip_prefix('#') else {
                 return Self::Unchanged(line);
@@ -141,7 +130,6 @@ impl<'a> StrippedLine<'a> {
                 .iter()
                 .any(|task_tag| trimmed.starts_with(task_tag))
             {
-                // Remove the task tag from the line.
                 let prefix = &line.as_str()[..usize::from(comment_range.start())].trim_end();
                 return Self::WithoutPragma(Line::new(prefix, line.start()));
             }

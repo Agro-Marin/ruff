@@ -90,16 +90,12 @@ pub(crate) fn nested_if_statements(
         return;
     };
 
-    // Find the deepest nested if-statement, to inform the range.
     let Some(test) = find_last_nested_if(nested_if.body()) else {
         return;
     };
 
-    // Check if the parent is already emitting a larger diagnostic including this if statement
     if let Some(Stmt::If(stmt_if)) = parent {
         if let Some(nested_if) = nested_if_body(stmt_if) {
-            // In addition to repeating the `nested_if_body` and `find_last_nested_if` check, we
-            // also need to be the first child in the parent
             let body = nested_if.body();
             if matches!(&body[0], Stmt::If(inner) if *inner == *stmt_if)
                 && find_last_nested_if(body).is_some()
@@ -116,12 +112,10 @@ pub(crate) fn nested_if_statements(
         return;
     };
 
-    // Avoid suggesting ternary for `if sys.version_info >= ...`-style checks.
     if is_sys_version_block(stmt_if, checker.semantic()) {
         return;
     }
 
-    // Avoid suggesting ternary for `if TYPE_CHECKING:`-style checks.
     if is_type_checking_block(stmt_if, checker.semantic()) {
         return;
     }
@@ -130,8 +124,6 @@ pub(crate) fn nested_if_statements(
         CollapsibleIf,
         TextRange::new(nested_if.start(), colon.end()),
     );
-    // We skip the fix if there are comments between the outer and inner if
-    // statements.
     if !checker.comment_ranges().intersects(TextRange::new(
         nested_if.start(),
         nested_if.body()[0].start(),
@@ -211,31 +203,24 @@ fn nested_if_body(stmt_if: &ast::StmtIf) -> Option<NestedIf<'_>> {
         ..
     } = stmt_if;
 
-    // It must be the last condition, otherwise there could be another `elif` or `else` that only
-    // depends on the outer of the two conditions
     let (test, nested_if) = if let Some(clause) = elif_else_clauses.last() {
         if let Some(test) = &clause.test {
             (test, NestedIf::Elif(clause))
         } else {
-            // The last condition is an `else` (different rule)
             return None;
         }
     } else {
         (test.as_ref(), NestedIf::If(stmt_if))
     };
 
-    // The nested if must be the only child, otherwise there is at least one more statement that
-    // only depends on the outer condition
     if nested_if.body().len() > 1 {
         return None;
     }
 
-    // Allow `if __name__ == "__main__":` statements.
     if is_main_check(test) {
         return None;
     }
 
-    // Allow `if True:` and `if False:` statements.
     if test.is_boolean_literal_expr() {
         return None;
     }
@@ -311,25 +296,18 @@ fn parenthesize_and_operand(expr: libcst_native::Expression) -> libcst_native::E
 
 /// Convert `if a: if b:` to `if a and b:`.
 fn collapse_nested_if(locator: &Locator, stylist: &Stylist, nested_if: NestedIf) -> Result<Edit> {
-    // Infer the indentation of the outer block.
     let Some(outer_indent) = whitespace::indentation(locator.contents(), &nested_if) else {
         bail!("Unable to fix multiline statement");
     };
 
-    // Extract the module text.
     let contents = locator.lines_str(nested_if.range());
 
-    // If this is an `elif`, we have to remove the `elif` keyword for now. (We'll
-    // restore the `el` later on.)
     let module_text = if nested_if.is_elif() {
         Cow::Owned(contents.replacen("elif", "if", 1))
     } else {
         Cow::Borrowed(contents)
     };
 
-    // If the block is indented, "embed" it in a function definition, to preserve
-    // indentation while retaining valid source code. (We'll strip the prefix later
-    // on.)
     let module_text = if outer_indent.is_empty() {
         module_text
     } else {
@@ -339,7 +317,6 @@ fn collapse_nested_if(locator: &Locator, stylist: &Stylist, nested_if: NestedIf)
         ))
     };
 
-    // Parse the CST.
     let mut tree = match_statement(&module_text)?;
 
     let statement = if outer_indent.is_empty() {
@@ -389,7 +366,6 @@ fn collapse_nested_if(locator: &Locator, stylist: &Stylist, nested_if: NestedIf)
         }));
     outer_if.body = inner_if.body.clone();
 
-    // Reconstruct and reformat the code.
     let module_text = tree.codegen_stylist(stylist);
     let module_text = if outer_indent.is_empty() {
         &module_text

@@ -15,8 +15,6 @@ impl JsonSchema for TextSize {
     }
 
     fn json_schema(r#gen: &mut SchemaGenerator) -> Schema {
-        // TextSize is represented as a raw u32, see serde_impls.rs for the
-        // actual implementation
         <u32>::json_schema(r#gen)
     }
 }
@@ -27,8 +25,6 @@ impl JsonSchema for TextRange {
     }
 
     fn json_schema(r#gen: &mut SchemaGenerator) -> Schema {
-        // TextSize is represented as (TextSize, TextSize), see serde_impls.rs
-        // for the actual implementation
         <(TextSize, TextSize)>::json_schema(r#gen)
     }
 }

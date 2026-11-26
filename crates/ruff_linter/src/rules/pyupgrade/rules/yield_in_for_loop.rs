@@ -70,7 +70,6 @@ impl Violation for YieldInForLoop {
 
 /// UP028
 pub(crate) fn yield_in_for_loop(checker: &Checker, stmt_for: &ast::StmtFor) {
-    // Intentionally omit async contexts.
     if checker.semantic().in_async_context() {
         return;
     }
@@ -85,17 +84,14 @@ pub(crate) fn yield_in_for_loop(checker: &Checker, stmt_for: &ast::StmtFor) {
         node_index: _,
     } = stmt_for;
 
-    // If there is an else statement, don't rewrite.
     if !orelse.is_empty() {
         return;
     }
 
-    // If there's any logic besides a yield, don't rewrite.
     let [body] = body.as_slice() else {
         return;
     };
 
-    // If the body is not a yield, don't rewrite.
     let Stmt::Expr(ast::StmtExpr {
         value,
         range: _,
@@ -113,19 +109,15 @@ pub(crate) fn yield_in_for_loop(checker: &Checker, stmt_for: &ast::StmtFor) {
         return;
     };
 
-    // If the target is not the same as the value, don't rewrite. For example, we should rewrite
-    // `for x in y: yield x` to `yield from y`, but not `for x in y: yield x + 1`.
     if !is_same_expr(target, value) {
         return;
     }
 
-    // If any of the bound names are used outside of the yield itself, don't rewrite.
     if collect_names(value).any(|name| {
         checker
             .semantic()
             .current_scope()
             .get_all(name.id.as_str())
-            // Skip unbound bindings like `del x`
             .find(|&id| !checker.semantic().binding(id).is_unbound())
             .is_some_and(|binding_id| {
                 let binding = checker.semantic().binding(binding_id);

@@ -15,10 +15,8 @@ pub(crate) fn show_settings(
     config_arguments: &ConfigArguments,
     writer: &mut impl Write,
 ) -> Result<()> {
-    // Collect all files in the hierarchy.
     let (paths, resolver) = project_files_in_path(files, root_settings, config_arguments)?;
 
-    // Print the list of files.
     let Some(path) = paths
         .into_iter()
         .flatten()

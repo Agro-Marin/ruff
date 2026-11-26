@@ -99,11 +99,9 @@ pub fn lines_after_ignoring_trivia(offset: TextSize, code: &str) -> u32 {
                 newlines += 1;
             }
             SimpleTokenKind::Whitespace => {}
-            // If we see a comment, reset the newlines counter.
             SimpleTokenKind::Comment => {
                 newlines = 0;
             }
-            // As soon as we see a non-trivia token, we're done.
             _ => {
                 break;
             }
@@ -134,11 +132,7 @@ pub(super) fn is_identifier_start(c: char) -> bool {
     }
 }
 
-// Checks if the character c is a valid continuation character as described
-// in https://docs.python.org/3/reference/lexical_analysis.html#identifiers
 pub(super) fn is_identifier_continuation(c: char) -> bool {
-    // Arrange things such that ASCII codepoints never
-    // result in the slower `is_xid_continue` getting called.
     if c.is_ascii() {
         matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')
     } else {
@@ -169,7 +163,7 @@ fn to_keyword_or_other(source: &str) -> SimpleTokenKind {
         "import" => SimpleTokenKind::Import,
         "in" => SimpleTokenKind::In,
         "is" => SimpleTokenKind::Is,
-        "lazy" => SimpleTokenKind::Lazy, // Lazy is a soft keyword that depends on the context but we can always lex it as a keyword and leave it to the caller (parser) to decide if it should be handled as an identifier or keyword.
+        "lazy" => SimpleTokenKind::Lazy,
         "lambda" => SimpleTokenKind::Lambda,
         "nonlocal" => SimpleTokenKind::Nonlocal,
         "not" => SimpleTokenKind::Not,
@@ -179,12 +173,12 @@ fn to_keyword_or_other(source: &str) -> SimpleTokenKind {
         "return" => SimpleTokenKind::Return,
         "try" => SimpleTokenKind::Try,
         "while" => SimpleTokenKind::While,
-        "match" => SimpleTokenKind::Match, // Match is a soft keyword that depends on the context but we can always lex it as a keyword and leave it to the caller (parser) to decide if it should be handled as an identifier or keyword.
-        "type" => SimpleTokenKind::Type, // Type is a soft keyword that depends on the context but we can always lex it as a keyword and leave it to the caller (parser) to decide if it should be handled as an identifier or keyword.
+        "match" => SimpleTokenKind::Match,
+        "type" => SimpleTokenKind::Type,
         "case" => SimpleTokenKind::Case,
         "with" => SimpleTokenKind::With,
         "yield" => SimpleTokenKind::Yield,
-        _ => SimpleTokenKind::Name, // Potentially an identifier, but only if it isn't a string prefix. The caller (SimpleTokenizer) is responsible for enforcing that constraint.
+        _ => SimpleTokenKind::Name,
     }
 }
 
@@ -538,13 +532,11 @@ impl<'a> SimpleTokenizer<'a> {
         };
 
         if self.bogus {
-            // Emit a single final bogus token
             let token = SimpleToken {
                 kind: SimpleTokenKind::Bogus,
                 range: TextRange::new(self.offset, self.source.text_len()),
             };
 
-            // Set the cursor to EOF
             self.cursor = Cursor::new("");
             self.offset = self.source.text_len();
             return token;
@@ -566,7 +558,6 @@ impl<'a> SimpleTokenizer<'a> {
 
     fn next_token_inner(&mut self, first: char) -> SimpleTokenKind {
         match first {
-            // Keywords and identifiers
             c if is_identifier_start(c) => {
                 self.cursor.eat_while(is_identifier_continuation);
                 let token_len = self.cursor.token_len();
@@ -574,8 +565,6 @@ impl<'a> SimpleTokenizer<'a> {
                 let range = TextRange::at(self.offset, token_len);
                 let kind = to_keyword_or_other(&self.source[range]);
 
-                // If the next character is a quote, we may be in a string prefix. For example:
-                // `f"foo`.
                 if kind == SimpleTokenKind::Name
                     && matches!(self.cursor.first(), '"' | '\'')
                     && matches!(
@@ -622,8 +611,6 @@ impl<'a> SimpleTokenizer<'a> {
                 }
             }
 
-            // Space, tab, or form feed. We ignore the true semantics of form feed, and treat it as
-            // whitespace.
             ' ' | '\t' | '\x0C' => {
                 self.cursor.eat_while(|c| matches!(c, ' ' | '\t' | '\x0C'));
                 SimpleTokenKind::Whitespace
@@ -643,7 +630,6 @@ impl<'a> SimpleTokenizer<'a> {
 
             '\\' => SimpleTokenKind::Continuation,
 
-            // Non-trivia, non-keyword tokens
             '=' => {
                 if self.cursor.eat_char('=') {
                     SimpleTokenKind::EqEqual
@@ -775,7 +761,6 @@ impl<'a> SimpleTokenizer<'a> {
                 }
             }
 
-            // Bracket tokens
             '(' => SimpleTokenKind::LParen,
             ')' => SimpleTokenKind::RParen,
             '[' => SimpleTokenKind::LBracket,
@@ -831,7 +816,6 @@ impl<'a> BackwardsTokenizer<'a> {
         Self {
             offset: range.start(),
             back_offset: range.end(),
-            // Throw out any comments that follow the range.
             comment_ranges: &comment_range
                 [..comment_range.partition_point(|comment| comment.start() <= range.end())],
             bogus: false,
@@ -865,7 +849,6 @@ impl<'a> BackwardsTokenizer<'a> {
                 range: TextRange::up_to(self.back_offset),
             };
 
-            // Set the cursor to EOF
             self.cursor = Cursor::new("");
             self.back_offset = TextSize::new(0);
             return token;
@@ -878,7 +861,6 @@ impl<'a> BackwardsTokenizer<'a> {
         {
             self.comment_ranges = &self.comment_ranges[..self.comment_ranges.len() - 1];
 
-            // Skip the comment without iterating over the chars manually.
             self.cursor = Cursor::new(&self.source[TextRange::new(self.offset, comment.start())]);
             debug_assert_eq!(self.cursor.text_len() + self.offset, comment.start());
             return SimpleToken {
@@ -888,10 +870,6 @@ impl<'a> BackwardsTokenizer<'a> {
         }
 
         let kind = match last {
-            // Space, tab, or form feed. We ignore the true semantics of form feed, and treat it as
-            // whitespace. Note that this will lex-out trailing whitespace from a comment as
-            // whitespace rather than as part of the comment token, but this shouldn't matter for
-            // our use case.
             ' ' | '\t' | '\x0C' => {
                 self.cursor
                     .eat_back_while(|c| matches!(c, ' ' | '\t' | '\x0C'));
@@ -917,11 +895,7 @@ impl<'a> BackwardsTokenizer<'a> {
     /// Helper to parser the previous token once we skipped all whitespace
     fn next_token_inner(&mut self, last: char) -> SimpleTokenKind {
         match last {
-            // Keywords and identifiers
             c if is_identifier_continuation(c) => {
-                // if we only have identifier continuations but no start (e.g. 555) we
-                // don't want to consume the chars, so in that case, we want to rewind the
-                // cursor to here
                 let savepoint = self.cursor.clone();
                 self.cursor.eat_back_while(is_identifier_continuation);
 
@@ -941,9 +915,6 @@ impl<'a> BackwardsTokenizer<'a> {
                 }
             }
 
-            // Non-trivia tokens that are unambiguous when lexing backwards.
-            // In other words: these are characters that _don't_ appear at the
-            // end of a multi-character token (like `!=`).
             '\\' => SimpleTokenKind::Continuation,
             ':' => SimpleTokenKind::Colon,
             '~' => SimpleTokenKind::Tilde,
@@ -962,16 +933,7 @@ impl<'a> BackwardsTokenizer<'a> {
             '+' => SimpleTokenKind::Plus,
             '-' => SimpleTokenKind::Minus,
 
-            // Non-trivia tokens that _are_ ambiguous when lexing backwards.
-            // In other words: these are characters that _might_ mark the end
-            // of a multi-character token (like `!=` or `->` or `//` or `**`).
             '=' | '*' | '/' | '@' | '!' | '<' | '>' | '.' => {
-                // This could be a single-token token, like `+` in `x + y`, or a
-                // multi-character token, like `+=` in `x += y`. It could also be a sequence
-                // of multi-character tokens, like `x ==== y`, which is invalid, _but_ it's
-                // important that we produce the same token stream when lexing backwards as
-                // we do when lexing forwards. So, identify the range of the sequence, lex
-                // forwards, and return the last token.
                 let mut cursor = self.cursor.clone();
                 cursor.eat_back_while(|c| {
                     matches!(
@@ -999,9 +961,6 @@ impl<'a> BackwardsTokenizer<'a> {
 
                 let forward_lexer = SimpleTokenizer::new(self.source, range);
                 if let Some(token) = forward_lexer.last() {
-                    // If the token spans multiple characters, bump the cursor. Note,
-                    // though, that we already bumped the cursor to past the last character
-                    // in the token at the very start of `next_token_back`.y
                     for _ in self.source[token.range].chars().rev().skip(1) {
                         self.cursor.bump_back().unwrap();
                     }

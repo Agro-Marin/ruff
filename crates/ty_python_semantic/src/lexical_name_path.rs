@@ -54,7 +54,6 @@ pub(crate) fn lexical_name_path_component_for_node(
 ) -> Result<Option<Name>, ()> {
     let component = match node {
         NodeWithScopeKind::Module => {
-            // This is just implicit, so has no component
             return Ok(None);
         }
         NodeWithScopeKind::Class(class) => class.node(parsed).name.id.clone(),
@@ -68,7 +67,6 @@ pub(crate) fn lexical_name_path_component_for_node(
         | NodeWithScopeKind::SetComprehension(_)
         | NodeWithScopeKind::DictComprehension(_)
         | NodeWithScopeKind::GeneratorExpression(_) => {
-            // Not yet implemented
             return Err(());
         }
     };
@@ -118,7 +116,6 @@ fn lexical_name_path_component_for_leaf(
         | DefinitionKind::TypeVarTuple(_)
         | DefinitionKind::LoopHeader(_)
         | DefinitionKind::NestedBindings(_) => {
-            // Not yet implemented
             return Err(());
         }
     };

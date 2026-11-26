@@ -350,8 +350,6 @@ fn unsupported_editor_python_version() -> Result<()> {
     } else {
         "venv/lib/python3.16/site-packages/foo.py"
     };
-    // The import proves we still use the editor-selected environment for module resolution even
-    // when we ignore its unsupported reported Python version.
     let foo_content = "\
 import foo
 import sys
@@ -391,8 +389,6 @@ reveal_type(sys.version_info[:2])
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // The unsupported version inferred from the selected environment surfaces as a
-    // settings diagnostic on the environment's `pyvenv.cfg`.
     let diagnostics = server.collect_publish_diagnostic_notifications(1);
     assert_json_snapshot!(diagnostics, @r#"
     {

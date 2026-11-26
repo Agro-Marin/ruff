@@ -36,7 +36,6 @@ pub(super) fn test_expression(expr: &Expr, semantic: &SemanticModel) -> Resoluti
                 .map_or(Resolution::IrrelevantBinding, |id| {
                     match &semantic.binding(id).kind {
                         BindingKind::Argument => {
-                            // Avoid, e.g., `self.values`.
                             if matches!(name.id.as_str(), "self" | "cls") {
                                 Resolution::IrrelevantBinding
                             } else {

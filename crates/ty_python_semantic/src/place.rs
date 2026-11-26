@@ -548,20 +548,8 @@ pub(crate) fn imported_symbol<'db>(
     }
 
     // If it's not found in the global scope, check if it's present as an instance on
-    // `types.ModuleType` or `builtins.object`.
-    //
-    // We do a more limited version of this in `module_type_implicit_global_symbol`,
-    // but there are two crucial differences here:
-    // - If a member is looked up as an attribute, `__init__` is also available on the module, but
     //   it isn't available as a global from inside the module
-    // - If a member is looked up as an attribute, members on `builtins.object` are also available
-    //   (because `types.ModuleType` inherits from `object`); these attributes are also not
     //   available as globals from inside the module.
-    //
-    // The same way as in `module_type_implicit_global_symbol`, however, we need to be careful to
-    // ignore `__getattr__`. Typeshed has a fake `__getattr__` on `types.ModuleType` to help out with
-    // dynamic imports; we shouldn't use it for `ModuleLiteral` types where we know exactly which
-    // module we're dealing with.
     file.map_or_default(|file| {
         let requires_explicit_reexport = requires_explicit_reexport.unwrap_or_else(|| {
             if file.file(db).is_stub(db) {
@@ -582,17 +570,6 @@ pub(crate) fn imported_symbol<'db>(
     .or_fall_back_to(db, env, || {
         match name {
             "__file__" => {
-                // We special-case `__file__` here because we know that for a successfully imported
-                // non-namespace-package Python module, that hasn't been explicitly overridden it
-                // is always a string, even though typeshed says `str | None`. For a namespace package,
-                // meanwhile, it will always be `None`.
-                //
-                // Note that C-extension modules (stdlib examples include `sys`, `itertools`, etc.)
-                //  may not have a `__file__` attribute at runtime at all, but that doesn't really
-                // affect the *type* of the attribute, just the *boundness*. There's no way for us
-                // to know right now whether a stub represents a C extension or not, so for now we
-                // do not attempt to detect this; we just infer `str` still. This matches the
-                // behaviour of other major type checkers.
                 if file.is_some() {
                     Place::bound(KnownClass::Str.to_instance(db, env)).into()
                 } else {
@@ -686,9 +663,6 @@ fn builtins_symbol_impl<'db>(
             ConsideredDefinitions::EndOfScope,
         )
         .or_fall_back_to(db, env, || {
-            // We're looking up in the builtins namespace and not the module, so we should
-            // do the normal lookup in `types.ModuleType` and not the special one as in
-            // `imported_symbol`.
             module_type_implicit_global_symbol(db, file, symbol)
         });
         found_symbol.ignore_possibly_undefined()?;
@@ -703,7 +677,6 @@ fn builtins_symbol_impl<'db>(
 
         Some((scope, found_symbol))
     };
-    // If this symbol is not present in project-level builtins, search in the default ones.
     resolve_module_confident(
         db,
         resolver_environment,
@@ -833,8 +806,6 @@ pub(crate) fn has_bound_prefix<'db>(
             DefinitionState::Defined(definition) => {
                 let kind = definition.kind(db);
                 if kind.is_user_visible() && !matches!(kind, DefinitionKind::DictKeyAssignment(_)) {
-                    // With no unbound or deleted alternative, even an unreachable binding gives
-                    // a defined place of type Never. Either way the outer prefix is shadowed.
                     return true;
                 }
             }
@@ -967,10 +938,6 @@ impl<'db> PlaceFromDeclarationsResult<'db> {
         for candidate in candidates {
             let definition = candidate.definition;
 
-            // A genuine stub annotation can export its symbol even when an import omits the
-            // redundant alias normally required for re-export. The import itself remains private.
-            // TODO: Preserve `Final` when a later public assignment re-exports a private import,
-            // without leaking qualifiers from a private branch.
             if self.first_declaration.is_none()
                 && is_non_exported(db, definition, requires_explicit_reexport)
             {
@@ -997,8 +964,6 @@ impl<'db> PlaceFromDeclarationsResult<'db> {
 
             self.qualifiers.insert(TypeQualifiers::FINAL);
 
-            // Public lookup must still regard this symbol as undeclared. Only assignment
-            // inference without an annotation needs the imported source type as a constraint.
             if !fallback_to_imported_type {
                 return self;
             }
@@ -1221,10 +1186,6 @@ impl<'db> PlaceAndQualifiers<'db> {
             previous_place.qualifiers.union(self.qualifiers)
         };
         let place = match (previous_place.place, self.place) {
-            // In fixed-point iteration of type inference, the member result must be monotonically
-            // widened and not "oscillate". The type component is widened by unioning the previous
-            // iteration into the current result; after the first couple iterations, the same
-            // applies to boundness and qualifiers.
             (Place::Defined(prev), Place::Defined(current)) => Place::Defined(DefinedPlace {
                 ty: current.ty.cycle_normalized(db, env, prev.ty, cycle),
                 definedness: if cycle.iteration() <= 1
@@ -1239,13 +1200,6 @@ impl<'db> PlaceAndQualifiers<'db> {
                 provenance: prev.provenance.or(current.provenance),
                 ..current
             }),
-            // If a `Place` in the current cycle is `Defined` but `Undefined` in the previous cycle,
-            // that means that its definedness depends on the truthiness of the previous cycle value.
-            // In this case, the definedness of the current cycle `Place` is set to `PossiblyUndefined`.
-            // Actually, this branch is unreachable. We evaluate the truthiness of non-definitely-bound places as Ambiguous (see #19579),
-            // so convergence is guaranteed without resorting to this handling.
-            // However, the handling described above may reduce the exactness of reachability analysis,
-            // so it may be better to remove it. In that case, this branch is necessary.
             (Place::Undefined, Place::Defined(current)) => Place::Defined(DefinedPlace {
                 ty: current.ty.recursive_type_normalized(db, env, cycle),
                 definedness: if cycle.iteration() <= 1 {
@@ -1255,8 +1209,6 @@ impl<'db> PlaceAndQualifiers<'db> {
                 },
                 ..current
             }),
-            // If a `Place` that was `Defined(Divergent)` in the previous cycle is actually found to be unreachable in the current cycle,
-            // it is set to `Undefined` (because the cycle initial value does not include meaningful reachability information).
             (Place::Defined(prev), Place::Undefined) => {
                 if cycle.head_ids().any(|id| prev.ty == Type::divergent(id)) {
                     Place::Undefined
@@ -1299,8 +1251,6 @@ pub(crate) fn place_by_id<'db>(
     let use_def = use_def_map(db, scope);
     let env = ProgramEnvironment::from_scope(scope);
 
-    // If the place is declared, the public type is based on declarations; otherwise, it's based
-    // on inference from bindings.
 
     let (declarations, imported_final) = match considered_definitions {
         ConsideredDefinitions::EndOfScope => (
@@ -1338,7 +1288,6 @@ pub(crate) fn place_by_id<'db>(
                 ..
             },
         ) => Place::Defined(declaration.with_type(ty)).with_qualifiers(qualifiers),
-        // Place is possibly declared
         Some(DefinedPlace {
             ty: Some(declared_ty),
             origin,
@@ -1352,11 +1301,7 @@ pub(crate) fn place_by_id<'db>(
                 place_from_bindings_impl(db, &env, bindings, requires_explicit_reexport, None);
 
             let place = match inferred.place {
-                // Place is possibly undeclared and definitely unbound
                 Place::Undefined => {
-                    // TODO: We probably don't want to report `AlwaysDefined` here. This requires a bit of
-                    // design work though as we might want a different behavior for stubs and for
-                    // normal modules.
                     Place::Defined(DefinedPlace {
                         ty: declared_ty,
                         origin,
@@ -1365,7 +1310,6 @@ pub(crate) fn place_by_id<'db>(
                         provenance: declared_provenance,
                     })
                 }
-                // Place is possibly undeclared and (possibly) bound
                 Place::Defined(DefinedPlace {
                     ty: inferred_ty,
                     origin,
@@ -1387,7 +1331,6 @@ pub(crate) fn place_by_id<'db>(
 
             PlaceAndQualifiers { place, qualifiers }
         }
-        // Without a declared type, infer the public type from bindings.
         declaration => {
             let bindings = all_considered_bindings();
             let boundness_analysis = bindings.boundness_analysis();
@@ -1397,10 +1340,8 @@ pub(crate) fn place_by_id<'db>(
 
             if let Some(declaration) = declaration {
                 if qualifiers.contains(TypeQualifiers::FINAL) {
-                    // A bare `Final` keeps its inferred literal type.
                     return inferred.with_qualifiers(qualifiers);
                 }
-                // A bare `ClassVar` can declare a member before any value is available.
                 let Place::Defined(binding) = &mut inferred else {
                     return Place::Defined(declaration.with_type(Type::unknown()))
                         .with_qualifiers(qualifiers);
@@ -1417,15 +1358,6 @@ pub(crate) fn place_by_id<'db>(
                 }
             }
 
-            // `__slots__` is a symbol with special behavior in Python's runtime. It can be
-            // modified externally, but those changes do not take effect. We therefore issue
-            // a diagnostic if we see it being modified externally. In type inference, we
-            // can assign a "narrow" type to it even if it is not *declared*. This means we do
-            // not have to adjust its public type.
-            //
-            // `TYPE_CHECKING` is a special variable that should only be assigned `False`
-            // at runtime, but is always considered `True` in type checking.
-            // See mdtest/known_constants.md#user-defined-type_checking for details.
             let is_considered_non_modifiable = place_id.as_symbol().is_some_and(|symbol_id| {
                 matches!(
                     place_table(db, scope).symbol(symbol_id).name().as_str(),
@@ -1434,18 +1366,10 @@ pub(crate) fn place_by_id<'db>(
             });
 
             // Module-level globals can be mutated externally, and strict application of the
-            // gradual guarantee would suggest that if not annotated, all such external mutations
-            // should be valid. However, external modifications (or modifications through `global`
-            // statements) that would require a different public type are relatively rare. From a
-            // practical perspective, we get a better user experience by trusting the inferred type
-            // by default, and only requiring annotation for the rare case.
             let is_module_global = scope.node(db).scope_kind().is_module();
 
-            // If the visibility of the scope is private (like for a function scope), we also keep
-            // the raw type, because the symbol cannot be modified externally.
             let scope_has_private_visibility = scope.scope(db).visibility().is_private();
 
-            // We generally trust undeclared places in stubs and expose the raw type.
             let in_stub_file = scope.file(db).is_stub(db);
 
             if !(is_considered_non_modifiable
@@ -1453,9 +1377,6 @@ pub(crate) fn place_by_id<'db>(
                 || scope_has_private_visibility
                 || in_stub_file)
             {
-                // Public inferred types should expose a promoted view rather than their raw
-                // inferred literal form. The adjustment is applied lazily when converting to
-                // `LookupResult` via `into_lookup_result`.
                 inferred = inferred.with_public_type_policy(PublicTypePolicy::Promote);
             }
 
@@ -1463,20 +1384,6 @@ pub(crate) fn place_by_id<'db>(
         }
     }
 
-    // TODO (ticket: https://github.com/astral-sh/ruff/issues/14297) Our handling of boundness
-    // currently only depends on bindings, and ignores declarations. This is inconsistent, since
-    // we only look at bindings if the place may be undeclared. Consider the following example:
-    // ```py
-    // x: int
-    //
-    // if flag:
-    //     y: int
-    // else
-    //     y = 3
-    // ```
-    // If we import from this module, we will currently report `x` as a definitely-bound place
-    // (even though it has no bindings at all!) but report `y` as possibly-unbound (even though
-    // every path has either a binding or a declaration for it.)
 }
 
 enum DeclarationsBoundnessEvaluator<'map, 'db> {
@@ -1497,10 +1404,6 @@ impl<'db> DeclarationsBoundnessEvaluator<'_, 'db> {
                 if all_declarations_definitely_reachable {
                     Definedness::AlwaysDefined
                 } else {
-                    // For declarations, it is important to consider the possibility that they might only
-                    // be bound in one control flow path, while the other path contains a binding. In order
-                    // to even consider the bindings as well in `place_by_id`, we return `PossiblyUndefined`
-                    // here.
                     Definedness::PossiblyUndefined
                 }
             }
@@ -1559,7 +1462,6 @@ fn symbol_impl<'db>(
             .is_some_and(|module| module.is_known(db, known_module))
     };
 
-    // Check the symbol name first to avoid a module-resolution query for every symbol lookup.
     if matches!(name, "version_info" | "platform") && is_known_module(KnownModule::Sys) {
         match name {
             "version_info" => {
@@ -1580,7 +1482,6 @@ fn symbol_impl<'db>(
     if name == "name" && is_known_module(KnownModule::Os) {
         match scope.program(db).python_platform(db) {
             crate::PythonPlatform::Identifier(platform) => {
-                // In CPython, `os.name` is `"nt"` on Windows and `"posix"` otherwise.
                 let os_name = if platform == "win32" { "nt" } else { "posix" };
                 return Place::bound(Type::string_literal(db, os_name)).into();
             }
@@ -1634,8 +1535,6 @@ fn loop_header_reachability_impl<'db>(
     definition: Definition<'db>,
     mut cycle_initial_cache: Option<&mut FxHashMap<Definition<'db>, Truthiness>>,
 ) -> LoopHeaderReachability<'db> {
-    // This cutoff was chosen by benchmarking real isort to keep loop analysis
-    // overhead minimal while preserving diagnostics.
     const MAX_EXACT_LOOP_HEADER_REACHABILITY_NODES: usize = 2048;
 
     let DefinitionKind::LoopHeader(loop_header_definition) = definition.kind(db) else {
@@ -1665,14 +1564,11 @@ fn loop_header_reachability_impl<'db>(
         } else {
             Truthiness::Ambiguous
         };
-        // Skip unreachable bindings.
         if reachability.is_always_false() {
             continue;
         }
 
         match use_def.definition(live_binding.binding()) {
-            // Assignment validity can depend on this header, so avoid inferring it while
-            // initializing a cycle.
             DefinitionState::Defined(def)
                 if cycle_initial_cache.is_some() || !is_discarded_dict_key_assignment(db, def) =>
             {
@@ -1681,14 +1577,8 @@ fn loop_header_reachability_impl<'db>(
                     "loop headers only include bindings from within the loop"
                 );
                 if def.kind(db).is_loop_header() {
-                    // An inner loop can reach a `break` with a header binding that carries a
-                    // deletion from an earlier iteration. That deletion also affects boundness
-                    // in the enclosing loop.
                     let nested_deleted_reachability =
                         if let Some(cache) = cycle_initial_cache.as_deref_mut() {
-                            // Cycle initialization cannot evaluate predicates that could re-enter
-                            // the cycle. Memoize this structural walk because a descendant header
-                            // can be reached through several containing headers.
                             cache.get(&def).copied().unwrap_or_else(|| {
                                 let deleted_reachability =
                                     loop_header_reachability_impl(db, def, Some(cache))
@@ -1699,8 +1589,6 @@ fn loop_header_reachability_impl<'db>(
                         } else {
                             loop_header_reachability(db, def).deleted_reachability
                         };
-                    // This binding is reachable, but a conditional loop-back path can make a
-                    // definitely reachable nested deletion only possibly reachable here.
                     deleted_reachability =
                         deleted_reachability.or(match nested_deleted_reachability {
                             Truthiness::AlwaysTrue => reachability,
@@ -1712,11 +1600,6 @@ fn loop_header_reachability_impl<'db>(
                     narrowing_constraint: live_binding.narrowing_constraint(),
                 });
             }
-            // `del` in the loop body is always visible to code after the loop via the
-            // normal control flow merge. Updating `deleted_reachability` here is
-            // necessary for prior uses in the loop to see it.
-            // Discarded dictionary-key bindings also require a fallback to the receiver's
-            // value type instead of contributing their assigned value.
             DefinitionState::Defined(_) | DefinitionState::Deleted => {
                 deleted_reachability = deleted_reachability.or(reachability);
                 deleted_narrowing_constraints.insert(live_binding.narrowing_constraint());
@@ -1752,8 +1635,6 @@ impl<'db> LoopHeaderReachability<'db> {
         previous: &LoopHeaderReachability<'db>,
         cycle: &salsa::Cycle,
     ) -> LoopHeaderReachability<'db> {
-        // Avoid losing precision for cycles that are soon to converge.
-        // See [`Type::cycle_normalized`] for more details.
         if cycle.iteration() <= crate::TAINTED_CYCLES {
             return self;
         }
@@ -1818,9 +1699,6 @@ fn place_from_bindings_impl<'db>(
     };
     let mut deleted_reachability = Truthiness::AlwaysFalse;
 
-    // Evaluate this lazily because we don't always need it (for example, if there are no visible
-    // bindings at all, we don't need it), and it can cause us to evaluate reachability constraint
-    // expressions, which is extra work and can lead to cycles.
     let unbound_visibility = || {
         unbound_reachability_constraint.map(|reachability_constraint| {
             evaluate_reachability_with_cache(
@@ -1835,7 +1713,6 @@ fn place_from_bindings_impl<'db>(
 
     let mut first_definition = None;
     let mut provenance = Provenance::Unknown;
-    // special handling for synthetic loop header definitions and nested bindings definitions
     let mut only_non_shadowing_bindings = true;
     let mut narrowing_projector = None;
 
@@ -1850,9 +1727,6 @@ fn place_from_bindings_impl<'db>(
                 DefinitionState::Defined(binding)
                     if is_discarded_dict_key_assignment(db, binding) =>
                 {
-                    // This synthesized `d[key] = value` binding was derived from an assignment such
-                    // as `d = {key: value}`. If the RHS is not known to be stored unchanged, discard
-                    // the binding so that lookup of `d[key]` can fall back to `d`.
                     return None;
                 }
                 DefinitionState::Defined(binding) => binding,
@@ -1886,52 +1760,6 @@ fn place_from_bindings_impl<'db>(
             );
 
             if static_reachability.is_always_false() {
-                // If the static reachability evaluates to false, the binding is either not reachable
-                // from the start of the scope, or there is no control flow path from that binding to
-                // the use of the place that we are investigating. There are three interesting cases
-                // to consider:
-                //
-                // ```py
-                // def f1():
-                //     if False:
-                //         x = 1
-                //     use(x)
-                //
-                // def f2():
-                //     y = 1
-                //     return
-                //     use(y)
-                //
-                // def f3(flag: bool):
-                //     if flag:
-                //         z = 1
-                //     else:
-                //         z = 2
-                //         return
-                //     use(z)
-                // ```
-                //
-                // In the first case, there is a single binding for `x`, but it is not reachable from
-                // the start of the scope. However, the use of `x` is reachable (`unbound_reachability`
-                // is not always-false). This means that `x` is unbound and we should return `None`.
-                //
-                // In the second case, the binding of `y` is reachable, but there is no control flow
-                // path from the beginning of the scope, through that binding, to the use of `y` that
-                // we are investigating. There is also no control flow path from the start of the
-                // scope, through the implicit `y = <unbound>` binding, to the use of `y`. This means
-                // that `unbound_reachability` is always false. Since there are no other bindings, no
-                // control flow path can reach this use of `y`, implying that we are in unreachable
-                // section of code. We return `Never` in order to silence the `unresolve-reference`
-                // diagnostic that would otherwise be emitted at the use of `y`.
-                //
-                // In the third case, we have two bindings for `z`. The first one is visible (there
-                // is a path of control flow from the start of the scope, through that binding, to
-                // the use of `z`). So we consider the case that we now encounter the second binding
-                // `z = 2`, which is not visible due to the early return. The `z = <unbound>` binding
-                // is not live (shadowed by the other bindings), so `unbound_reachability` is `None`.
-                // Here, we are *not* in an unreachable section of code. However, it is still okay to
-                // return `Never` in this case, because we will union the types of all bindings, and
-                // `Never` will be eliminated automatically.
 
                 if unbound_visibility().is_none_or(Truthiness::is_always_false) {
                     return Some((Type::Never, static_reachability));
@@ -1939,23 +1767,14 @@ fn place_from_bindings_impl<'db>(
                 return None;
             }
 
-            // We need to "look through" loop header definitions to do boundness analysis. The
-            // actual type is computed by `infer_loop_header_definition` via `binding_type` below,
-            // like all other bindings, so that it can participate in fixpoint iteration.
             let binding_kind = binding.kind(db);
             if binding_kind.is_loop_header() {
                 let loop_header = loop_header_reachability(db, binding);
                 deleted_reachability = deleted_reachability.or(loop_header.deleted_reachability);
-                // If all the bindings in the loop are in statically false branches, it might be
-                // that none of them loop-back. In that case short-circuit, so that we don't
-                // produce an `Unknown` fallback type, and so that `Place::Undefined` is still a
-                // possibility below.
                 if loop_header.reachable_bindings.is_empty() {
                     return None;
                 }
             } else if matches!(binding_kind, DefinitionKind::NestedBindings(_)) {
-                // Nested bindings definitions similar to loop header definitions, synthetic
-                // bindings with special shadowing behavior. They can also coexist with `UNBOUND`.
             } else {
                 only_non_shadowing_bindings = false;
             }
@@ -2004,9 +1823,6 @@ fn place_from_bindings_impl<'db>(
             BoundnessAnalysis::AssumeBound => Definedness::AlwaysDefined,
             BoundnessAnalysis::BasedOnUnboundVisibility => match unbound_visibility() {
                 Some(Truthiness::AlwaysTrue) if only_non_shadowing_bindings => {
-                    // Loop header and nested binding definitions don't shadow prior bindings, so
-                    // UNBOUND can still be definitely-visible alongside them. See "Use with loop
-                    // header and also `UNBOUND` definitely visible" in `while_loop.md`.
                     Definedness::PossiblyUndefined
                 }
                 Some(Truthiness::AlwaysTrue) => {
@@ -2086,9 +1902,6 @@ impl<'db> PublicTypeBuilder<'db> {
             Type::FunctionLiteral(function) => {
                 let last_definition = function.literal(db).last_definition;
                 if last_definition.is_overload(db) {
-                    // Distinct overloaded function values can be assigned to the same public
-                    // symbol in separate branches. Preserve the queued value unless the next
-                    // overload belongs to the same place.
                     if !self.queue.is_some_and(|queued| {
                         let Type::FunctionLiteral(queued_function) = queued else {
                             return false;
@@ -2101,9 +1914,6 @@ impl<'db> PublicTypeBuilder<'db> {
                     self.queue = Some(element);
                     false
                 } else {
-                    // An unconditional implementation shadows preceding overload definitions. A
-                    // conditional definition, however, can be only one public possibility among
-                    // several, so keep any unrelated queued overloaded function in the union.
                     if reachability.is_always_true()
                         || self.queue.is_some_and(|queued| {
                             let Type::FunctionLiteral(queued_function) = queued else {
@@ -2280,8 +2090,6 @@ fn place_from_declarations_impl<'db>(
             (first, None)
         };
 
-        // When only some paths declare a type, public lookup also considers the inferred
-        // type of the bindings, just as it would for paths with no annotation at all.
         let boundness = if has_qualifier_only_declaration && declared.inner_type().is_some() {
             Definedness::PossiblyUndefined
         } else {
@@ -2313,19 +2121,11 @@ fn is_non_exported<'db>(
     requires_explicit_reexport.is_yes() && !is_reexported(db, declaration)
 }
 
-// Returns `true` if the `definition` is re-exported.
-//
-// This will first check if the definition is using the "redundant alias" pattern like `import foo
-// as foo` or `from foo import bar as bar`. If it's not, it will check whether the symbol is being
 // exported via `__all__`.
 fn is_reexported(db: &dyn Db, definition: Definition<'_>) -> bool {
-    // This information is computed by the semantic index builder.
     if definition.is_reexported(db) {
         return true;
     }
-    // At this point, the definition should either be an `import` or `from ... import` statement.
-    // This is because the default value of `is_reexported` is `true` for any other kind of
-    // definition.
     let Some(all_names) = dunder_all_names(db, definition.program_file(db)) else {
         return false;
     };
@@ -2471,18 +2271,9 @@ pub(crate) mod implicit_globals {
     ) -> PlaceAndQualifiers<'db> {
         let env = ProgramEnvironment::from_file(file);
         match name {
-            // We special-case `__file__` here because we know that for an internal implicit global
-            // lookup in a Python module, it is always a string, even though typeshed says `str |
-            // None`.
             "__file__" => Place::bound(KnownClass::Str.to_instance(db, &env)).into(),
 
-            // We special-case `__doc__` because a module with a literal docstring has `__doc__`
-            // set to that string at runtime. We only narrow when a docstring is present: `__doc__`
-            // may be set dynamically, so we fall back to the typeshed's `str | None`.
             "__doc__" if module_docstring(db, file.python_file(db)).is_some() => {
-                // Docstrings are stripped in `-OO` optimized mode, but here we assume that the
-                // existence of an actual docstring AND the usage of `__doc__` is reason enough to
-                // believe that it will exist at runtime.
                 Place::bound(KnownClass::Str.to_instance(db, &env)).into()
             }
 
@@ -2490,8 +2281,6 @@ pub(crate) mod implicit_globals {
 
             "__debug__" => Place::bound(KnownClass::Bool.to_instance(db, &env)).into(),
 
-            // Created lazily by the warnings machinery; may be absent.
-            // Model as possibly-unbound to avoid false negatives.
             "__warningregistry__" => Place::Defined(
                 DefinedPlace::new(KnownClass::Dict.to_specialized_instance(
                     db,
@@ -2502,7 +2291,6 @@ pub(crate) mod implicit_globals {
             )
             .into(),
 
-            // Marked as possibly-unbound as it is only present in the module namespace
             // if at least one global symbol is annotated in the module.
             "__annotate__" if env.python_version(db) >= PythonVersion::PY314 => {
                 let signature = Signature::new(
@@ -2523,11 +2311,6 @@ pub(crate) mod implicit_globals {
                 .into()
             }
 
-            // In general we wouldn't check to see whether a symbol exists on a class before doing the
-            // `.member()` call on the instance type -- we'd just do the `.member`() call on the instance
-            // type, since it has the same end result. The reason to only call `.member()` on `ModuleType`
-            // when absolutely necessary is that this function is used in a very hot path (name resolution
-            // in `infer.rs`). We use less idiomatic (and much more verbose) code here as a micro-optimisation.
             _ => {
                 if !module_type_symbols(db, &env)
                     .iter()
@@ -2602,8 +2385,6 @@ pub(crate) mod implicit_globals {
     ) -> smallvec::SmallVec<[ast::name::Name; 8]> {
         let env = ProgramEnvironment::from_program(program);
         let Some(module_type_scope) = module_type_body_scope(db, &env) else {
-            // The most likely way we get here is if a user specified a `--custom-typeshed-dir`
-            // without a resolvable `ModuleType` class in the `stdlib/types.pyi` stub.
             return smallvec::SmallVec::default();
         };
         module_type_symbols_from_scope(db, module_type_scope)
@@ -2623,16 +2404,13 @@ pub(crate) mod implicit_globals {
             .into_iter()
             .map(Name::new_static);
 
-        // All symbols from ModuleType (already includes `__file__`, `__name__`, etc.)
         let env = ProgramEnvironment::from_file(file);
         let module_type_syms = module_type_symbols(db, &env).iter().cloned();
 
-        // Combine and map to (name, type) pairs
         special_cased
             .chain(module_type_syms)
             .filter_map(move |name| {
                 let place = module_type_implicit_global_symbol(db, file, name.as_str());
-                // Only include bound symbols
                 place.place.ignore_possibly_undefined().map(|ty| (name, ty))
             })
     }
@@ -2674,7 +2452,6 @@ pub(crate) fn class_body_implicit_symbol<'db>(
     match name {
         "__qualname__" => Place::bound(KnownClass::Str.to_instance(db, env)).into(),
         "__module__" => Place::bound(KnownClass::Str.to_instance(db, env)).into(),
-        // __doc__ is `str` if there's a docstring, `None` if there isn't
         "__doc__" => Place::bound(UnionType::from_two_elements(
             db,
             env,
@@ -2682,7 +2459,6 @@ pub(crate) fn class_body_implicit_symbol<'db>(
             Type::none(db, env),
         ))
         .into(),
-        // __firstlineno__ was added in Python 3.13
         "__firstlineno__" if env.python_version(db) >= PythonVersion::PY313 => {
             Place::bound(KnownClass::Int.to_instance(db, env)).into()
         }
@@ -2786,7 +2562,6 @@ mod tests {
             .with_qualifiers(TypeQualifiers::empty())
         };
 
-        // Start from an unbound symbol
         assert_eq!(unbound().or_fall_back_to(db, &env, unbound), unbound());
         assert_eq!(
             unbound().or_fall_back_to(db, &env, possibly_unbound_ty1),
@@ -2794,7 +2569,6 @@ mod tests {
         );
         assert_eq!(unbound().or_fall_back_to(db, &env, bound_ty1), bound_ty1());
 
-        // Start from a possibly unbound symbol
         assert_eq!(
             possibly_unbound_ty1().or_fall_back_to(db, &env, unbound),
             possibly_unbound_ty1()
@@ -2822,7 +2596,6 @@ mod tests {
             .into()
         );
 
-        // Start from a definitely bound symbol
         assert_eq!(bound_ty1().or_fall_back_to(db, &env, unbound), bound_ty1());
         assert_eq!(
             bound_ty1().or_fall_back_to(db, &env, possibly_unbound_ty2),

@@ -101,7 +101,6 @@ impl IncludeFilter {
             return true;
         };
 
-        // Allow the root path
         if path == SystemPath::new("") {
             return true;
         }
@@ -118,12 +117,7 @@ impl IncludeFilter {
         for b in byte_path {
             state = dfa.next_state(state, *b);
         }
-        // Say we're looking at a directory `foo/bar`. We want to continue if either `foo/bar` is
-        // a match, e.g., from `foo/*`, or a path below it can match, e.g., from `foo/bar/*`.
         let eoi_state = dfa.next_eoi_state(state);
-        // We must not call `next_eoi_state` on the slash state, we want to only check if more
-        // characters (path components) are allowed, not if we're matching the `$` anchor at the
-        // end.
         let slash_state = dfa.next_state(state, u8::try_from(MAIN_SEPARATOR).unwrap());
 
         debug_assert!(
@@ -200,45 +194,31 @@ impl IncludeFilterBuilder {
 
         let mut only_directory = false;
 
-        // A pattern ending with a `/` should only match directories. E.g. `src/` only matches directories
-        // whereas `src` matches both files and directories.
-        // We need to remove the `/` to ensure that a path missing the trailing `/` matches.
         if let Some(after) = glob_pattern.strip_suffix('/') {
-            // Escaped `/` or `\` aren't allowed. `portable_glob::parse` will error
             only_directory = true;
             glob_pattern = after;
         }
 
-        // If regex ends with `/**`, only push that one glob and regex
-        // Otherwise, push two regex, one for `/**` and one for without
         let glob = GlobBuilder::new(glob_pattern)
             .literal_separator(true)
-            // No need to support Windows-style paths, so the backslash can be used a escape.
             .backslash_escape(true)
             .build()?;
 
         self.original_patterns.push(input.absolute().into());
 
-        // `lib` is the same as `lib/**`
-        // Add a glob that matches `lib` exactly, change the glob to `lib/**`.
         if glob_pattern.ends_with("**") {
             self.push_prefix_regex(&glob);
             self.add_glob(glob);
         } else {
             let prefix_glob = GlobBuilder::new(&format!("{glob_pattern}/**"))
                 .literal_separator(true)
-                // No need to support Windows-style paths, so the backslash can be used a escape.
                 .backslash_escape(true)
                 .build()?;
 
             self.push_prefix_regex(&prefix_glob);
             self.add_glob(prefix_glob);
 
-            // The reason we add the exact glob, e.g. `src` when the original pattern was `src/` is
-            // so that `match_file` returns true when matching against a file. However, we don't
-            // need to do this if this is a pattern that should only match a directory (specifically, its contents).
             if !only_directory {
-                // The anchored glob may contain escaped characters from the directory.
                 let is_literal_pattern = globset::escape(input.relative()) == input.relative();
 
                 if is_literal_pattern {
@@ -263,10 +243,8 @@ impl IncludeFilterBuilder {
 
         let regex = glob
             .regex()
-            // We are using a custom DFA builder
             .strip_prefix("(?-u)")
             .expect("a glob is a non-unicode byte regex")
-            // Match windows paths if applicable
             .replace('/', &main_separator);
 
         self.regexes.push(regex);
@@ -280,7 +258,6 @@ impl IncludeFilterBuilder {
 
         let dfa_builder = dfa::dense::Builder::new()
             .syntax(
-                // The glob regex is a byte matcher
                 regex_automata::util::syntax::Config::new()
                     .unicode(false)
                     .utf8(false),
@@ -288,7 +265,6 @@ impl IncludeFilterBuilder {
             .configure(
                 dfa::dense::Config::new()
                     .start_kind(dfa::StartKind::Anchored)
-                    // DFA can grow exponentially, in which case we bail out
                     .dfa_size_limit(Some(DFA_SIZE_LIMIT))
                     .determinize_size_limit(Some(DFA_SIZE_LIMIT)),
             )
@@ -296,8 +272,6 @@ impl IncludeFilterBuilder {
         let dfa = if let Ok(dfa) = dfa_builder {
             Some(dfa)
         } else {
-            // TODO(konsti): `regex_automata::dfa::dense::BuildError` should allow asking whether
-            // is a size error
             warn!(
                 "Glob expressions regex is larger than {DFA_SIZE_LIMIT} bytes, \
                     falling back to full directory traversal!"
@@ -380,8 +354,6 @@ mod tests {
 
     #[test]
     fn match_directory() {
-        // `lib` is the same as `src/**`. It includes a file or directory (including its contents)
-        // `src/*`: The same as `src/**`
         let filter = create_filter(["lib", "src/*", "tests/**", "a/test-*/b", "files/*.py"]);
 
         assert_match_directory(&filter, "lib");
@@ -408,8 +380,6 @@ mod tests {
 
     #[test]
     fn match_file() {
-        // `lib` is the same as `src/**`. It includes a file or directory (including its contents)
-        // `src/*`: The same as `src/**`
         let filter = create_filter([
             "lib",
             "src/*",
@@ -422,19 +392,15 @@ mod tests {
         assert_eq!(filter.match_file("lib"), MatchFile::Literal);
         assert_eq!(filter.match_file("lib/more/test"), MatchFile::Pattern);
 
-        // Unlike `directory`, `directory/` only includes a directory with the given name and its contents
         assert_eq!(filter.match_file("directory"), MatchFile::No);
         assert_eq!(filter.match_file("directory/more/test"), MatchFile::Pattern);
 
-        // Unlike `src`, `src/*` only includes a directory with the given name.
         assert_eq!(filter.match_file("src"), MatchFile::No);
         assert_eq!(filter.match_file("src/more/test"), MatchFile::Pattern);
 
-        // Unlike `tests`, `tests/**` only includes files under `tests`, but not a file named tests
         assert_eq!(filter.match_file("tests"), MatchFile::No);
         assert_eq!(filter.match_file("tests/more/test"), MatchFile::Pattern);
 
-        // Unlike `match_directory`, prefixes should not be included.
         assert_eq!(filter.match_file("a"), MatchFile::No);
         assert_eq!(filter.match_file("a/test-b"), MatchFile::No);
 
@@ -469,18 +435,15 @@ mod tests {
     fn prefilter() {
         let filter = create_filter(["/a/b/test-*/d", "/a/b/c/e", "/b/c"]);
         let fs = setup_files([
-            // Should visit
             "/a/b/test-a/d",
             "/a/b/c/e",
             "/b/c",
-            // Can skip
             "/d/e",
             "/a/b/x/f",
         ]);
 
         let visited = std::sync::Mutex::new(Vec::new());
 
-        // Test the prefix filtering
         fs.walk_directory("/").run(|| {
             Box::new(|entry| {
                 let entry = entry.unwrap();
@@ -503,7 +466,6 @@ mod tests {
         let mut visited = visited.into_inner().unwrap();
         visited.sort();
 
-        // Assert that it didn't traverse into `/d` or `/a/b/x`
         assert_eq!(
             visited,
             [

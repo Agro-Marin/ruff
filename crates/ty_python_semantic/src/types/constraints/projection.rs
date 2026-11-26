@@ -24,8 +24,6 @@ pub(crate) struct SolutionBudget {
 
 impl Default for SolutionBudget {
     fn default() -> Self {
-        // Allow long, simple conjunctions and sizable existing unions without allowing their
-        // alternatives to expand into an equally large family of specializations.
         Self {
             paths: 4_096,
             visits: 32_768,

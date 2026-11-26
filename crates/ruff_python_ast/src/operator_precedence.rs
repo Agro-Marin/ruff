@@ -56,7 +56,6 @@ pub enum OperatorPrecedence {
 impl OperatorPrecedence {
     fn from_expr_ref(expr: ExprRef) -> Self {
         match expr {
-            // Binding or parenthesized expression, list display, dictionary display, set display
             ExprRef::Tuple(_)
             | ExprRef::Dict(_)
             | ExprRef::Set(_)
@@ -74,57 +73,36 @@ impl OperatorPrecedence {
             | ExprRef::EllipsisLiteral(_)
             | ExprRef::FString(_)
             | ExprRef::TString(_) => Self::Atomic,
-            // Subscription, slicing, call, attribute reference
             ExprRef::Attribute(_)
             | ExprRef::Subscript(_)
             | ExprRef::Call(_)
             | ExprRef::Slice(_) => Self::CallAttribute,
 
-            // Await expression
             ExprRef::Await(_) => Self::Await,
 
-            // Exponentiation **
-            // Handled below along with other binary operators
 
-            // Unary operators: +x, -x, ~x (except boolean not)
             ExprRef::UnaryOp(operator) => match operator.op {
                 UnaryOp::UAdd | UnaryOp::USub | UnaryOp::Invert => Self::PosNegBitNot,
                 UnaryOp::Not => Self::Not,
             },
 
-            // Math binary ops
             ExprRef::BinOp(binary_operation) => Self::from(binary_operation.op),
 
-            // Comparisons: <, <=, >, >=, ==, !=, in, not in, is, is not
             ExprRef::Compare(_) => Self::ComparisonsMembershipIdentity,
 
-            // Boolean not
-            // Handled above in unary operators
 
-            // Boolean operations: and, or
             ExprRef::BoolOp(bool_op) => Self::from(bool_op.op),
 
-            // Conditional expressions: x if y else z
             ExprRef::If(_) => Self::IfElse,
 
-            // Lambda expressions
             ExprRef::Lambda(_) => Self::Lambda,
 
-            // Unpacking also omitted in the docs, but has almost the lowest precedence,
-            // except for assignment & yield expressions. E.g. `[*(v := [1,2])]` is valid
-            // but `[*v := [1,2]] would fail on incorrect syntax because * will associate
-            // `v` before the assignment.
             ExprRef::Starred(_) => Self::Starred,
 
-            // Assignment expressions (aka named)
             ExprRef::Named(_) => Self::Assign,
 
-            // Although omitted in docs, yield expressions may be used inside an expression
-            // but must be parenthesized. So for our purposes we assume they just have
-            // the lowest "real" precedence.
             ExprRef::Yield(_) | ExprRef::YieldFrom(_) => Self::Yield,
 
-            // Not a real python expression, so treat as lowest as well
             ExprRef::IpyEscapeCommand(_) => Self::None,
         }
     }
@@ -155,22 +133,16 @@ impl<'a> From<ExprRef<'a>> for OperatorPrecedence {
 impl From<Operator> for OperatorPrecedence {
     fn from(operator: Operator) -> Self {
         match operator {
-            // Multiplication, matrix multiplication, division, floor division, remainder:
-            // *, @, /, //, %
             Operator::Mult
             | Operator::MatMult
             | Operator::Div
             | Operator::Mod
             | Operator::FloorDiv => Self::MulDivRemain,
-            // Addition, subtraction
             Operator::Add | Operator::Sub => Self::AddSub,
-            // Bitwise shifts: <<, >>
             Operator::LShift | Operator::RShift => Self::LeftRightShift,
-            // Bitwise operations: &, ^, |
             Operator::BitAnd => Self::BitAnd,
             Operator::BitXor => Self::BitXor,
             Operator::BitOr => Self::BitOr,
-            // Exponentiation **
             Operator::Pow => Self::Exponent,
         }
     }

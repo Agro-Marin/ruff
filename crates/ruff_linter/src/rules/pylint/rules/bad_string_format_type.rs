@@ -94,9 +94,6 @@ impl From<char> for FormatType {
         match format {
             'r' => FormatType::Repr,
             's' => FormatType::String,
-            // The python documentation says "d" only works for integers, but it works for floats as
-            // well: https://docs.python.org/3/library/string.html#formatstrings
-            // I checked the rest of the integer codes, and none of them work with floats
             'n' | 'd' => FormatType::Number,
             'b' | 'c' | 'o' | 'x' | 'X' => FormatType::Integer,
             'e' | 'E' | 'f' | 'F' | 'g' | 'G' | '%' => FormatType::Float,
@@ -122,7 +119,6 @@ fn equivalent(format: &CFormatSpec, value: &Expr) -> bool {
     let format_type = FormatType::from(format.format_char);
     match ResolvedPythonType::from(value) {
         ResolvedPythonType::Atom(atom) => {
-            // Special case where `%c` allows single character strings to be formatted
             if format.format_char == 'c' {
                 if let Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) = value {
                     let mut chars = value.chars();
@@ -144,8 +140,6 @@ fn equivalent(format: &CFormatSpec, value: &Expr) -> bool {
 /// Return `true` if the [`Constant`] aligns with the format type.
 fn is_valid_constant(formats: &[CFormatStrOrBytes<String>], value: &Expr) -> bool {
     let formats = collect_specs(formats);
-    // If there is more than one format, this is not valid Python and we should
-    // return true so that no error is reported.
     let [format] = formats.as_slice() else {
         return true;
     };
@@ -156,8 +150,6 @@ fn is_valid_constant(formats: &[CFormatStrOrBytes<String>], value: &Expr) -> boo
 fn is_valid_tuple(formats: &[CFormatStrOrBytes<String>], elts: &[Expr]) -> bool {
     let formats = collect_specs(formats);
 
-    // If there are more formats that values, the statement is invalid. Avoid
-    // checking the values.
     if formats.len() > elts.len() {
         return true;
     }
@@ -174,8 +166,6 @@ fn is_valid_tuple(formats: &[CFormatStrOrBytes<String>], elts: &[Expr]) -> bool 
 fn is_valid_dict(formats: &[CFormatStrOrBytes<String>], items: &[ast::DictItem]) -> bool {
     let formats = collect_specs(formats);
 
-    // If there are more formats that values, the statement is invalid. Avoid
-    // checking the values.
     if formats.len() > items.len() {
         return true;
     }
@@ -204,7 +194,6 @@ fn is_valid_dict(formats: &[CFormatStrOrBytes<String>], items: &[ast::DictItem])
                 return false;
             }
         } else {
-            // We can't check non-string keys.
             return true;
         }
     }
@@ -217,7 +206,6 @@ pub(crate) fn bad_string_format_type(
     bin_op: &ast::ExprBinOp,
     format_string: &ast::ExprStringLiteral,
 ) {
-    // Parse each string segment.
     let mut format_strings = vec![];
     for StringLiteral {
         value: _,
@@ -230,13 +218,11 @@ pub(crate) fn bad_string_format_type(
         let string = &string
             [usize::from(flags.opener_len())..(string.len() - usize::from(flags.closer_len()))];
 
-        // Parse the format string (e.g. `"%s"`) into a list of `PercentFormat`.
         if let Ok(format_string) = CFormatString::from_str(string) {
             format_strings.push(format_string);
         }
     }
 
-    // Parse the parameters.
     let is_valid = match &*bin_op.right {
         Expr::Tuple(ast::ExprTuple { elts, .. }) => is_valid_tuple(&format_strings, elts),
         Expr::Dict(ast::ExprDict {

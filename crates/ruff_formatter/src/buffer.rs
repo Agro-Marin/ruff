@@ -377,7 +377,6 @@ impl<'a, Context> RemoveSoftLinesBuffer<'a, Context> {
     }
 }
 
-// Extracted to function to avoid monomorphization
 fn clean_interned(
     interned: &Interned,
     interned_cache: &mut FxHashMap<Interned, Interned>,
@@ -387,8 +386,6 @@ fn clean_interned(
     } else {
         let mut state = RemoveSoftLineBreaksState::default();
 
-        // Find the first soft line break element, interned element, or best-fitting element that
-        // must be changed
         let result = interned
             .iter()
             .enumerate()
@@ -430,7 +427,6 @@ fn clean_interned(
             });
 
         let result = match result {
-            // Copy the whole interned buffer so that becomes possible to change the necessary elements.
             Some((mut cleaned, rest)) => {
                 let mut element_stack = rest.iter().rev().collect::<Vec<_>>();
                 while let Some(element) = element_stack.pop() {
@@ -458,7 +454,6 @@ fn clean_interned(
 
                 Interned::new(cleaned)
             }
-            // No change necessary, return existing interned element
             None => interned.clone(),
         };
 
@@ -534,15 +529,8 @@ impl RemoveSoftLineBreaksState {
             Self::Default => match element {
                 FormatElement::Line(LineMode::Soft) => true,
 
-                // `BestFitting` is resolved to its most-flat entry by this buffer, so we can drop
-                // the start and end tags, leaving only their contents.
                 FormatElement::Tag(Tag::StartBestFittingEntry | Tag::EndBestFittingEntry) => true,
 
-                // Entered the start of an `if_group_breaks` or `if_group_fits`
-                // For `if_group_breaks`: Remove the start and end tag and all content in between.
-                // For `if_group_fits_on_line`: Unwrap the content. This is important because the enclosing group
-                // might still *expand* if the content exceeds the line width limit, in which case the
-                // `if_group_fits_on_line` content would be removed.
                 FormatElement::Tag(Tag::StartConditionalContent(condition)) => {
                     if condition.mode.is_expanded() {
                         *self = Self::InIfGroupBreaks {
@@ -558,18 +546,14 @@ impl RemoveSoftLineBreaksState {
                 conditional_content_level,
             } => {
                 match element {
-                    // A nested `if_group_breaks` or `if_group_fits_on_line`
                     FormatElement::Tag(Tag::StartConditionalContent(_)) => {
                         *conditional_content_level = conditional_content_level.saturating_add(1);
                     }
-                    // The end of an `if_group_breaks` or `if_group_fits_on_line`.
                     FormatElement::Tag(Tag::EndConditionalContent) => {
                         if let Some(level) = NonZeroUsize::new(conditional_content_level.get() - 1)
                         {
                             *conditional_content_level = level;
                         } else {
-                            // Found the end tag of the initial `if_group_breaks`. Skip this element but retain
-                            // the elements coming after
                             *self = RemoveSoftLineBreaksState::Default;
                         }
                     }
@@ -684,7 +668,6 @@ where
         let elements = buffer.elements();
 
         let recorded = if self.start > elements.len() {
-            // May happen if buffer was rewound.
             &[]
         } else {
             &elements[self.start..]

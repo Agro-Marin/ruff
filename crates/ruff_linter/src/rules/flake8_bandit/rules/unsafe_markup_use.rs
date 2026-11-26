@@ -135,12 +135,6 @@ fn is_markup_call(qualified_name: &QualifiedName, settings: &LinterSettings) -> 
 }
 
 fn is_unsafe_call(call: &ExprCall, semantic: &SemanticModel, settings: &LinterSettings) -> bool {
-    // technically this could be circumvented by using a keyword argument
-    // but without type-inference we can't really know which keyword argument
-    // corresponds to the first positional argument and either way it is
-    // unlikely that someone will actually use a keyword argument here
-    // TODO: Eventually we may want to allow dynamic values, as long as they
-    //       have a __html__ attribute, since that is part of the API
     matches!(&*call.arguments.args, [first] if !first.is_string_literal_expr() && !first.is_bytes_literal_expr() && !is_whitelisted_call(first, semantic, settings))
 }
 

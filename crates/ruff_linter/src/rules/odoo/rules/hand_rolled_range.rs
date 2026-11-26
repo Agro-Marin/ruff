@@ -64,8 +64,6 @@ pub(crate) fn hand_rolled_range(checker: &Checker, class: &ast::StmtClassDef) {
     {
         return;
     }
-    // A name declared twice keeps its first position and its last statement, as
-    // a dict comprehension does.
     let mut numeric: Vec<(&str, &Stmt)> = Vec::new();
     for (name, call, statement) in field_declarations(class) {
         if !matches!(field_type(call), "Float" | "Integer" | "Monetary") {

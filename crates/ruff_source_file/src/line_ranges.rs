@@ -318,12 +318,10 @@ pub trait LineRanges {
         loop {
             let next_line_start = self.full_line_end(line_end);
 
-            // Reached the end of the string
             if next_line_start == line_end {
                 break count;
             }
 
-            // Range ends at the line boundary
             if line_end >= range.end() {
                 break count;
             }
@@ -348,10 +346,8 @@ impl LineRanges for str {
 
     fn bom_start_offset(&self) -> TextSize {
         if self.starts_with('\u{feff}') {
-            // Skip the BOM.
             '\u{feff}'.text_len()
         } else {
-            // Start of file.
             TextSize::default()
         }
     }

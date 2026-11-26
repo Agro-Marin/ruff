@@ -81,10 +81,7 @@ mod schema {
                 schema.into()
             }
 
-            // Hard code some well known values, but allow any other string as well.
             let mut any_of = vec![schemars::json_schema!({ "type": "string" }).into()];
-            // Promote well-known values for better auto-completion.
-            // Using `const` over `enumValues` as recommended [here](https://github.com/SchemaStore/schemastore/blob/master/CONTRIBUTING.md#documenting-enums).
             any_of.push(constant(
                 "all",
                 "Do not make any assumptions about the target platform.",

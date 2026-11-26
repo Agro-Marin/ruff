@@ -62,7 +62,6 @@ pub(crate) fn invalid_index_type(checker: &Checker, expr: &ExprSubscript) {
         ..
     } = expr;
 
-    // Check the value being indexed is a list, tuple, string, f-string, bytes, or comprehension
     if !matches!(
         value.as_ref(),
         Expr::List(_)
@@ -75,7 +74,6 @@ pub(crate) fn invalid_index_type(checker: &Checker, expr: &ExprSubscript) {
         return;
     }
 
-    // The value types supported by this rule should always be checkable
     let Some(value_type) = CheckableExprType::try_from(value) else {
         debug_assert!(
             false,
@@ -84,7 +82,6 @@ pub(crate) fn invalid_index_type(checker: &Checker, expr: &ExprSubscript) {
         return;
     };
 
-    // If the index is not a checkable type then we can't easily determine if there is a violation
     let Some(index_type) = CheckableExprType::try_from(index) else {
         return;
     };
@@ -97,7 +94,6 @@ pub(crate) fn invalid_index_type(checker: &Checker, expr: &ExprSubscript) {
             let Some(is_slice_type) = CheckableExprType::try_from(is_slice) else {
                 continue;
             };
-            // A slice bound must be an integer, `None`, or a boolean.
             if !matches!(
                 is_slice_type,
                 CheckableExprType::IntLiteral
@@ -118,7 +114,6 @@ pub(crate) fn invalid_index_type(checker: &Checker, expr: &ExprSubscript) {
         index_type,
         CheckableExprType::IntLiteral | CheckableExprType::BooleanLiteral
     ) {
-        // A non-slice index must be an integer or a boolean.
         checker.report_diagnostic(
             InvalidIndexType {
                 value_type: value_type.to_string(),

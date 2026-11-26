@@ -153,12 +153,6 @@ pub(crate) struct ProjectState {
     /// to update any of them.
     pub(crate) untracked_files_with_pushed_diagnostics: Vec<Uri>,
 
-    // Note: This field should be last to ensure the `db` gets dropped last.
-    // The db drop order matters because we call `Arc::into_inner` on some Arc's
-    // and we use Salsa's cancellation to guarantee that there's only a single reference to the `Arc`.
-    // However, this requires that the db drops last.
-    // This shouldn't matter here because the db's stored in the session are the
-    // only reference we want to hold on, but better be safe than sorry ;).
     pub(crate) db: ProjectDatabase,
 }
 
@@ -175,8 +169,6 @@ impl Session {
         let index = Arc::new(Index::new());
 
         let mut workspaces = Workspaces::default();
-        // Register workspaces with default settings - they'll be initialized with real settings
-        // when workspace/configuration response is received
         for uri in workspace_uris {
             workspaces.register(uri)?;
         }
@@ -234,9 +226,6 @@ impl Session {
         client: &Client,
     ) {
         self.suspended_workspace_diagnostics_request = Some(request);
-        // Run the suspended workspace diagnostic request immediately in case there
-        // were changes since the workspace diagnostics background thread queued
-        // the action to suspend the workspace diagnostic request.
         self.resume_suspended_workspace_diagnostic_request(client);
     }
 
@@ -258,7 +247,6 @@ impl Session {
             .take()
             .and_then(|request| {
                 if !self.request_queue.incoming().is_pending(&request.id) {
-                    // Clear out the suspended request if the request has been cancelled.
                     tracing::debug!(
                         "Skipping suspended workspace diagnostics request `{}` \
                         because it was cancelled",
@@ -362,11 +350,6 @@ impl Session {
         progress: &ScriptProgress,
     ) {
         for &file in scripts {
-            // Open and save handle editor documents separately. Their metadata may contain
-            // unsaved changes, including overlays that are not in the diagnostic open-file set.
-            // If a project reload selects uv for an open script, we accept that
-            // a user must save or reopen the document to request a sync. This avoids rereading open scripts
-            // on reload to check whether their inline metadata matches what uv will read from disk.
             if db.document(file).is_some() {
                 continue;
             }
@@ -444,7 +427,6 @@ impl Session {
                     );
                 }
                 Message::Response(_) => {
-                    // We still want to get client responses even during workspace initialization.
                     return Some(message);
                 }
                 Message::Notification(notification) => {
@@ -614,53 +596,18 @@ impl Session {
         client: &Client,
         workspace_folders: Vec<(Uri, ClientOptions)>,
     ) {
-        // Every workspace folder can come with its own
         // global options. In theory, these can have different
-        // values. At time of writing (2026-01-28), AG has been
-        // unable to make VS Code cause this. This is because
-        // the ty VS Code extension scopes its settings to the
-        // "window":
-        // https://github.com/astral-sh/ty-vscode/blob/e68f26549a920926d8a6bced942dfaf32313f851/package.json#L107
-        //
-        // So at least in theory, there is a semantic mismatch
-        // between the LSP protocol and ty's LSP's understanding
         // of what settings are global and which aren't.
-        //
         // We used to try and combine these global options across
-        // multiple workspace folders. But when we did that, we
-        // didn't actually support multiple workspace folders. We
-        // always took the first workspace folder and ignored the
-        // rest.
-        //
-        // In a world where we support multiple workspace folders,
-        // we also need to support possibly _adding_ (or removing)
-        // new workspace folders dynamically (that's the
-        // `workspace/didChangeWorkspaceFolders` notification).
         // This in turn means that global options can change based
-        // on new workspace folders being added.
-        //
         // Should we try to merge the existing global options with
-        // the new ones? What if a workspace folder is removed? Should
         // we try to update our global options based on that?
-        //
-        // It should be clear that there are many different
-        // permutations of possibilities here. Perhaps the best
         // choice is to find a way to get rid of global options
-        // entirely and make all settings specific to workspace
-        // folders.
-        //
-        // In any case, our current strategy for now is to just use the
         // most recent global options received (after being combined
         // with the global options received at initialization time).
-        // Doing anything more complicated seems unwarranted unless
-        // real users are having problems as a result of this.
-        //
-        // Note that this is a divergence from previous behavior:
-        // https://github.com/astral-sh/ruff/pull/19614
         let mut global_options: Option<GlobalOptions> = None;
 
         for (uri, options) in workspace_folders {
-            // Last setting wins.
             global_options = Some(
                 self.initialization_options
                     .options
@@ -683,7 +630,6 @@ impl Session {
             for project in self.projects.values_mut() {
                 let db = &mut project.db;
                 db.set_check_mode(check_mode);
-                // A new folder's settings can enable workspace diagnostics for existing projects.
                 if diagnostic_mode.is_workspace() {
                     let scripts = db.project().scripts_to_synchronize(db);
                     Self::synchronize_closed_scripts(
@@ -699,9 +645,6 @@ impl Session {
 
         self.register_capabilities(client);
 
-        // New workspace settings can affect diagnostics in existing workspaces. Re-registering
-        // diagnostic support does not invalidate the client's cached results. There are no
-        // cached results to refresh during the initial workspace configuration.
         if self.workspace_configuration_initialized
             && self
                 .client_capabilities()
@@ -740,7 +683,6 @@ impl Session {
             return;
         };
 
-        // Realistically I don't think this can fail because we got the path from a Uri
         let root = match SystemPathBuf::from_path_buf(root) {
             Ok(root) => root,
             Err(root) => {
@@ -752,9 +694,6 @@ impl Session {
             }
         };
 
-        // Zed sends a single file as a workspace folder. Preserve that path as the
-        // workspace's identity, but resolve configuration and imports from its parent directory.
-        // https://github.com/zed-industries/zed/issues/40627
         let workspace_directory = if self.native_system.is_file(&root)
             && let Some(parent) = root.parent()
         {
@@ -777,8 +716,6 @@ impl Session {
         }
         workspace.initialize(settings);
 
-        // For now, create one project database per workspace. Future support for nested projects
-        // may instead manage the project collection inside ProjectDatabase.
         let system = LSPSystem::new(
             self.index.as_ref().unwrap().clone(),
             self.native_system.clone(),
@@ -815,10 +752,6 @@ impl Session {
             metadata.set_fallback_options(fallback_options.clone());
         }
 
-        // Untrusted workspaces disable uv. In trusted workspaces, `TY_UV` takes precedence
-        // for both workspace discovery and scripts. When it is unset, discovery uses
-        // `experimental.useUv`. For scripts, `project-manager.script` in `ty.configuration` wins
-        // over `experimental.useUv`, and either editor setting overrides script or project configuration.
         let uv_override = self.initialization_options.uv_override(&system);
         let legacy_uv = self.initialization_options.experimental_use_uv();
         let uv_workspace_discovery = uv_override
@@ -840,7 +773,6 @@ impl Session {
             metadata.set_override_options(overrides);
         }
 
-        // Load user configuration even if project discovery failed.
         let project = discovery_result
             .and(
                 metadata
@@ -869,7 +801,6 @@ impl Session {
             ProjectDatabase::use_defaults(metadata, system)
         });
 
-        // Carry forward diagnostic state if any exists
         let previous = self.projects.remove(&root);
         let untracked =
             previous.map_or_default(|state| state.untracked_files_with_pushed_diagnostics);
@@ -918,8 +849,6 @@ impl Session {
         &mut self,
         client: &Client,
     ) {
-        // When all workspaces are already initialized, then
-        // there's nothing to do.
         if self.workspaces().all_initialized() {
             return;
         }
@@ -969,8 +898,6 @@ impl Session {
             move |client, result: Vec<serde_json::Value>| {
                 tracing::debug!("Received workspace configurations, initializing workspaces");
 
-                // This shouldn't fail because, as per the spec, the client needs to provide a
-                // `null` value even if it cannot provide a configuration for a workspace.
                 assert_eq!(
                     result.len(),
                     uninit_workspace_uris.len(),
@@ -1033,30 +960,13 @@ impl Session {
             "Workspace not found: {uri}",
         );
 
-        // Note that it is somewhat unclear whether we actually need to
-        // clear diagnostics here. It seems that, at least in the case
-        // of VS Code, it will auto-clear any diagnostics not found in
-        // the workspace diagnostic response. Moreover, VS Code will
-        // re-request workspace diagnostics after removing a workspace
-        // folder.
-        //
-        // For now, we keep unconditionally clearing diagnostics on
-        // opened text documents for reasons of good sense, but it's
-        // possible that we don't even need to do that (when workspace
-        // diagnostics are enabled).
-        //
-        // See: https://github.com/astral-sh/ruff/pull/22953#discussion_r2745255350
 
-        // Remove the associated project database.
         if let Some(project_state) = self.projects.remove(&workspace_path) {
-            // Clear diagnostics for any files that had pushed diagnostics in this project.
             for file_uri in project_state.untracked_files_with_pushed_diagnostics {
                 self.clear_diagnostics(client, &file_uri);
             }
         }
 
-        // Collect all of the documents to clear upfront to
-        // work around borrowck.
         let documents_to_clear: Vec<OpenDocumentHandle> = self
             .text_document_handles()
             .filter_map(|doc| {
@@ -1184,7 +1094,6 @@ impl Session {
             }
         }
 
-        // First, unregister any existing capabilities and then register or re-register them.
         self.unregister_dynamic_capability(client, unregistrations);
         self.register_dynamic_capability(client, registrations);
         self.update_file_watcher(client);
@@ -1297,13 +1206,10 @@ impl Session {
 
     /// Returns whether requests may target this file while it is closed.
     fn is_supported_closed_file(&self, path: &SystemPath) -> bool {
-        // Closed notebooks lack the client's cell URI and position mappings.
         if PySourceType::try_from_path(path) == Some(PySourceType::Ipynb) {
             return false;
         }
 
-        // A request needs a project, but the file need not belong to it:
-        // unrelated files use the same fallback project as open files.
         !self.projects.is_empty()
     }
 
@@ -1382,9 +1288,6 @@ impl Session {
     ) -> OpenDocumentHandle {
         let language_id = document.language_id();
 
-        // Request synchronization before installing the editor contents because uv reads the
-        // script from disk. This ensures both use the saved metadata, so saving changed metadata
-        // requests another synchronization.
         if language_id == LanguageId::Python
             && document.notebook().is_none()
             && let DocumentKey::File(system_path) = DocumentKey::from_uri(document.uri())
@@ -1394,9 +1297,6 @@ impl Session {
             let db = self.project_db_mut(&AnySystemPath::System(system_path.clone()));
 
             if db.project().metadata(db).script_uv_override() != Some(false) {
-                // Refresh any cached disk revision before reading the script tag. A filesystem
-                // change may not have reached the watcher yet, and the later open event will
-                // refresh the file from the editor contents instead.
                 File::sync_path(db, &system_path);
                 if let Ok(file) = system_path_to_file(db, &system_path) {
                     Self::request_script_sync(
@@ -1423,9 +1323,6 @@ impl Session {
     ) {
         let path = document.notebook_or_file_path();
 
-        // When we know the document isn't a Python source file
-        // then we'll avoid adding it to the project. (But we
-        // still track it as part of the index.)
         let is_not_python = matches!(language_id, Some(LanguageId::Other));
 
         match path {
@@ -1441,8 +1338,6 @@ impl Session {
                     Ok(file) => {
                         let project = db.project();
 
-                        // Only mark this file as open if it's part of the project.
-                        // This ensures that we don't show diagnostics for files outside the project.
                         if project.is_file_included(db, system_path).is_included() {
                             project.open_file(db, file);
                         }
@@ -1485,7 +1380,6 @@ impl Session {
         let index = self.index.take().unwrap();
 
         for db in self.projects_mut() {
-            // Remove the `index` from each database. This drops the count of `Arc<Index>` down to 1
             db.system_mut()
                 .as_any_mut()
                 .downcast_mut::<LSPSystem>()
@@ -1493,7 +1387,6 @@ impl Session {
                 .take_index();
         }
 
-        // There should now be exactly one reference to index which is self.index.
         let index = Arc::into_inner(index).unwrap();
 
         MutIndexGuard {
@@ -1631,8 +1524,6 @@ impl DocumentRequestTarget {
                 if let Some(root) = ty_ide::cached_vendored_root(db)
                     && let Some(vendored) = ty_ide::map_system_to_vendored(&root, path)
                 {
-                    // Reuse the bundled file's database identity instead of creating
-                    // a separate file for its cached copy.
                     vendored_path_to_file(db, vendored).ok()
                 } else {
                     system_path_to_file(db, path).ok()
@@ -1781,7 +1672,6 @@ impl Workspaces {
             .to_file_path()
             .map_err(|()| anyhow!("Workspace URI is not a file or directory: {uri:?}"))?;
 
-        // Realistically I don't think this can fail because we got the path from a Uri
         let system_path = SystemPathBuf::from_path_buf(path)
             .map_err(|_| anyhow!("Workspace URI is not valid UTF8"))?;
 
@@ -2155,15 +2045,8 @@ impl OpenDocumentHandle {
             if session.workspaces().for_path(system_path).is_none());
 
         if !is_external {
-            // A containing workspace determines the project for a system file, while virtual
-            // documents select a single, arbitrary project. Neither selection depends on import
-            // search paths, so update only the selected database.
             session.apply_changes(client, path, &changes);
         } else {
-            // This is both a system file and an external file (it has no containing workspace
-            // that defines how to select a single project for it). For external files, a change in
-            // import search paths can change the selected project, so here we update all databases
-            // to keep previously selected projects' cached contents fresh.
             let roots: Vec<_> = session.projects.keys().cloned().collect();
             for root in roots {
                 session.apply_changes(client, &AnySystemPath::System(root), &changes);
@@ -2194,17 +2077,10 @@ impl OpenDocumentHandle {
         let removed_document = session.index_mut().close_document(&self.key())?;
 
         let should_clear_diagnostics = match self.file_path() {
-            // Closing a notebook cell clears its diagnostics but leaves its notebook open.
             None => true,
             Some(AnySystemPath::System(path)) => {
                 let is_deleted = self.close_system_file(session, client, path, &removed_document);
 
-                // For non-virtual files, we clear diagnostics if:
-                //
-                // 1. The file was deleted before it was closed
-                // 2. The file does not belong to any workspace e.g., opening a random file from
-                //    outside the workspace because closing it acts like the file doesn't exist
-                // 3. The diagnostic mode is set to open-files only
                 is_deleted
                     || session.workspaces().for_path(path).is_none()
                     || session
@@ -2215,8 +2091,6 @@ impl OpenDocumentHandle {
             Some(AnySystemPath::SystemVirtual(path)) => {
                 self.close_virtual_file(session, path);
 
-                // Always clear diagnostics for virtual files, as they don't really exist on disk
-                // which means closing them is like deleting the file.
                 true
             }
         };
@@ -2236,8 +2110,6 @@ impl OpenDocumentHandle {
     ) -> bool {
         let db = session.project_db_mut(self.notebook_or_file_path());
 
-        // The editor can delete the file before closing it and before its watcher
-        // reports the deletion. Check disk state after removing the editor overlay.
         let is_deleted = db
             .system()
             .path_metadata(system_path)
@@ -2246,10 +2118,6 @@ impl OpenDocumentHandle {
         if let Some(file) = db.files().try_system(db, system_path) {
             db.project().close_file(db, file);
 
-            // In case we preferred the language given by the Client
-            // over the one detected by the file extension, remove the file
-            // from the project to handle cases where a user changes the language
-            // of a file (which results in a didClose and didOpen for the same path but with different languages).
             if removed_document.language_id().is_some()
                 && system_path
                     .extension()
@@ -2260,8 +2128,6 @@ impl OpenDocumentHandle {
             }
 
             if is_deleted {
-                // A content change leaves missing files in the project index, allowing
-                // workspace diagnostics to report an I/O error until the watcher fires.
                 self.apply_change_in_databases(
                     session,
                     client,
@@ -2271,17 +2137,9 @@ impl OpenDocumentHandle {
                     },
                 );
             } else {
-                // Restore file and script membership from the saved contents. Discarding
-                // unsaved script metadata can bring a file back into the project when
-                // `exclude-scripts` is enabled. In workspace mode, this also synchronizes
-                // saved metadata changes skipped while the editor overlay was present.
                 self.update_in_databases(session, client);
             }
         } else {
-            // This can only fail when the path is a directory or it doesn't exists but the
-            // file should exists for this handler in this branch. This is because every
-            // close call is preceded by an open call, which ensures that the file is
-            // interned in the lookup table (`Files`).
             tracing::warn!("Salsa file does not exists for {}", system_path);
         }
 
@@ -2294,7 +2152,6 @@ impl OpenDocumentHandle {
         if let Some(virtual_file) = db.files().try_virtual_file(virtual_path) {
             db.project().close_file(db, virtual_file.file());
             virtual_file.close(db);
-            // Bump the file's revision back to using the file system's revision.
             virtual_file.sync(db);
         } else {
             tracing::warn!("Salsa virtual file does not exists for {}", virtual_path);

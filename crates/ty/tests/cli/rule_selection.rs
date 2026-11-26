@@ -17,7 +17,6 @@ fn configuration_rule_severity() -> anyhow::Result<()> {
             "#,
     )?;
 
-    // Assert that there's an `unresolved-reference` diagnostic (error).
     assert_cmd_snapshot!(case.command().arg("--verbose"), @"
     success: false
     exit_code: 1
@@ -81,8 +80,6 @@ fn cli_rule_severity() -> anyhow::Result<()> {
         "#,
     )?;
 
-    // Assert that there's an `unresolved-reference` diagnostic (error)
-    // and an import-not-found (error) diagnostic by default.
     assert_cmd_snapshot!(case.command().arg("--verbose"), @"
     success: false
     exit_code: 1
@@ -175,7 +172,6 @@ fn cli_rule_severity_precedence() -> anyhow::Result<()> {
         "#,
     )?;
 
-    // Assert that there's a `unresolved-reference` diagnostic (error) by default.
     assert_cmd_snapshot!(case.command().arg("--verbose"), @"
     success: false
     exit_code: 1
@@ -255,7 +251,6 @@ fn configuration_conflicting_rule_alias_levels() {
     ----- stderr -----
     "#);
 
-    // An alias on the command line overrides the current name in ty.toml.
     assert_cmd_snapshot!(
         case.command().args(["--warn", "unresolved-import", "--output-format", "concise"]),
         @"
@@ -397,7 +392,6 @@ fn configuration_unknown_rules() -> anyhow::Result<()> {
         ("test.py", "print(10)"),
     ])?;
 
-    // ty warns once about `division-by-zer`, even though the override inherits it.
     assert_cmd_snapshot!(case.command(), @r#"
     success: false
     exit_code: 1
@@ -413,7 +407,6 @@ fn configuration_unknown_rules() -> anyhow::Result<()> {
     ----- stderr -----
     "#);
 
-    // The same typo written on the command line has its own diagnostic.
     assert_cmd_snapshot!(
         case.command().args(["--warn", "division-by-zer", "--output-format", "concise"]),
         @"
@@ -1123,7 +1116,6 @@ fn cli_all_rules_ignore() -> anyhow::Result<()> {
         "#,
     )?;
 
-    // Using --ignore all should disable all rules
     assert_cmd_snapshot!(
         case
             .command()
@@ -1152,7 +1144,6 @@ fn cli_all_rules_warn() -> anyhow::Result<()> {
         "#,
     )?;
 
-    // Using --warn all should make all rules warnings (not errors)
     assert_cmd_snapshot!(
         case
             .command()
@@ -1201,8 +1192,6 @@ fn cli_all_rules_precedence() -> anyhow::Result<()> {
         "#,
     )?;
 
-    // Using --ignore all followed by --error for a specific rule should
-    // disable all rules except the one specified
     assert_cmd_snapshot!(
         case
             .command()
@@ -1242,8 +1231,6 @@ fn cli_specific_then_all() -> anyhow::Result<()> {
         "#,
     )?;
 
-    // Using --error for a specific rule followed by --ignore all should
-    // ignore all rules (including the previously set one)
     assert_cmd_snapshot!(
         case
             .command()
@@ -1288,8 +1275,6 @@ fn configuration_all_rules() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // The "all" rule should be processed first, ignoring all rules,
-    // then unresolved-reference should be enabled as error
     assert_cmd_snapshot!(case.command().arg("--verbose"), @"
     success: false
     exit_code: 1

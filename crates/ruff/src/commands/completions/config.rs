@@ -30,7 +30,6 @@ impl Visit for CollectOptionsVisitor {
             .collect::<Vec<_>>()
             .join(".");
 
-        // Only add the set to completion list if it has it's own documentation.
         self.values.push((
             fully_qualified_name,
             group.documentation().unwrap_or("").to_owned(),
@@ -144,9 +143,6 @@ impl TypedValueParser for OptionStringParser {
             let first_paragraph = doc
                 .lines()
                 .take_while(|line| !line.trim_end().is_empty())
-                // Replace double quotes with single quotes,to avoid clap's lack of escaping
-                // when creating zsh completions. This has no security implications, as it only
-                // affects the help string, which is never executed
                 .map(|s| s.replace('"', "'"))
                 .join(" ");
 

@@ -1,4 +1,3 @@
-// See: https://github.com/python/cpython/blob/9d692841691590c25e6cf5b2250a594d3bf54825/Lib/keyword.py#L18
 pub fn is_keyword(name: &str) -> bool {
     matches!(
         name,

@@ -58,10 +58,6 @@ impl VendoredFileSystem {
             let normalized = NormalizedVendoredPath::from(path);
             let archive = &fs.inner;
 
-            // Must probe the zipfile twice, as "stdlib" and "stdlib/" are considered
-            // different paths in a zip file, but we want to abstract over that difference here
-            // so that paths relative to the `VendoredFileSystem`
-            // work the same as other paths in Ruff.
             archive.index_for_path(&normalized).is_some()
                 || archive
                     .index_for_path(&normalized.with_trailing_slash())
@@ -76,10 +72,6 @@ impl VendoredFileSystem {
             let normalized = NormalizedVendoredPath::from(path);
             let mut archive = fs.archive_reader();
 
-            // Must probe the zipfile twice, as "stdlib" and "stdlib/" are considered
-            // different paths in a zip file, but we want to abstract over that difference here
-            // so that paths relative to the `VendoredFileSystem`
-            // work the same as other paths in Ruff.
             if let Ok(metadata) = archive.metadata_for_path(&normalized) {
                 return Ok(metadata);
             }
@@ -110,10 +102,6 @@ impl VendoredFileSystem {
             let mut archive = fs.archive_reader();
             let mut zip_file = archive.lookup_path(&NormalizedVendoredPath::from(path))?;
 
-            // Pre-allocate the buffer with the size specified in the ZIP file metadata
-            // because `read_to_string` passes `None` as the size hint.
-            // But let's not trust the zip file metadata (even though it's vendored)
-            // and limit it to a reasonable size.
             let mut buffer = String::with_capacity(
                 usize::try_from(zip_file.size())
                     .unwrap_or(usize::MAX)
@@ -142,24 +130,10 @@ impl VendoredFileSystem {
 
         self.inner.0.file_names().filter_map(move |name| {
             let name = name.expect("vendored paths are valid UTF-8");
-            // Any entry that doesn't have the `path` (with a
-            // trailing slash) as a prefix cannot possibly be in
-            // the directory referenced by `path`.
             let without_dir_prefix = name.strip_prefix(&directory_prefix)?;
-            // Filter out an entry equivalent to the path given
-            // since we only want children of the directory.
             if without_dir_prefix.is_empty() {
                 return None;
             }
-            // We only want *direct* children. Files that are
-            // direct children cannot have any slashes (or else
-            // they are not direct children). Directories that
-            // are direct children can only have one slash and
-            // it must be at the end.
-            //
-            // (We do this manually ourselves to avoid doing a
-            // full file lookup and metadata retrieval via the
-            // `zip` crate.)
             let file_type = FileType::from_zip_file_name(without_dir_prefix);
             let slash_count = without_dir_prefix.matches('/').count();
             match file_type {
@@ -369,8 +343,6 @@ impl VendoredZipArchive {
     }
 
     fn index_for_path(&self, path: &NormalizedVendoredPath) -> Option<usize> {
-        // Vendored archives store entry names as UTF-8, so a byte lookup is enough.
-        // `index_for_name` scans decoded entry names on a miss to support CP437.
         self.0.index_for_name_raw(path.as_bytes())
     }
 
@@ -439,9 +411,6 @@ impl<'a> From<&'a VendoredPath> for NormalizedVendoredPath<'a> {
                     camino::Utf8Component::Normal(part) => normalized_parts.push(part),
                     camino::Utf8Component::CurDir => continue,
                     camino::Utf8Component::ParentDir => {
-                        // `VendoredPath("")`, `VendoredPath("..")` and `VendoredPath("../..")`
-                        // all resolve to the same path relative to the zip archive
-                        // (see https://github.com/astral-sh/ruff/pull/11991#issuecomment-2185278014)
                         normalized_parts.pop();
                     }
                     unsupported => {
@@ -455,16 +424,13 @@ impl<'a> From<&'a VendoredPath> for NormalizedVendoredPath<'a> {
         let path_str = path.as_str();
 
         if std::path::MAIN_SEPARATOR == '\\' && path_str.contains('\\') {
-            // Normalize paths so that they always use Unix path separators
             NormalizedVendoredPath(Cow::Owned(normalize_unnormalized_path(path)))
         } else if !path
             .components()
             .all(|component| matches!(component, camino::Utf8Component::Normal(_)))
         {
-            // Remove non-`Normal` components
             NormalizedVendoredPath(Cow::Owned(normalize_unnormalized_path(path)))
         } else {
-            // Strip trailing slashes from the path
             NormalizedVendoredPath(Cow::Borrowed(path_str.trim_end_matches('/')))
         }
     }
@@ -725,7 +691,6 @@ pub(crate) mod tests {
         test_file(&mock_typeshed, path);
         let functools_stub = mock_typeshed.read_to_string(path).unwrap();
         assert_eq!(functools_stub.as_str(), FUNCTOOLS_CONTENTS);
-        // Test that reading the file doesn't leave the archive cursor in the wrong position.
         let functools_stub_again = mock_typeshed.read_to_string(path).unwrap();
         assert_eq!(functools_stub_again.as_str(), FUNCTOOLS_CONTENTS);
     }

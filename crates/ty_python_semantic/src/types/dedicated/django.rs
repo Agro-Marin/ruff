@@ -159,7 +159,6 @@ struct ModelMetadata {
 #[salsa::tracked(returns(copy), heap_size=ruff_memory_usage::heap_size)]
 fn model_metadata<'db>(db: &'db dyn Db, class: StaticClassLiteral<'db>) -> ModelMetadata {
     let env = ProgramEnvironment::from_scope(class.body_scope(db));
-    // Subclasses do not inherit `abstract = True`, so only inspect this model's own Meta.
     let Some(meta) = own_meta(db, class) else {
         return ModelMetadata::default();
     };
@@ -168,8 +167,6 @@ fn model_metadata<'db>(db: &'db dyn Db, class: StaticClassLiteral<'db>) -> Model
         let Some((meta_base, _)) = meta_base.static_class_literal(db) else {
             return ModelMetadata::default();
         };
-        // Django resets an abstract model's Meta.abstract to False during model creation.
-        // A child can inherit other options from that Meta, but must set abstract=True itself.
         let enclosing_scope = meta_base.definition(db).scope(db);
         if let Some(owner) = nearest_enclosing_class(
             db,
@@ -186,7 +183,6 @@ fn model_metadata<'db>(db: &'db dyn Db, class: StaticClassLiteral<'db>) -> Model
         let Some(symbol) = place_table(db, scope).symbol_id("abstract") else {
             continue;
         };
-        // The public type is widened to `bool`, so read the bindings' literal values instead.
         let Some(abstract_flag) = place_from_bindings(
             db,
             &env,
@@ -223,7 +219,6 @@ pub(in crate::types) fn synthesized_member<'db>(
     specialization: Option<Specialization<'db>>,
     name: &str,
 ) -> Option<Type<'db>> {
-    // A quick filter on the name, so that we can return quickly for almost all attribute names.
     if !(matches!(name, "id" | "pk")
         || name.ends_with("_id")
         || name.starts_with("get_") && name.ends_with("_display")
@@ -267,8 +262,6 @@ fn primary_key_member<'db>(
     specialization: Option<Specialization<'db>>,
     name: &str,
 ) -> Option<Type<'db>> {
-    // Explicit `id` or `pk` attributes on base classes take precedence over a synthesized
-    // attribute on this model.
     if class
         .iter_mro(db, specialization)
         .filter_map(ClassBase::into_class)
@@ -295,7 +288,6 @@ fn primary_key_member<'db>(
         }
     }
 
-    // Abstract models do not have an automatic primary key.
     if model_metadata(db, class).is_abstract {
         return None;
     }
@@ -356,10 +348,6 @@ fn foreign_key_id_type<'db>(
         return None;
     }
 
-    // django-types represents a foreign key declared with `null=True` as
-    // `ForeignKey[Author | None]`, so its `related_model` attribute has type
-    // `type[Author | None]`. Remove `None` from the instance type before looking up `pk`
-    // (or `to_field`) on `Author`. If `null=True`, add `None` to the
     // resulting ID type: for example, an integer primary key becomes `int | None`.
     let related_model = field_ty
         .member(db, env, "related_model")
@@ -395,7 +383,6 @@ fn display_method<'db>(
         return None;
     }
 
-    // Construct `def get_<field>_display(self: MyModel) -> str`.
     let self_ty = Type::instance(
         db,
         env,
@@ -427,14 +414,12 @@ fn date_navigation_method<'db>(
     if field.metadata.null {
         return None;
     }
-    // We add these methods for all field types that inherit from `DateField`, like `DateTimeField`.
     let date_field = KnownClass::DjangoDateField.try_to_class_literal(db, env)?;
     let field_class = field.ty.nominal_class(db, env)?;
     if !field_class.is_subtype_of_class_literal(db, date_field.into()) {
         return None;
     }
 
-    // Construct `def get_{next,previous}_by_<field>(self: Self, /, **kwargs: Any) -> Self`.
     let self_typevar = BoundTypeVarInstance::synthetic_self(
         db,
         SelfTypeVarOrigin::Class(class.into()),

@@ -177,9 +177,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
     ) -> Result<Type<'db>, Type<'db>> {
         let value_ty = self.infer_expression(&subscript.value, TypeContext::default());
 
-        // If we have an implicit type alias like `MyList = list[T]`, and if `MyList` is being
-        // used in another implicit type alias like `Numbers = MyList[int]`, then we infer the
-        // right hand side as a value expression, and need to handle the specialization here.
         if value_ty.is_generic_alias() {
             return Ok(self.infer_explicit_type_alias_specialization(subscript, value_ty, false));
         }
@@ -216,7 +213,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
         let mut constraint_keys = vec![];
 
-        // If `value` is a valid reference, we attempt type narrowing by assignment.
         let source_place = (!value_ty.is_unknown())
             .then(|| self.source_place(ast::ExprRef::Subscript(subscript)))
             .flatten();
@@ -230,8 +226,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     ..
                 }) = place.place
                 {
-                    // Even if we can obtain the subscript type based on the assignments, we still perform default type inference
-                    // (to store the expression type and to report errors).
                     let slice_ty = self.infer_expression(slice, TypeContext::default());
                     return self
                         .infer_subscript_expression_types(
@@ -250,12 +244,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
         match value_ty {
             Type::ClassLiteral(class) => {
-                // HACK ALERT: If we are subscripting a generic class, short-circuit the rest of the
-                // subscript inference logic and treat this as an explicit specialization.
-                // TODO: Move this logic into a custom callable, and update `find_name_in_mro` to return
-                // this callable as the `__class_getitem__` method on `type`. That probably requires
-                // updating all of the subscript logic below to use custom callables for all of the _other_
-                // special cases, too.
                 if class.is_tuple(db) {
                     return Ok(tuple_generic_alias(
                         self.infer_tuple_type_expression(subscript),
@@ -341,7 +329,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
                     let ty = self.infer_type_expression(slice);
 
-                    // `Optional[None]` is equivalent to `None`:
                     if ty.is_none(db) {
                         return Ok(ty);
                     }
@@ -379,7 +366,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     }
                 },
                 SpecialFormType::Type => {
-                    // Similar to the branch above that handles `type[…]`, handle `typing.Type[…]`
                     let argument_ty = self.infer_type_expression(slice);
                     return Ok(Type::KnownInstance(KnownInstanceType::TypeGenericAlias(
                         InternedType::new(db, argument_ty),
@@ -518,8 +504,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }))
         };
 
-        // Avoid constructing an identity specialization and a full protocol interface for the
-        // many generic protocols that do not directly declare `__class__`.
         let disable_int_float_special_case = generic_class.is_protocol(db)
             && place_table(db, generic_class.body_scope(db))
                 .symbol_id("__class__")
@@ -702,7 +686,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         let pack_before_paramspec = typevartuple_index
             .filter(|&index| typevars[index + 1..].iter().any(|var| var.is_paramspec(db)));
 
-        // G[int, [str], Any] binds int to the pack, then [str] and Any to successive ParamSpecs.
         let suffix_len = |pack_index: usize, arguments: &[TypeArgument]| {
             let available = arguments.len().saturating_sub(pack_index);
             if !typevars
@@ -735,13 +718,10 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
         for (source_index, expr) in type_arguments.iter().enumerate() {
             let index = expanded_type_arguments.len();
-            // A later unpack can shift a parameter list into or out of a ParamSpec slot.
-            // Infer it only after we know how many arguments each unpack contributes.
             let fixed_paramspec = typevars.get(index).is_some_and(|var| var.is_paramspec(db));
             let defer = if pack_before_paramspec.is_some_and(|pack| index >= pack) {
                 self.is_explicit_paramspec_argument(expr)
             } else if fixed_paramspec && typevartuple_index.is_some() {
-                // Even a leading ParamSpec can shift when its apparent argument is an unpack.
                 match expr {
                     ast::Expr::Starred(_) | ast::Expr::StringLiteral(_) => false,
                     ast::Expr::Subscript(subscript) if is_dotted_name(&subscript.value) => {
@@ -766,9 +746,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }
 
             let provided_type = if typevars_len == 0 {
-                // If there are no typevars at all, this is not a generic type,
-                // so we should not infer excess arguments as type expressions.
-                // For example, `list[int][0]` — the `0` is not a type expression.
                 self.infer_expression(expr, TypeContext::default())
             } else {
                 let previously_in_valid_unpack_context = self
@@ -796,7 +773,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         && (index..index + tuple.len())
                             .all(|i| !typevars.get(i).is_some_and(|var| var.is_paramspec(db)))))
             {
-                // Expand `Foo[Unpack[tuple[int, str]]]` to `Foo[int, str]`.
                 expanded_type_arguments.extend(tuple.iter_all_elements().map(|ty| TypeArgument {
                     node: expr,
                     ty: Some(ty),
@@ -1039,7 +1015,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         })
                     };
 
-                    // A ParamSpec cannot be used to specialize a regular TypeVar.
                     if !typevar.is_paramspec(db)
                         && let Type::TypeVar(tv) = provided_type
                         && tv.is_paramspec(db)
@@ -1075,15 +1050,8 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         continue;
                     }
 
-                    // TODO consider just accepting the given specialization without checking
-                    // against bounds/constraints, but recording the expression for deferred
-                    // checking at end of scope. This would avoid a lot of cycles caused by eagerly
-                    // doing assignment checks here.
                     let bound_or_constraints = typevar.typevar(db).bound_or_constraints(db, env);
                     let type_to_check = if bound_or_constraints.is_some() {
-                        // Defaults such as `Box[T]` may be inferred before `T` has a binding context.
-                        // Bind only the copy used for validation, so the original default can later
-                        // be bound to each generic that uses it.
                         provided_type.apply_type_mapping(
                             db,
                             env,
@@ -1124,10 +1092,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                             }
                         }
                         Some(TypeVarBoundOrConstraints::Constraints(typevar_constraints)) => {
-                            // TODO: this is wrong, the given specialization needs to be assignable
-                            // to _at least one_ of the individual constraints, not to the union of
-                            // all of them. `int | str` is not a valid specialization of a typevar
-                            // constrained to `(int, str)`.
                             if type_to_check
                                 .when_assignable_to(
                                     db,
@@ -1168,7 +1132,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 }
                 EitherOrBoth::Left(typevar) => {
                     if typevar.default_type(db).is_none() {
-                        // This is an error case, so no need to push into the specialization types.
                         missing_typevars.push(typevar);
                     } else {
                         typevar_with_defaults += 1;
@@ -1199,7 +1162,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
         if let Some(first_excess_type_argument_index) = first_excess_type_argument_index {
             if typevars_len == 0 {
-                // Type parameter list cannot be empty, so if we reach here, `value_ty` is not a generic type.
                 if let Some(builder) = self.context.report_lint(&NOT_SUBSCRIPTABLE, subscript) {
                     let mut diagnostic = builder.into_diagnostic(format_args!(
                         "Cannot subscript non-generic type `{}`",
@@ -1296,7 +1258,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         if !is_dotted_name(target) {
             return false;
         }
-        // The argument will be inferred in its own context once we know which parameter it fills.
         let ty = self
             .speculate_without_diagnostics()
             .infer_expression(target, TypeContext::default());
@@ -1333,15 +1294,12 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }
 
             ast::Expr::Tuple(_) if !exactly_one_paramspec => {
-                // Tuple expression is only allowed when the generic context contains only one
-                // `ParamSpec` type variable and no other type variables.
             }
 
             ast::Expr::Tuple(ast::ExprTuple { elts, .. })
             | ast::Expr::List(ast::ExprList { elts, .. }) => {
                 let mut parameter_types = Vec::with_capacity(elts.len());
 
-                // Whether to infer `Todo` for the parameters
                 let mut return_todo = false;
 
                 let previously_allowed_paramspec = self
@@ -1350,10 +1308,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     .replace(InferenceFlags::ALLOW_PARAMSPEC_TYPE_EXPR, false);
                 for param in elts {
                     let param_type = self.infer_type_expression(param);
-                    // This is similar to what we currently do for inferring tuple type expression.
-                    // We currently infer `Todo` for the parameters to avoid invalid diagnostics
-                    // when trying to check for assignability or any other relation. For example,
-                    // `*tuple[int, str]`, `Unpack[]`, etc. are not yet supported.
                     return_todo |= param_type.is_todo()
                         && matches!(param, ast::Expr::Starred(_) | ast::Expr::Subscript(_));
                     parameter_types.push(param_type);
@@ -1364,7 +1318,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 );
 
                 let parameters = if return_todo {
-                    // TODO: `Unpack`
                     Parameters::todo()
                 } else {
                     Parameters::from_annotation(
@@ -1388,7 +1341,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     ));
                 }
 
-                // Non-Concatenate subscript: fall back to todo
                 return Ok(Type::paramspec_value_callable(db, Parameters::todo()));
             }
 
@@ -1434,15 +1386,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         return Err(());
                     }
 
-                    // This is to handle the following case:
-                    //
-                    // ```python
-                    // from typing import ParamSpec
-                    //
-                    // class Foo[**P]: ...
-                    //
-                    // Foo[ParamSpec]  # P: (ParamSpec, /)
-                    // ```
                     Type::NominalInstance(nominal)
                         if nominal.has_known_class(db, KnownClass::ParamSpec) =>
                     {
@@ -1459,26 +1402,12 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     }
 
                     _ if exactly_one_paramspec => {
-                        // Square brackets are optional when `ParamSpec` is the only type variable
-                        // being specialized. This means that a single name expression represents a
-                        // parameter list with a single parameter. For example,
-                        //
-                        // ```python
-                        // class OnlyParamSpec[**P]: ...
-                        //
-                        // OnlyParamSpec[int]  # P: (int, /)
-                        // ```
                         let parameters = if param_type.is_todo() {
                             Parameters::todo()
                         } else if param_type.is_non_divergent_dynamic() && param_type != Type::any()
                         {
-                            // If we ended up with an `Unknown` type here, it almost certainly means
-                            // that we already emitted an error elsewhere. Fallback to the more lenient
-                            // type.
                             Parameters::unknown()
                         } else {
-                            // Preserve cycle placeholders so recursive specializations can
-                            // be normalized instead of growing another parameter type.
                             Parameters::from_annotation(
                                 db,
                                 [
@@ -1490,17 +1419,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         return Ok(Type::paramspec_value_callable(db, parameters));
                     }
 
-                    // This is specifically to handle a case where there are more than one type
-                    // variables and at least one of them is a `ParamSpec` which is specialized
-                    // using `typing.Any`. This isn't explicitly allowed in the spec, but both mypy
-                    // and Pyright allows this and the ecosystem report suggested there are usages
-                    // of this in the wild e.g., `staticmethod[Any, Any]`. For example,
-                    //
-                    // ```python
-                    // class Foo[**P, T]: ...
-                    //
-                    // Foo[Any, int]  # P: (Any, /), T: int
-                    // ```
                     Type::Dynamic(DynamicType::Any) => {
                         return Ok(Type::paramspec_value_callable(
                             db,
@@ -1508,8 +1426,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         ));
                     }
 
-                    // If we ended up with an `Unknown` type here, it almost certainly means
-                    // that we already emitted an error elsewhere
                     Type::Dynamic(_) => {
                         return Ok(Type::paramspec_value_callable(db, Parameters::unknown()));
                     }
@@ -1585,8 +1501,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         )
                 )
             };
-            // A tuple type can preserve only one variable segment, so count unpacked
-            // `TypeVarTuple`s before the argument tuple is lowered to its type.
             let has_multiple_typevartuple_arguments = arguments
                 .iter()
                 .filter(|argument| is_unpacked_typevartuple(argument))
@@ -1613,9 +1527,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }
         }
 
-        // Special typing forms for which subscriptions are context-dependent are parsed here,
-        // outside of `Type::subscript`, which is a pure function that doesn't depend on the
-        // semantic index or any context-dependent state.
         let subscript_result = match value_ty {
             Type::SpecialForm(SpecialFormType::Generic) => infer_legacy_generic_subscript(
                 db,
@@ -1638,7 +1549,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 KnownInstanceType::SubscriptedProtocol,
             ),
             Type::SpecialForm(SpecialFormType::Concatenate) => {
-                // TODO: Add proper support for `Concatenate`
                 let mut variables = FxOrderSet::default();
                 slice_ty.bind_and_find_all_legacy_typevars(
                     db,
@@ -1742,8 +1652,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             true,
         );
 
-        // Record the constraints for the object of the subscript assignment, if the object is an
-        // unannotated collection initializer.
         if is_valid_assignment
             && let Some(collection_def) = self.index.unannotated_collection_initializer(object)
             && let Some((class_literal, _)) = object_ty.class_specialization(db, env)
@@ -1775,7 +1683,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 let identity_bindings = dunder_callable
                     .bindings(db, env)
                     .match_parameters(db, env, &call_arguments)
-                    // Perform inference against the type variables on the receiver's generic context.
                     .with_generic_context(db, collection_generic_context);
 
                 let call_result = self
@@ -1784,12 +1691,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         ArgumentsIter::synthesized(&ast_arguments),
                         &mut call_arguments,
                         &mut |builder, (_, expr, tcx)| {
-                            // TODO: The argument types have already been inferred and stored in `call_arguments`.
-                            // However, `object` would have been inferred to a be a collection with `Divergent`
-                            // element types, meaning the type context for a given argument, by which the inferred
-                            // type is keyed, may not be the same as the type context we get here. It is not immediately
-                            // clear how to retrieve those types, and so we just re-infer the argument expressions
-                            // for simplicity.
                             builder.infer_maybe_standalone_expression(expr, tcx)
                         },
                         identity_bindings,
@@ -1807,8 +1708,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                             identity_overload.merged_specialization(db)
                         })
                     {
-                        // Record the constraints on the receiver's generic context formed by
-                        // the arguments to this dunder call.
                         let Some(constraints) = self.collection_use_constraint_from_specialization(
                             identity_instance,
                             collection_generic_context,
@@ -1852,19 +1751,14 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }
         };
 
-        // Aliases must use the same union and TypedDict checks as their underlying types.
         match object_ty.resolve_type_alias(db) {
             Type::Union(union) => {
                 let mut infer_slice_ty = MultiInferenceGuard::new(infer_slice_ty);
                 let mut infer_rhs_value = MultiInferenceGuard::new(infer_rhs_value);
 
-                // Perform loud inference without type context, as there may be multiple
-                // equally applicable type contexts for each union member.
                 infer_slice_ty.infer_loud(self, TypeContext::default());
                 infer_rhs_value.infer_loud(self, TypeContext::default());
 
-                // Note that we use a loop here instead of .all(…) to avoid short-circuiting.
-                // We need to keep iterating to emit all diagnostics.
                 let mut valid = true;
                 for element_ty in union.elements(db) {
                     valid &= self.validate_subscript_assignment_impl(
@@ -1899,8 +1793,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         );
 
                         if valid || emit_diagnostic_and_short_circuit {
-                            // Otherwise, perform loud inference with the narrowed type context, or the
-                            // type context of the first failing element.
                             infer_slice_ty.infer_loud(self, infer_slice_ty.last_tcx());
                             infer_rhs_value.infer_loud(self, infer_rhs_value.last_tcx());
                             break;
@@ -1910,9 +1802,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     valid
                 };
 
-                // Perform an initial check of all elements. If the assignment is valid
-                // for at least one element, we do not emit any diagnostics. Otherwise,
-                // we re-run the check and emit a diagnostic on the first failing element.
                 let valid = check_positive_elements(false);
                 if !valid {
                     check_positive_elements(true);
@@ -1932,17 +1821,10 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             ),
 
             Type::TypedDict(typed_dict) => {
-                // As an optimization, prevent calling `__setitem__` on (unions of) large `TypedDict`s, and
-                // validate the assignment ourselves. This also allows us to emit better diagnostics.
 
                 let mut valid = true;
                 let slice_ty = infer_slice_ty(self, TypeContext::default());
                 let Some(keys) = string_literal_values(db, slice_ty) else {
-                    // Check if the key has a valid type. We only allow string literals, a union of string literals,
-                    // or a dynamic type like `Any`. We can do this by checking assignability to `LiteralString`,
-                    // but we need to exclude `LiteralString` itself. This check would technically allow weird key
-                    // types like `LiteralString & Any` to pass, but it does not need to be perfect. We would just
-                    // fail to provide the "can only be subscripted with a string literal key" hint in that case.
 
                     if slice_ty.is_dynamic() {
                         return true;
@@ -1997,9 +1879,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                             attach_original_type_info(&mut diagnostic);
                         }
                     } else {
-                        // With explicit extra items, a string key reaches this branch if it might
-                        // overwrite a read-only item. Keep that error under `invalid-typed-dict-key`.
-                        // A closed TypedDict with no writable fields also has no valid destination.
                         let openness = typed_dict.openness(db);
                         let lint = if openness.explicit_extra_items().is_some()
                             || (openness.is_closed()
@@ -2025,12 +1904,10 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     return false;
                 };
 
-                // We may need to infer the value multiple times for distinct keys.
                 let mut key_count = 0;
                 let mut infer_rhs_value = MultiInferenceGuard::new(infer_rhs_value);
 
                 for key in keys {
-                    // Infer the value with type context.
                     let item = typed_dict.item(db, key);
                     let value_ty = infer_rhs_value.infer_silent(
                         self,
@@ -2055,7 +1932,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     .validate();
                 }
 
-                // Perform loud inference with type context if there is a single key.
                 if key_count == 1 {
                     infer_rhs_value.infer_loud(self, infer_rhs_value.last_tcx());
                 } else {
@@ -2172,7 +2048,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                                             slice_ty.display_with(db, env, settings),
                                         ));
 
-                                        // Special diagnostic for dictionaries
                                         if let Some([expected_key_ty, expected_value_ty]) =
                                             object_ty
                                                 .known_specialization(db, env, KnownClass::Dict)
@@ -2240,7 +2115,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                             ));
                             attach_original_type_info(&mut diagnostic);
 
-                            // If it's a user-defined class, suggest adding a `__setitem__` method.
                             if object_ty
                                 .as_nominal_instance()
                                 .and_then(|instance| {
@@ -2313,7 +2187,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }
 
             Type::Intersection(intersection) => {
-                // Check if any positive element supports deletion
                 let positive = intersection.positive(db);
                 let mut any_valid = false;
                 for element_ty in positive {
@@ -2323,7 +2196,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     }
                 }
 
-                // If none are valid, emit a diagnostic for the first failing element
                 if !any_valid && let Some(element_ty) = positive.first() {
                     self.validate_subscript_deletion_impl(
                         target,
@@ -2343,10 +2215,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
             _ => {
                 if let Type::TypedDict(typed_dict) = object_ty {
-                    // Known undeclared keys can only refer to explicit extra items, so they can be
-                    // deleted whenever those items are mutable. An arbitrary string key could
-                    // instead refer to any declared field, so deletion is only safe when all
-                    // possible fields are optional and mutable.
                     let can_delete_extra_literals = typed_dict
                         .explicit_extra_items(db)
                         .is_some_and(|extra_items| !extra_items.is_read_only())
@@ -2400,16 +2268,12 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                                 }
                             }
                             CallErrorKind::BindingError => {
-                                // For deletions of string literal keys on `TypedDict`, provide
-                                // a more detailed diagnostic.
                                 if let Some(typed_dict) = object_ty.as_typed_dict() {
                                     if let Some(string_literal) = slice_ty.as_string_literal() {
                                         let key = string_literal.value(db);
                                         let items = typed_dict.items(db);
 
                                         if let Some(field) = items.get(key) {
-                                            // Key exists but is read-only or required (i.e.,
-                                            // can't be deleted).
                                             report_cannot_delete_typed_dict_key(
                                                 &self.context,
                                                 (&*target.slice).into(),
@@ -2435,7 +2299,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                                                 TypedDictDeleteErrorKind::ReadOnlyExtraItem,
                                             );
                                         } else {
-                                            // Key doesn't exist.
                                             report_cannot_delete_typed_dict_key(
                                                 &self.context,
                                                 (&*target.slice).into(),
@@ -2446,7 +2309,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                                             );
                                         }
                                     } else {
-                                        // Non-string-literal key on `TypedDict`.
                                         if let Some(builder) =
                                             self.context.report_lint(&INVALID_ARGUMENT_TYPE, target)
                                         {
@@ -2463,7 +2325,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                                         }
                                     }
                                 } else {
-                                    // Non-`TypedDict` object
                                     if let Some(builder) =
                                         self.context.report_lint(&INVALID_ARGUMENT_TYPE, target)
                                     {

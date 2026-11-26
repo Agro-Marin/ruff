@@ -17,7 +17,6 @@ pub(crate) struct NotebookDocument {
     cells: Vec<NotebookCell>,
     metadata: ruff_notebook::RawNotebookMetadata,
     version: DocumentVersion,
-    // Used to quickly find the index of a cell for a given URI.
     cell_index: FxHashMap<lsp_types::Uri, CellId>,
 }
 
@@ -86,8 +85,6 @@ impl NotebookDocument {
                     }))
                 }
                 NotebookCellKind::Custom(_) => {
-                    // Ignore unsupported cell kinds. This arm should never be reached unless a
-                    // client sends a value which is not mentioned/supported in the LSP.
                     None
                 }
             })
@@ -122,21 +119,12 @@ impl NotebookDocument {
             text_content,
         }) = cells
         {
-            // The structural changes should be done first, as they may affect the cell index.
             if let Some(structure) = structure {
                 let start = structure.array.start as usize;
                 let delete = structure.array.delete_count as usize;
 
-                // This is required because of the way the `NotebookCell` is modelled. We include
-                // the `TextDocument` within the `NotebookCell` so when it's deleted, the
-                // corresponding `TextDocument` is removed as well. But, when cells are
-                // re-ordered, the change request doesn't provide the actual contents of the cell.
-                // Instead, it only provides that (a) these cell URIs were removed, and (b) these
-                // cell URIs were added.
-                // https://github.com/astral-sh/ruff/issues/12573
                 let mut deleted_cells = FxHashMap::default();
 
-                // First, delete the cells and remove them from the index.
                 if delete > 0 {
                     for cell in self.cells.drain(start..start + delete) {
                         self.cell_index.remove(&cell.uri);
@@ -144,9 +132,6 @@ impl NotebookDocument {
                     }
                 }
 
-                // Second, insert the new cells with the available information. This array does not
-                // provide the actual contents of the cells, so we'll initialize them with empty
-                // contents.
                 for cell in structure.array.cells.into_iter().flatten().rev() {
                     let (content, version) =
                         if let Some(text_document) = deleted_cells.remove(&cell.document) {
@@ -159,15 +144,10 @@ impl NotebookDocument {
                         .insert(start, NotebookCell::new(cell, content, version));
                 }
 
-                // Third, register the new cells in the index and update existing ones that came
-                // after the insertion.
                 for (index, cell) in self.cells.iter().enumerate().skip(start) {
                     self.cell_index.insert(cell.uri.clone(), index);
                 }
 
-                // Finally, update the text document that represents the cell with the actual
-                // contents. This should be done at the end so that both the `cells` and
-                // `cell_index` are updated before we start applying the changes to the cells.
                 if let Some(did_open) = structure.did_open {
                     for cell_text_document in did_open {
                         if let Some(cell) = self.cell_by_uri_mut(&cell_text_document.uri) {

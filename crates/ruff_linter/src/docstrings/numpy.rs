@@ -14,7 +14,6 @@ pub(crate) static NUMPY_SECTIONS: &[SectionKind] = &[
     SectionKind::Warnings,
     SectionKind::Warns,
     SectionKind::Yields,
-    // NumPy-only
     SectionKind::ExtendedSummary,
     SectionKind::OtherParams,
     SectionKind::OtherParameters,

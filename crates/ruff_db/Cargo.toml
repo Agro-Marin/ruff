@@ -73,7 +73,6 @@ serde = [
     "dep:url",
     "ruff_diagnostics/serde",
 ]
-# Exposes testing utilities.
 testing = ["tracing-subscriber"]
 
 [lints.cargo]

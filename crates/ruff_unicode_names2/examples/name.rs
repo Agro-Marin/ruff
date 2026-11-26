@@ -2,7 +2,7 @@ use std::env;
 
 fn main() {
     let mut arguments = env::args();
-    arguments.next(); // Executable name
+    arguments.next();
     for argument in arguments {
         for c in argument.chars() {
             match unicode_names2::name(c) {

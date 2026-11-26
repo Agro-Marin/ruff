@@ -35,7 +35,6 @@ export async function runPython(workspace: SerializedFiles): Promise<string> {
     const dict = pyodide.globals.get("dict");
     const globals = dict();
 
-    // Patch `reveal_type` to print runtime values
     try {
       pyodide.runPython(`
         import builtins

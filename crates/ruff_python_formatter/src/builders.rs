@@ -214,10 +214,6 @@ impl<'fmt, 'ast, 'buf, 'state> JoinCommaSeparatedBuilder<'fmt, 'ast, 'buf, 'stat
 
     pub(crate) fn finish(&mut self) -> FormatResult<()> {
         self.result.and_then(|()| {
-            // Don't add a magic trailing comma when formatting an f-string or t-string expression
-            // that always must be flat because the `expand_parent` forces enclosing
-            // groups to expand, e.g. `print(f"{(a,)} ")` would format the f-string in
-            // flat mode but the `print` call gets expanded because of the `expand_parent`.
             if self
                 .fmt
                 .context()
@@ -234,8 +230,6 @@ impl<'fmt, 'ast, 'buf, 'state> JoinCommaSeparatedBuilder<'fmt, 'ast, 'buf, 'stat
                     self.fmt.context(),
                 );
 
-                // If there is a single entry, only keep the magic trailing comma, don't add it if
-                // it wasn't there -- unless the trailing comma behavior is set to one-or-more.
                 if magic_trailing_comma
                     || self.trailing_comma == TrailingComma::OneOrMore
                     || self.entries.is_more_than_one()

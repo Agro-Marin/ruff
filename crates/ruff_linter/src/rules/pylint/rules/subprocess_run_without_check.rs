@@ -54,8 +54,6 @@ use crate::{Fix, FixAvailability, Violation};
 pub(crate) struct SubprocessRunWithoutCheck;
 
 impl Violation for SubprocessRunWithoutCheck {
-    // The fix is always set on the diagnostic, but display-only fixes aren't
-    // considered "fixable" in the tests.
     const FIX_AVAILABILITY: FixAvailability = FixAvailability::Sometimes;
 
     #[derive_message_formats]

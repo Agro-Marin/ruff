@@ -143,13 +143,11 @@ pub(crate) fn use_capital_environment_variables(checker: &Checker, expr: &Expr) 
         return;
     }
 
-    // Ex) `os.environ['foo']`
     if let Expr::Subscript(_) = expr {
         check_os_environ_subscript(checker, expr);
         return;
     }
 
-    // Ex) `os.environ.get('foo')`, `os.getenv('foo')`
     let Expr::Call(ast::ExprCall {
         func,
         arguments: Arguments { args, .. },
@@ -282,7 +280,6 @@ pub(crate) fn dict_get_with_none_default(checker: &Checker, expr: &Expr) {
         return;
     }
 
-    // Check if the value is a dictionary.
     match value.as_ref() {
         Expr::Dict(_) | Expr::DictComp(_) => {}
         Expr::Name(name) => {

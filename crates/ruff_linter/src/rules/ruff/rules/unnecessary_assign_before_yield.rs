@@ -104,9 +104,6 @@ pub(crate) fn unnecessary_assign_before_yield(checker: &Checker, function_stmt: 
             && let Some(assigned_binding) = function_scope
                 .get(assigned_id)
                 .map(|binding_id| checker.semantic().binding(binding_id))
-            // Unlike `return`, `yield` doesn't exit the function, so the variable could be
-            // referenced elsewhere. Only flag if the binding has exactly one reference (the
-            // yield itself).
             && assigned_binding.references().count() == 1
             && assigned_binding
                 .references()
@@ -186,7 +183,6 @@ impl<'a> Visitor<'a> for YieldVisitor<'_, 'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::ClassDef(_) | Stmt::FunctionDef(_) => {
-                // Do not recurse into nested class/function bodies.
                 self.sibling = Some(stmt);
                 return;
             }
@@ -195,7 +191,6 @@ impl<'a> Visitor<'a> for YieldVisitor<'_, 'a> {
                 self.non_locals.extend(names.iter().map(Identifier::as_str));
             }
             Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) => {
-                // Ex) `x: int`
                 if value.is_none()
                     && let Expr::Name(name) = target.as_ref()
                 {

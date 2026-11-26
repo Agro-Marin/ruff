@@ -250,8 +250,6 @@ impl Client {
                 data: None,
             };
 
-            // Use `client_sender` here instead of `respond_err` because
-            // `respond_err` filters out responses for canceled requests (which we just did!).
             if let Err(err) = self
                 .client_sender
                 .send(Message::Response(lsp_server::Response {

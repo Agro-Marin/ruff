@@ -192,7 +192,6 @@ impl<'src> StringParser<'src> {
             len += 1;
         }
 
-        // OK because radix_bytes is always going to be in the ASCII range.
         let radix_str = std::str::from_utf8(&radix_bytes[..len]).expect("ASCII bytes");
         let value = u32::from_str_radix(radix_str, 8).unwrap();
         char::from_u32(value).unwrap()
@@ -221,8 +220,6 @@ impl<'src> StringParser<'src> {
         unicode_names2::character(name).ok_or_else(|| {
             LexicalError::new(
                 LexicalErrorType::UnicodeError,
-                // The cursor is right after the `}` character, so we subtract 1 to get the correct
-                // range of the unicode name.
                 TextRange::new(
                     start_pos,
                     self.compute_position(self.cursor - '}'.len_utf8()),
@@ -234,7 +231,6 @@ impl<'src> StringParser<'src> {
     /// Parse an escaped character, returning the new character.
     fn parse_escaped_char(&mut self) -> Result<Option<EscapedChar>, LexicalError> {
         let Some(first_char) = self.next_char() else {
-            // TODO: check when this error case happens
             return Err(LexicalError::new(
                 LexicalErrorType::StringError,
                 TextRange::empty(self.position()),
@@ -257,7 +253,6 @@ impl<'src> StringParser<'src> {
             'u' if !self.flags.is_byte_string() => self.parse_unicode_literal::<4>()?,
             'U' if !self.flags.is_byte_string() => self.parse_unicode_literal::<8>()?,
             'N' if !self.flags.is_byte_string() => self.parse_unicode_name()?,
-            // Special cases where the escape sequence is not a single character
             '\n' => return Ok(None),
             '\r' => {
                 if self.peek_byte() == Some(b'\n') {
@@ -275,7 +270,6 @@ impl<'src> StringParser<'src> {
     fn parse_interpolated_string_middle(
         mut self,
     ) -> Result<ast::InterpolatedStringLiteralElement, LexicalError> {
-        // Fast-path: if the f-string or t-string doesn't contain any escape sequences, return the literal.
         let Some(mut index) = memchr::memchr3(b'{', b'}', b'\\', self.source.as_bytes()) else {
             return Ok(ast::InterpolatedStringLiteralElement {
                 value: self.source.into(),
@@ -286,49 +280,22 @@ impl<'src> StringParser<'src> {
 
         let mut value = String::with_capacity(self.source.len());
         loop {
-            // Add the characters before the escape sequence (or curly brace) to the string.
             let before_with_slash_or_brace = self.skip_bytes(index + 1);
             let before = &before_with_slash_or_brace[..before_with_slash_or_brace.len() - 1];
             value.push_str(before);
 
-            // Add the escaped character to the string.
             match self.source.as_bytes()[self.cursor - 1] {
-                // If there are any curly braces inside a `F/TStringMiddle` token,
-                // then they were escaped (i.e. `{{` or `}}`). This means that
-                // the raw source contains a doubled brace, but the literal value only
-                // contains one brace.
                 brace @ (b'{' | b'}') => {
                     if self.peek_byte() == Some(brace) {
                         self.next_byte();
                     }
                     value.push(char::from(brace));
                 }
-                // We can encounter a `\` as the last character in a `F/TStringMiddle`
-                // token which is valid in this context. For example,
-                //
-                // ```python
-                // f"\{foo} \{bar:\}"
-                // # ^     ^^     ^
-                // ```
-                //
-                // Here, the `F/TStringMiddle` token content will be "\" and " \"
-                // which is invalid if we look at the content in isolation:
-                //
-                // ```python
-                // "\"
-                // ```
-                //
-                // However, the content is syntactically valid in the context of
-                // the f/t-string because it's a substring of the entire f/t-string.
-                // This is still an invalid escape sequence, but we don't want to
-                // raise a syntax error as is done by the CPython parser. It might
-                // be supported in the future, refer to point 3: https://peps.python.org/pep-0701/#rejected-ideas
                 b'\\' => {
                     if !self.flags.is_raw_string() && self.peek_byte().is_some() {
                         if let Some(brace @ (b'{' | b'}')) = self.peek_byte()
                             && self.source.as_bytes().get(self.cursor + 1).copied() == Some(brace)
                         {
-                            // Leave the doubled brace for the next iteration to collapse.
                             value.push('\\');
                         } else {
                             match self.parse_escaped_char()? {
@@ -352,7 +319,6 @@ impl<'src> StringParser<'src> {
             let Some(next_index) =
                 memchr::memchr3(b'{', b'}', b'\\', &self.source.as_bytes()[self.cursor..])
             else {
-                // Add the rest of the string to the value.
                 let rest = &self.source[self.cursor..];
                 value.push_str(rest);
                 break;
@@ -381,7 +347,6 @@ impl<'src> StringParser<'src> {
         }
 
         if self.flags.is_raw_string() {
-            // For raw strings, no escaping is necessary.
             return Ok(StringType::Bytes(ast::BytesLiteral {
                 value: self.source.as_bytes().into(),
                 range: self.range,
@@ -391,7 +356,6 @@ impl<'src> StringParser<'src> {
         }
 
         let Some(mut escape) = memchr::memchr(b'\\', self.source.as_bytes()) else {
-            // If the string doesn't contain any escape sequences, return the owned string.
             return Ok(StringType::Bytes(ast::BytesLiteral {
                 value: self.source.as_bytes().into(),
                 range: self.range,
@@ -400,15 +364,12 @@ impl<'src> StringParser<'src> {
             }));
         };
 
-        // If the string contains escape sequences, we need to parse them.
         let mut value = Vec::with_capacity(self.source.len());
         loop {
-            // Add the characters before the escape sequence to the string.
             let before_with_slash = self.skip_bytes(escape + 1);
             let before = &before_with_slash[..before_with_slash.len() - 1];
             value.extend_from_slice(before.as_bytes());
 
-            // Add the escaped character to the string.
             match self.parse_escaped_char()? {
                 None => {}
                 Some(EscapedChar::Literal(c)) => value.push(c as u8),
@@ -420,13 +381,11 @@ impl<'src> StringParser<'src> {
 
             let Some(next_escape) = memchr::memchr(b'\\', &self.source.as_bytes()[self.cursor..])
             else {
-                // Add the rest of the string to the value.
                 let rest = &self.source[self.cursor..];
                 value.extend_from_slice(rest.as_bytes());
                 break;
             };
 
-            // Update the position of the next escape sequence.
             escape = next_escape;
         }
 
@@ -440,7 +399,6 @@ impl<'src> StringParser<'src> {
 
     fn parse_string(mut self) -> Result<StringType, LexicalError> {
         if self.flags.is_raw_string() {
-            // For raw strings, no escaping is necessary.
             return Ok(StringType::Str(ast::StringLiteral {
                 value: self.source.into(),
                 range: self.range,
@@ -450,7 +408,6 @@ impl<'src> StringParser<'src> {
         }
 
         let Some(mut escape) = memchr::memchr(b'\\', self.source.as_bytes()) else {
-            // If the string doesn't contain any escape sequences, return the owned string.
             return Ok(StringType::Str(ast::StringLiteral {
                 value: self.source.into(),
                 range: self.range,
@@ -459,16 +416,13 @@ impl<'src> StringParser<'src> {
             }));
         };
 
-        // If the string contains escape sequences, we need to parse them.
         let mut value = String::with_capacity(self.source.len());
 
         loop {
-            // Add the characters before the escape sequence to the string.
             let before_with_slash = self.skip_bytes(escape + 1);
             let before = &before_with_slash[..before_with_slash.len() - 1];
             value.push_str(before);
 
-            // Add the escaped character to the string.
             match self.parse_escaped_char()? {
                 None => {}
                 Some(EscapedChar::Literal(c)) => value.push(c),
@@ -479,13 +433,11 @@ impl<'src> StringParser<'src> {
             }
 
             let Some(next_escape) = self.source[self.cursor..].find('\\') else {
-                // Add the rest of the string to the value.
                 let rest = &self.source[self.cursor..];
                 value.push_str(rest);
                 break;
             };
 
-            // Update the position of the next escape sequence.
             escape = next_escape;
         }
 
@@ -641,12 +593,6 @@ mod tests {
             parse_fstring_error("f'{lambda x:{x}}'"),
             LambdaWithoutParentheses
         );
-        // NOTE: The parser produces the `LambdaWithoutParentheses` for this case, but
-        // since the parser only return the first error to maintain compatibility with
-        // the rest of the codebase, this test case fails. The `LambdaWithoutParentheses`
-        // error appears after the unexpected `FStringMiddle` token, which is between the
-        // `:` and the `{`.
-        // assert_eq!(parse_fstring_error("f'{lambda x: {x}}'"), LambdaWithoutParentheses);
         assert!(parse_suite(r#"f"{class}""#).is_err());
     }
 
@@ -758,12 +704,6 @@ mod tests {
             parse_tstring_error("t'{lambda x:{x}}'"),
             LambdaWithoutParentheses
         );
-        // NOTE: The parser produces the `LambdaWithoutParentheses` for this case, but
-        // since the parser only return the first error to maintain compatibility with
-        // the rest of the codebase, this test case fails. The `LambdaWithoutParentheses`
-        // error appears after the unexpected `tStringMiddle` token, which is between the
-        // `:` and the `{`.
-        // assert_eq!(parse_tstring_error("f'{lambda x: {x}}'"), LambdaWithoutParentheses);
         assert!(parse_suite(r#"t"{class}""#).is_err());
     }
 
@@ -930,7 +870,6 @@ mod tests {
 
     #[test]
     fn test_single_quoted_byte() {
-        // single quote
         let source = r##"b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\x0c\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff'"##;
         let suite = parse_suite(source).unwrap();
         insta::assert_debug_snapshot!(suite);
@@ -938,7 +877,6 @@ mod tests {
 
     #[test]
     fn test_double_quoted_byte() {
-        // double quote
         let source = r##"b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\x0c\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff""##;
         let suite = parse_suite(source).unwrap();
         insta::assert_debug_snapshot!(suite);
@@ -946,8 +884,7 @@ mod tests {
 
     #[test]
     fn test_escape_char_in_byte_literal() {
-        // backslash does not escape
-        let source = r#"b"omkmok\Xaa""#; // spell-checker:ignore omkmok
+        let source = r#"b"omkmok\Xaa""#;
         let suite = parse_suite(source).unwrap();
         insta::assert_debug_snapshot!(suite);
     }

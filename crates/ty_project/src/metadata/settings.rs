@@ -162,7 +162,6 @@ pub(crate) fn file_settings(db: &dyn Db, file: File) -> FileSettings {
 
     let Some(second) = matching_overrides.next() else {
         tracing::debug!("Applying override for file `{path}`: {}", first.files);
-        // If the file matches only one override, return that override's settings.
         return FileSettings::File(Arc::clone(&first.settings));
     };
 
@@ -209,8 +208,6 @@ fn merge_overrides(db: &dyn Db, overrides: Vec<Arc<InnerOverrideOptions>>, _: ()
 
     let metadata = db.project().metadata(db);
 
-    // Merge with the project level options by replaying the individual options
-    // in the correct precedence order.
     for options in metadata
         .options_in_precedence_order(metadata.options(), metadata.uv_workspace_options.as_deref())
     {
@@ -226,7 +223,6 @@ fn merge_overrides(db: &dyn Db, overrides: Vec<Arc<InnerOverrideOptions>>, _: ()
     let analysis = merged.analysis.unwrap_or_default();
 
     let rules = rules.to_rule_selection(db);
-    // The analysis options were already validated when building the individual overrides.
     let analysis = analysis.to_settings(db, AnalysisOptionsContext::Override, &mut Vec::new());
 
     FileSettings::File(Arc::new(OverrideSettings { rules, analysis }))
@@ -287,7 +283,6 @@ impl OverrideSettings {
             AnalysisOptionsContext::TopLevel,
             &mut diagnostics,
         );
-        // Script resolution reports the error. Editor features use default analysis settings.
         let analysis = if diagnostics.is_empty() {
             analysis
         } else {

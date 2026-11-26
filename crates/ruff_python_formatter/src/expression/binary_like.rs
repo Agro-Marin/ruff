@@ -243,11 +243,9 @@ impl<'a> BinaryLike<'a> {
         let mut parts = SmallVec::new();
         match self {
             BinaryLike::Binary(binary) => {
-                // Leading and trailing comments are handled by the binary's ``FormatNodeRule` implementation.
                 recurse_binary(binary, &[], &[], comments, trivia, &mut parts);
             }
             BinaryLike::Compare(compare) => {
-                // Leading and trailing comments are handled by the compare's ``FormatNodeRule` implementation.
                 recurse_compare(compare, &[], &[], comments, trivia, &mut parts);
             }
             BinaryLike::Bool(bool) => {
@@ -286,53 +284,21 @@ impl Format<PyFormatContext<'_>> for BinaryLike<'_> {
             })
             .peekable();
 
-        // Split the binary expressions by implicit concatenated strings first by creating:
-        // * One group that encloses the whole binary expression and ensures that all implicit concatenated strings
-        //   break together or fit on the same line
-        // * Group the left operand and left operator as well as the right operator and right operand
-        //   to give them a lower precedence than the implicit concatenated string parts (the implicit strings should break first)
         if let Some((first_index, _, _)) = string_operands.peek() {
-            // Group all strings in a single group so that they all break together or none of them.
             write_in_parentheses_only_group_start_tag(f);
 
-            // Start the group for the left side coming before an implicit concatenated string if it isn't the first
-            // ```python
-            // a + "b" "c"
-            // ^^^- start this group
-            // ```
             if *first_index != OperandIndex::new(0) {
                 write_in_parentheses_only_group_start_tag(f);
             }
 
-            // The index of the last formatted operator
             let mut last_operator_index = None;
 
             loop {
                 if let Some((index, string_constant, operand)) = string_operands.next() {
-                    // An implicit concatenated string that isn't the first operand in a binary expression
-                    // ```python
-                    // a + "b" "c" + ddddddd + "e" "d"
-                    //     ^^^^^^ this part or ^^^^^^^ this part
-                    // ```
                     if let Some(left_operator_index) = index.left_operator() {
-                        // Handles the case where the left and right side of a binary expression are both
-                        // implicit concatenated strings. In this case, the left operator has already been written
-                        // by the preceding implicit concatenated string. It is only necessary to finish the group,
-                        // wrapping the soft line break and operator.
-                        //
-                        // ```python
-                        // "a" "b" + "c" "d"
-                        // ```
                         if last_operator_index == Some(left_operator_index) {
                             write_in_parentheses_only_group_end_tag(f);
                         } else {
-                            // Everything between the last implicit concatenated string and the left operator
-                            // right before the implicit concatenated string:
-                            // ```python
-                            // a + b + "c" "d"
-                            //       ^--- left_operator
-                            // ^^^^^-- left
-                            // ```
                             let left = flat_binary
                                 .between_operators(last_operator_index, left_operator_index);
                             let left_operator = &flat_binary[left_operator_index];
@@ -341,7 +307,6 @@ impl Format<PyFormatContext<'_>> for BinaryLike<'_> {
                                 leading_comments(leading).fmt(f)?;
                             }
 
-                            // Write the left, the left operator, and the space before the right side
                             write!(
                                 f,
                                 [
@@ -354,8 +319,6 @@ impl Format<PyFormatContext<'_>> for BinaryLike<'_> {
                                 ]
                             )?;
 
-                            // Finish the left-side group (the group was started before the loop or by the
-                            // previous iteration)
                             write_in_parentheses_only_group_end_tag(f);
 
                             if operand.has_unparenthesized_leading_comments(f.context())
@@ -372,9 +335,6 @@ impl Format<PyFormatContext<'_>> for BinaryLike<'_> {
                             [
                                 operand.leading_binary_comments().map(leading_comments),
                                 leading_comments(comments.leading(string_constant)),
-                                // Call `FormatImplicitConcatenatedString` directly to avoid formatting
-                                // the implicitly concatenated string with the enclosing group
-                                // because the group is added by the binary like formatting.
                                 FormatImplicitConcatenatedString::new(string_constant),
                                 trailing_comments(comments.trailing(string_constant)),
                                 operand.trailing_binary_comments().map(trailing_comments),
@@ -382,30 +342,16 @@ impl Format<PyFormatContext<'_>> for BinaryLike<'_> {
                             ]
                         )?;
                     } else {
-                        // Binary expression that starts with an implicit concatenated string:
-                        // ```python
-                        // "a" "b" + c
-                        // ^^^^^^^-- format the first operand of a binary expression
-                        // ```
                         write!(
                             f,
                             [
                                 leading_comments(comments.leading(string_constant)),
-                                // Call `FormatImplicitConcatenatedString` directly to avoid formatting
-                                // the implicitly concatenated string with the enclosing group
-                                // because the group is added by the binary like formatting.
                                 FormatImplicitConcatenatedString::new(string_constant),
                                 trailing_comments(comments.trailing(string_constant)),
                             ]
                         )?;
                     }
 
-                    // Write the right operator and start the group for the right side (if any)
-                    // ```python
-                    // a + "b" "c" + ddddddd + "e" "d"
-                    //             ^^--- write this
-                    //             ^^^^^^^^^^^-- start this group
-                    // ```
                     let right_operator_index = index.right_operator();
                     if let Some(right_operator) = flat_binary.get_operator(index.right_operator()) {
                         write_in_parentheses_only_group_start_tag(f);
@@ -413,7 +359,6 @@ impl Format<PyFormatContext<'_>> for BinaryLike<'_> {
                         let right_operand_has_leading_comments =
                             right_operand.has_unparenthesized_leading_comments(f.context());
 
-                        // Keep the operator on the same line if the right side has leading comments (and thus, breaks)
                         if right_operand_has_leading_comments {
                             space().fmt(f)?;
                         } else {
@@ -450,7 +395,6 @@ impl Format<PyFormatContext<'_>> for BinaryLike<'_> {
                 }
             }
 
-            // Finish the group that wraps all implicit concatenated strings
             write_in_parentheses_only_group_end_tag(f);
         } else {
             in_parentheses_only_group(&&*flat_binary).fmt(f)?;
@@ -638,7 +582,6 @@ impl<'a> FlatBinaryExpressionSlice<'a> {
 ///
 impl Format<PyFormatContext<'_>> for FlatBinaryExpressionSlice<'_> {
     fn fmt(&self, f: &mut Formatter<PyFormatContext>) -> FormatResult<()> {
-        // Single operand slice
         if let [OperandOrOperator::Operand(operand)] = &self.0 {
             return operand.fmt(f);
         }
@@ -680,7 +623,6 @@ impl Format<PyFormatContext<'_>> for FlatBinaryExpressionSlice<'_> {
 
                 operator_part.fmt(f)?;
 
-                // Format the operator on its own line if the right side has any leading comments.
                 if operator_part.has_trailing_comments()
                     || right
                         .first_operand()
@@ -697,11 +639,7 @@ impl Format<PyFormatContext<'_>> for FlatBinaryExpressionSlice<'_> {
             }
         }
 
-        // Format the last right side
         // SAFETY: It is guaranteed that the slice contains at least a operand, operator, operand sequence or:
-        //  * the slice contains only a single operand in which case the function exits early above.
-        //  * the slice is empty, which isn't a valid slice
-        //  * the slice violates the operand, operator, operand constraint, in which case the error already happened earlier.
         let right = self.after_operator(last_operator.unwrap());
 
         if let Some(leading) = right.first_operand().leading_binary_comments() {
@@ -852,35 +790,6 @@ impl Format<PyFormatContext<'_>> for Operand<'_> {
             let comments = f.context().comments().clone();
             let expression_comments = comments.leading_dangling_trailing(expression);
 
-            // Format leading comments that are before the inner most `(` outside of the expression's parentheses.
-            // ```python
-            // z = (
-            //      a
-            //      +
-            //      # a: extracts this comment
-            //      (
-            //          # b: and this comment
-            //          (
-            //              # c: formats it as part of the expression
-            //              x and y
-            //          )
-            //      )
-            // )
-            // ```
-            //
-            // Gets formatted as
-            // ```python
-            // z = (
-            //      a
-            //      +
-            //      # a: extracts this comment
-            //      # b: and this comment
-            //      (
-            //          # c: formats it as part of the expression
-            //          x and y
-            //      )
-            // )
-            // ```
             let leading = expression_comments.leading;
             let leading_before_parentheses_end = leading
                 .iter()
@@ -903,34 +812,6 @@ impl Format<PyFormatContext<'_>> for Operand<'_> {
 
             let leading_before_parentheses = &leading[..leading_before_parentheses_end];
 
-            // Format trailing comments that are outside of the inner most `)` outside of the parentheses.
-            // ```python
-            // z = (
-            //     (
-            //
-            //         (
-            //
-            //             x and y
-            //             # a: extracts this comment
-            //         )
-            //         # b: and this comment
-            //     )
-            //     # c: formats it as part of the expression
-            //     + a
-            //  )
-            // ```
-            // Gets formatted as
-            // ```python
-            // z = (
-            //     (
-            //         x and y
-            //         # a: extracts this comment
-            //     )
-            //     # b: and this comment
-            //     # c: formats it as part of the expression
-            //     + a
-            // )
-            // ```
             let trailing = expression_comments.trailing;
 
             let trailing_after_parentheses_start = trailing
@@ -954,8 +835,6 @@ impl Format<PyFormatContext<'_>> for Operand<'_> {
 
             let trailing_after_parentheses = &trailing[trailing_after_parentheses_start..];
 
-            // Mark the comment as formatted to avoid that the formatting of the expression
-            // formats the trailing comment inside of the parentheses.
             for comment in trailing_after_parentheses {
                 comment.mark_formatted();
             }
@@ -1074,7 +953,6 @@ impl OperatorIndex {
     fn new(index: usize) -> Self {
         assert_eq!(index % 2, 1, "Operator indices must be odd positions");
 
-        // OK because a value with a modulo 1 is guaranteed to never equal 0
         Self(NonZeroUsize::new(index).expect("valid index"))
     }
 

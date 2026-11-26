@@ -44,11 +44,8 @@ fn discover_pytest_tests<'db>(
             _ => binding.focus_range(db, &module).range(),
         };
 
-        // Track the identifier of the parent class.
         let mut parent: Option<String> = None;
 
-        // Add enclosing classes to the list of test items.
-        // Start from the outermost class so that each item's parent is added before the item itself.
         for class in test.enclosing_classes(db, &module).into_iter().rev() {
             parent = Some(collector.insert(
                 &class.name,

@@ -17,15 +17,13 @@ pub enum CFormatErrorType {
     UnsupportedFormatChar(char),
     IncompleteFormat,
     IntTooBig,
-    // Unimplemented,
 }
 
-// also contains how many chars the parsing function consumed
 pub type ParsingError = (CFormatErrorType, usize);
 
 #[derive(Debug, PartialEq)]
 pub struct CFormatError {
-    pub typ: CFormatErrorType, // FIXME
+    pub typ: CFormatErrorType,
     pub index: usize,
 }
 
@@ -117,7 +115,6 @@ pub struct CFormatSpec {
     pub precision: Option<CFormatPrecision>,
     pub format_type: CFormatType,
     pub format_char: char,
-    // chars_consumed: usize,
 }
 
 impl FromStr for CFormatSpec {
@@ -246,8 +243,6 @@ where
         'c' => CFormatType::Character,
         'r' => CFormatType::String(CFormatConversion::Repr),
         's' => CFormatType::String(CFormatConversion::Str),
-        // `%b` is only valid for bytes formatting (e.g. `b"%b" % b"x"`), not for string
-        // formatting.
         'b' if context == CFormatContext::Bytes => CFormatType::String(CFormatConversion::Bytes),
         'a' => CFormatType::String(CFormatConversion::Ascii),
         _ => return Err((CFormatErrorType::UnsupportedFormatChar(c), index)),

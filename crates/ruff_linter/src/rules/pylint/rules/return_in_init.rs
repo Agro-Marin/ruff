@@ -56,11 +56,9 @@ pub(crate) fn return_in_init(checker: &Checker, stmt: &Stmt) {
     {
         if let Some(expr) = value {
             if expr.is_none_literal_expr() {
-                // Explicit `return None`.
                 return;
             }
         } else {
-            // Implicit `return`.
             return;
         }
     }

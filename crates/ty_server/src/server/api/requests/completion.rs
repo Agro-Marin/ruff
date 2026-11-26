@@ -200,11 +200,9 @@ fn to_lsp_command(
 }
 
 fn ty_kind_to_lsp_kind(kind: CompletionKind) -> CompletionItemKind {
-    // Gimme my dang globs in tight scopes!
     #[allow(clippy::enum_glob_use)]
     use self::CompletionKind::*;
 
-    // ref https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#completionItemKind
     match kind {
         Text => CompletionItemKind::Text,
         Method => CompletionItemKind::Method,

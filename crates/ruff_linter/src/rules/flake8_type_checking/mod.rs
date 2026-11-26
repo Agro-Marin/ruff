@@ -88,8 +88,6 @@ mod tests {
             Path::new("flake8_type_checking").join(path).as_path(),
             &settings::LinterSettings {
                 future_annotations: true,
-                // also enable quoting annotations to check the interaction. the future import
-                // should take precedence.
                 flake8_type_checking: super::settings::Settings {
                     quote_annotations: true,
                     ..Default::default()
@@ -112,7 +110,6 @@ mod tests {
             Path::new("flake8_type_checking").join(path).as_path(),
             &settings::LinterSettings {
                 future_annotations: true,
-                // The issue in #21121 also didn't trigger on Python 3.14
                 unresolved_target_version: PythonVersion::PY313.into(),
                 ..settings::LinterSettings::for_rule(rule)
             },
@@ -144,8 +141,6 @@ mod tests {
         Ok(())
     }
 
-    // we test these rules as a pair, since they're opposites of one another
-    // so we want to make sure their fixes are not going around in circles.
     #[test_case(Rule::UnquotedTypeAlias, Path::new("TC007.py"))]
     #[test_case(Rule::QuotedTypeAlias, Path::new("TC008.py"))]
     #[test_case(Rule::QuotedTypeAlias, Path::new("TC008_typing_execution_context.py"))]

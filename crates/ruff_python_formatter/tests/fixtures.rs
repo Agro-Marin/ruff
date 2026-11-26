@@ -90,7 +90,6 @@ fn black_compatibility(input_path: &Utf8Path, content: String) -> datatest_stabl
                 formatted_code.replace_range(Range::<usize>::from(range), formatted.as_code());
             }
 
-            // We can't do stability checks for range formatting because we don't know the updated rangs.
 
             formatted_code
         } else {
@@ -114,9 +113,6 @@ fn black_compatibility(input_path: &Utf8Path, content: String) -> datatest_stabl
     let unsupported_syntax_errors =
         ensure_unchanged_ast(&content, &formatted_code, &options, input_path);
 
-    // Black and Ruff formatting matches. Delete any existing snapshot files because the Black output
-    // already perfectly captures the expected output.
-    // The following code mimics insta's logic generating the snapshot name for a test.
     let workspace_path = std::env::var("CARGO_MANIFEST_DIR").unwrap();
 
     let full_snapshot_name = format!("black_compatibility@{test_name}.snap");
@@ -128,19 +124,15 @@ fn black_compatibility(input_path: &Utf8Path, content: String) -> datatest_stabl
     if formatted_code == expected_output {
         if snapshot_path.exists() && snapshot_path.is_file() {
             // SAFETY: This is a convenience feature. That's why we don't want to abort
-            // when deleting a no longer needed snapshot fails.
             fs::remove_file(&snapshot_path).ok();
         }
 
         let new_snapshot_path = snapshot_path.with_extension("snap.new");
         if new_snapshot_path.exists() && new_snapshot_path.is_file() {
             // SAFETY: This is a convenience feature. That's why we don't want to abort
-            // when deleting a no longer needed snapshot fails.
             fs::remove_file(&new_snapshot_path).ok();
         }
     } else {
-        // Black and Ruff have different formatting. Write out a snapshot that covers the differences
-        // today.
         let mut snapshot = String::new();
         write!(snapshot, "{}", Header::new("Input")).unwrap();
         write!(snapshot, "{}", CodeFrame::new("python", &content)).unwrap();
@@ -217,13 +209,10 @@ fn format(input_path: &Utf8Path, content: String) -> datatest_stable::Result<()>
                 continue;
             }
 
-            // We want to capture the differences in the preview style in our fixtures
             let options_preview = options.with_preview(PreviewMode::Enabled);
             let (formatted_preview, _) = format_file(&content, &options_preview, input_path);
 
             if formatted_code != formatted_preview {
-                // Having both snapshots makes it hard to see the difference, so we're keeping only
-                // diff.
                 writeln!(
                     snapshot,
                     "#### Preview changes\n{}",
@@ -248,7 +237,6 @@ fn format(input_path: &Utf8Path, content: String) -> datatest_stable::Result<()>
             }
         }
     } else {
-        // We want to capture the differences in the preview style in our fixtures
         let options = PyFormatOptions::from_extension(input_path.as_std_path());
         let (formatted_code, unsupported_syntax_errors) =
             format_file(&content, &options, input_path);
@@ -264,8 +252,6 @@ fn format(input_path: &Utf8Path, content: String) -> datatest_stable::Result<()>
             )
             .unwrap();
         } else {
-            // Having both snapshots makes it hard to see the difference, so we're keeping only
-            // diff.
             writeln!(
                 snapshot,
                 "## Output\n{}\n## Preview changes\n{}",
@@ -320,7 +306,6 @@ fn format_file(
             .replace("<RANGE_END>", "");
 
         while let Some(range_start_marker) = content.find("<RANGE_START>") {
-            // Remove the start marker
             content.replace_range(
                 range_start_marker..range_start_marker + "<RANGE_START>".len(),
                 "",
@@ -333,7 +318,6 @@ fn format_file(
 
             content.replace_range(range_end_marker..range_end_marker + "<RANGE_END>".len(), "");
 
-            // Replace all other markers to get a valid Python input
             let format_input = content
                 .replace("<RANGE_START>", "")
                 .replace("<RANGE_END>", "");
@@ -447,7 +431,6 @@ fn ensure_unchanged_ast(
 ) -> Vec<Diagnostic> {
     let source_type = options.source_type();
 
-    // Parse the unformatted code.
     let unformatted_parsed = parse(
         unformatted_code,
         ParseOptions::from(source_type).with_target_version(options.target_version()),
@@ -461,21 +444,18 @@ fn ensure_unchanged_ast(
     Normalizer.visit_module(&mut unformatted_ast);
     let unformatted_ast = ComparableMod::from(&unformatted_ast);
 
-    // Parse the formatted code.
     let formatted_parsed = parse(
         formatted_code,
         ParseOptions::from(source_type).with_target_version(options.target_version()),
     )
     .expect("Formatted code to be valid syntax");
 
-    // Assert that there are no new unsupported syntax errors
     let mut formatted_unsupported_syntax_errors =
         collect_unsupported_syntax_errors(&formatted_parsed);
 
     formatted_unsupported_syntax_errors
         .retain(|fingerprint, _| !unformatted_unsupported_syntax_errors.contains_key(fingerprint));
 
-    // Sort the errors by location to ensure the snapshot output is stable.
     let mut formatted_unsupported_syntax_errors = formatted_unsupported_syntax_errors
         .into_values()
         .collect::<Vec<_>>();
@@ -644,7 +624,6 @@ fn collect_unsupported_syntax_errors(
         let node_id = visitor.node_id(error.range);
         let mut error_fingerprint = fingerprint_unsupported_syntax_error(error, node_id, 0);
 
-        // Make sure that we do not get a fingerprint that is already in use
         // by adding in the previously generated one.
         loop {
             match collected.entry(error_fingerprint) {
@@ -673,8 +652,6 @@ fn fingerprint_unsupported_syntax_error(
     let UnsupportedSyntaxError {
         kind,
         target_version,
-        // Don't hash the range because the location between the formatted and unformatted code
-        // is likely to be different
         range: _,
     } = error;
 

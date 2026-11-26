@@ -52,10 +52,6 @@ pub fn incoming_calls(db: &dyn Db, file: ProgramFile<'_>, offset: TextSize) -> V
 
     let needle: &str = target_text.as_ref();
 
-    // Determine which property accessor role the user queried, if any. Used
-    // at attribute-reference call sites to discard co-definitions of the
-    // wrong role (e.g. when querying a setter, don't let the getter
-    // co-definition pull in every read site).
     let target_role = match &goto_target {
         GotoTarget::FunctionDef(function) => function
             .inferred_type(&model)
@@ -64,14 +60,8 @@ pub fn incoming_calls(db: &dyn Db, file: ProgramFile<'_>, offset: TextSize) -> V
         _ => None,
     };
 
-    // Attribute leaves for an ordinary target can only match the queried name.
-    // Bare-name calls may route through aliases and are checked semantically.
-    // Dunder methods may be invoked without spelling their name (`value()`
-    // invokes `__call__`, and `C()` invokes `__init__`), so do not use a
-    // text filter for them.
     let needle = (!is_dunder(needle)).then_some(needle);
 
-    // Collect raw `(caller_file, call_site_range, enclosing_scope)` triples.
     let mut raw = call_sites_for_file(db, file, &target_definitions, target_role, needle);
 
     if is_externally_visible {
@@ -80,13 +70,6 @@ pub fn incoming_calls(db: &dyn Db, file: ProgramFile<'_>, offset: TextSize) -> V
         let files: Vec<_> = files.iter().filter(|other| *other != source_file).collect();
         let minimum_job_len = minimum_parallel_job_len(files.len(), MAX_MIN_FILES_PER_PARALLEL_JOB);
         let matcher = needle.map(NameMatcher::new);
-        // The byte-level text prefilter still pays off as a coarse gate:
-        // files that don't contain the target name (or an import of it)
-        // textually are skipped before any AST work. Files that route the
-        // call through an alias (`from m import foo as bar; bar()`) still
-        // pass the gate because they contain `foo` in the import line.
-        // Dunder calls have no required textual spelling, so the filter
-        // is disabled for them.
         let other_sites = files
             .into_par_iter()
             .with_min_len(minimum_job_len)
@@ -112,7 +95,6 @@ pub fn incoming_calls(db: &dyn Db, file: ProgramFile<'_>, offset: TextSize) -> V
         raw.extend(other_sites);
     }
 
-    // Group by (enclosing scope file, enclosing scope selection range).
     let mut groups: FxHashMap<EnclosingKey, (CallHierarchyItem, Vec<TextRange>)> =
         FxHashMap::default();
     for site in raw {
@@ -173,7 +155,6 @@ fn call_sites_for_file(
     needle: Option<&str>,
 ) -> Vec<RawCallSite> {
     let parsed = parsed_module(db, file.python_file(db));
-    // Incoming call searches can scan the whole project, so release closed files' ASTs as we go.
     let module = parsed.load_then_clear_on_drop(db);
     let model = SemanticModel::new(db, file);
     let mut sites = Vec::new();
@@ -219,11 +200,6 @@ impl<'a> SourceOrderVisitor<'a> for CallSitesFinder<'a, '_> {
         self.ancestors.push(node);
 
         match node {
-            // Walk by call site rather than by identifier. This is structurally
-            // faster (call sites are much rarer than identifier occurrences)
-            // and — critically — it makes alias-routed calls work: `bar()`
-            // where `bar` is a local rebinding/alias of the target resolves
-            // semantically without needing the alias name in the text needle.
             AnyNodeRef::ExprCall(call) => {
                 if let Some(leaf) = CalleeLeaf::from_expr(&call.func)
                     && self.leaf_matches_needle(leaf)
@@ -233,16 +209,12 @@ impl<'a> SourceOrderVisitor<'a> for CallSitesFinder<'a, '_> {
             }
             AnyNodeRef::Decorator(decorator) => {
                 // `@foo` without parens is a runtime call; `@foo()` is handled
-                // by the `ExprCall` arm above.
                 if let Some(leaf) = CalleeLeaf::from_expr(&decorator.expression)
                     && self.leaf_matches_needle(leaf)
                 {
                     self.check_call_site(leaf, AnyNodeRef::from(&decorator.expression));
                 }
             }
-            // A property access is an implicit invocation of its matching
-            // accessor. Skip attributes used as explicit callees because the
-            // `ExprCall` / `Decorator` arms already record those sites.
             AnyNodeRef::ExprAttribute(attribute) => {
                 if !attribute_is_callee_of_parent(&self.ancestors, attribute)
                     && self.attribute_name_could_match(attribute.attr.as_str())
@@ -286,10 +258,6 @@ impl<'a> CallSitesFinder<'a, '_> {
             return;
         };
 
-        // Keep callable implementations here rather than applying
-        // `goto_declaration`: clicking the name in `C()` deliberately navigates
-        // to `C`, but the expression is also an incoming call to `C.__init__`
-        // or `C.__new__`.
         let Some(current_definitions) =
             goto_target.definitions(self.model, ImportAliasResolution::ResolveAliases)
         else {
@@ -321,8 +289,6 @@ impl<'a> CallSitesFinder<'a, '_> {
             attribute,
             identifier: &attribute.attr,
         };
-        // Strip the trailing self-push so the slice mirrors what `ExprCall` and
-        // `Decorator` pass to `resolve_callee` (they resolve before descending).
         let ancestors_without_self = &self.ancestors[..self.ancestors.len() - 1];
         let Some((goto_target, call_site_range)) =
             leaf.resolve(self.model, self.tokens, ancestors_without_self)
@@ -337,9 +303,6 @@ impl<'a> CallSitesFinder<'a, '_> {
             return;
         };
 
-        // Route the site by access kind. Without this filter, a read of
-        // `c.prop` would also match the setter when both accessors are
-        // co-definitions in `target_definitions`.
         let intersects = current_definitions.iter().any(|resolved| {
             let role = resolved
                 .definition()
@@ -356,8 +319,6 @@ impl<'a> CallSitesFinder<'a, '_> {
                 return false;
             }
 
-            // Setter and deleter definitions include the getter as a
-            // co-definition. Only the queried accessor contributes sites.
             if matches!(
                 self.target_role,
                 Some(PropertyAccessorRole::Setter | PropertyAccessorRole::Deleter)
@@ -488,8 +449,6 @@ fn attribute_is_callee_of_parent<'a>(
     ancestors: &[AnyNodeRef<'a>],
     attribute: &'a ast::ExprAttribute,
 ) -> bool {
-    // `enter_node` has already pushed `attribute` onto `ancestors`, so the
-    // parent is at index `len - 2`.
     let Some(parent_idx) = ancestors.len().checked_sub(2) else {
         return false;
     };
@@ -850,7 +809,6 @@ class C:
                 b.foo()
             "#,
         );
-        // Should only record the `a.foo()` site, not `b.foo()`.
         assert_snapshot!(test.incoming_calls(), @"
         info[incoming-calls]: Incoming calls to `foo`
           --> main.py:11:7
@@ -867,8 +825,6 @@ class C:
 
     #[test]
     fn super_method_call() {
-        // `super().m()` in a subclass method should record the subclass method
-        // as a caller of the parent class's method.
         let test = cursor_test(
             r#"
             class Base:
@@ -929,11 +885,7 @@ def make() -> C:
         ");
     }
 
-    // --- incoming: attribute-reference call sites --------------------------
-    //
     // Beyond `ExprCall` and `Decorator`, a `@property` access is an implicit
-    // invocation of the getter, setter, or deleter through the descriptor
-    // protocol.
 
     #[test]
     fn property_getter_read() {
@@ -964,8 +916,6 @@ def make() -> C:
 
     #[test]
     fn property_setter_write() {
-        // Querying the setter must surface the assignment (`c.prop = 5`) but
-        // not the read (`c.prop`) — pyright lumps them; we don't.
         let test = cursor_test(
             r#"
             class C:
@@ -1034,7 +984,6 @@ def make() -> C:
 
     #[test]
     fn bound_method_reference_passed_as_arg_is_not_a_call() {
-        // Passing a bound-method value does not execute the method body.
         let test = cursor_test(
             r#"
             def make_async(fn, executor=None):
@@ -1053,7 +1002,6 @@ def make() -> C:
 
     #[test]
     fn bound_method_reference_assigned_is_not_a_call() {
-        // Binding a method for later invocation is a reference, not a call.
         let test = cursor_test(
             r#"
             class C:
@@ -1095,8 +1043,6 @@ def make() -> C:
 
     #[test]
     fn non_callable_attribute_filtered() {
-        // A plain instance attribute that isn't a function/method/property
-        // must not show up in incomingCalls of anything.
         let test = cursor_test(
             r#"
             def func<CURSOR>():
@@ -1115,9 +1061,6 @@ def make() -> C:
 
     #[test]
     fn lambda_caller_is_synthesized_item() {
-        // A call inside a top-level lambda should be attributed to a
-        // synthetic `(lambda)` item, selecting its callable header rather
-        // than inventing an identifier range.
         let test = cursor_test(
             r#"
             def tar<CURSOR>get(x):
@@ -1149,7 +1092,6 @@ def make() -> C:
             test.program_file(target.file),
             target.selection_range.start(),
         );
-        // The selection identifies the anonymous callable header.
         let sel = incoming[0].from.selection_range;
         let source = test.cursor.source.as_str();
         assert_eq!(
@@ -1160,8 +1102,6 @@ def make() -> C:
 
     #[test]
     fn two_lambdas_calling_same_function_two_distinct_items() {
-        // Two separate lambdas, including one without parameters, must
-        // surface as distinct `(lambda)` items with real selection ranges.
         let test = cursor_test(
             r#"
             def tar<CURSOR>get(x):
@@ -1198,9 +1138,6 @@ def make() -> C:
 
     #[test]
     fn lambda_inside_function_attributed_to_lambda() {
-        // A call inside a lambda nested in a function must be attributed
-        // to the lambda, not to the enclosing function — the lambda is
-        // the innermost callable scope.
         let test = cursor_test(
             r#"
             def tar<CURSOR>get(x):
@@ -1227,9 +1164,6 @@ def make() -> C:
 
     #[test]
     fn comprehension_attributed_to_enclosing_function() {
-        // Comprehensions are NOT synthesized as items — a call inside a
-        // list comprehension is still attributed to the enclosing named
-        // scope (regression guard for "lambda only, not comprehensions").
         let test = cursor_test(
             r#"
             def tar<CURSOR>get(x):
@@ -1255,11 +1189,6 @@ def make() -> C:
 
     #[test]
     fn lambda_follow_up_requests_are_leaves() {
-        // Round-trip guard: the synthetic `(lambda)` item surfaced as a
-        // caller has a `selection_range` whose start is the `lambda` keyword.
-        // A follow-up `incomingCalls` / `outgoingCalls` request that lands
-        // on that position has no `Definition` to resolve to, so both must
-        // return empty — matching pyright's "lambda is a leaf" behavior.
         let test = cursor_test(
             r#"
             def tar<CURSOR>get(x):

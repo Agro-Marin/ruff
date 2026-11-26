@@ -32,7 +32,6 @@ impl Violation for PotentialIndexError {
 
 /// PLE0643
 pub(crate) fn potential_index_error(checker: &Checker, value: &Expr, slice: &Expr) {
-    // Determine the length of the sequence.
     let length = match value {
         Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
             if elts.iter().any(Expr::is_starred_expr) {
@@ -48,7 +47,6 @@ pub(crate) fn potential_index_error(checker: &Checker, value: &Expr, slice: &Exp
         }
     };
 
-    // Determine the index value.
     let index = match slice {
         Expr::NumberLiteral(ast::ExprNumberLiteral {
             value: ast::Number::Int(number_value),
@@ -68,8 +66,6 @@ pub(crate) fn potential_index_error(checker: &Checker, value: &Expr, slice: &Exp
         _ => return,
     };
 
-    // Emit a diagnostic if the index is out of bounds. If the index can't be represented as an
-    // `i64`, but the length _can_, then the index is definitely out of bounds.
     if index.is_none_or(|index| index >= length || index < -length) {
         checker.report_diagnostic(PotentialIndexError, slice.range());
     }

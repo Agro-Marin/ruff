@@ -53,7 +53,6 @@ impl BackgroundDocumentRequestHandler for CodeActionRequestHandler {
                 _ => None,
             };
 
-            // If the diagnostic includes fixes, offer those up as options.
             if let Some(data) = diagnostic.data.take() {
                 let data: DiagnosticData = match serde_json::from_value(data) {
                     Ok(data) => data,
@@ -90,11 +89,6 @@ impl BackgroundDocumentRequestHandler for CodeActionRequestHandler {
                 }
             }
 
-            // Try to find other applicable actions.
-            //
-            // This is only for actions that are messy to compute at the time of the diagnostic.
-            // For instance, suggesting imports requires finding symbols for the entire project,
-            // which is dubious when you're in the middle of resolving symbols.
             let uri = snapshot.document().uri();
             let encoding = snapshot.encoding();
             if let Some(diagnostic_id) = diagnostic_id

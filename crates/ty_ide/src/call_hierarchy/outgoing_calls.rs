@@ -43,8 +43,6 @@ pub fn outgoing_calls(db: &dyn Db, file: ProgramFile<'_>, offset: TextSize) -> V
         return Vec::new();
     };
 
-    // Use a stable group key so multiple call sites to the same callee fold into
-    // one outgoing entry.
     let mut groups: FxHashMap<CalleeKey, (CallHierarchyItem, Vec<TextRange>)> =
         FxHashMap::default();
 
@@ -52,7 +50,6 @@ pub fn outgoing_calls(db: &dyn Db, file: ProgramFile<'_>, offset: TextSize) -> V
         let Some(def) = resolved.definition() else {
             continue;
         };
-        // Call-site ranges are relative to the prepared item's file.
         if def.program_file(db) != file {
             continue;
         }
@@ -65,9 +62,6 @@ pub fn outgoing_calls(db: &dyn Db, file: ProgramFile<'_>, offset: TextSize) -> V
             ancestors: Vec::new(),
         };
 
-        // Walk the queried symbol's signature parts (everything evaluated when
-        // its `def`/`class` statement runs) and then its body. Inside the body
-        // the visitor stops at nested callables — see `OutgoingCallsFinder`.
         match def.kind(db) {
             DefinitionKind::Function(fn_ref) => {
                 let func = fn_ref.node(&module);
@@ -96,7 +90,6 @@ pub fn outgoing_calls(db: &dyn Db, file: ProgramFile<'_>, offset: TextSize) -> V
         .into_values()
         .map(|(to, from_ranges)| OutgoingCall { to, from_ranges })
         .collect();
-    // Stable order: by callee file path string, then range.
     results.sort_by(|a, b| {
         let a_path = a.to.file.path(db).as_str();
         let b_path = b.to.file.path(db).as_str();
@@ -146,9 +139,6 @@ impl<'a> OutgoingCallsFinder<'a, '_> {
             let Some(def) = resolved.definition() else {
                 continue;
             };
-            // Only Function / Class kinds become items; bail early so we
-            // don't pay a parsed_module lookup for a kind that will be
-            // dropped anyway.
             match def.kind(self.db) {
                 DefinitionKind::Function(_) | DefinitionKind::Class(_) => {}
                 _ => continue,
@@ -236,15 +226,10 @@ impl<'a> SourceOrderVisitor<'a> for OutgoingCallsFinder<'a, '_> {
             AnyNodeRef::Decorator(decorator) => {
                 // A bare `@foo` decorator with no parens is a runtime call. If
                 // the user wrote `@foo()` we'll pick it up via the `ExprCall`
-                // arm above instead.
                 if let Some(leaf) = CalleeLeaf::from_expr(&decorator.expression) {
                     self.record_callee(leaf);
                 }
             }
-            // Nested callables: walk only the parts evaluated when the
-            // surrounding scope runs (decorators, defaults, bases, ...). The
-            // body belongs to the nested item itself and is reached by
-            // expanding that item separately in the call hierarchy tree.
             AnyNodeRef::StmtFunctionDef(func) => {
                 self.walk_callable_signature(
                     &func.decorator_list,
@@ -463,8 +448,6 @@ mod tests {
 
     #[test]
     fn class_excludes_method_bodies() {
-        // Calls inside method bodies belong to the method, not the class. They
-        // are reachable from a separate `outgoingCalls` query on the method.
         let test = cursor_test(
             r#"
             def helper_init():
@@ -486,7 +469,6 @@ mod tests {
 
     #[test]
     fn class_includes_decorators_bases_and_class_body() {
-        // Everything evaluated when the `class` statement runs.
         let test = cursor_test(
             r#"
             def cls_deco(cls):
@@ -573,9 +555,6 @@ mod tests {
 
     #[test]
     fn function_excludes_nested_def_body() {
-        // The outer function should NOT include calls from inside a nested
-        // `def`'s body; the user navigates to `nested` and expands it
-        // separately.
         let test = cursor_test(
             r#"
             def baz():
@@ -603,8 +582,6 @@ mod tests {
 
     #[test]
     fn function_includes_param_default() {
-        // Parameter defaults are evaluated at definition time and belong to
-        // the function's own outgoing edges.
         let test = cursor_test(
             r#"
             def default_factory():
@@ -630,8 +607,6 @@ mod tests {
 
     #[test]
     fn class_with_base_call() {
-        // Calls inside a class's base list are evaluated when the class
-        // statement runs.
         let test = cursor_test(
             r#"
             def base_factory():
@@ -657,10 +632,6 @@ mod tests {
 
     #[test]
     fn lambda_default_attributed_to_enclosing_scope() {
-        // A lambda's parameter defaults are evaluated when the surrounding
-        // scope reaches the lambda expression — they belong to the enclosing
-        // scope's outgoing, not to the lambda. The lambda's own body call is
-        // NOT included.
         let test = cursor_test(
             r#"
             def default_factory():
@@ -724,8 +695,6 @@ mod tests {
 
     #[test]
     fn super_method_call() {
-        // `super().m()` in a subclass method should record the parent class's
-        // method as an outgoing target.
         let test = cursor_test(
             r#"
             class Base:
@@ -802,7 +771,6 @@ class Local(Record):
 
     #[test]
     fn multi_file() {
-        // Outgoing calls should resolve across files for imported callees.
         let test = CursorTest::builder()
             .source(
                 "lib.py",

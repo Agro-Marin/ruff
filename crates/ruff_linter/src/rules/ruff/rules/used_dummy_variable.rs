@@ -103,31 +103,13 @@ impl Violation for UsedDummyVariable {
 pub(crate) fn used_dummy_variable(checker: &Checker, binding: &Binding, binding_id: BindingId) {
     let name = binding.name(checker.source());
 
-    // Ignore `_` and dunder variables
     if name == "_" || is_dunder(name) {
         return;
     }
-    // only used variables
     if binding.is_unused() {
         return;
     }
 
-    // We only emit the lint on local variables.
-    //
-    // ## Why not also emit the lint on function parameters?
-    //
-    // There isn't universal agreement that leading underscores indicate "unused" parameters
-    // in Python (many people use them for "private" parameters), so this would be a lot more
-    // controversial than emitting the lint on assignments. Even if it's decided that it's
-    // desirable to emit a lint on function parameters with "dummy variable" names, it would
-    // possibly have to be a separate rule or we'd have to put it behind a configuration flag,
-    // as there's much less community consensus about the issue.
-    // See <https://github.com/astral-sh/ruff/issues/14796>.
-    //
-    // Moreover, autofixing the diagnostic for function parameters is much more troublesome than
-    // autofixing the diagnostic for assignments. See:
-    // - <https://github.com/astral-sh/ruff/issues/14790>
-    // - <https://github.com/astral-sh/ruff/issues/14799>
     match binding.kind {
         BindingKind::Annotation
         | BindingKind::Argument
@@ -153,14 +135,12 @@ pub(crate) fn used_dummy_variable(checker: &Checker, binding: &Binding, binding_
         | BindingKind::DunderClassCell => return,
     }
 
-    // This excludes `global` and `nonlocal` variables.
     if binding.is_global() || binding.is_nonlocal() {
         return;
     }
 
     let semantic = checker.semantic();
 
-    // Only variables defined in function and generator scopes
     let scope = &semantic.scopes[binding.scope];
     if !matches!(
         scope.kind,
@@ -169,14 +149,6 @@ pub(crate) fn used_dummy_variable(checker: &Checker, binding: &Binding, binding_
         return;
     }
 
-    // Recall from above that we do not wish to flag "private"
-    // function parameters. The previous early exit ensured
-    // that the binding in hand was not a function parameter.
-    // We now check that, in the body of our function, we are
-    // not looking at a shadowing of a private parameter.
-    //
-    // (Technically this also covers the case in the previous early exit,
-    // but it is more expensive so we keep both.)
     if scope
         .shadowed_bindings(binding_id)
         .any(|shadow_id| semantic.binding(shadow_id).kind.is_argument())
@@ -187,7 +159,6 @@ pub(crate) fn used_dummy_variable(checker: &Checker, binding: &Binding, binding_
         return;
     }
 
-    // If the name doesn't start with an underscore, we don't consider it for a fix
     if !name.starts_with('_') {
         checker.report_diagnostic(
             UsedDummyVariable {
@@ -199,7 +170,6 @@ pub(crate) fn used_dummy_variable(checker: &Checker, binding: &Binding, binding_
         return;
     }
 
-    // Trim the leading underscores for further checks
     let trimmed_name = name.trim_start_matches('_');
 
     let shadowed_kind = ShadowedKind::new(binding, trimmed_name, checker);
@@ -212,7 +182,6 @@ pub(crate) fn used_dummy_variable(checker: &Checker, binding: &Binding, binding_
         binding.range(),
     );
 
-    // Get the possible fix based on the scope
     if let Some(new_name) = get_possible_new_name(binding, trimmed_name, shadowed_kind, checker) {
         diagnostic.try_set_fix(|| {
             Renamer::rename(name, &new_name, scope, semantic, checker.stylist())
@@ -228,24 +197,20 @@ fn get_possible_new_name(
     kind: ShadowedKind,
     checker: &Checker,
 ) -> Option<String> {
-    // Construct the potential fix name based on ShadowedKind
     let fix_name = match kind {
         ShadowedKind::Some | ShadowedKind::BuiltIn | ShadowedKind::Keyword => {
-            format!("{trimmed_name}_") // Append an underscore
+            format!("{trimmed_name}_")
         }
         ShadowedKind::None => trimmed_name.to_string(),
     };
 
-    // Check if the fix name is again dummy identifier
     if checker.settings().dummy_variable_rgx.is_match(&fix_name) {
         return None;
     }
 
-    // Ensure the fix name is not already taken in the scope or enclosing scopes
     if ShadowedKind::new(binding, &fix_name, checker).shadows_any() {
         return None;
     }
 
-    // Check if the fix name is a valid identifier
     is_identifier(&fix_name).then_some(fix_name)
 }

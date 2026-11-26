@@ -34,7 +34,6 @@ impl<'db> Bindings<'db> {
                 continue;
             };
             let class = instance.class(db, env);
-            // The first class that defines the accessor storage must be a known property class.
             let inherits_accessors = class
                 .iter_mro(db)
                 .filter_map(ClassBase::into_class)
@@ -56,8 +55,6 @@ impl<'db> Bindings<'db> {
             if inherits_accessors != Some(true) {
                 continue;
             }
-            // Property-specific protocol and override checks use the stored accessors directly.
-            // A subclass that changes descriptor behavior must instead use ordinary descriptors.
             if ["__get__", "__set__", "__delete__"]
                 .into_iter()
                 .any(|name| {

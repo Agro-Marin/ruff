@@ -1,6 +1,3 @@
-/**
- * Editor for the Python source code.
- */
 
 import MonacoEditor, { Monaco, OnMount } from "@monaco-editor/react";
 import {
@@ -47,7 +44,6 @@ export default function SourceEditor({
 }) {
   const monacoRef = useRef<MonacoEditorState | null>(null);
 
-  // Update the diagnostics in the editor.
   useEffect(() => {
     const editorState = monacoRef.current;
 
@@ -60,7 +56,6 @@ export default function SourceEditor({
     updateMarkers(editorState.monaco, diagnostics);
   }, [diagnostics]);
 
-  // Dispose the code action provider on unmount.
   useEffect(() => {
     const disposeActionProvider = monacoRef.current?.disposeCodeActionProvider;
     if (disposeActionProvider == null) {
@@ -132,7 +127,6 @@ class RuffCodeActionProvider implements CodeActionProvider {
     range: Range,
   ): languages.ProviderResult<languages.CodeActionList> {
     const actions = this.diagnostics
-      // Show fixes for any diagnostic whose range intersects the requested range
       .filter((check) => {
         const diagnosticRange = new Range(
           check.start_location.row,
@@ -209,8 +203,6 @@ function updateMarkers(monaco: Monaco, diagnostics: Array<Diagnostic>) {
 }
 
 function diagnosticMarkerMessage(diagnostic: Diagnostic): string {
-  // Monaco renders same-file subdiagnostics as related information. Keep
-  // unlocated and other-file subdiagnostics in the marker message instead.
   const markerMessageSubDiagnostics = diagnostic.subDiagnostics.filter(
     (subDiagnostic) => subDiagnostic.location?.path !== PLAYGROUND_FILE_PATH,
   );

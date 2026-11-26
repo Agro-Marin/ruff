@@ -273,23 +273,18 @@ where
         R::prepare_params(session, &mut params);
 
         // SAFETY: The `snapshot` is safe to move across the unwind boundary because it is not used
-        // after unwinding.
         let snapshot = AssertUnwindSafe(session.snapshot_session());
         let log_guidance = snapshot.0.client_name().log_guidance();
 
         Box::new(move |client| {
             let _span = tracing::debug_span!("request", %id, method = %R::METHOD).entered();
 
-            // Test again if the request was cancelled since it was scheduled on the background task
-            // and, if so, return early
             if cancellation_token.is_cancelled() {
                 tracing::debug!(
                     "Ignoring request id={id} method={} because it was cancelled",
                     R::METHOD
                 );
 
-                // We don't need to send a response here because the `cancel` notification
-                // handler already responded with a message.
                 return;
             }
 
@@ -353,16 +348,12 @@ where
         Box::new(move |client| {
             let _span = tracing::debug_span!("request", %id, method = %R::METHOD).entered();
 
-            // Test again if the request was cancelled since it was scheduled on the background task
-            // and, if so, return early
             if cancellation_token.is_cancelled() {
                 tracing::debug!(
                     "Ignoring request id={id} method={} because it was cancelled",
                     R::METHOD
                 );
 
-                // We don't need to send a response here because the `cancel` notification
-                // handler already responded with a message.
                 return;
             }
 
@@ -391,10 +382,7 @@ fn panic_response<R>(
 ) where
     R: traits::RetriableRequestHandler,
 {
-    // Check if the request was canceled due to some modifications to the salsa database.
     if error.payload.downcast_ref::<salsa::Cancelled>().is_some() {
-        // If the query supports retry, re-queue the request.
-        // The query is still likely to succeed if the user modified any other document.
         if let Some(request) = request {
             tracing::debug!(
                 "request id={} method={} was cancelled by salsa, re-queueing for retry",
@@ -438,8 +426,6 @@ fn sync_notification_task<N: traits::SyncNotificationHandler>(
             return;
         }
 
-        // If there's a pending workspace diagnostic long-polling request,
-        // resume it, but only if the session revision changed (e.g. because some document changed).
         session.resume_suspended_workspace_diagnostic_request(client);
     }))
 }
@@ -456,9 +442,6 @@ where
     let (id, params) = cast_notification::<N>(req)?;
     let build = move |session: &Session| -> Box<dyn FnOnce(&Client) + Send> {
         let uri = N::document_uri(&params);
-        // Requiring an open document here assumes the notification is invalid for closed documents.
-        // TODO: Revisit this check before routing a notification that can target closed documents through
-        // `background_notification_thread`. Note that `snapshot_document` can already resolve closed files.
         let Ok(snapshot) = session
             .open_document_handle(&uri)
             .and_then(|_| session.snapshot_document(&uri))
@@ -602,8 +585,6 @@ impl Error {
     }
 }
 
-// Right now, we treat the error code as invisible data that won't
-// be printed.
 impl std::fmt::Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.error.fmt(f)

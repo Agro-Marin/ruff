@@ -618,7 +618,6 @@ class Example((class_base := Base)):
         symbol: SymbolInfo<'db>,
         file: File,
     ) -> Vec<DocumentSymbolDiagnostic<'db>> {
-        // Output the symbol and recursively output all child symbols
         let mut diagnostics = vec![DocumentSymbolDiagnostic::new(symbol, file)];
 
         for (child_id, child) in symbols.children(id) {

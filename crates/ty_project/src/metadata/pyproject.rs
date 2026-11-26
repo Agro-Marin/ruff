@@ -80,16 +80,10 @@ pub(super) fn resolve_requires_python_lower_bound(
     };
 
     let version = match lower {
-        // Ex) `>=3.10.1` -> `>=3.10`
         Bound::Included(version) => version,
 
-        // Ex) `>3.10.1` -> `>=3.10` or `>3.10` -> `>=3.10`
-        // The second example looks obscure at first but it is required because
-        // `3.10.1 > 3.10` is true but we only have two digits here. So including 3.10 is the
-        // right move. Overall, using `>` without a patch release is most likely bogus.
         Bound::Excluded(version) => version,
 
-        // Ex) `<3.10` or ``
         Bound::Unbounded => {
             return Err(ResolveRequiresPythonError::NoLowerBound(
                 requires_python.to_string(),
@@ -97,7 +91,6 @@ pub(super) fn resolve_requires_python_lower_bound(
         }
     };
 
-    // Take the major and minor version
     let mut versions = version.release().iter().take(2);
 
     let Some(major) = versions.next().copied() else {
@@ -240,7 +233,6 @@ impl PackageName {
                 normalized.push(c.to_ascii_lowercase());
             } else if matches!(c, '-' | '_' | '.') {
                 if matches!(last, Some('-' | '_' | '.')) {
-                    // Only keep a single instance of `-`, `_` and `.`
                 } else {
                     normalized.push('-');
                 }

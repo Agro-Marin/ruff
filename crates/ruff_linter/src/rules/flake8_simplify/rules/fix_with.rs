@@ -18,24 +18,18 @@ pub(crate) fn fix_multiple_with_statements(
     stylist: &Stylist,
     with_stmt: &ast::StmtWith,
 ) -> Result<Edit> {
-    // Infer the indentation of the outer block.
     let Some(outer_indent) = whitespace::indentation(locator.contents(), with_stmt) else {
         bail!("Unable to fix multiline statement");
     };
 
-    // Extract the module text.
     let contents = locator.lines_str(with_stmt.range());
 
-    // If the block is indented, "embed" it in a function definition, to preserve
-    // indentation while retaining valid source code. (We'll strip the prefix later
-    // on.)
     let module_text = if outer_indent.is_empty() {
         contents.to_string()
     } else {
         format!("def f():{}{contents}", stylist.line_ending().as_str())
     };
 
-    // Parse the CST.
     let mut tree = match_statement(&module_text)?;
 
     let statement = if outer_indent.is_empty() {
@@ -73,7 +67,6 @@ pub(crate) fn fix_multiple_with_statements(
     }
     outer_with.body = inner_with.body.clone();
 
-    // Reconstruct and reformat the code.
     let module_text = tree.codegen_stylist(stylist);
     let contents = if outer_indent.is_empty() {
         module_text

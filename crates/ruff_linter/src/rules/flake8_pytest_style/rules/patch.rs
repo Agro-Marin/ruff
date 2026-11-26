@@ -95,7 +95,6 @@ fn check_patch_call(checker: &Checker, call: &ast::ExprCall, index: usize) {
         return;
     };
 
-    // Walk the lambda body. If the lambda uses the arguments, then it's valid.
     if let Some(parameters) = parameters {
         let mut visitor = LambdaBodyVisitor {
             parameters,

@@ -113,8 +113,6 @@ pub(crate) fn outdated_version_block(checker: &Checker, stmt_if: &StmtIf) {
                     match version_always_less_than(
                         &version,
                         target,
-                        // `x <= y` and `x > y` are cases where `x == y` will not stop the comparison
-                        // from always evaluating to true or false respectively
                         op.is_lt_e() || op.is_gt(),
                     ) {
                         Ok(false) => {}
@@ -240,16 +238,11 @@ fn version_always_less_than(
             };
 
             Ok(if or_equal {
-                // Ex) `sys.version_info <= 3.8`. If Python 3.8 is the minimum supported version,
-                // the condition won't always evaluate to `false`, so we want to return `false`.
                 if_minor < py_minor
             } else {
                 if let Some(if_micro) = if_micro {
-                    // Ex) `sys.version_info < 3.8.3`
                     if_minor < py_minor || if_minor == py_minor && if_micro == 0
                 } else {
-                    // Ex) `sys.version_info < 3.8`. If Python 3.8 is the minimum supported version,
-                    // the condition _will_ always evaluate to `false`, so we want to return `true`.
                     if_minor <= py_minor
                 }
             })
@@ -275,14 +268,12 @@ fn fix_always_false_branch(
 ) -> Option<Fix> {
     match branch.kind {
         BranchKind::If => match stmt_if.elif_else_clauses.first() {
-            // If we have a lone `if`, delete as statement (insert pass in parent if required)
             None => {
                 let stmt = checker.semantic().current_statement();
                 let parent = checker.semantic().current_statement_parent();
                 let edit = delete_stmt(stmt, parent, checker.locator(), checker.indexer());
                 Some(Fix::unsafe_edit(edit))
             }
-            // If we have an `if` and an `elif`, turn the `elif` into an `if`
             Some(ElifElseClause {
                 test: Some(_),
                 range,
@@ -300,14 +291,12 @@ fn fix_always_false_branch(
                     end_location,
                 )))
             }
-            // If we only have an `if` and an `else`, dedent the `else` block
             Some(ElifElseClause {
                 body, test: None, ..
             }) => {
                 let start = body.first()?;
                 let end = body.last()?;
                 if indentation(checker.source(), start).is_none() {
-                    // Inline `else` block (e.g., `else: x = 1`).
                     Some(Fix::unsafe_edit(Edit::range_replacement(
                         checker
                             .locator()
@@ -341,18 +330,6 @@ fn fix_always_false_branch(
             }
         },
         BranchKind::Elif => {
-            // The range of the `ElifElseClause` ends in the line of the last statement. To avoid
-            // inserting an empty line between the end of `if` branch and the beginning `elif` or
-            // `else` branch after the deleted branch we find the next branch after the current, if
-            // any, and delete to its start.
-            // ```python
-            //                         if cond:
-            //                             x = 1
-            //                         elif sys.version < (3.0):
-            //    delete from here ... ^   x = 2
-            //                         else:
-            // ... to here (exclusive) ^    x = 3
-            // ```
             let next_start = stmt_if
                 .elif_else_clauses
                 .iter()
@@ -380,12 +357,9 @@ fn fix_always_true_branch(
 ) -> Option<Fix> {
     match branch.kind {
         BranchKind::If => {
-            // If the first statement is an `if`, use the body of this statement, and ignore
-            // the rest.
             let start = branch.body.first()?;
             let end = branch.body.last()?;
             if indentation(checker.source(), start).is_none() {
-                // Inline `if` block (e.g., `if ...: x = 1`).
                 Some(Fix::unsafe_edit(Edit::range_replacement(
                     checker
                         .locator()
@@ -415,8 +389,6 @@ fn fix_always_true_branch(
             }
         }
         BranchKind::Elif => {
-            // Replace the `elif` with an `else`, preserve the body of the elif, and remove
-            // the rest.
             let end = branch.body.last()?;
             let text = checker
                 .locator()

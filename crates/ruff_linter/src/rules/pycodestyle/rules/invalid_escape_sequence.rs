@@ -73,8 +73,6 @@ pub(crate) fn invalid_escape_sequence(checker: &Checker, string_like: StringLike
             continue;
         }
         let state = match part {
-            // The parser accepts unknown escapes like `\q` and preserves their backslash.
-            // If a successfully decoded value has no backslash, its source had no unknown escapes.
             StringLikePart::String(literal)
                 if !literal.flags.is_invalid() && !literal.value.as_bytes().contains(&b'\\') =>
             {
@@ -116,7 +114,6 @@ impl EscapeCharsState {
 /// escape character is found.
 fn analyze_escape_chars(
     locator: &Locator,
-    // Range in the source code to perform the analysis on.
     source_range: TextRange,
     flags: AnyStringFlags,
 ) -> EscapeCharsState {
@@ -127,7 +124,6 @@ fn analyze_escape_chars(
     let mut prev = None;
     let bytes = source.as_bytes();
     for i in memchr_iter(b'\\', bytes) {
-        // If the previous character was also a backslash, skip.
         if prev.is_some_and(|prev| prev == i - 1) {
             prev = None;
             continue;
@@ -138,47 +134,20 @@ fn analyze_escape_chars(
         let next_char = match source[i + 1..].chars().next() {
             Some(next_char) => next_char,
             None if flags.is_interpolated_string() => {
-                // If we're at the end of a f-string middle token, the next character
-                // is actually emitted as a different token. For example,
-                //
-                // ```python
-                // f"\{1}"
-                // ```
-                //
-                // is lexed as `FStringMiddle('\\')` and `LBrace` (ignoring irrelevant
-                // tokens), so we need to check the next character in the source code.
-                //
-                // Now, if we're at the end of the f-string itself, the lexer wouldn't
-                // have emitted the `FStringMiddle` token in the first place. For example,
-                //
-                // ```python
-                // f"foo\"
-                // ```
-                //
-                // Here, there won't be any `FStringMiddle` because it's an unterminated
-                // f-string. This means that if there's a `FStringMiddle` token and we
-                // encounter a `\` character, then the next character is always going to
-                // be part of the f-string.
                 if let Some(next_char) = locator.after(source_range.end()).chars().next() {
                     next_char
                 } else {
                     continue;
                 }
             }
-            // If we're at the end of the file, skip.
             None => continue,
         };
 
-        // If we're at the end of line, skip.
         if matches!(next_char, '\n' | '\r') {
             contains_valid_escape_sequence = true;
             continue;
         }
 
-        // If the next character is a valid escape sequence, skip.
-        // See: https://docs.python.org/3/reference/lexical_analysis.html#string-and-bytes-literals.
-        //
-        // N.B. 'N', 'u' and 'U' are escape sequences only recognized in string literals
         if matches!(
             next_char,
             '\n' | '\\'
@@ -227,11 +196,6 @@ fn analyze_escape_chars_in_interpolated_string(
     locator: &Locator,
 ) -> EscapeCharsState {
     let mut escape_chars_state = EscapeCharsState::default();
-    // Whether we suggest converting to a raw string or
-    // adding backslashes depends on the presence of valid
-    // escape characters in the entire f/t-string. Therefore,
-    // we must analyze escape characters in each f/t-string
-    // element before pushing a diagnostic and fix.
     for element in elements {
         match element {
             InterpolatedStringElement::Literal(literal) => {
@@ -262,9 +226,6 @@ fn analyze_escape_chars_in_interpolated_string(
 fn check(
     checker: &Checker,
     locator: &Locator,
-    // Start position of the expression that contains the source range. This is used to generate
-    // the fix when the source range is part of the expression like in f-string which contains
-    // other f-string literal elements.
     expr_start: TextSize,
     flags: AnyStringFlags,
     escape_chars_state: EscapeCharsState,
@@ -274,7 +235,6 @@ fn check(
         invalid_escape_chars,
     } = escape_chars_state;
     if contains_valid_escape_sequence {
-        // Escape with backslash.
         for invalid_escape_char in &invalid_escape_chars {
             let mut diagnostic = checker.report_diagnostic(
                 InvalidEscapeSequence {
@@ -289,7 +249,6 @@ fn check(
             )));
         }
     } else {
-        // Turn into raw string.
         for invalid_escape_char in &invalid_escape_chars {
             let mut diagnostic = checker.report_diagnostic(
                 InvalidEscapeSequence {
@@ -300,18 +259,13 @@ fn check(
             );
 
             if flags.is_u_string() {
-                // Replace the Unicode prefix with `r`.
                 diagnostic.set_fix(Fix::safe_edit(Edit::replacement(
                     "r".to_string(),
                     expr_start,
                     expr_start + TextSize::from(1),
                 )));
             } else {
-                // Insert the `r` prefix.
                 diagnostic.set_fix(
-                    // If necessary, add a space between any leading keyword (`return`, `yield`,
-                    // `assert`, etc.) and the string. For example, `return"foo"` is valid, but
-                    // `returnr"foo"` is not.
                     Fix::safe_edit(Edit::insertion(
                         pad_start("r".to_string(), expr_start, locator),
                         expr_start,

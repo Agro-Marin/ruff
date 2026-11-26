@@ -168,12 +168,8 @@ impl UvMetadata {
 
             let mut direct = dependencies(node)?;
             for extra in &node.optional_dependencies {
-                // A member's own extras declare dependencies directly. By contrast, requesting an
-                // extra of another package only declares that package, not its extra's dependencies.
                 direct.extend(dependencies(self.node(&extra.id)?)?);
             }
-            // Extra nodes also point back to their own package. A project's own imports are
-            // accounted for by `distribution`, not by listing itself as a dependency.
             direct.remove(&member.id);
 
             let mut groups = group_dependencies(node)?;
@@ -216,8 +212,6 @@ impl UvMetadata {
                 .filter(|owner| distributions.contains_key(&owner.package_id))
                 .map(|owner| owner.package_id.clone())
                 .collect::<BTreeSet<_>>();
-            // Keep an empty entry when all owners are unknown. Omitting the entry would allow a
-            // caller to use a known parent module's owner for this child module.
             module_owners.insert(module, owners.into_iter().collect());
         }
 
@@ -225,8 +219,6 @@ impl UvMetadata {
             && !distributions
                 .values()
                 .any(|distribution| distribution.editable_path.is_some())
-            // Check for a package outside the workspace. A dependency-free virtual workspace
-            // has no modules to attribute, so its empty ownership map is valid.
             && distributions
                 .keys()
                 .any(|id| !self.members.iter().any(|member| member.id == *id))

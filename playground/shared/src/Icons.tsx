@@ -205,7 +205,6 @@ export function Close() {
   );
 }
 
-// https://github.com/material-extensions/vscode-material-icon-theme/blob/main/icons/python.svg
 export function Python({
   height = 24,
   width = 24,
@@ -232,7 +231,6 @@ export function Python({
   );
 }
 
-/** https://github.com/material-extensions/vscode-material-icon-theme/blob/main/icons/json.svg */
 export function Json({
   height = 24,
   width = 24,
@@ -255,7 +253,6 @@ export function Json({
   );
 }
 
-/** https://github.com/material-extensions/vscode-material-icon-theme/blob/main/icons/toml.svg **/
 export function Toml({
   height = 24,
   width = 24,
@@ -276,7 +273,6 @@ export function Toml({
   );
 }
 
-/** https://github.com/material-extensions/vscode-material-icon-theme/blob/main/icons/jupyter.svg **/
 export function Jupyter({
   height = 24,
   width = 24,

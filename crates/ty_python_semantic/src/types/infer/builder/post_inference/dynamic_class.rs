@@ -26,13 +26,10 @@ pub(crate) fn check_dynamic_class_definition<'db>(
 
     let ty = binding_type(context.db(), definition);
 
-    // Check if it's a dynamic class with a Definition anchor.
     let Type::ClassLiteral(ClassLiteral::Dynamic(dynamic_class)) = ty else {
         return;
     };
 
-    // Only check classes with Definition anchors (i.e., assigned `type()` calls).
-    // Dangling `type()` calls are validated eagerly during inference.
     let DynamicClassAnchor::Definition(_) = dynamic_class.anchor(db) else {
         return;
     };
@@ -48,11 +45,9 @@ pub(crate) fn check_dynamic_class_definition<'db>(
 
     let env = context.program_environment();
 
-    // Check for MRO errors.
     if report_dynamic_mro_errors(context, dynamic_class, call_expr, bases) {
         report_inconsistent_dynamic_generic_bases(context, dynamic_class, bases);
 
-        // MRO succeeded, check for instance-layout-conflict.
         let mut disjoint_bases = IncompatibleBases::default();
         let bases_tuple_elts = bases.as_tuple_expr().map(|tuple| tuple.elts.as_slice());
 
@@ -61,7 +56,6 @@ pub(crate) fn check_dynamic_class_definition<'db>(
             .iter()
             .enumerate()
         {
-            // Convert to ClassType to access nearest_disjoint_base.
             if let Some(class_type) = base_type.to_class_type(db)
                 && let Some(disjoint_base) = class_type.nearest_disjoint_base(db)
             {
@@ -80,7 +74,6 @@ pub(crate) fn check_dynamic_class_definition<'db>(
         }
     }
 
-    // Check for metaclass conflicts.
     if let Err(DynamicMetaclassConflict {
         metaclass1,
         base1,

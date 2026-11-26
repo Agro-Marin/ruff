@@ -130,14 +130,6 @@ impl<'a> Visitor<'a> for GroupNameFinder<'a> {
                 } else {
                     if self.name_matches(iter) {
                         self.increment_usage_count(1);
-                        // This could happen when the group is being looped
-                        // over multiple times:
-                        //      for item in group:
-                        //          ...
-                        //
-                        //      # Group is being reused here
-                        //      for item in group:
-                        //          ...
                         if self.usage_count > 1 {
                             self.exprs.push(iter);
                         }
@@ -159,13 +151,9 @@ impl<'a> Visitor<'a> for GroupNameFinder<'a> {
                 range: _,
                 node_index: _,
             }) => {
-                // Visit the test before pushing the branch counters as it
-                // is evaluated unconditionally.
                 self.visit_expr(test);
 
-                // base if plus branches
                 let mut if_stack = Vec::with_capacity(1 + elif_else_clauses.len());
-                // Initialize the vector with the count for the if branch.
                 if_stack.push(0);
                 self.counter_stack.push(if_stack);
 
@@ -177,8 +165,6 @@ impl<'a> Visitor<'a> for GroupNameFinder<'a> {
                 }
 
                 if let Some(last) = self.counter_stack.pop() {
-                    // This is the max number of group usage from all the
-                    // branches of this `if` statement.
                     let max_count = last.into_iter().max().unwrap_or(0);
                     self.increment_usage_count(max_count);
                 }
@@ -189,8 +175,6 @@ impl<'a> Visitor<'a> for GroupNameFinder<'a> {
                 range: _,
                 node_index: _,
             }) => {
-                // Visit the subject before pushing the branch counters as it
-                // is evaluated unconditionally.
                 self.visit_expr(subject);
                 self.counter_stack.push(Vec::with_capacity(cases.len()));
                 for match_case in cases {
@@ -198,8 +182,6 @@ impl<'a> Visitor<'a> for GroupNameFinder<'a> {
                     self.visit_match_case(match_case);
                 }
                 if let Some(last) = self.counter_stack.pop() {
-                    // This is the max number of group usage from all the
-                    // branches of this `match` statement.
                     let max_count = last.into_iter().max().unwrap_or(0);
                     self.increment_usage_count(max_count);
                 }
@@ -312,8 +294,6 @@ impl<'a> Visitor<'a> for GroupNameFinder<'a> {
                             .map(|count| count.last().unwrap_or(&0))
                             .sum::<u32>();
 
-                    // For nested loops, the variable usage could be once but the
-                    // loop makes it being used multiple times.
                     if self.nested || current_usage_count > 1 {
                         self.exprs.push(expr);
                     }
@@ -336,17 +316,14 @@ pub(crate) fn reuse_of_groupby_generator(
         return;
     };
     let Expr::Tuple(tuple) = target else {
-        // Ignore any `groupby()` invocation that isn't unpacked
         return;
     };
     if tuple.len() != 2 {
         return;
     }
-    // We have an invocation of groupby which is a simple unpacking
     let Expr::Name(ast::ExprName { id: group_name, .. }) = &tuple.elts[1] else {
         return;
     };
-    // Check if the function call is `itertools.groupby`
     if !checker
         .semantic()
         .matches_qualified_name(func, &["itertools", "groupby"])

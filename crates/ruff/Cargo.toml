@@ -13,7 +13,6 @@ readme = "README.md"
 default-run = "ruff"
 
 [package.metadata.cargo-shear]
-# Used via macro expansion.
 ignored = ["jiff"]
 
 [package.metadata.dist]
@@ -78,11 +77,9 @@ tikv-jemallocator = { workspace = true }
 mimalloc = { workspace = true }
 
 [dev-dependencies]
-# Enable test rules during development
 ruff_linter = { workspace = true, features = ["clap", "test-rules"] }
 
 assert_fs = { workspace = true }
-# Avoid writing colored snapshots when running tests from the terminal
 colored = { workspace = true, features = ["no-color"] }
 dunce = { workspace = true }
 indoc = { workspace = true }

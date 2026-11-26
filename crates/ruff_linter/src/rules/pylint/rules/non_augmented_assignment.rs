@@ -96,19 +96,16 @@ impl AlwaysFixableViolation for NonAugmentedAssignment {
 
 /// PLR6104
 pub(crate) fn non_augmented_assignment(checker: &Checker, assign: &ast::StmtAssign) {
-    // Ignore multiple assignment targets.
     let [target] = assign.targets.as_slice() else {
         return;
     };
 
-    // Match, e.g., `x = x + 1`.
     let Expr::BinOp(value) = &*assign.value else {
         return;
     };
 
     let operator = AugmentedOperator::from(value.op);
 
-    // Match, e.g., `x = x + 1`.
     if ComparableExpr::from(target) == ComparableExpr::from(&value.left) {
         let mut diagnostic =
             checker.report_diagnostic(NonAugmentedAssignment { operator }, assign.range());
@@ -124,7 +121,6 @@ pub(crate) fn non_augmented_assignment(checker: &Checker, assign: &ast::StmtAssi
         return;
     }
 
-    // If the operator is commutative, match, e.g., `x = 1 + x`.
     if operator.is_commutative()
         && is_number_or_bool_constant(&value.left)
         && ComparableExpr::from(target) == ComparableExpr::from(&value.right)

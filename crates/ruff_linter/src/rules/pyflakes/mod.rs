@@ -237,7 +237,6 @@ mod tests {
 
     #[test]
     fn f821_frozendict_py315_available() {
-        // frozendict is available starting in Python 3.15.
         let diagnostics = test_snippet(
             "frozendict",
             &LinterSettings::for_rule(Rule::UndefinedName)
@@ -248,7 +247,6 @@ mod tests {
 
     #[test]
     fn f821_frozendict_pre_py315_undefined() {
-        // frozendict is not available before Python 3.15.
         let diagnostics = test_snippet(
             "frozendict",
             &LinterSettings::for_rule(Rule::UndefinedName)
@@ -287,7 +285,6 @@ mod tests {
         FOO = 42",
         "f401_preview_first_party_submodule_dunder_all"
     )]
-    // Regression test for https://github.com/astral-sh/ruff/issues/22221
     #[test_case(
         r"
         import submodule.bar
@@ -306,10 +303,6 @@ mod tests {
             &LinterSettings {
                 preview: PreviewMode::Enabled,
                 isort: isort::settings::Settings {
-                    // This case specifically tests the scenario where
-                    // the unused import is a first-party submodule import;
-                    // use the isort settings to ensure that the `submodule.a` import
-                    // is recognised as first-party in the test:
                     known_modules: isort::categorize::KnownModules::new(
                         vec!["submodule".parse().unwrap()],
                         vec![],
@@ -326,15 +319,12 @@ mod tests {
         assert_diagnostics!(snapshot, diagnostics);
     }
 
-    // Regression test for https://github.com/astral-sh/ruff/issues/12897
     #[test_case(Rule::UnusedImport, Path::new("F401_33/__init__.py"))]
     fn f401_preview_local_init_import(rule_code: Rule, path: &Path) -> Result<()> {
         let snapshot = format!("preview__{}_{}", rule_code.name(), path.to_string_lossy());
         let settings = LinterSettings {
             preview: PreviewMode::Enabled,
             isort: isort::settings::Settings {
-                // Like `f401_preview_first_party_submodule`, this test requires the input module to
-                // be first-party
                 known_modules: isort::categorize::KnownModules::new(
                     vec!["F401_*".parse()?],
                     vec![],
@@ -1062,9 +1052,6 @@ mod tests {
 
     #[test]
     fn undefined_exception_name() {
-        // Exception names can't be used after the except: block.
-        //
-        // The exc variable is unused inside the exception handler.
         flakes(
             r"
         try:
@@ -1079,10 +1066,6 @@ mod tests {
 
     #[test]
     fn names_declared_in_except_blocks() {
-        // Locals declared in except: blocks can be used after the block.
-        //
-        // This shows the example in test_undefinedExceptionName is
-        // different.
         flakes(
             r"
         try:
@@ -1097,10 +1080,6 @@ mod tests {
 
     #[test]
     fn undefined_exception_name_obscuring_local_variable2() {
-        // Exception names are unbound after the `except:` block.
-        //
-        // Last line will raise UnboundLocalError.
-        // The exc variable is unused inside the exception handler.
         flakes(
             r"
         try:
@@ -1116,7 +1095,6 @@ mod tests {
 
     #[test]
     fn del_exception_in_except() {
-        // The exception name can be deleted in the except: block.
         flakes(
             r"
         try:
@@ -1148,27 +1126,21 @@ mod tests {
 
     #[test]
     fn builtin_windows_error() {
-        // C{WindowsError} is sometimes a builtin name, so no warning is emitted
-        // for using it.
         flakes("WindowsError", &[]);
     }
 
     #[test]
     fn module_annotations() {
-        // Use of the C{__annotations__} in module scope should not emit
-        // an undefined name warning when version is greater than or equal to 3.6.
         flakes("__annotations__", &[]);
     }
 
     #[test]
     fn module_warningregistry() {
-        // Using __warningregistry__ should not be considered undefined.
         flakes("__warningregistry__", &[]);
     }
 
     #[test]
     fn module_annotate_py314_available() {
-        // __annotate__ is available starting in Python 3.14.
         let diagnostics = crate::test::test_snippet(
             "__annotate__",
             &crate::settings::LinterSettings {
@@ -1183,7 +1155,6 @@ mod tests {
 
     #[test]
     fn module_annotate_pre_py314_undefined() {
-        // __annotate__ is not available before Python 3.14.
         let diagnostics = crate::test::test_snippet(
             "__annotate__",
             &crate::settings::LinterSettings {
@@ -1199,14 +1170,12 @@ mod tests {
     #[test]
     fn magic_globals_file() {
         // Use of the C{__file__} magic global should not emit an undefined name
-        // warning.
         flakes("__file__", &[]);
     }
 
     #[test]
     fn magic_globals_builtins() {
         // Use of the C{__builtins__} magic global should not emit an undefined
-        // name warning.
         flakes("__builtins__", &[]);
     }
 
@@ -1228,14 +1197,11 @@ mod tests {
     #[test]
     fn magic_globals_name() {
         // Use of the C{__name__} magic global should not emit an undefined name
-        // warning.
         flakes("__name__", &[]);
     }
 
     #[test]
     fn magic_module_in_class_scope() {
-        // Use of the C{__module__} magic builtin should not emit an undefined
-        // name warning if used in class scope.
         flakes("__module__", &[Rule::UndefinedName]);
         flakes(
             r"
@@ -1256,8 +1222,6 @@ mod tests {
 
     #[test]
     fn magic_qualname_in_class_scope() {
-        // Use of the C{__qualname__} magic builtin should not emit an undefined
-        // name warning if used in class scope.
         flakes("__qualname__", &[Rule::UndefinedName]);
         flakes(
             r"
@@ -1288,7 +1252,6 @@ mod tests {
 
     #[test]
     fn global_import_star() {
-        // Can't find undefined names with import *.
         flakes(
             "from fu import *; bar",
             &[
@@ -1300,8 +1263,6 @@ mod tests {
 
     #[test]
     fn defined_by_global() {
-        // "global" can make an otherwise undefined name in another function
-        // defined.
         flakes(
             r"
         def a(): global fu; fu = 1
@@ -1330,7 +1291,6 @@ mod tests {
 
     #[test]
     fn defined_by_global_multiple_names() {
-        // "global" can accept multiple names.
         flakes(
             r"
         def a(): global fu, bar; fu = 1; bar = 2
@@ -1370,7 +1330,6 @@ mod tests {
 
     #[test]
     fn del() {
-        // Del deletes bindings.
         flakes("a = 1; del a; a", &[Rule::UndefinedName]);
     }
 
@@ -1391,13 +1350,11 @@ mod tests {
 
     #[test]
     fn del_undefined() {
-        // Del an undefined name.
         flakes("del a", &[Rule::UndefinedName]);
     }
 
     #[test]
     fn del_conditional() {
-        // Ignores conditional bindings deletion.
         flakes(
             r"
         context = None
@@ -1412,7 +1369,6 @@ mod tests {
 
     #[test]
     fn del_conditional_except() {
-        // Ignores conditional bindings deletion.
         flakes(
             r"
         context = None
@@ -1430,7 +1386,6 @@ mod tests {
 
     #[test]
     fn del_conditional_orelse() {
-        // Ignores conditional bindings deletion.
         flakes(
             r"
         context = None
@@ -1449,8 +1404,6 @@ mod tests {
 
     #[test]
     fn del_conditional_nested() {
-        // Ignored conditional bindings deletion even if they are nested in other
-        // blocks.
         flakes(
             r"
         context = None
@@ -1466,8 +1419,6 @@ mod tests {
 
     #[test]
     fn del_while() {
-        // Ignore bindings deletion if called inside the body of a while
-        // statement.
         flakes(
             r"
         def test():
@@ -1482,8 +1433,6 @@ mod tests {
 
     #[test]
     fn del_while_test_usage() {
-        // Ignore bindings deletion if called inside the body of a while
-        // statement and name is used inside while's test part.
         flakes(
             r"
         def _worker():
@@ -1498,8 +1447,6 @@ mod tests {
 
     #[test]
     fn del_while_nested() {
-        // Ignore bindings deletions if node is part of while's test, even when
-        // del is in a nested block.
         flakes(
             r"
         context = None
@@ -1531,8 +1478,6 @@ mod tests {
 
     #[test]
     fn later_redefined_global_from_nested_scope() {
-        // Test that referencing a local name that shadows a global, before it is
-        // defined, generates a warning.
         flakes(
             r"
         a = 1
@@ -1547,9 +1492,7 @@ mod tests {
 
     #[test]
     fn later_redefined_global_from_nested_scope2() {
-        // Test that referencing a local name in a nested scope that shadows a
         // global declared in an enclosing scope, before it is defined, generates
-        // a warning.
         flakes(
             r"
             a = 1
@@ -1566,10 +1509,6 @@ mod tests {
 
     #[test]
     fn intermediate_class_scope_ignored() {
-        // If a name defined in an enclosing scope is shadowed by a local variable
-        // and the name is used locally before it is bound, an unbound local
-        // warning is emitted, even if there is a class scope between the enclosing
-        // scope and the local scope.
         flakes(
             r"
         def f():
@@ -1587,8 +1526,6 @@ mod tests {
 
     #[test]
     fn later_redefined_global_from_nested_scope3() {
-        // Test that referencing a local name in a nested scope that shadows a
-        // global, before it is defined, generates a warning.
         flakes(
             r"
             def fun():
@@ -1628,7 +1565,6 @@ mod tests {
 
     #[test]
     fn nested_class() {
-        // Nested classes can access enclosing scope.
         flakes(
             r"
         def f(foo):
@@ -1646,7 +1582,6 @@ mod tests {
 
     #[test]
     fn bad_nested_class() {
-        // Free variables in nested classes must bind at class creation.
         flakes(
             r"
         def f():
@@ -1662,7 +1597,6 @@ mod tests {
 
     #[test]
     fn defined_as_star_args() {
-        // Star and double-star arg names are defined.
         flakes(
             r"
         def f(a, *b, **c):
@@ -1674,7 +1608,6 @@ mod tests {
 
     #[test]
     fn defined_as_star_unpack() {
-        // Star names in unpack are defined.
         flakes(
             r"
         a, *b = range(10)
@@ -1700,8 +1633,6 @@ mod tests {
 
     #[test]
     fn used_as_star_unpack() {
-        // In stable, starred names in unpack are used if RHS is not a tuple/list literal.
-        // In preview, these should be marked as unused.
         flakes(
             r"
         def f():
@@ -1727,7 +1658,6 @@ mod tests {
 
     #[test]
     fn keyword_only_args() {
-        // Keyword-only arg names are defined.
         flakes(
             r"
         def f(*, a, b=None):
@@ -1747,7 +1677,6 @@ mod tests {
 
     #[test]
     fn keyword_only_args_undefined() {
-        // Typo in kwonly name.
         flakes(
             r"
         def f(*, a, b=default_c):
@@ -1759,7 +1688,6 @@ mod tests {
 
     #[test]
     fn annotation_undefined() {
-        // Undefined annotations.
         flakes(
             r"
         from abc import note1, note2, note3, note4, note5
@@ -1792,8 +1720,6 @@ mod tests {
 
     #[test]
     fn defined_in_gen_exp() {
-        // Using the loop variable of a generator expression results in no
-        // warnings.
         flakes("(a for a in [1, 2, 3] if a)", &[]);
 
         flakes("(b for b in (a for a in [1, 2, 3] if a) if b)", &[]);
@@ -1801,8 +1727,6 @@ mod tests {
 
     #[test]
     fn undefined_in_gen_exp_nested() {
-        // The loop variables of generator expressions nested together are
-        // not defined in the other generator.
         flakes(
             "(b for b in (a for a in [1, 2, 3] if b) if b)",
             &[Rule::UndefinedName],
@@ -1816,8 +1740,6 @@ mod tests {
 
     #[test]
     fn undefined_with_error_handler() {
-        // Some compatibility code checks explicitly for NameError.
-        // It should not trigger warnings.
         flakes(
             r"
         try:
@@ -1836,7 +1758,6 @@ mod tests {
         "#,
             &[],
         );
-        // If NameError is not explicitly handled, generate a warning.
         flakes(
             r"
         try:
@@ -1859,7 +1780,6 @@ mod tests {
 
     #[test]
     fn defined_in_class() {
-        // Defined name for generator expressions and dict/set comprehension.
         flakes(
             r"
         class A:
@@ -1903,7 +1823,6 @@ mod tests {
 
     #[test]
     fn defined_in_class_nested() {
-        // Defined name for nested generator expressions in a class.
         flakes(
             r"
         class A:
@@ -1917,7 +1836,6 @@ mod tests {
 
     #[test]
     fn undefined_in_loop() {
-        // The loop variable is defined after the expression is computed.
         flakes(
             r"
         for i in range(i):
@@ -1941,8 +1859,6 @@ mod tests {
 
     #[test]
     fn defined_from_lambda_in_dictionary_comprehension() {
-        // Defined name referenced from a lambda function within a dict/set
-        // comprehension.
         flakes(
             r"
         {lambda: id(x) for x in range(10)}
@@ -1953,8 +1869,6 @@ mod tests {
 
     #[test]
     fn defined_from_lambda_in_generator() {
-        // Defined name referenced from a lambda function within a generator
-        // expression.
         flakes(
             r"
         any(lambda: id(x) for x in range(10))
@@ -1965,8 +1879,6 @@ mod tests {
 
     #[test]
     fn undefined_from_lambda_in_dictionary_comprehension() {
-        // Undefined name referenced from a lambda function within a dict/set
-        // comprehension.
         flakes(
             r"
         {lambda: id(y) for x in range(10)}
@@ -1977,8 +1889,6 @@ mod tests {
 
     #[test]
     fn undefined_from_lambda_in_comprehension() {
-        // Undefined name referenced from a lambda function within a generator
-        // expression.
         flakes(
             r"
         any(lambda: id(y) for x in range(10))
@@ -2073,7 +1983,6 @@ mod tests {
 
     #[test]
     fn aliased_import_shadow_module() {
-        // Imported aliases can shadow the source of the import.
         flakes("from moo import fu as moo; moo", &[]);
         flakes("import fu as fu; fu", &[]);
         flakes("import fu.bar as fu; fu", &[]);
@@ -2103,8 +2012,6 @@ mod tests {
 
     #[test]
     fn redefined_if() {
-        // Test that importing a module twice within an if
-        // block does raise a warning.
         flakes(
             r"
         i = 2
@@ -2119,8 +2026,6 @@ mod tests {
 
     #[test]
     fn redefined_if_else() {
-        // Test that importing a module twice in if
-        // and else blocks does not raise a warning.
         flakes(
             r"
         i = 2
@@ -2136,8 +2041,6 @@ mod tests {
 
     #[test]
     fn redefined_try() {
-        // Test that importing a module twice in a try block
-        // does raise a warning.
         flakes(
             r"
         try:
@@ -2153,8 +2056,6 @@ mod tests {
 
     #[test]
     fn redefined_try_except() {
-        // Test that importing a module twice in a try
-        // and except block does not raise a warning.
         flakes(
             r"
         try:
@@ -2169,8 +2070,6 @@ mod tests {
 
     #[test]
     fn redefined_try_nested() {
-        // Test that importing a module twice using a nested
-        // try/except and if blocks does not issue a warning.
         flakes(
             r"
         try:
@@ -2286,7 +2185,6 @@ mod tests {
     #[test]
     fn redefined_in_nested_function() {
         // Test that shadowing a global name with a nested function definition
-        // generates a warning.
         flakes(
             r"
         import fu
@@ -2302,7 +2200,6 @@ mod tests {
     #[test]
     fn redefined_in_nested_function_twice() {
         // Test that shadowing a global name with a nested function definition
-        // generates a warning.
         flakes(
             r"
         import fu
@@ -2324,7 +2221,6 @@ mod tests {
     #[test]
     fn redefined_but_used_later() {
         // Test that a global import which is redefined locally,
-        // but used later in another scope does not generate a warning.
         flakes(
             r"
         import unittest, transport
@@ -2355,8 +2251,6 @@ mod tests {
 
     #[test]
     fn redefined_by_subclass() {
-        // If an imported name is redefined by a class statement which also uses
-        // that name in the bases list, no warning is emitted.
         flakes(
             r"
         from fu import bar
@@ -2370,7 +2264,6 @@ mod tests {
     #[test]
     fn redefined_in_class() {
         // Test that shadowing a global with a class attribute does not produce a
-        // warning.
         flakes(
             r"
         import fu
@@ -2384,7 +2277,6 @@ mod tests {
 
     #[test]
     fn import_in_class() {
-        // Test that import within class is a locally scoped attribute.
         flakes(
             r"
         class bar:
@@ -2583,7 +2475,6 @@ mod tests {
     #[test]
     fn shadowed_by_for() {
         // Test that shadowing a global name with a for loop variable generates a
-        // warning.
         flakes(
             r"
         import fu
@@ -2598,7 +2489,6 @@ mod tests {
     #[test]
     fn shadowed_by_for_deep() {
         // Test that shadowing a global name with a for loop variable nested in a
-        // tuple unpack generates a warning.
         flakes(
             r"
         import fu
@@ -2819,8 +2709,6 @@ mod tests {
 
     #[test]
     fn used_in_global() {
-        // A 'global' statement shadowing an unused import should not prevent it
-        // from being reported.
         flakes(
             r"
         import fu
@@ -2832,8 +2720,6 @@ mod tests {
 
     #[test]
     fn used_and_global() {
-        // A 'global' statement shadowing a used import should not cause it to be
-        // reported as unused.
         flakes(
             r"
             import foo
@@ -2847,7 +2733,6 @@ mod tests {
     #[test]
     fn assigned_to_global() {
         // Binding an import to a declared global should not cause it to be
-        // reported as unused.
         flakes(
             r"
             def f(): global foo; import foo
@@ -2945,7 +2830,6 @@ lambda: fu
 
     #[test]
     fn package_import() {
-        // If a dotted name is imported and used, no warning is reported.
         flakes(
             r"
         import fu.bar
@@ -2957,15 +2841,11 @@ lambda: fu
 
     #[test]
     fn unused_package_import() {
-        // If a dotted name is imported and not used, an unused import warning is
-        // reported.
         flakes("import fu.bar", &[Rule::UnusedImport]);
     }
 
     #[test]
     fn duplicate_submodule_import() {
-        // If a submodule of a package is imported twice, an unused import warning and a
-        // redefined while unused warning are reported.
         flakes(
             r"
         import fu.bar, fu.bar
@@ -2985,8 +2865,6 @@ lambda: fu
 
     #[test]
     fn different_submodule_import() {
-        // If two different submodules of a package are imported, no duplicate import
-        // warning is reported for the package.
         flakes(
             r"
         import fu.bar, fu.baz
@@ -3045,7 +2923,6 @@ lambda: fu
 
     #[test]
     fn used_package_with_submodule_import() {
-        // Usage of package marks submodule imports as used.
         flakes(
             r"
         import fu
@@ -3067,7 +2944,6 @@ lambda: fu
 
     #[test]
     fn used_package_with_submodule_import_of_alias() {
-        // Usage of package by alias marks submodule imports as used.
         flakes(
             r"
         import foo as f
@@ -3089,7 +2965,6 @@ lambda: fu
 
     #[test]
     fn unused_package_with_submodule_import() {
-        // When a package and its submodule are imported, only report once.
         flakes(
             r"
         import fu
@@ -3167,7 +3042,6 @@ lambda: fu
 
     #[test]
     fn imported_in_class() {
-        // Imports in class scope can be used through self.
         flakes(
             r"
         class C:
@@ -3181,7 +3055,6 @@ lambda: fu
 
     #[test]
     fn import_used_in_method_definition() {
-        // Method named 'foo' with default args referring to module named 'foo'.
         flakes(
             r"
         import foo
@@ -3196,7 +3069,6 @@ lambda: fu
 
     #[test]
     fn future_import() {
-        // __future__ is special.
         flakes("from __future__ import division", &[]);
         flakes(
             r#"
@@ -3209,7 +3081,6 @@ lambda: fu
 
     #[test]
     fn future_import_first() {
-        // __future__ imports must come before anything else.
         flakes(
             r"
         x = 5
@@ -3229,7 +3100,6 @@ lambda: fu
 
     #[test]
     fn future_import_used() {
-        // __future__ is special, but names are injected in the namespace.
         flakes(
             r"
         from __future__ import division
@@ -3243,7 +3113,6 @@ lambda: fu
 
     #[test]
     fn future_import_undefined() {
-        // Importing undefined names from __future__ fails.
         flakes(
             r"
         from __future__ import print_statement
@@ -3254,7 +3123,6 @@ lambda: fu
 
     #[test]
     fn future_import_star() {
-        // Importing '*' from __future__ fails.
         flakes(
             r"
         from __future__ import *
@@ -3353,8 +3221,6 @@ lambda: fu
 
     #[test]
     fn ignored_in_function() {
-        // An C{__all__} definition does not suppress unused import warnings in a
-        // function scope.
         flakes(
             r#"
         def foo():
@@ -3367,7 +3233,6 @@ lambda: fu
 
     #[test]
     fn ignored_in_class() {
-        // An C{__all__} definition in a class does not suppress unused import warnings.
         flakes(
             r#"
         import bar
@@ -3391,8 +3256,6 @@ lambda: fu
 
     #[test]
     fn warning_suppressed() {
-        // If a name is imported and unused but is named in C{__all__}, no warning
-        // is reported.
         flakes(
             r#"
         import foo
@@ -3411,7 +3274,6 @@ lambda: fu
 
     #[test]
     fn augmented_assignment() {
-        // The C{__all__} variable is defined incrementally.
         flakes(
             r"
         import a
@@ -3427,7 +3289,6 @@ lambda: fu
 
     #[test]
     fn list_concatenation_assignment() {
-        // The C{__all__} variable is defined through list concatenation.
         flakes(
             r"
         import sys
@@ -3444,7 +3305,6 @@ lambda: fu
 
     #[test]
     fn tuple_concatenation_assignment() {
-        // The C{__all__} variable is defined through tuple concatenation.
         flakes(
             r"
         import sys
@@ -3507,7 +3367,6 @@ lambda: fu
 
     #[test]
     fn unbound_exported() {
-        // If C{__all__} includes a name which is not bound, a warning is emitted.
         flakes(
             r#"
         __all__ = ["foo"]
@@ -3518,7 +3377,6 @@ lambda: fu
 
     #[test]
     fn import_star_exported() {
-        // Report undefined if import * is used
         flakes(
             r"
         from math import *
@@ -3537,7 +3395,6 @@ lambda: fu
     #[ignore]
     #[test]
     fn import_star_not_exported() {
-        // Report unused import when not needed to satisfy __all__.
         flakes(
             r"
         from foolib import *
@@ -3558,7 +3415,6 @@ lambda: fu
     #[test]
     fn redefined_by_gen_exp() {
         // Reusing a global name as the loop variable for a generator
-        // expression results in a redefinition warning.
         flakes(
             "import fu; (1 for fu in range(1))",
             &[Rule::UnusedImport, Rule::RedefinedWhileUnused],
@@ -3568,8 +3424,6 @@ lambda: fu
     #[test]
     fn used_as_decorator() {
         // Using a global name in a decorator statement results in no warnings,
-        // but using an undefined name in a decorator statement results in an
-        // undefined name warning.
         flakes(
             r#"
         from interior import decorate
@@ -3592,9 +3446,6 @@ lambda: fu
 
     #[test]
     fn used_as_class_decorator() {
-        // Using an imported name as a class decorator results in no warnings,
-        // but using an undefined name as a class decorator results in an
-        // undefined name warning.
         flakes(
             r"
         from interior import decorate
@@ -3763,7 +3614,6 @@ lambda: fu
 
     #[test]
     fn aliased_typing_import() {
-        // Detect when typing is imported as another name.
         flakes(
             r"
         import typing as t
@@ -4161,7 +4011,6 @@ lambda: fu
 
     #[test]
     fn unused_annotation() {
-        // Unused annotations are fine in module and class scope.
         flakes(
             r"
         x: int
@@ -4177,7 +4026,6 @@ lambda: fu
         ",
             &[Rule::UnusedAnnotation],
         );
-        // This should only print one UnusedVariable message.
         flakes(
             r"
         def f():
@@ -4373,9 +4221,6 @@ lambda: fu
 
     #[test]
     fn type_cast_literal_str_to_str() {
-        // Checks that our handling of quoted type annotations in the first
-        // argument to `cast` doesn't cause issues when (only) the _second_
-        // argument is a literal str which looks a bit like a type annotation.
         flakes(
             r"
         from typing import cast
@@ -4488,11 +4333,9 @@ lambda: fu
         );
     }
 
-    // We err on the side of assuming strings are forward references.
     #[ignore]
     #[test]
     fn literal_type_some_other_module() {
-        // err on the side of false-negatives for types named Literal.
         flakes(
             r"
         from my_module import compat
@@ -4520,7 +4363,6 @@ lambda: fu
         );
     }
 
-    // TODO(charlie): Support nested deferred string annotations.
     #[ignore]
     #[test]
     fn deferred_twice_annotation() {
@@ -4572,7 +4414,6 @@ lambda: fu
 
     #[test]
     fn idiomatic_typing_guards() {
-        // typing.TYPE_CHECKING: python3.5.3+.
         flakes(
             r"
             from typing import TYPE_CHECKING
@@ -4585,7 +4426,6 @@ lambda: fu
         ",
             &[],
         );
-        // False: the old, more-compatible approach.
         flakes(
             r"
             if False:
@@ -4596,7 +4436,6 @@ lambda: fu
         ",
             &[],
         );
-        // Some choose to assign a constant and do it that way.
         flakes(
             r"
             MYPY = False

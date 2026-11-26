@@ -236,7 +236,6 @@ pub fn check_file(db: &dyn Db, file: ProgramFile<'_>) -> Result<Box<[Diagnostic]
     let source_file = file.file(db);
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
-    // Abort checking if there are IO errors.
     let source = source_text(db, source_file);
 
     if let Some(read_error) = source.read_error() {

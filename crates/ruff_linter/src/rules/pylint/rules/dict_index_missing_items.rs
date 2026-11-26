@@ -70,12 +70,10 @@ impl Violation for DictIndexMissingItems<'_> {
 pub(crate) fn dict_index_missing_items(checker: &Checker, stmt_for: &StmtFor) {
     let StmtFor { iter, body, .. } = stmt_for;
 
-    // Extract the name of the iteration object (e.g., `obj` in `for key in obj:`).
     let Some(dict_name) = extract_dict_name(iter) else {
         return;
     };
 
-    // Determine if the right-hand side is a dictionary literal (i.e. `for key in (dict := {"a": 1}):`).
     let is_dict_literal = matches!(
         ResolvedPythonType::from(&**iter),
         ResolvedPythonType::Atom(PythonType::Dict),
@@ -126,7 +124,6 @@ impl<'a, 'b> SubscriptVisitor<'a, 'b> {
 
 impl<'a> Visitor<'a> for SubscriptVisitor<'a, '_> {
     fn visit_expr(&mut self, expr: &'a Expr) {
-        // Given `obj[key]`, `value` must be `obj` and `slice` must be `key`.
         if let Expr::Subscript(ast::ExprSubscript {
             value,
             slice,
@@ -138,12 +135,10 @@ impl<'a> Visitor<'a> for SubscriptVisitor<'a, '_> {
                 return;
             };
 
-            // Check that the sliced dictionary name is the same as the iterated object name.
             if name.id != self.dict_name.id {
                 return;
             }
 
-            // Check that the sliced value is the same as the target of the `for` loop.
             if ComparableExpr::from(slice) != ComparableExpr::from(self.target) {
                 return;
             }
@@ -167,12 +162,10 @@ impl<'a> Visitor<'a> for SubscriptVisitor<'a, '_> {
 
 /// Extracts the name of the dictionary from the expression.
 fn extract_dict_name(expr: &Expr) -> Option<&ast::ExprName> {
-    // Ex) `for key in obj:`
     if let Some(name_expr) = expr.as_name_expr() {
         return Some(name_expr);
     }
 
-    // Ex) `for key in obj.keys():`
     if let Expr::Call(ast::ExprCall { func, .. }) = expr {
         if let Expr::Attribute(ast::ExprAttribute { attr, value, .. }) = func.as_ref() {
             if attr == "keys" {
@@ -183,7 +176,6 @@ fn extract_dict_name(expr: &Expr) -> Option<&ast::ExprName> {
         }
     }
 
-    // Ex) `for key in (my_dict := {"foo": "bar"}):`
     if let Expr::Named(ast::ExprNamed { target, value, .. }) = expr {
         if let Expr::Dict(ast::ExprDict { .. }) = value.as_ref() {
             if let Expr::Name(var_name) = target.as_ref() {

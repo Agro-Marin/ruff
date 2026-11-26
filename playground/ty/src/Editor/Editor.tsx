@@ -1,6 +1,3 @@
-/**
- * Editor for the Python source code.
- */
 
 import Moncao, { Monaco, OnMount } from "@monaco-editor/react";
 import {
@@ -111,7 +108,6 @@ export default function Editor({
     isViewingVendoredFile,
   ]);
 
-  // Update the diagnostics and hints in the editor.
   useEffect(() => {
     const server = serverRef.current;
 
@@ -169,7 +165,7 @@ export default function Editor({
       onMount={handleMount}
       options={{
         fixedOverflowWidgets: true,
-        readOnly: isViewingVendoredFile, // Make editor read-only for vendored files
+        readOnly: isViewingVendoredFile,
         minimap: { enabled: false },
         fontSize: 14,
         roundedSelection: false,
@@ -216,12 +212,9 @@ class PlaygroundServer
 
   private providerDisposables: IDisposable[];
   private inVendoredFileCondition: editor.IContextKey<boolean>;
-  // Cache for vendored file handles
   private vendoredFileHandles = new Map<string, FileHandle>();
 
   private getVendoredPath(uri: Uri): string {
-    // Monaco parses "vendored://stdlib/typing.pyi" as authority="stdlib", path="/typing.pyi"
-    // We need to reconstruct the full path
     return uri.authority ? `${uri.authority}${uri.path}` : uri.path;
   }
 
@@ -267,7 +260,6 @@ class PlaygroundServer
       "inVendoredFile",
       false,
     );
-    // Register Esc key command
     editor.addCommand(
       monaco.KeyCode.Escape,
       () => this.props.onBackToUserFile(),
@@ -280,9 +272,6 @@ class PlaygroundServer
   signatureHelpRetriggerCharacters: string[] = [")"];
 
   private renameRejection<T>(): T & languages.Rejection {
-    // This assertion is intentionally unchecked: Monaco checks `rejectReason`
-    // before reading the success fields, but its RenameProvider declaration
-    // models rejections as part of the success type.
     return { rejectReason: "this element can't be renamed" } as T &
       languages.Rejection;
   }
@@ -339,7 +328,6 @@ class PlaygroundServer
       new TyPosition(position.lineNumber, position.column),
     );
 
-    // If completions is 100, this gives us "99" which has a length of two
     const digitsLength = String(completions.length - 1).length;
 
     return {
@@ -368,9 +356,6 @@ class PlaygroundServer
         ),
         documentation: completion.documentation,
         detail: completion.detail,
-        // TODO(micha): It's unclear why this field is required for monaco but not VS Code.
-        //  and omitting it works just fine? The LSP doesn't expose this information right now
-        //  which is why we go with undefined for now.
         range: undefined as any,
       })),
     };
@@ -464,7 +449,6 @@ class PlaygroundServer
 
           return {
             label: part.label,
-            // Range cannot be `undefined`.
             location: locationLink?.targetSelectionRange
               ? {
                   uri: locationLink.uri,
@@ -510,12 +494,10 @@ class PlaygroundServer
 
   private getOrCreateVendoredFileHandle(vendoredPath: string): FileHandle {
     const cachedHandle = this.vendoredFileHandles.get(vendoredPath);
-    // Check if we already have a handle for this vendored file
     if (cachedHandle != null) {
       return cachedHandle;
     }
 
-    // Use the new WASM method to get a proper file handle for the vendored file
     const handle = this.props.workspace.getVendoredFile(vendoredPath);
     this.vendoredFileHandles.set(vendoredPath, handle);
     return handle;
@@ -533,11 +515,9 @@ class PlaygroundServer
   }
 
   private getFileHandleForModel(model: editor.ITextModel) {
-    // Handle vendored files
     if (model.uri.scheme === "vendored") {
       const vendoredPath = this.getVendoredPath(model.uri);
 
-      // If not cached, try to create it
       return this.getOrCreateVendoredFileHandle(vendoredPath);
     }
 
@@ -822,21 +802,17 @@ class PlaygroundServer
       return false;
     }
 
-    // Handle file-specific logic
     if (resource.scheme === "vendored") {
-      // Get the file handle to track that we're viewing a vendored file
       const vendoredPath = this.getVendoredPath(resource);
       const fileHandle = this.getOrCreateVendoredFileHandle(vendoredPath);
       this.props.onVendoredFileChange(fileHandle);
     } else {
-      // Handle regular files
       const file = this.getPlaygroundFileForUri(resource);
 
       if (file == null) {
         return false;
       }
 
-      // Set the model and trigger UI updates
       if (files.selected !== file.id) {
         this.props.onOpenFile(file.id);
       }
@@ -1093,7 +1069,6 @@ function generateMonacoTokens(
   let prevChar = 0;
 
   for (const token of semantic) {
-    // Convert from 1-based to 0-based indexing for Monaco
     const line = token.range.start.line - 1;
     const char = token.range.start.column - 1;
 

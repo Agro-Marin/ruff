@@ -69,7 +69,6 @@ impl Violation for TypeNameIncorrectVariance {
 
 /// PLC0105
 pub(crate) fn type_name_incorrect_variance(checker: &Checker, value: &Expr) {
-    // If the typing modules were never imported, we'll never match below.
     if !checker.semantic().seen_typing() {
         return;
     }
@@ -124,7 +123,7 @@ pub(crate) fn type_name_incorrect_variance(checker: &Checker, value: &Expr) {
         .trim_end_matches("_co")
         .trim_end_matches("_contra");
     let replacement_name: String = match variance {
-        VarVariance::Bivariance => return, // Bivariate types are invalid, so ignore them for this rule.
+        VarVariance::Bivariance => return,
         VarVariance::Covariance => format!("{name_root}_co"),
         VarVariance::Contravariance => format!("{name_root}_contra"),
         VarVariance::Invariance => name_root.to_string(),

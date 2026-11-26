@@ -39,12 +39,10 @@ pub(crate) fn check(
     fix_mode: flags::FixMode,
     unsafe_fixes: UnsafeFixes,
 ) -> Result<Diagnostics> {
-    // Collect all the Python files to check.
     let start = Instant::now();
     let (mut paths, resolver) = project_files_in_path(files, root_settings, config_arguments)?;
     debug!("Identified files to lint in: {:?}", start.elapsed());
 
-    // Filter out paths for file types not supported for linting
     paths.retain(|path| {
         if let Ok(ResolvedFile::Root(path) | ResolvedFile::Nested(path)) = path {
             matches!(
@@ -62,7 +60,6 @@ pub(crate) fn check(
         return Ok(Diagnostics::default());
     }
 
-    // Discover the package root for each Python file.
     let package_roots = resolver.package_roots(
         &paths
             .iter()
@@ -71,7 +68,6 @@ pub(crate) fn check(
             .collect::<Vec<_>>(),
     );
 
-    // Load the caches.
     let caches = if cache.is_enabled() {
         Some(PackageCacheMap::init(&package_roots, &resolver))
     } else {
@@ -162,8 +158,6 @@ pub(crate) fn check(
         }))
     });
 
-    // Aggregate the diagnostics of all checked files and count the checked files.
-    // This can't be a regular for loop because we use `par_iter`.
     let (mut all_diagnostics, checked_files) = diagnostics_per_file
         .fold(
             || (Diagnostics::default(), 0u64),
@@ -182,7 +176,6 @@ pub(crate) fn check(
             .cmp(&b.rendering_sort_key(&context))
     });
 
-    // Store the caches.
     caches.persist()?;
 
     let duration = start.elapsed();
@@ -245,7 +238,6 @@ mod test {
         let path = "E902.py";
         let rule_code = Rule::IOError;
 
-        // Create inaccessible files
         let tempdir = TempDir::new()?;
         let pyproject_toml = tempdir.path().join("pyproject.toml");
         let python_file = tempdir.path().join("code.py");
@@ -259,9 +251,7 @@ mod test {
                 .open(file)?;
         }
 
-        // Configure
         let snapshot = format!("{}_{}", rule_code.name(), path);
-        // invalid pyproject.toml is not active by default
         let settings = Settings {
             linter: LinterSettings::for_rules(vec![rule_code, Rule::InvalidPyprojectToml]),
             ..Settings::default()
@@ -271,7 +261,6 @@ mod test {
             resolved: ResolvedSettings::new(settings),
         };
 
-        // Run
         let diagnostics = check(
             &[tempdir.path().to_path_buf()],
             &root_settings,
@@ -291,7 +280,6 @@ mod test {
         insta::with_settings!({
             omit_expression => true,
             filters => vec![
-                // The tempdir is always different (and platform dependent)
                 (tempdir.path().to_str().unwrap(), "/home/ferris/project"),
             ]
         }, {

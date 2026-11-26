@@ -94,8 +94,6 @@ impl ModuleName {
     /// ```
     #[must_use]
     pub fn first_component(&self) -> &str {
-        // OK because `Self::is_valid_name` guarantees that there is at least
-        // one component in the module name.
         self.components()
             .next()
             .expect("at least one module component")
@@ -112,8 +110,6 @@ impl ModuleName {
     /// ```
     #[must_use]
     pub fn last_component(&self) -> &str {
-        // OK because `Self::is_valid_name` guarantees that there is at least
-        // one component in the module name.
         self.components()
             .next_back()
             .expect("at least one module component")
@@ -210,17 +206,7 @@ impl ModuleName {
     #[must_use]
     pub fn relative_to(&self, parent: &ModuleName) -> Option<ModuleName> {
         let relative_name = self.0.strip_prefix(&*parent.0)?.strip_prefix('.')?;
-        // At this point, `relative_name` *has* to be a
-        // proper suffix of `self`. Otherwise, one of the two
-        // `strip_prefix` calls above would return `None`.
-        // (Notably, a valid `ModuleName` cannot end with a `.`.)
         assert!(!relative_name.is_empty());
-        // This must also be true for this implementation to be
-        // correct. That is, the parent must be a prefix of this
-        // module name according to the rules of how module name
-        // components are split up. This could technically trip if
-        // the implementation of `starts_with` diverges from the
-        // implementation in this routine. But that seems unlikely.
         debug_assert!(self.starts_with(parent));
         Some(ModuleName(CompactString::from(relative_name)))
     }

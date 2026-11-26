@@ -13,7 +13,6 @@ fn do_fuzz(case: &[u8]) -> Corpus {
         return Corpus::Reject;
     };
 
-    // just round-trip it once to trigger both parse and unparse
     let parsed = match parse_module(code) {
         Ok(parsed) => parsed,
         Err(ParseError { location, .. }) => {

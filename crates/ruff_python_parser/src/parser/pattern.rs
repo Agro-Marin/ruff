@@ -22,33 +22,23 @@ const LITERAL_PATTERN_START_SET: TokenSet = TokenSet::new([
     TokenKind::Int,
     TokenKind::Float,
     TokenKind::Complex,
-    TokenKind::Minus, // Unary minus
-    TokenKind::Plus,  // Unary plus
+    TokenKind::Minus,
+    TokenKind::Plus,
 ]);
 
 /// The set of tokens that can start a pattern.
 const PATTERN_START_SET: TokenSet = TokenSet::new([
-    // Star pattern
     TokenKind::Star,
-    // Capture pattern
-    // Wildcard pattern ('_' is an identifier token)
-    // Value pattern (name or attribute)
-    // Class pattern
     TokenKind::Identifier,
-    // Group pattern
     TokenKind::Lpar,
-    // Sequence pattern
     TokenKind::Lsqb,
-    // Mapping pattern
     TokenKind::Lbrace,
 ])
 .union(LITERAL_PATTERN_START_SET);
 
 /// The set of tokens that can start a mapping pattern.
 const MAPPING_PATTERN_START_SET: TokenSet = TokenSet::new([
-    // Double star pattern
     TokenKind::DoubleStar,
-    // Value pattern
     TokenKind::Identifier,
 ])
 .union(LITERAL_PATTERN_START_SET);
@@ -70,14 +60,11 @@ impl Parser<'_> {
     pub(super) fn parse_match_patterns(&mut self) -> Pattern {
         let start = self.node_start();
 
-        // We don't yet know if it's a sequence pattern or a single pattern, so
-        // we need to allow star pattern here.
         let pattern = self.parse_match_pattern(AllowStarPattern::Yes);
 
         if self.at(TokenKind::Comma) {
             Pattern::MatchSequence(self.parse_sequence_match_pattern(pattern, start, None))
         } else {
-            // We know it's not a sequence pattern now, so check for star pattern usage.
             if pattern.is_match_star() {
                 self.add_error(ParseErrorType::InvalidStarPatternUsage, &pattern);
             }
@@ -91,13 +78,9 @@ impl Parser<'_> {
     fn parse_match_pattern(&mut self, allow_star_pattern: AllowStarPattern) -> Pattern {
         let start = self.node_start();
 
-        // We don't yet know if it's an or pattern or an as pattern, so use whatever
-        // was passed in.
         let mut lhs = self.parse_match_pattern_lhs(allow_star_pattern);
 
-        // Or pattern
         if self.at(TokenKind::Vbar) {
-            // We know it's an `or` pattern now, so check for star pattern usage.
             if lhs.is_match_star() {
                 self.add_error(ParseErrorType::InvalidStarPatternUsage, &lhs);
             }
@@ -118,9 +101,7 @@ impl Parser<'_> {
             });
         }
 
-        // As pattern
         if self.eat(TokenKind::As) {
-            // We know it's an `as` pattern now, so check for star pattern usage.
             if lhs.is_match_star() {
                 self.add_error(ParseErrorType::InvalidStarPatternUsage, &lhs);
             }
@@ -202,10 +183,6 @@ impl Parser<'_> {
                         parser.node_range(mapping_item_start),
                     );
                 }
-                // TODO(dhruvmanila): It's not possible to retain multiple double starred
-                // patterns because of the way the mapping node is represented in the grammar.
-                // The last value will always win. Update the AST representation.
-                // See: https://github.com/astral-sh/ruff/pull/10477#discussion_r1535143536
                 rest = Some(identifier);
             } else {
                 let key = match parser.parse_match_pattern_lhs(AllowStarPattern::No) {
@@ -323,9 +300,6 @@ impl Parser<'_> {
             self.current_token_kind(),
             TokenKind::Newline | TokenKind::Colon
         ) {
-            // TODO(dhruvmanila): This recovery isn't possible currently because
-            // of the soft keyword transformer. If there's a missing closing
-            // parenthesis, it'll consider `case` an identifier token instead.
             self.add_error(
                 ParseErrorType::OtherError(format!(
                     "Missing '{closing}'",
@@ -374,7 +348,6 @@ impl Parser<'_> {
         if parentheses.is_some_and(|parentheses| {
             self.at(parentheses.closing_kind()) || self.peek() == parentheses.closing_kind()
         }) {
-            // The comma is optional if it is a single-element sequence
             self.eat(TokenKind::Comma);
         } else {
             self.expect(TokenKind::Comma);
@@ -499,8 +472,6 @@ impl Parser<'_> {
                         //     case -1(): ...
                         //     case {+1**2: _}: ...
 
-                        // Parse the full operand for error recovery, but only numeric literals
-                        // are valid after a sign in a literal pattern.
                         if !unary_expr.operand.is_number_literal_expr() {
                             self.add_error(
                                 ParseErrorType::OtherError(
@@ -577,8 +548,6 @@ impl Parser<'_> {
                         })
                     }
                 } else {
-                    // Upon encountering an unexpected token, return a `Pattern::MatchValue` containing
-                    // an empty `Expr::Name`.
                     self.add_error(
                         ParseErrorType::OtherError("Expected a pattern".to_string()),
                         self.current_token_range(),

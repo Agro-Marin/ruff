@@ -68,12 +68,10 @@ impl AlwaysFixableViolation for IntOnSlicedStr {
 
 /// FURB166
 pub(crate) fn int_on_sliced_str(checker: &Checker, call: &ExprCall) {
-    // Verify that the function is `int`.
     if !checker.semantic().match_builtin_expr(&call.func, "int") {
         return;
     }
 
-    // There must be exactly two arguments (e.g., `int(num[2:], 16)`).
     let (expression, base) = match (
         call.arguments.args.as_ref(),
         call.arguments.keywords.as_ref(),
@@ -87,7 +85,6 @@ pub(crate) fn int_on_sliced_str(checker: &Checker, call: &ExprCall) {
         }
     };
 
-    // The base must be a number literal with a value of 2, 8, or 16.
     let Some(base_u8) = base
         .as_number_literal_expr()
         .and_then(|base| base.value.as_int())
@@ -99,7 +96,6 @@ pub(crate) fn int_on_sliced_str(checker: &Checker, call: &ExprCall) {
         return;
     }
 
-    // Determine whether the expression is a slice of a string (e.g., `num[2:]`).
     let Expr::Subscript(expr_subscript) = expression else {
         return;
     };

@@ -23,7 +23,6 @@ impl FormatNodeRule<StmtMatch> for FormatStmtMatch {
         let comments = f.context().comments().clone();
         let dangling_item_comments = comments.dangling(item);
 
-        // There can be at most one dangling comment after the colon in a match statement.
         debug_assert!(dangling_item_comments.len() <= 1);
 
         clause_header(
@@ -42,7 +41,6 @@ impl FormatNodeRule<StmtMatch> for FormatStmtMatch {
             return Ok(());
         };
 
-        // The new level is for the `case` nodes.
         let mut f = WithNodeLevel::new(NodeLevel::CompoundStatement, f);
 
         write!(f, [block_indent(&first.format())])?;

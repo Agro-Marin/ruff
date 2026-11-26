@@ -31,7 +31,6 @@ impl FormatNodeRule<ExprStringLiteral> for FormatExprStringLiteral {
         if let Some(string_literal) = item.as_single_part_string() {
             string_literal.format().with_options(self.kind).fmt(f)
         } else {
-            // Always join strings that aren't parenthesized and thus, always on a single line.
             if !f.context().node_level().is_parenthesized() {
                 if let Some(mut format_flat) =
                     FormatImplicitConcatenatedStringFlat::new(item.into(), f.context())
@@ -40,13 +39,6 @@ impl FormatNodeRule<ExprStringLiteral> for FormatExprStringLiteral {
                     return format_flat.fmt(f);
                 }
 
-                // ```py
-                // def test():
-                // (
-                //      r"a"
-                //      "b"
-                // )
-                // ```
                 if self.kind.is_docstring() {
                     return parenthesize_if_expands(
                         &FormatImplicitConcatenatedStringExpanded::new(

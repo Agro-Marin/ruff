@@ -27,7 +27,6 @@ impl FixSafetyTable {
         applicability: Applicability,
     ) -> Applicability {
         match applicability {
-            // If applicability is display-only we don't change it
             Applicability::DisplayOnly => applicability,
             Applicability::Safe | Applicability::Unsafe => {
                 if self.forced_unsafe.contains(rule) {
@@ -136,19 +135,19 @@ mod tests {
         for applicability in &[Applicability::Safe, Applicability::Unsafe] {
             assert_eq!(
                 table.resolve_applicability(Rule::RedefinedWhileUnused, *applicability),
-                Applicability::Safe // It is forced to Safe
+                Applicability::Safe
             );
         }
         for applicability in &[Applicability::Safe, Applicability::Unsafe] {
             assert_eq!(
                 table.resolve_applicability(Rule::UnusedImport, *applicability),
-                Applicability::Unsafe // It is forced to Unsafe
+                Applicability::Unsafe
             );
         }
         for applicability in &[Applicability::Safe, Applicability::Unsafe] {
             assert_eq!(
                 table.resolve_applicability(Rule::UndefinedName, *applicability),
-                *applicability // Remains unchanged
+                *applicability
             );
         }
 
@@ -159,7 +158,7 @@ mod tests {
         ] {
             assert_eq!(
                 table.resolve_applicability(*rule, Applicability::DisplayOnly),
-                Applicability::DisplayOnly // Display is never changed
+                Applicability::DisplayOnly
             );
         }
     }

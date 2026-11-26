@@ -227,7 +227,6 @@ impl<'db> From<Type<'db>> for TypeKind<'db> {
             | Type::Divergent(_)
             | Type::Dynamic(_) => TypeKind::Atomic,
 
-            // Non-atomic types
             Type::FunctionLiteral(function) => {
                 TypeKind::NonAtomic(NonAtomicType::FunctionLiteral(function))
             }
@@ -369,7 +368,6 @@ pub(crate) fn walk_type_with_recursion_guard<'db>(
         TypeKind::Atomic => {}
         TypeKind::NonAtomic(non_atomic_type) => {
             if recursion_guard.type_was_already_seen(ty) {
-                // If we have already seen this type, we can skip it.
                 return;
             }
             walk_non_atomic_type(db, non_atomic_type, visitor);
@@ -386,7 +384,6 @@ impl<'db> TypeCollector<'db> {
     }
 }
 
-// Most guarded walks are shallow; avoid allocating a hash table until linear search is costly.
 type CollectedTypes<'db> = SmallSet<Type<'db>, 8>;
 
 /// A set optimized for values that usually contain only a few distinct elements.
@@ -563,9 +560,6 @@ pub(super) fn dynamic_content_impl<'db>(
             }
 
             if matches!(self.mode, DynamicContentMode::Materialization) {
-                // The ordinary walker only visits updated signatures. Inferring an original
-                // signature here could re-enter recursive `TypeOf` evaluation, so do not claim
-                // that materialization leaves this function's requirements unchanged.
                 self.record(DynamicContent::Indeterminate);
             } else {
                 walk_function_type(db, function, self);
@@ -577,7 +571,6 @@ pub(super) fn dynamic_content_impl<'db>(
                 && let KnownInstanceType::FunctoolsPartial(partial)
                 | KnownInstanceType::FunctoolsPartialCall(partial) = known
             {
-                // Materialization maps both the reduced signature and the wrapped callable.
                 self.visit_type(db, partial.wrapped(db).inner(db));
             }
             if self.content.get().is_absent() {
@@ -586,10 +579,6 @@ pub(super) fn dynamic_content_impl<'db>(
         }
 
         fn visit_generic_alias_type(&self, db: &'db dyn Db, alias: GenericAlias<'db>) {
-            // Use `walk_specialization_types` rather than `walk_specialization` to avoid walking
-            // the bounds/constraints/defaults of the generic context.
-            // Only the types the class was actually specialized with are relevant to whether
-            // the `GenericAlias` contains a dynamic type.
             walk_specialization_types(db, alias.specialization(db), self);
         }
 
@@ -625,15 +614,11 @@ pub(super) fn dynamic_content_impl<'db>(
                 .class_origin(db)
                 .and_then(|class| class.static_class_literal(db))
             else {
-                // The synthesized interface is immutable. A changed member produces a different
-                // protocol type; lazy types inside its members are still inspected here.
                 walk_protocol_instance_interface(db, protocol.interface(db), protocol_ty, self);
                 return;
             };
 
             if let Some(specialization) = specialization {
-                // Bounds and defaults in the generic context do not describe the specialized
-                // instance; only inspect the types assigned to its parameters.
                 for ty in specialization.types(db) {
                     self.visit_type(db, *ty);
                     if !self.content.get().is_absent() {
@@ -656,8 +641,6 @@ pub(super) fn dynamic_content_impl<'db>(
                 .defining_class()
                 .and_then(|class| class.static_class_literal(db))
             else {
-                // Synthesized schemas and inline functional TypedDict schemas are immutable
-                // snapshots; definition-backed schemas re-read their tracked field queries.
                 walk_typed_dict_type(db, typed_dict, self);
                 return;
             };
@@ -717,8 +700,6 @@ pub(super) fn may_contain_typevar_from<'db>(
             self.active_types.visit(
                 &identity,
                 || {
-                    // An exact cycle adds no new dependencies. A coarsened identity can hide
-                    // a different specialization, whose arguments still need inspecting.
                     if !matches!(identity, TypeIdentity::Other(_)) {
                         visit_arguments();
                     }
@@ -798,8 +779,6 @@ pub(super) fn may_contain_typevar_from<'db>(
             self.active_protocols.visit(
                 &definition,
                 || {
-                    // The body has already exposed any captured variables. Only argument
-                    // substitution can introduce further dependencies on this recursive edge.
                     if let Some((_, Some(specialization))) = protocol
                         .class_origin(db)
                         .and_then(|class| class.static_class_literal(db))
@@ -933,8 +912,6 @@ pub(super) fn contains_growing_type<'db>(
             };
 
             if let Some(specialization) = specialization {
-                // Inspect arguments before activating the definition so finite nesting such as
-                // `P[P[int]]` does not look like an expanding recursive declaration.
                 walk_specialization_types(db, specialization, self);
                 if self.found.get() {
                     return;
@@ -945,8 +922,6 @@ pub(super) fn contains_growing_type<'db>(
                 &origin,
                 || self.found.set(true),
                 || {
-                    // Bind implicit receivers so they do not introduce recursive edges of their
-                    // own. Explicitly recursive method signatures still need to be inspected.
                     walk_protocol_instance_interface(db, protocol.interface(db), protocol_ty, self);
                 },
             );
@@ -1039,9 +1014,6 @@ where
                     return;
                 }
             }
-            // An ordinary nominal instance visits only its class. Class literals have no
-            // children, and generic aliases have their own recursion guard. An exact tuple
-            // visits its elements directly, so it still needs the guard on the instance.
             if let Type::NominalInstance(instance) = ty
                 && !instance.is_exact_tuple()
             {

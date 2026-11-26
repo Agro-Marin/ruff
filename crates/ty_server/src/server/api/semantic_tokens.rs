@@ -39,8 +39,6 @@ pub(crate) fn generate_semantic_tokens(
             let len = lsp_range.end.character - lsp_range.start.character;
             encoder.push_token_at(lsp_range.start, len, token.token_type, token.modifiers);
         } else if multiline_token_support {
-            // If the client supports multiline-tokens,
-            // compute the length of the entire range.
             let mut len = 0;
 
             for line in lsp_range.start.line..lsp_range.end.line {
@@ -53,15 +51,11 @@ pub(crate) fn generate_semantic_tokens(
                 len += u32::try_from(line_len).unwrap();
             }
 
-            // Subtract the first line because we added the length from the beginning.
             len -= lsp_range.start.character;
-            // We didn't compute the length of the last line, add it now.
             len += lsp_range.end.character;
 
             encoder.push_token_at(lsp_range.start, len, token.token_type, token.modifiers);
         } else {
-            // Multiline token but the client only supports single line tokens
-            // Push a token for each line.
             for line in lsp_range.start.line..=lsp_range.end.line {
                 let start_character = if line == lsp_range.start.line {
                     lsp_range.start.character
@@ -109,7 +103,6 @@ impl Encoder {
         ty: SemanticTokenType,
         modifiers: SemanticTokenModifier,
     ) {
-        // LSP semantic tokens are encoded as deltas
         let delta_line = start.line - self.prev_line;
         let delta_start = if delta_line == 0 {
             start.character - self.prev_start

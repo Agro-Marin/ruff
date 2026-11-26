@@ -4,8 +4,6 @@ use std::iter::Peekable;
 use ruff_formatter::{SourceCode, SourceCodeSlice};
 use ruff_python_ast::{AnyNodeRef, Identifier};
 use ruff_python_ast::{Mod, Stmt};
-// The interface is designed to only export the members relevant for iterating nodes in
-// pre-order.
 #[allow(clippy::wildcard_imports)]
 use ruff_python_ast::visitor::source_order::*;
 use ruff_python_trivia::{CommentLinePosition, CommentRanges, TriviaRanges};
@@ -59,9 +57,6 @@ impl<'a, 'builder> CommentsVisitor<'a, 'builder> {
         self.leave_node(root);
     }
 
-    // Try to skip the subtree if
-    // * there are no comments
-    // * if the next comment comes after this node (meaning, this nodes subtree contains no comments)
     fn can_skip(&mut self, node_end: TextSize) -> bool {
         self.comment_ranges
             .peek()
@@ -75,11 +70,7 @@ impl<'ast> SourceOrderVisitor<'ast> for CommentsVisitor<'ast, '_> {
 
         let enclosing_node = self.parents.last().copied().unwrap_or(node);
 
-        // Process all remaining comments that end before this node's start position.
-        // If the `preceding` node is set, then it process all comments ending after the `preceding` node
-        // and ending before this node's start position
         while let Some(comment_range) = self.comment_ranges.peek().copied() {
-            // Exit if the comment is enclosed by this node or comes after it
             if comment_range.end() > node_range.start() {
                 break;
             }
@@ -100,7 +91,6 @@ impl<'ast> SourceOrderVisitor<'ast> for CommentsVisitor<'ast, '_> {
             self.comment_ranges.next();
         }
 
-        // From here on, we're inside of `node`, meaning, we're passed the preceding node.
         self.preceding_node = None;
         self.parents.push(node);
 
@@ -112,17 +102,12 @@ impl<'ast> SourceOrderVisitor<'ast> for CommentsVisitor<'ast, '_> {
     }
 
     fn leave_node(&mut self, node: AnyNodeRef<'ast>) {
-        // We are leaving this node, pop it from the parent stack.
         self.parents.pop();
 
         let node_end = node.end();
         let is_root = self.parents.is_empty();
 
-        // Process all comments that start after the `preceding` node and end before this node's end.
         while let Some(comment_range) = self.comment_ranges.peek().copied() {
-            // If the comment starts after this node, break.
-            // If this is the root node and there are comments after the node, attach them to the root node
-            // anyway because there's no other node we can attach the comments to (RustPython should include the comments in the node's range)
             if comment_range.start() >= node_end && !is_root {
                 break;
             }
@@ -150,14 +135,10 @@ impl<'ast> SourceOrderVisitor<'ast> for CommentsVisitor<'ast, '_> {
     fn visit_body(&mut self, body: &'ast [Stmt]) {
         match body {
             [] => {
-                // no-op
             }
             [only] => self.visit_stmt(only),
             [first, .., last] => {
                 if self.can_skip(last.end()) {
-                    // Skip traversing the body when there's no comment between the first and last statement.
-                    // It is still necessary to visit the first statement to process all comments between
-                    // the previous node and the first statement.
                     self.visit_stmt(first);
                     self.preceding_node = Some(last.into());
                 } else {
@@ -168,7 +149,6 @@ impl<'ast> SourceOrderVisitor<'ast> for CommentsVisitor<'ast, '_> {
     }
 
     fn visit_identifier(&mut self, _identifier: &'ast Identifier) {
-        // TODO: Visit and associate comments with identifiers
     }
 }
 
@@ -556,12 +536,6 @@ impl<'a> PushComment<'a> for CommentsMapBuilder<'a> {
                     CommentLinePosition::EndOfLine => {
                         match (comment.preceding_node(), comment.following_node()) {
                             (Some(preceding), Some(_)) => {
-                                // Attach comments with both preceding and following node to the preceding
-                                // because there's a line break separating it from the following node.
-                                // ```python
-                                // a; # comment
-                                // b
-                                // ```
                                 self.push_trailing_comment(preceding, comment);
                             }
                             (Some(preceding), None) => {
@@ -577,13 +551,6 @@ impl<'a> PushComment<'a> for CommentsMapBuilder<'a> {
                     }
                     CommentLinePosition::OwnLine => {
                         match (comment.preceding_node(), comment.following_node()) {
-                            // Following always wins for a leading comment
-                            // ```python
-                            // a
-                            // // python
-                            // b
-                            // ```
-                            // attach the comment to the `b` expression statement
                             (_, Some(following)) => {
                                 self.push_leading_comment(following, comment);
                             }

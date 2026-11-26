@@ -105,9 +105,6 @@ impl<'db> ConstructorBinding<'db> {
             return;
         };
         let generic_context = specialization.generic_context(db);
-        // A constructor can use a class specialization reached through a fixed TypeVar's domain
-        // without owning that class's type variables. Only a context inherited by the constructor
-        // signature is eligible for freshening.
         let owns_generic_context = self.entry.overloads.iter().any(|overload| {
             overload
                 .signature
@@ -147,18 +144,12 @@ impl<'db> ConstructorBinding<'db> {
             delta,
         };
 
-        // Keep the source-level instance on `ConstructorBinding`; the final return type applies
-        // the inferred specialization to that instance. Only the per-overload context is
-        // call-local, so its instance must use the same fresh type variables as the signature.
         let constructor_context = self.context().with_instance_type(fresh_instance_type);
         let visitor = ApplyTypeMappingVisitor::new(env);
         self.entry.bound_type = self.entry.bound_type.map(|bound_type| {
             bound_type.apply_type_mapping_impl(db, &type_mapping, TypeContext::default(), &visitor)
         });
         for overload in &mut self.entry.overloads {
-            // The constructor's `Self` bound must use the same fresh class type variables as
-            // its receiver. Include only `Self` variables owned by this signature, so a caller's
-            // `Self` used as an explicit class type argument retains its original bound.
             let signature_context = GenericContext::from_typevar_instances(
                 db,
                 env,
@@ -208,9 +199,6 @@ impl<'db> ConstructorBinding<'db> {
     ) {
         self.entry.match_parameters(db, env, arguments);
 
-        // We don't know at this point whether we'll need to check downstream constructors or not
-        // (since we can't resolve return types yet), so we match parameters for all downstream
-        // constructors; this may be needed for argument type contexts.
         if let Some(downstream) = self.downstream_constructor.as_mut() {
             downstream.match_parameters_in_place(db, env, arguments);
         }
@@ -237,8 +225,6 @@ impl<'db> ConstructorBinding<'db> {
             mode,
         );
 
-        // Now that we've fully checked our own callable, we can determine whether downstream
-        // constructors should be checked or not.
         if mode.is_provisional() {
             if let Some(downstream) = self.downstream_constructor_mut() {
                 let _ = downstream.check_types_impl(
@@ -252,7 +238,6 @@ impl<'db> ConstructorBinding<'db> {
                 );
             }
         } else if !self.should_check_downstream(db, env) {
-            // If not, we can discard the downstream constructor bindings entirely.
             self.downstream_constructor = None;
         }
     }
@@ -278,8 +263,6 @@ impl<'db> ConstructorBinding<'db> {
         let constructed_instance_type = self.constructed_instance_type();
         let constructor_class_literal = self.constructed_class_literal(db, env);
 
-        // If any matching overload returns the constructed instance type itself, or an instance of
-        // the constructed class, we need to check downstream constructors.
         callable.matching_overloads().any(|(_, overload)| {
             overload.return_ty == constructed_instance_type
                 || constructor_class_literal.is_some_and(|class_literal| {
@@ -324,9 +307,6 @@ impl<'db> ConstructorBinding<'db> {
     where
         F: Fn(CallableBinding<'db>) -> CallableBinding<'db>,
     {
-        // TODO: Model the nested constructor chain if we want to support class objects assigned to
-        // `__new__`. For now, map the callable itself and drop its downstream constructor checks
-        // instead of panicking.
         ConstructorBinding {
             entry: f(self.entry),
             constructor_context: self.constructor_context,
@@ -338,16 +318,6 @@ impl<'db> ConstructorBinding<'db> {
     pub(super) fn return_type(&self, db: &'db dyn Db, env: &ProgramEnvironment<'db>) -> Type<'db> {
         let constructed_instance_type = self.constructed_instance_type();
 
-        // If we are checking downstream constructors, and the downstream constructor resolves to a
-        // non-instance return, that becomes the effective constructor return. This can only happen
-        // if we are a metaclass `__call__` returning an instance of the constructed class, but
-        // that class has a downstream `__new__` that does not.
-        //
-        // TODO: If the metaclass `__call__` return type in this scenario is explicitly annotated
-        // with e.g. `-> T` where `cls: type[T]` (not just un-annotated), should this actually be
-        // an error? It seems to imply that the metaclass `__call__` is violating its own return
-        // annotation. But no other type checker considers it an error, and it probably rarely if
-        // ever comes up.)
         if let Some(downstream) = self.downstream_constructor()
             && let Some(constructor_class_literal) = self.constructed_class_literal(db, env)
         {
@@ -358,8 +328,6 @@ impl<'db> ConstructorBinding<'db> {
             }
         }
 
-        // If `__new__` or metaclass `__call__` produced an explicit return type, use it
-        // directly rather than building an instance of the constructed class.
         if let Some(return_ty) = self.explicit_return_type(db, env) {
             return return_ty;
         }
@@ -386,10 +354,6 @@ impl<'db> ConstructorBinding<'db> {
         explicit_return: Option<&Binding<'db>>,
     ) -> Option<Specialization<'db>> {
         let constructed_instance_type = self.constructed_instance_type();
-        // This will be `None` if we're constructing a non-generic class. If we're constructing a
-        // non-specialized generic class (`C(...)`), it'll be the identity specialization. If we're
-        // constructing an already-specialized generic alias (`C[str](...)`), it'll be the
-        // specialization of that alias.
         let (class_literal, class_specialization) =
             constructed_instance_type.class_specialization(db, env)?;
         let class_context = class_specialization.generic_context(db);
@@ -402,10 +366,6 @@ impl<'db> ConstructorBinding<'db> {
             else {
                 return;
             };
-            // Parameter checking uses defaults for unsolved variables, but those defaults must
-            // not compete with types inferred by another constructor method. Project missing
-            // class bindings to a marker so we can distinguish them from inferred types, including
-            // an inferred `Unknown`. The overload's instance type contains call-local typevars.
             let partial_specialization = overload.inference.and_then(|inference| {
                 let (_, class_specialization) = overload
                     .constructor_context?
@@ -421,9 +381,6 @@ impl<'db> ConstructorBinding<'db> {
                     }),
                 )
             });
-            // A marker for the entire class argument means there was no inference. Structural
-            // annotations such as `C[list[T]]` still contribute a type; use their resolved form
-            // so nested markers do not escape into the constructed instance.
             let inferred_types = |partial: Specialization<'db>, resolved: Specialization<'db>| {
                 partial
                     .types(db)
@@ -444,8 +401,6 @@ impl<'db> ConstructorBinding<'db> {
                     Some(inferred_types(partial, resolved))
                 };
             let return_types = if explicit_return.is_some() {
-                // The caller applies these bindings to the return annotation. Infer them in
-                // declaration order so an annotation like `Pair[U, T]` swaps the arguments once.
                 let instance = overload
                     .constructor_context
                     .unwrap_or(binding.context())
@@ -458,13 +413,6 @@ impl<'db> ConstructorBinding<'db> {
                 project_class_arguments(overload.unspecialized_return_type(db), overload.return_ty)
             };
 
-            // TODO All this handling of return-specialization vs self-specialization is a hacky
-            // work-around to a situation that can occur with a case like `def __init__(self:
-            // "Class6[V1, V2]", v1: V1, v2: V2)`, where we don't currently solve across the entire
-            // call, so the self annotation gives us `V1 = T1`, `V2 = T2` (where `T1` and `T2` are
-            // the class typevars), and we consider T1 and T2 as unknowns. This will be fixed when
-            // we start building up constraint sets across the full call. We should be able to just
-            // use the return specialization and eliminate all this.
             let return_types_are_informative = return_types.as_ref().is_some_and(|types| {
                 types
                     .iter()
@@ -499,7 +447,6 @@ impl<'db> ConstructorBinding<'db> {
                     ))
                 })
             };
-            // end TODO
 
             let Some(types) = types else {
                 return;
@@ -560,9 +507,6 @@ impl<'db> ConstructorBinding<'db> {
             .matching_overloads()
             .map(|(_, overload)| overload);
 
-        // If we have matching overloads, only those are candidates. If all overloads failed,
-        // consider all overloads' return types. (This increases the chances of an `Unknown`
-        // return, but still preserves more precise returns in unambiguous cases.)
         if matching_overloads.clone().next().is_none() {
             self.analyze_overload_returns(db, env, self.callable().overloads().iter())
         } else {
@@ -581,13 +525,6 @@ impl<'db> ConstructorBinding<'db> {
     where
         'db: 'a,
     {
-        // If we see both instance and non-instance returns, we return Unknown.
-        // If we see multiple different non-instance returns, we also return Unknown.
-        // If we see multiple instance returns, we return `None` (we know we are constructing an
-        // instance of the constructed class, but we don't have more precise information.)
-        // Otherwise, we return the single non-instance return if present, or the single
-        // instance return we saw (this is different from simply returning `None` since it
-        // could be a specific subclass of the constructed class.)
         let mut sole_instance_return = None;
         let mut saw_instance_return = false;
         let mut non_instance_return = None;
@@ -721,7 +658,6 @@ impl<'db> ConstructorBinding<'db> {
         };
         lookup_instance
             .as_nominal_instance()
-            // TODO may need to handle `Type::KnownInstance` here as well?
             .map(|instance| instance.class(db, env).class_literal(db))
     }
 
@@ -794,23 +730,12 @@ fn constructor_returns_instance<'db>(
         Type::Intersection(intersection) => intersection
             .iter_positive(db)
             .any(|element| constructor_returns_instance(db, env, class_literal, element)),
-        // Spec says an explicit `Any` return type should be considered non-instance.
         Type::Dynamic(DynamicType::Any) => false,
-        // But a missing return annotation should be considered instance.
-        // TODO currently this is also true for explicit annotations that resolve to `Unknown`;
-        // should it be? Other type checkers also treat it this way.
         Type::Dynamic(_) => true,
-        // A `Never` constructor return is terminal and does not run downstream construction.
         Type::Never => false,
         Type::NominalInstance(instance) => instance
             .class(db, env)
             .is_subtype_of_class_literal(db, class_literal),
-        // We don't need to handle `ProtocolInstance` here, since the only way a protocol can be
-        // instantiated is if a nominal class inherits it. If the nominal class inherits a
-        // `__new__` from the protocol, either that `__new__` will return `Self` or equivalent,
-        // in which case we'll already solve it to the subclass and consider it an instance
-        // type, or it will return an explicit annotation of the protocol type itself, in which
-        // case we shouldn't (and don't) consider it an instance of the subclass.
         _ => false,
     }
 }

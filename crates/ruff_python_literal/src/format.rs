@@ -19,8 +19,8 @@ impl FormatConversion {
             return (None, text);
         };
         let mut chars = text.chars();
-        chars.next(); // Consume the bang
-        chars.next(); // Consume one r,s,a char
+        chars.next();
+        chars.next();
         (Some(conversion), chars.as_str())
     }
 }
@@ -225,29 +225,19 @@ pub enum FormatSpec {
 
 #[derive(Debug, PartialEq)]
 pub struct StaticFormatSpec {
-    // Ex) `!s` in `'{!s}'`
     conversion: Option<FormatConversion>,
-    // Ex) `*` in `'{:*^30}'`
     fill: Option<char>,
-    // Ex) `<` in `'{:<30}'`
     align: Option<FormatAlign>,
-    // Ex) `+` in `'{:+f}'`
     sign: Option<FormatSign>,
-    // Ex) `#` in `'{:#x}'`
     alternate_form: bool,
-    // Ex) `30` in `'{:<30}'`
     width: Option<usize>,
-    // Ex) `,` in `'{:,}'`
     grouping_option: Option<FormatGrouping>,
-    // Ex) `2` in `'{:.2}'`
     precision: Option<usize>,
-    // Ex) `f` in `'{:+f}'`
     format_type: Option<FormatType>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct DynamicFormatSpec {
-    // Ex) `x` and `y` in `'{:*{x},{y}b}'`
     pub placeholders: Vec<FormatPart>,
 }
 
@@ -294,7 +284,6 @@ fn parse_number(text: &str) -> Result<(Option<usize>, &str), FormatSpecError> {
     if let Ok(num) = text[..num_digits].parse::<usize>() {
         Ok((Some(num), &text[num_digits..]))
     } else {
-        // NOTE: this condition is different from CPython
         Err(FormatSpecError::DecimalDigitsTooMany)
     }
 }
@@ -336,7 +325,6 @@ fn parse_precision(text: &str) -> Result<(Option<usize>, &str), FormatSpecError>
 /// Parses a placeholder format part within a format specification
 fn parse_nested_placeholder(text: &str) -> Result<Option<(FormatPart, &str)>, FormatSpecError> {
     match FormatString::parse_spec(text, AllowPlaceholderNesting::No) {
-        // Not a nested placeholder, OK
         Err(FormatParseError::MissingStartBracket) => Ok(None),
         Err(err) => Err(FormatSpecError::InvalidPlaceholder(err)),
         Ok((format_part, text)) => Ok(Some((format_part, text))),
@@ -374,8 +362,6 @@ impl FormatSpec {
         let (grouping_option, text) = FormatGrouping::parse(text);
         let (precision, text) = parse_precision(text)?;
 
-        // If there's any remaining text, we should yield a valid format type and consume it
-        // all.
         let (format_type, text) =
             FormatType::parse(text).map_err(FormatSpecError::InvalidFormatType)?;
         if !text.is_empty() {
@@ -573,12 +559,9 @@ pub struct FormatString {
 impl FormatString {
     fn parse_literal_single(text: &str) -> Result<(char, &str), FormatParseError> {
         let mut chars = text.chars();
-        // This should never be called with an empty str
         let first_char = chars.next().unwrap();
-        // isn't this detectable only with bytes operation?
         if first_char == '{' || first_char == '}' {
             let maybe_next_char = chars.next();
-            // if we see a bracket, it has to be escaped by doubling up to be in a literal
             return if maybe_next_char.is_none() || maybe_next_char.unwrap() != first_char {
                 Err(FormatParseError::UnescapedStartBracketInLiteral)
             } else {
@@ -593,7 +576,6 @@ impl FormatString {
         let mut result_string = String::new();
         let mut pending_escape = false;
         while !cur_text.is_empty() {
-            // Raw strings: \N{...} is literal, not a Unicode escape
             if !is_raw
                 && pending_escape
                 && let Some((unicode_string, remaining)) =
@@ -625,7 +607,6 @@ impl FormatString {
 
     fn parse_part_in_brackets(text: &str) -> Result<FormatPart, FormatParseError> {
         let parts: Vec<&str> = text.splitn(2, ':').collect();
-        // before the comma is a keyword or arg index, after the comma is maybe a spec.
         let arg_part = parts[0];
 
         let format_spec = if parts.len() > 1 {
@@ -634,15 +615,12 @@ impl FormatString {
             String::new()
         };
 
-        // On parts[0] can still be the conversion (!r, !s, !a)
         let parts: Vec<&str> = arg_part.splitn(2, '!').collect();
-        // before the bang is a keyword or arg index, after the comma is maybe a conversion spec.
         let arg_part = parts[0];
 
         let conversion_spec = parts
             .get(1)
             .map(|conversion| {
-                // conversions are only every one character
                 conversion
                     .chars()
                     .exactly_one()
@@ -670,7 +648,6 @@ impl FormatString {
 
         for (idx, c) in text.char_indices() {
             if c == '{' {
-                // There may be one layer nesting brackets in spec
                 if nested || allow_nesting == AllowPlaceholderNesting::No {
                     return Err(FormatParseError::PlaceholderRecursionExceeded);
                 }
@@ -694,7 +671,7 @@ impl FormatString {
 
     fn parse_escaped_unicode_string(text: &str) -> Option<(&str, &str)> {
         text.strip_prefix("N{")?.find('}').map(|idx| {
-            let end_idx = idx + 3; // 3 for "N{"
+            let end_idx = idx + 3;
             (&text[..end_idx], &text[end_idx..])
         })
     }
@@ -703,8 +680,6 @@ impl FormatString {
         let mut cur_text: &str = text;
         let mut parts: Vec<FormatPart> = Vec::new();
         while !cur_text.is_empty() {
-            // Try to parse both literals and bracketed format parts until we
-            // run out of text
             cur_text = FormatString::parse_literal(cur_text, is_raw)
                 .or_else(|_| FormatString::parse_spec(cur_text, AllowPlaceholderNesting::Yes))
                 .map(|(part, new_text)| {
@@ -984,8 +959,6 @@ mod tests {
         );
         assert_eq!(
             FormatSpec::parse("{}}"),
-            // Note this should be an `InvalidFormatType` but we give up
-            // on all other parsing validation when we see a placeholder
             Ok(FormatSpec::Dynamic(DynamicFormatSpec {
                 placeholders: vec![FormatPart::Field {
                     field_name: String::new(),

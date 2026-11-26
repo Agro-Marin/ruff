@@ -182,12 +182,8 @@ fn some_codes_are_invalid_diagnostic(
 }
 
 fn remove_invalid_noqa(codes: &Codes, invalid_code: &Code, locator: &Locator) -> Edit {
-    // Is this the first code after the `:` that needs to get deleted
-    // For the first element, delete from after the `:` to the next comma (including)
-    // For any other element, delete from the previous comma (including) to the next comma (excluding)
     let mut first = false;
 
-    // Find the index of the previous comma or colon.
     let start = locator
         .slice(TextRange::new(codes.start(), invalid_code.start()))
         .rmatch_indices([',', ':'])
@@ -204,7 +200,6 @@ fn remove_invalid_noqa(codes: &Codes, invalid_code: &Code, locator: &Locator) ->
         })
         .unwrap_or(invalid_code.start());
 
-    // Find the index of the trailing comma (if any)
     let end = locator
         .slice(TextRange::new(invalid_code.end(), codes.end()))
         .find(',')

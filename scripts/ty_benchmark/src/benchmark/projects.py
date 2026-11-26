@@ -41,15 +41,12 @@ class Project(NamedTuple):
     """Additional first-party import roots, relative to the checkout."""
 
     def clone(self, checkout_dir: Path) -> None:
-        # Skip cloning if the project has already been cloned (the script doesn't yet support updating)
         if (checkout_dir / ".git").exists():
             return
 
         logger.debug(f"Cloning {self.repository} to {checkout_dir}")
 
         try:
-            # git doesn't support cloning a specific revision.
-            # This is the closest that I found to a "shallow clone with a specific revision"
             subprocess.run(
                 [
                     "git",
@@ -130,9 +127,6 @@ class IncrementalEdit(NamedTuple):
         return text.replace(self.replace_text, self.replacement, 1)
 
 
-# Selection of projects taken from
-# [mypy-primer](https://github.com/hauntsaninja/mypy_primer/blob/0ea6cc614b3e91084059b9a3acc58f94c066a211/mypy_primer/projects.py#L71).
-# May require frequent updating, especially the dependencies list
 ALL: Final = [
     Project(
         name="black",
@@ -144,10 +138,8 @@ ALL: Final = [
         install_arguments=[
             "-r",
             "pyproject.toml",
-            # All extras except jupyter because installing the jupyter optional results in a mypy typing error.
             "--extra",
             "colorama",
-            # uvloop is not supported on Windows
             *(["--extra", "uvloop"] if sys.platform != "win32" else []),
             "--extra",
             "d",
@@ -263,7 +255,6 @@ ALL: Final = [
         repository="https://github.com/pandas-dev/pandas-stubs",
         revision="8dd6d91b1c05b26e30f7ddbe3dc3d4042a92bdd6",
         include=["pandas-stubs"],
-        # See https://github.com/pandas-dev/pandas-stubs/blob/8dd6d91b1c05b26e30f7ddbe3dc3d4042a92bdd6/pyproject.toml#L8-L72
         python_version="3.11",
         install_arguments=[
             "-r",
@@ -271,14 +262,13 @@ ALL: Final = [
             "--group",
             "dev",
         ],
-        edit=None,  # Tricky in a stubs only project as there are no actual method calls.
+        edit=None,
     ),
     Project(
         name="prefect",
         repository="https://github.com/PrefectHQ/prefect.git",
         revision="a9452ac21852755311913cb27887b083b5007c03",
         import_roots=["src"],
-        # See https://github.com/PrefectHQ/prefect/blob/a9452ac21852755311913cb27887b083b5007c03/.pre-commit-config.yaml#L25-L39
         include=[
             "src/prefect/server/models",
             "src/prefect/concurrency",
@@ -314,7 +304,6 @@ ALL: Final = [
         repository="https://github.com/pytorch/pytorch.git",
         revision="ab92945cea42e47ae398aead69af0872d340ea0f",
         include=["torch", "caffe2"],
-        # Based on https://github.com/pytorch/pytorch/blob/ab92945cea42e47ae398aead69af0872d340ea0f/pyrefly.toml#L23-L47
         exclude=[
             "torch/_inductor/codegen/triton.py",
             "tools/linter/adapters/test_device_bias_linter.py",
@@ -352,10 +341,6 @@ ALL: Final = [
             "*/__pycache__/**",
             "*/.*",
         ],
-        # Based on the upstream lint environment, keeping only packages needed
-        # to resolve imports from torch/ and caffe2/. Checker versions are managed
-        # separately by the benchmark.
-        # https://github.com/pytorch/pytorch/blob/ab92945cea42e47ae398aead69af0872d340ea0f/tools/linter/adapters/pyrefly_linter.py#L1-L28
         install_arguments=[
             "numpy",
             "expecttest",
@@ -415,7 +400,6 @@ ALL: Final = [
         python_version="3.12",
         include=["numpy"],
         exclude=["numpy/tests/**", "numpy/**/tests/**"],
-        # Check the Python implementation and array stubs without building C extensions.
         install_arguments=["typing-extensions", "packaging"],
         edit=IncrementalEdit(
             edited_file="numpy/_core/multiarray.pyi",
@@ -537,7 +521,6 @@ ALL: Final = [
         python_version="3.11",
         include=["src", "testing"],
         import_roots=["src"],
-        # These are input programs for nested test runs, rather than the tests themselves.
         exclude=["testing/example_scripts/**"],
         install_arguments=["-r", "pyproject.toml", "--all-extras"],
         edit=IncrementalEdit(

@@ -125,7 +125,6 @@ pub(crate) fn redundant_none_literal<'a>(checker: &Checker, literal_expr: &'a Ex
         UnionKind::TypingOptional
     };
 
-    // N.B. Applying the fix can leave an unused import to be fixed by the `unused-import` rule.
     for none_expr in none_exprs {
         let mut diagnostic =
             checker.report_diagnostic(RedundantNoneLiteral { union_kind }, none_expr.range());
@@ -137,9 +136,6 @@ pub(crate) fn redundant_none_literal<'a>(checker: &Checker, literal_expr: &'a Ex
                 literal_elements.clone(),
                 union_kind,
             )
-            // Isolate the fix to ensure multiple fixes on the same expression (like
-            // `Literal[None,] | Literal[None,]` -> `None | None`) happen across separate passes,
-            // preventing the production of invalid code.
             .map(|fix| {
                 fix.map(|fix| fix.isolate(Checker::isolation(semantic.current_statement_id())))
             })
@@ -249,7 +245,6 @@ fn create_fix(
             });
             let union_expr = pep_604_union(&[new_literal_expr, none_expr]);
 
-            // Check if we need parentheses to preserve operator precedence
             let content =
                 if needs_parentheses_for_precedence(semantic, literal_expr, checker.tokens()) {
                     format!("({})", checker.generator().expr(&union_expr))
@@ -260,7 +255,6 @@ fn create_fix(
             let union_edit = Edit::range_replacement(content, literal_expr.range());
             Fix::applicable_edit(union_edit, applicability)
         }
-        // We dealt with this case earlier to avoid allocating `lhs` and `rhs`
         UnionKind::NoUnion => {
             unreachable!()
         }
@@ -283,20 +277,16 @@ fn needs_parentheses_for_precedence(
     literal_expr: &Expr,
     tokens: &Tokens,
 ) -> bool {
-    // Get the parent expression to check if we're in a context that needs parentheses
     let Some(parent_expr) = semantic.current_expression_parent() else {
         return false;
     };
 
-    // Check if the literal expression is already parenthesized
     if parenthesized_range(literal_expr.into(), parent_expr.into(), tokens).is_some() {
-        return false; // Already parenthesized, don't add more
+        return false;
     }
 
-    // Check if the parent expression has higher precedence than the `|` operator
     let union_precedence = OperatorPrecedence::BitOr;
     let parent_precedence = OperatorPrecedence::from(parent_expr);
 
-    // If the parent operation has higher precedence than `|`, we need parentheses
     parent_precedence > union_precedence
 }

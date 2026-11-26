@@ -83,7 +83,6 @@ pub(crate) fn print_empty_string(checker: &Checker, call: &ast::ExprCall) {
     }
 
     match &*call.arguments.args {
-        // Ex) `print("")` or `print("", sep="\t")`
         [arg] if is_empty_string(arg) => {
             let reason = if call.arguments.find_keyword("sep").is_some() {
                 Reason::Both
@@ -106,12 +105,9 @@ pub(crate) fn print_empty_string(checker: &Checker, call: &ast::ExprCall) {
         }
 
         [arg] if arg.is_starred_expr() => {
-            // If there's a starred argument, we can't remove the empty string.
         }
 
-        // Ex) `print(sep="\t")` or `print(obj, sep="\t")`
         [] | [_] => {
-            // If there's a `sep` argument, remove it, regardless of what it is.
             if call.arguments.find_keyword("sep").is_some() {
                 let mut diagnostic = checker.report_diagnostic(
                     PrintEmptyString {
@@ -132,9 +128,7 @@ pub(crate) fn print_empty_string(checker: &Checker, call: &ast::ExprCall) {
             }
         }
 
-        // Ex) `print("foo", "", "bar", sep="")`
         _ => {
-            // Ignore `**kwargs`.
             let has_kwargs = call
                 .arguments
                 .keywords
@@ -144,7 +138,6 @@ pub(crate) fn print_empty_string(checker: &Checker, call: &ast::ExprCall) {
                 return;
             }
 
-            // Require an empty `sep` argument.
             let empty_separator = call
                 .arguments
                 .find_keyword("sep")
@@ -153,7 +146,6 @@ pub(crate) fn print_empty_string(checker: &Checker, call: &ast::ExprCall) {
                 return;
             }
 
-            // Count the number of empty and non-empty arguments.
             let empty_arguments = call
                 .arguments
                 .args
@@ -164,8 +156,6 @@ pub(crate) fn print_empty_string(checker: &Checker, call: &ast::ExprCall) {
                 return;
             }
 
-            // If removing the arguments would leave us with one or fewer, then we can remove the
-            // separator too.
             let separator = if call.arguments.args.len() - empty_arguments > 1
                 || call.arguments.args.iter().any(Expr::is_starred_expr)
             {
@@ -237,7 +227,6 @@ impl EmptyStringFix {
             applicability = Applicability::Unsafe;
         }
 
-        // Remove all empty string positional arguments.
         call.arguments.args = call
             .arguments
             .args
@@ -246,7 +235,6 @@ impl EmptyStringFix {
             .cloned()
             .collect();
 
-        // Remove the `sep` keyword argument if it exists.
         if separator == Separator::Remove {
             call.arguments.keywords = call
                 .arguments

@@ -110,14 +110,11 @@ pub(crate) fn unreliable_callable_check(
         return;
     };
 
-    // Validate function arguments based on function name
     let valid_args = match builtins_function {
         "hasattr" => {
-            // hasattr should have exactly 2 positional arguments and no keywords
             args.len() == 2
         }
         "getattr" => {
-            // getattr should have 2 or 3 positional arguments and no keywords
             args.len() == 2 || args.len() == 3
         }
         _ => return,

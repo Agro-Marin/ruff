@@ -55,17 +55,6 @@ impl SyncNotificationHandler for DidChangeWorkspaceFoldersHandler {
             }
         }
         for folder in params.event.removed {
-            // It would perhaps be more efficient to do this "in bulk"
-            // in one step (since at present, the session needs to
-            // iterate over all documents in its index). So if multiple
-            // workspace folders are removed at once, we could save
-            // some work.
-            //
-            // In practice though, the number of open text documents
-            // is likely to be "small," and the frequency of removing
-            // multiple workspace folders at a time is also likely to
-            // be small. So we prefer a simpler implementation for now.
-            // ---AG
             if let Err(err) = session.remove_workspace_folder(client, &folder.uri) {
                 tracing::error!(
                     "Failed to remove workspace folder `{uri}`: {err}",

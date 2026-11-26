@@ -11,8 +11,6 @@ use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
 thread_local! {
-    // Serde field hooks cannot receive per-parse state. `InternerGuard` restores
-    // an enclosing parse's table on return or unwinding, without retaining strings between parses.
     static STRINGS: RefCell<Option<FxHashSet<CharStr>>> = const { RefCell::new(None) };
 }
 

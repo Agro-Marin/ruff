@@ -164,10 +164,6 @@ impl<'a> CalleeLeaf<'a> {
         tokens: &Tokens,
         ancestors: &[AnyNodeRef<'a>],
     ) -> Option<(GotoTarget<'a>, TextRange)> {
-        // Construct the leaf stack the way `find_goto_target_impl` does: the leaf
-        // node has to be the identifier/name, with `ExprAttribute` (for attribute
-        // calls) sitting just above it so `from_covering_node`'s `Identifier` arm
-        // walks up to the `ExprCall` grandparent.
         let mut stack: Vec<AnyNodeRef<'_>> = ancestors.to_vec();
         let call_site_range = match self {
             CalleeLeaf::Name(name) => {
@@ -321,8 +317,6 @@ mod tests {
 
     #[test]
     fn prepare_on_overloaded_function() {
-        // `prepare_call_hierarchy`'s doc promises overload groups surface as
-        // multiple items. Cursor placed on the implementation def so the
         // resolution covers the whole group rather than a single `@overload`.
         let test = cursor_test(
             r#"
@@ -359,8 +353,6 @@ mod tests {
 
     #[test]
     fn prepare_on_async_function() {
-        // `CallHierarchyItemKind::Function`'s rustdoc states `async def` is
-        // covered. Verify it directly.
         let test = cursor_test(
             r#"
             async def f<CURSOR>oo():

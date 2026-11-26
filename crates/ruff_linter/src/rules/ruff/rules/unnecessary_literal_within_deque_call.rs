@@ -97,8 +97,6 @@ pub(crate) fn unnecessary_literal_within_deque_call(
             checker
                 .semantic()
                 .resolve_builtin_symbol(&call.func)
-                // other lints should handle empty list/dict/tuple calls,
-                // but this means that the lint still applies before those are fixed
                 .is_some_and(|name| {
                     name == "set" || name == "list" || name == "dict" || name == "tuple"
                 })
@@ -121,9 +119,6 @@ pub(crate) fn unnecessary_literal_within_deque_call(
         deque.range(),
     );
 
-    // Return without a fix in the presence of a starred argument because we can't accurately
-    // generate the fix. If all of the arguments are unpacked (e.g. `deque(*([], 10))`), we will
-    // have already returned after the first `find_argument_value` call.
     if deque.arguments.args.iter().any(Expr::is_starred_expr) {
         return;
     }
@@ -137,8 +132,6 @@ fn fix_unnecessary_literal_in_deque(
     deque: &ast::ExprCall,
     maxlen: Option<&Expr>,
 ) -> anyhow::Result<Fix> {
-    // if `maxlen` is `Some`, we know there were exactly two arguments, and we can replace the whole
-    // call. otherwise, we only delete the `iterable` argument and leave the others untouched.
     let edit = if let Some(maxlen) = maxlen {
         let deque_name = checker.locator().slice(
             parenthesized_range(deque.func.as_ref().into(), deque.into(), checker.tokens())
@@ -157,8 +150,6 @@ fn fix_unnecessary_literal_in_deque(
         )?
     };
     let has_comments = checker.comment_ranges().intersects(edit.range());
-    // we've already checked maxlen.is_some() && args != 2 above, so this is the only problematic
-    // case left
     let unknown_arguments = maxlen.is_none() && deque.arguments.len() != 1;
     let applicability = if has_comments || unknown_arguments {
         Applicability::Unsafe

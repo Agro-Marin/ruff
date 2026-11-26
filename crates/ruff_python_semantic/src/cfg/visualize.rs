@@ -17,17 +17,14 @@ trait MermaidGraph<'a>: DirectedGraph<'a> {
     fn draw_graph(&self) -> String {
         let mut graph = Vec::new();
 
-        // Begin mermaid graph.
         graph.push("flowchart TD".to_string());
 
-        // Draw nodes
         let num_nodes = self.num_nodes();
         for idx in 0..num_nodes {
             let node = Self::Node::new(idx);
             graph.push(format!("\tnode{}{}", idx, self.draw_node(node)));
         }
 
-        // Draw edges
         for idx in 0..num_nodes {
             graph.extend(
                 self.draw_edges(Self::Node::new(idx))

@@ -64,7 +64,6 @@ pub enum WithItemLayout {
     /// with (
     ///     # leading
     ///     a
-    // ): ...
     /// ```
     ParenthesizedContextManagers { single: bool },
 }
@@ -100,17 +99,10 @@ impl FormatNodeRule<WithItem> for FormatWithItem {
         let comments = f.context().comments().clone();
         let trailing_as_comments = comments.dangling(item);
 
-        // WARNING: The `is_parenthesized` returns false-positives
-        // if the `with` has a single item without a target.
-        // E.g., it returns `true` for `with (a)` even though the parentheses
-        // belong to the with statement and not the expression but it can't determine that.
         let is_parenthesized = f.context().is_expression_parenthesized(context_expr.into());
 
         match self.layout {
-            // Remove the parentheses of the `with_items` if the with statement adds parentheses
             WithItemLayout::ParenthesizedContextManagers { single } => {
-                // ...except if the with item is parenthesized and it's not the only with item or it has a target.
-                // Then use the context expression as a preferred breaking point.
                 let prefer_breaking_context_expression =
                     (optional_vars.is_some() || !single) && is_parenthesized;
 

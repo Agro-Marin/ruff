@@ -2,26 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-// If we have a Python package layout like:
-// - root/
-//   - foo/
-//     - __init__.py
-//     - bar.py
-//     - baz/
-//       - __init__.py
-//       - qux.py
-//
-// Then today, if you run with defaults (`src = ["."]`) from `root`, we'll
-// detect that `foo.bar`, `foo.baz`, and `foo.baz.qux` are first-party modules
-// (since, if you're in `root`, you can see `foo`).
-//
-// However, we'd also like it to be the case that, even if you run this command
-// from `foo`, we still consider `foo.baz.qux` to be first-party when linting
-// `foo/bar.py`. More specifically, for each Python file, we should find the
-// root of the current package.
-//
-// Thus, for each file, we iterate up its ancestors, returning the last
-// directory containing an `__init__.py`.
 
 /// Return `true` if the directory at the given `Path` appears to be a Python
 /// package.

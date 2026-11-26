@@ -342,7 +342,6 @@ pub(crate) fn shell_injection(checker: &Checker, call: &ast::ExprCall) {
     if matches!(call_kind, Some(CallKind::Subprocess)) {
         if let Some(arg) = command_argument {
             match shell_keyword {
-                // S602
                 Some(ShellKeyword {
                     truthiness: truthiness @ (Truthiness::True | Truthiness::Truthy),
                 }) => {
@@ -354,7 +353,6 @@ pub(crate) fn shell_injection(checker: &Checker, call: &ast::ExprCall) {
                         call.func.range(),
                     );
                 }
-                // S603
                 _ => {
                     if !is_trusted_input(arg, checker.semantic()) {
                         checker.report_diagnostic_if_enabled(
@@ -369,7 +367,6 @@ pub(crate) fn shell_injection(checker: &Checker, call: &ast::ExprCall) {
         truthiness: truthiness @ (Truthiness::True | Truthiness::Truthy),
     }) = shell_keyword
     {
-        // S604
         checker.report_diagnostic_if_enabled(
             CallWithShellEqualsTrue {
                 is_exact: matches!(truthiness, Truthiness::True),
@@ -378,7 +375,6 @@ pub(crate) fn shell_injection(checker: &Checker, call: &ast::ExprCall) {
         );
     }
 
-    // S605
     if checker.is_rule_enabled(Rule::StartProcessWithAShell) {
         if matches!(call_kind, Some(CallKind::Shell)) {
             if let Some(arg) = call.arguments.args.first() {
@@ -392,14 +388,12 @@ pub(crate) fn shell_injection(checker: &Checker, call: &ast::ExprCall) {
         }
     }
 
-    // S606
     if checker.is_rule_enabled(Rule::StartProcessWithNoShell) {
         if matches!(call_kind, Some(CallKind::NoShell)) {
             checker.report_diagnostic(StartProcessWithNoShell, call.func.range());
         }
     }
 
-    // S607
     if checker.is_rule_enabled(Rule::StartProcessWithPartialPath) {
         if let Some(arg) = command_argument {
             if is_partial_path(arg) {
@@ -408,7 +402,6 @@ pub(crate) fn shell_injection(checker: &Checker, call: &ast::ExprCall) {
         }
     }
 
-    // S609
     if checker.is_rule_enabled(Rule::UnixCommandWildcardInjection) {
         if matches!(call_kind, Some(CallKind::Shell))
             || matches!(
@@ -433,8 +426,6 @@ pub(crate) fn shell_injection(checker: &Checker, call: &ast::ExprCall) {
 /// Return the command argument to a `subprocess` call.
 fn find_subprocess_argument(arguments: &Arguments) -> Option<&Expr> {
     arguments.find_argument_value("args", 0).or_else(|| {
-        // A starred first argument (`subprocess.run(*cmd)`) prevents us from locating the
-        // command with `find_argument_value`; treat it as untrusted input.
         arguments
             .args
             .first()
@@ -531,12 +522,10 @@ fn is_full_path(text: &str) -> bool {
         return false;
     };
 
-    // Ex) `/bin/ls`
     if first_char == '\\' || first_char == '/' || first_char == '.' {
         return true;
     }
 
-    // Ex) `C:`
     if first_char.is_alphabetic() {
         if let Some(second_char) = chars.next() {
             if second_char == ':' {

@@ -97,7 +97,6 @@ pub(crate) fn return_in_generator(checker: &Checker, function_def: &StmtFunction
         return;
     }
 
-    // Async functions are flagged by the `ReturnInGenerator` semantic syntax error.
     if function_def.is_async {
         return;
     }
@@ -130,7 +129,6 @@ impl Visitor<'_> for ReturnInGeneratorVisitor {
     fn visit_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::FunctionDef(_) => {
-                // Do not recurse into nested functions; they're evaluated separately.
             }
             Stmt::Return(ast::StmtReturn {
                 value: Some(_),

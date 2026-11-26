@@ -91,15 +91,10 @@ pub(crate) fn unnecessary_placeholder(checker: &Checker, body: &[Stmt]) {
         let kind = match stmt {
             Stmt::Pass(_) => Placeholder::Pass,
             Stmt::Expr(expr) if expr.value.is_ellipsis_literal_expr() => {
-                // In a type-checking block, a trailing ellipsis might be meaningful.
-                // A user might be using the type-checking context to declare a stub.
                 if checker.semantic().in_type_checking_block() {
                     return;
                 }
 
-                // Ellipses are significant in protocol methods and abstract methods.
-                // Specifically, Pyright uses the presence of an ellipsis to indicate that
-                // a method is a stub, rather than a default implementation.
                 if checker.semantic().in_protocol_or_abstract_method() {
                     return;
                 }
@@ -126,8 +121,6 @@ fn add_diagnostic(
         fix::edits::delete_stmt(stmt, None, checker.locator(), checker.indexer())
     };
     let applicability = match next_stmt {
-        // Mark the fix as unsafe if the following statement is a string literal,
-        // as it will become the module/class/function's docstring after the fix.
         Some(Stmt::Expr(StmtExpr { value, .. })) => match value.as_ref() {
             Expr::StringLiteral(ExprStringLiteral { .. }) => Applicability::Unsafe,
             _ => Applicability::Safe,

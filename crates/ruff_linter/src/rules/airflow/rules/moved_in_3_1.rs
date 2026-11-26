@@ -115,7 +115,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
     };
 
     let replacement = match qualified_name.segments() {
-        // airflow.utils.setup_teardown
         [
             "airflow",
             "utils",
@@ -128,14 +127,12 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             suggest_fix: false,
         },
 
-        // airflow.secrets
         ["airflow", "secrets", "cache", "SecretCache"] => Replacement::SourceModuleMovedToSDK {
             module: "airflow.sdk",
             name: "SecretCache".to_string(),
             version: "1.1.0",
         },
 
-        // airflow.utils.xcom
         ["airflow", "utils", "xcom", "XCOM_RETURN_KEY"] => {
             Replacement::SourceModuleMovedWithMessage {
                 module: "airflow.models.xcom",
@@ -145,14 +142,12 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             }
         }
 
-        // airflow.utils.task_group
         ["airflow", "utils", "task_group", "TaskGroup"] => Replacement::SourceModuleMovedToSDK {
             module: "airflow.sdk",
             name: "TaskGroup".to_string(),
             version: "1.1.0",
         },
 
-        // airflow.utils.timezone
         [
             "airflow",
             "utils",
@@ -165,7 +160,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             version: "1.1.0",
         },
 
-        // airflow.utils.decorators
         [
             "airflow",
             "utils",
@@ -178,7 +172,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             suggest_fix: false,
         },
 
-        // airflow.models.abstractoperator
         [
             "airflow",
             "models",
@@ -191,7 +184,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             suggest_fix: false,
         },
 
-        // airflow.models.baseoperator
         ["airflow", "models", "baseoperator", "BaseOperator"] => {
             Replacement::SourceModuleMovedToSDK {
                 module: "airflow.sdk",
@@ -200,7 +192,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             }
         }
 
-        // airflow.macros
         [
             "airflow",
             "macros",
@@ -212,7 +203,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             suggest_fix: true,
         },
 
-        // airflow.io
         ["airflow", "io", rest @ ("get_fs" | "has_fs" | "Properties")] => {
             Replacement::SourceModuleMovedToSDK {
                 module: "airflow.sdk.io",
@@ -221,7 +211,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             }
         }
 
-        // airflow.hooks
         ["airflow", "hooks", "base", "BaseHook"] => Replacement::SourceModuleMovedToSDK {
             module: "airflow.sdk",
             name: "BaseHook".to_string(),

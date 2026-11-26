@@ -136,8 +136,6 @@ pub(crate) fn organize_imports(
 
     let range = extract_range(&block.imports);
 
-    // Special-cases: there's leading or trailing content in the import block. These
-    // are too hard to get right, and relatively rare, so flag but don't fix.
     if indexer.preceded_by_multi_statement_line(block.imports.first().unwrap(), locator.contents())
         || indexer
             .followed_by_multi_statement_line(block.imports.last().unwrap(), locator.contents())
@@ -146,16 +144,10 @@ pub(crate) fn organize_imports(
         return;
     }
 
-    // Extract comments. Take care to grab any inline comments from the last line.
-    // Also extend the start backward to include any import heading comments above
-    // the first import, so they're collected and can be stripped/re-added correctly.
     let import_headings = &settings.isort.import_headings;
     let (comment_start, fix_start) = if import_headings.is_empty() {
-        // Preserve original behavior: comments from import start, fix range from line start.
         (range.start(), locator.line_start(range.start()))
     } else {
-        // Heading comments are already formatted as "# {heading}" in settings.
-        // Walk backward through comment ranges to find adjacent heading comments above the first import.
         let comment_ranges: &[TextRange] = indexer.comment_ranges();
         let import_line_start = locator.line_start(range.start());
         let partition =
@@ -163,7 +155,6 @@ pub(crate) fn organize_imports(
 
         let mut earliest = import_line_start;
         for comment_range in comment_ranges[..partition].iter().rev() {
-            // The comment's line must end right where 'earliest' starts (adjacent).
             if locator.full_line_end(comment_range.end()) != earliest {
                 break;
             }
@@ -193,7 +184,6 @@ pub(crate) fn organize_imports(
         trailing_lines_end(block.imports.last().unwrap(), locator.contents())
     };
 
-    // Generate the sorted import block.
     let expected = format_imports(
         block,
         comments,
@@ -209,7 +199,6 @@ pub(crate) fn organize_imports(
         tokens,
     );
 
-    // Expand the span the entire range, including leading and trailing space.
     let fix_range = TextRange::new(fix_start, trailing_line_end);
     let actual = locator.slice(fix_range);
     if matches_ignoring_indentation(actual, &expected) {

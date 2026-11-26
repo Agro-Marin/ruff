@@ -56,7 +56,6 @@ pub fn is_known_standard_library(minor_version: u8, module: &str) -> bool {
 
         modules_by_version[minor_version] = modules
 
-    # First, add a case for the modules that are in all versions.
     ubiquitous_modules = set.intersection(*modules_by_version.values())
 
     f.write("(_, ")
@@ -67,7 +66,6 @@ pub fn is_known_standard_library(minor_version: u8, module: &str) -> bool {
     f.write(")")
     f.write("\n")
 
-    # Next, add any version-specific modules.
     for _major_version, minor_version in VERSIONS:
         version_modules = set.difference(
             modules_by_version[minor_version],

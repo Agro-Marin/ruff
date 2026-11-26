@@ -65,7 +65,6 @@ impl<'db> NamedItem<'db> {
         match (self, other) {
             (NamedItem::Class(left), NamedItem::Class(right)) => left == right,
             (NamedItem::TypeAlias(left), NamedItem::TypeAlias(right)) => {
-                // Specializations of the same alias share a display name.
                 left.definition(db) == right.definition(db)
             }
             (NamedItem::Recursive(left), NamedItem::Recursive(right)) => {
@@ -275,8 +274,6 @@ impl<'db> DisplaySettings<'db> {
         fn build_display_settings<'db>(
             collector: &AmbiguousNameCollector<'_, 'db>,
         ) -> DisplaySettings<'db> {
-            // Both classes and type aliases use the same qualification map since
-            // a class and type alias with the same name need to be disambiguated.
             let qualification_map = Rc::new(collector.qualification_map());
             DisplaySettings {
                 qualified: Rc::clone(&qualification_map),
@@ -358,9 +355,6 @@ impl<'db> TypeDetailsWriter<'db> {
 
     /// Produce function signature info
     fn finish_signature_details(self) -> SignatureDisplayDetails {
-        // We use SignatureStart and SignatureEnd to delimit nested function signatures inside
-        // this function signature. We only care about the parameters of the outermost function
-        // which should introduce it's own SignatureStart and SignatureEnd
         let mut parameter_ranges = Vec::new();
         let mut parameter_names = Vec::new();
         let mut parameter_nesting = 0;
@@ -370,12 +364,11 @@ impl<'db> TypeDetailsWriter<'db> {
                 TypeDetail::SignatureEnd => parameter_nesting -= 1,
                 TypeDetail::Parameter(parameter) => {
                     if parameter_nesting <= 1 {
-                        // We found parameters at the top-level, record them
                         parameter_names.push(parameter);
                         parameter_ranges.push(target);
                     }
                 }
-                TypeDetail::Type(_) => { /* don't care */ }
+                TypeDetail::Type(_) => {  }
             }
         }
 
@@ -552,8 +545,6 @@ struct TypeDetailGuard<'a, 'b, 'c, 'db> {
 
 impl Drop for TypeDetailGuard<'_, '_, '_, '_> {
     fn drop(&mut self) {
-        // The fallibility here is primarily retrieving `TypeWriter::Details`
-        // everything else is ideally-never-fails pedantry (yay for pedantry!)
         if let TypeWriter::Details(details) = &mut *self.inner
             && let Some(start) = self.start
             && let Some(payload) = self.payload.take()
@@ -705,20 +696,15 @@ impl<'db> TypeVisitor<'db> for AmbiguousNameCollector<'_, 'db> {
             }
             Type::TypeAlias(type_alias) => self.record_type_alias(db, type_alias),
             Type::Recursive(recursive) => self.record(db, NamedItem::Recursive(recursive)),
-            // Visit the class (as if it were a nominal-instance type)
-            // rather than the protocol members, if it is a class-based protocol.
-            // (For the purposes of displaying the type, we'll use the class name.)
             Type::ProtocolInstance(protocol) if let Some(class) = protocol.class_origin(db) => {
                 return self.visit_type(db, Type::from(class));
             }
-            // no need to recurse into TypeVar bounds/constraints
             Type::TypeVar(_) => return,
             _ => {}
         }
 
         if let visitor::TypeKind::NonAtomic(t) = visitor::TypeKind::from(ty) {
             if !self.visited_types.borrow_mut().insert(ty) {
-                // If we have already seen this type, we can skip it.
                 return;
             }
             visitor::walk_non_atomic_type(db, t, self);
@@ -726,7 +712,6 @@ impl<'db> TypeVisitor<'db> for AmbiguousNameCollector<'_, 'db> {
     }
 
     fn visit_recursive_type(&self, db: &'db dyn Db, recursive: RecursiveType<'db>) {
-        // Only the alias name and its arguments are displayed, not its unfolded body.
         if let Some(arguments) = recursive.arguments(db) {
             walk_specialization_types(db, arguments, self);
         }
@@ -1438,9 +1423,7 @@ impl<'db> FmtDetailed<'db> for DisplayRepresentation<'_, 'db> {
                             .fmt_detailed(f)
                     }
                     signatures => {
-                        // TODO: How to display overloads?
                         if !self.settings.multiline {
-                            // TODO: This should ideally have a TypeDetail but we actually
                             // don't have a type for @overload (we just detect the decorator)
                             f.write_str("Overload")?;
                             f.write_char('[')?;
@@ -1700,10 +1683,6 @@ impl<'db> FmtDetailed<'db> for DisplayRepresentation<'_, 'db> {
                         escape.str_repr(TripleQuotes::No)
                     )
                 }
-                // We used to return `str` as the type here because that feels generally more useful.
-                // However, the inconsistency between the type shown in the inlay hint and its hover, and the
-                // inconsistency to what's shown when hovering the backed inlay hint of a `LiteralString`
-                // convinced us that we should change the type to `LiteralString`.
                 LiteralValueTypeKind::LiteralString => f
                     .with_type(Type::SpecialForm(SpecialFormType::LiteralString))
                     .write_str("LiteralString"),
@@ -1908,20 +1887,6 @@ impl<'db> FmtDetailed<'db> for DisplayTuple<'_, 'db> {
                 }
             }
 
-            // Decoder key for which snippets of text need to be included depending on whether
-            // the tuple contains a prefix and/or suffix:
-            //
-            // tuple[            yyy, ...      ]
-            // tuple[xxx, *tuple[yyy, ...]     ]
-            // tuple[xxx, *tuple[yyy, ...], zzz]
-            // tuple[     *tuple[yyy, ...], zzz]
-            //       PPPPPPPPPPPP        P
-            //            SSSSSSS        SSSSSS
-            //
-            // (Anything that appears above only a P is included only if there's a prefix; anything
-            // above only an S is included only if there's a suffix; anything about both a P and an
-            // S is included if there is either a prefix or a suffix. The initial `tuple[` and
-            // trailing `]` are printed elsewhere. The `yyy, ...` is printed no matter what.)
             TupleSpec::Variable(tuple) => {
                 if !tuple.prefix_elements().is_empty() {
                     tuple
@@ -1942,7 +1907,6 @@ impl<'db> FmtDetailed<'db> for DisplayTuple<'_, 'db> {
                             || !tuple.suffix_elements().is_empty()
                         {
                             f.write_char('*')?;
-                            // Might as well link the type again here too
                             f.with_type(KnownClass::Tuple.to_class_literal(db, self.env))
                                 .write_str("tuple")?;
                             f.write_char('[')?;
@@ -1978,7 +1942,6 @@ impl Display for DisplayTuple<'_, '_> {
 }
 
 impl<'db> OverloadLiteral<'db> {
-    // Not currently used, but useful for debugging.
     #[expect(dead_code)]
     fn display<'env>(
         self,
@@ -2062,9 +2025,6 @@ struct DisplayFunctionType<'env, 'db> {
 
 impl<'db> FmtDetailed<'db> for DisplayFunctionType<'_, 'db> {
     fn fmt_detailed(&self, f: &mut TypeWriter<'_, '_, 'db>) -> fmt::Result {
-        // Detect self-referential function types to prevent infinite recursion,
-        // and limit display depth for chains of different function types
-        // (e.g. multiple redefinitions with `TypeOf[foo]` return types).
         let db = self.db;
         if self.settings.visited_function_types.contains(&self.ty)
             || self.settings.visited_function_types.len() >= MAX_SIGNATURE_DISPLAY_DEPTH
@@ -2100,9 +2060,7 @@ impl<'db> FmtDetailed<'db> for DisplayFunctionType<'_, 'db> {
                     .fmt_detailed(f)
             }
             signatures => {
-                // TODO: How to display overloads?
                 if !settings.multiline {
-                    // TODO: This should ideally have a TypeDetail but we actually
                     // don't have a type for @overload (we just detect the decorator)
                     f.write_str("Overload")?;
                     f.write_char('[')?;
@@ -2268,7 +2226,6 @@ impl<'db> DisplayGenericContext<'_, 'db> {
             .generic_context
             .variables(self.db)
             .filter(|bound_typevar| {
-                // If hide_unused_self is true and this is a Self typevar, skip it
                 !self.hide_unused_self || !bound_typevar.typevar(self.db).is_self(self.db)
             })
             .peekable();
@@ -2557,9 +2514,7 @@ impl<'db> FmtDetailed<'db> for DisplayCallableType<'_, 'db> {
                 }
             }
             signatures => {
-                // TODO: How to display overloads?
                 if !self.settings.multiline {
-                    // TODO: This should ideally have a TypeDetail but we actually
                     // don't have a type for @overload (we just detect the decorator)
                     f.write_str("Overload")?;
                     f.write_char('[')?;
@@ -2696,18 +2651,14 @@ impl DisplaySignature<'_, '_> {
 impl<'db> FmtDetailed<'db> for DisplaySignature<'_, 'db> {
     fn fmt_detailed(&self, f: &mut TypeWriter<'_, '_, 'db>) -> fmt::Result {
         let db = self.db;
-        // Immediately write a marker signaling we're starting a signature
         let _ = f.with_detail(TypeDetail::SignatureStart);
         f.set_invalid_type_annotation();
-        // When we exit this function, write a marker signaling we're ending a signature
         let mut f = f.with_detail(TypeDetail::SignatureEnd);
 
         if self.parameters.is_top() {
             f.write_str("Top[")?;
         }
 
-        // If the current display policy wants a signature name and a name hasn't been emitted,
-        // remember what the name was by checking if we have a definition
         if self
             .settings
             .signature_name_display
@@ -2721,8 +2672,6 @@ impl<'db> FmtDetailed<'db> for DisplaySignature<'_, 'db> {
 
         let settings = self.settings.with_generic_context(db, self.generic_context);
 
-        // Display type parameters if present, but only when the caller hasn't
-        // already displayed them.
         if self
             .settings
             .signature_name_display
@@ -2738,7 +2687,6 @@ impl<'db> FmtDetailed<'db> for DisplaySignature<'_, 'db> {
             .fmt_detailed(&mut f)?;
         }
 
-        // Parameters
         let param_settings = DisplaySettings {
             hide_return_type: false,
             ..settings.clone()
@@ -2747,7 +2695,6 @@ impl<'db> FmtDetailed<'db> for DisplaySignature<'_, 'db> {
             .display_with(db, self.env, param_settings)
             .fmt_detailed(&mut f)?;
 
-        // Return type
         if !self.settings.hide_return_type {
             f.write_str(" -> ")?;
 
@@ -2831,7 +2778,6 @@ impl<'db> FmtDetailed<'db> for DisplayParameters<'_, 'db> {
                     && parameter.is_variadic()
                     && parameter.has_starred_annotation();
 
-                // Handle special separators
                 if parameter.is_positional_only() && !after_synthetic_unpack {
                     needs_slash = true;
                 } else if needs_slash {
@@ -2851,12 +2797,10 @@ impl<'db> FmtDetailed<'db> for DisplayParameters<'_, 'db> {
                     first = false;
                 }
 
-                // Add comma before parameter if not first
                 if !first {
                     f.write_str(arg_separator)?;
                 }
 
-                // Write parameter with range tracking
                 let param_name = parameter
                     .display_name()
                     .map_or_default(|name| name.to_string());
@@ -2880,10 +2824,6 @@ impl<'db> FmtDetailed<'db> for DisplayParameters<'_, 'db> {
         }
         let db = self.db;
 
-        // For `ParamSpec` kind, the parameters still contain `*args` and `**kwargs`, but we
-        // display them as `**P` instead, so avoid multiline in that case.
-        // For `Concatenate` kind, use multiline only if there are more than 1 prefix parameters.
-        // For `Gradual` kind without prefix params (len <= 2), display as `...`.
         let multiline = if self.settings.multiline {
             match self.parameters.kind() {
                 ParametersKind::Standard => self.parameters.len() > 1,
@@ -2891,8 +2831,6 @@ impl<'db> FmtDetailed<'db> for DisplayParameters<'_, 'db> {
                     false
                 }
                 ParametersKind::Concatenate(_) => {
-                    // The tail already represents 2 parameters. Additionally, there should be more
-                    // than 1 prefix parameters to use multiline, so the limit becomes 3.
                     self.parameters.len() > 3
                 }
             }
@@ -2900,7 +2838,6 @@ impl<'db> FmtDetailed<'db> for DisplayParameters<'_, 'db> {
             false
         };
 
-        // Opening parenthesis
         f.write_char('(')?;
         if multiline {
             f.write_str("\n    ")?;
@@ -2913,19 +2850,12 @@ impl<'db> FmtDetailed<'db> for DisplayParameters<'_, 'db> {
                 display_parameters(self, f, self.parameters.as_slice(), arg_separator)?;
             }
             ParametersKind::Top => {
-                // TODO: Remove `...`, always display all the parameters
-                // Top parameters are displayed the same as gradual parameters, we just wrap the
-                // entire signature in `Top[]`
                 f.write_str("...")?;
             }
             ParametersKind::Gradual if self.parameters.len() == 2 => {
-                // TODO: Remove `...`, always display all the parameters
-                // For gradual parameters with only `(*args, **kwargs)`, display as `...` for
-                // simplicity ...
                 f.write_str("...")?;
             }
             ParametersKind::Gradual => {
-                // ... but otherwise display all the parameters as normal.
                 display_parameters(self, f, self.parameters.as_slice(), arg_separator)?;
             }
             ParametersKind::ParamSpec(typevar) => {
@@ -2946,7 +2876,6 @@ impl<'db> FmtDetailed<'db> for DisplayParameters<'_, 'db> {
             f.write_char('\n')?;
         }
 
-        // Closing parenthesis
         f.write_char(')')
     }
 }
@@ -3007,7 +2936,6 @@ impl<'db> FmtDetailed<'db> for DisplayParameter<'_, 'db> {
                     .display_with(db, self.env, self.settings.clone())
                     .fmt_detailed(f)?;
             }
-            // Default value can only be specified if `name` is given.
             if let Some(default_type) = self.param.default_type(db) {
                 if self.param.should_annotation_be_displayed() {
                     f.write_str(" = ")?;
@@ -3025,13 +2953,11 @@ impl<'db> FmtDetailed<'db> for DisplayParameter<'_, 'db> {
                                 | LiteralValueTypeKind::Bytes(_)
                         ) =>
                     {
-                        // For Literal types display the value without `Literal[..]` wrapping
                         let representation =
                             default_type.representation(db, self.env, self.settings.clone());
                         representation.fmt_detailed(f)?;
                     }
                     Type::NominalInstance(instance) => {
-                        // Some key default types like `None` are worth showing
                         let class = instance.class(db, self.env);
 
                         match (class, class.known(db)) {
@@ -3048,9 +2974,6 @@ impl<'db> FmtDetailed<'db> for DisplayParameter<'_, 'db> {
                 }
             }
         } else {
-            // This case is specifically for the `Callable` signature where name and default value
-            // cannot be provided. For unnamed parameters we always display the type, to ensure we
-            // have something visible in the parameter slot.
             self.param
                 .annotated_type()
                 .display_with(db, self.env, self.settings.clone())
@@ -3325,8 +3248,6 @@ impl<'db> FmtDetailed<'db> for DisplayUnionType<'_, 'db> {
                 let display = if entry_index < display_limit {
                     f.render(&display)
                 } else {
-                    // Omitted entries still participate in name disambiguation, but their
-                    // navigation metadata is never emitted.
                     BufferedTypeDisplay::Text(display.to_string())
                 };
                 UnionDisplayEntry::Type(element, display)
@@ -3335,7 +3256,6 @@ impl<'db> FmtDetailed<'db> for DisplayUnionType<'_, 'db> {
             Some(entry)
         });
         let displayed: Vec<_> = entries.by_ref().take(display_limit).collect();
-        // Only displayed labels need counts; omitted labels can be discarded after comparison.
         let duplicate_ambiguous_labels = duplicate_ambiguous_labels(&displayed, entries);
         let mut join = f.join(" | ");
 
@@ -3376,8 +3296,6 @@ impl<'db> FmtDetailed<'db> for DisplayUnionType<'_, 'db> {
                             settings: self.settings.singleline().force_signature_name(),
                         });
                     } else {
-                        // Rendering again at each union would double the work for each
-                        // level of nesting. Preserve the buffered navigation ranges too.
                         join.entry(display);
                     }
                 }
@@ -3936,9 +3854,6 @@ impl<'db> FmtDetailed<'db> for DisplayKnownInstanceRepr<'_, 'db> {
                     f.with_type(ty).write_str("TypeAliasType")
                 }
             }
-            // This is a legacy `TypeVar` _outside_ of any generic class or function, so we render
-            // it as an instance of `typing.TypeVar`. Inside of a generic class or function, we'll
-            // have a `Type::TypeVar(_)`, which is rendered as the typevar's name.
             KnownInstanceType::TypeVar(typevar_instance) => {
                 if typevar_instance.kind(db).is_paramspec() {
                     f.with_type(ty).write_str("ParamSpec")
@@ -3999,7 +3914,6 @@ impl<'db> FmtDetailed<'db> for DisplayKnownInstanceRepr<'_, 'db> {
                 write!(f, "{}", generic_context.display_full(db))
             }
             KnownInstanceType::Specialization(specialization) => {
-                // Normalize for consistent output across CI platforms
                 f.with_type(ty)
                     .write_str("ty_extensions._internal.Specialization")?;
                 write!(f, "{}", specialization.display_full(db, self.env))
@@ -4035,10 +3949,6 @@ impl<'db> FmtDetailed<'db> for DisplayKnownInstanceRepr<'_, 'db> {
             KnownInstanceType::Callable(callable) => {
                 f.set_invalid_type_annotation();
                 f.write_char('<')?;
-                // Ensure that when we go-to-definition on an inlay hint for a `Callable`,
-                // regardless of whether it's imported from `collections.abc` or `typing`,
-                // we go to `typing.pyi` because in typeshed there is no `Callable` in
-                // `collections.abc`.
                 f.with_type(Type::SpecialForm(SpecialFormType::TypingCallable))
                     .write_str("Callable")?;
                 f.write_str(" special-form '")?;
@@ -4238,16 +4148,13 @@ mod tests {
         let db = &db;
         let env = db.program_environment();
 
-        // Empty parameters with no return type.
         assert_snapshot!(display_signature(db, [], None), @"() -> Unknown");
 
-        // Empty parameters with a return type.
         assert_snapshot!(
             display_signature(db, [], Some(Type::none(db, &env))),
             @"() -> None"
         );
 
-        // Single parameter type (no name) with a return type.
         assert_snapshot!(
             display_signature(
                 db,
@@ -4257,7 +4164,6 @@ mod tests {
             @"(None, /) -> None"
         );
 
-        // Two parameters where one has annotation and the other doesn't.
         assert_snapshot!(
             display_signature(
                 db,
@@ -4273,7 +4179,6 @@ mod tests {
             @"(x=..., y: str = ...) -> None"
         );
 
-        // All positional only parameters.
         assert_snapshot!(
             display_signature(
                 db,
@@ -4286,7 +4191,6 @@ mod tests {
             @"(x, y, /) -> None"
         );
 
-        // Positional-only parameters mixed with non-positional-only parameters.
         assert_snapshot!(
             display_signature(
                 db,
@@ -4299,7 +4203,6 @@ mod tests {
             @"(x, /, y) -> None"
         );
 
-        // All keyword-only parameters.
         assert_snapshot!(
             display_signature(
                 db,
@@ -4312,7 +4215,6 @@ mod tests {
             @"(*, x, y) -> None"
         );
 
-        // Keyword-only parameters mixed with non-keyword-only parameters.
         assert_snapshot!(
             display_signature(
                 db,
@@ -4325,7 +4227,6 @@ mod tests {
             @"(x, *, y) -> None"
         );
 
-        // '/' parameter must appear before '*' parameter
         assert_snapshot!(
             display_signature(
                 db,
@@ -4339,7 +4240,6 @@ mod tests {
             @"(a, /, *, x, y) -> None"
         );
 
-        // A mix of all parameter kinds.
         assert_snapshot!(
             display_signature(
                 db,
@@ -4379,16 +4279,13 @@ mod tests {
         let db = &db;
         let env = db.program_environment();
 
-        // Empty parameters with no return type.
         assert_snapshot!(display_signature_multiline(db, [], None), @"() -> Unknown");
 
-        // Empty parameters with a return type.
         assert_snapshot!(
             display_signature_multiline(db, [], Some(Type::none(db, &env))),
             @"() -> None"
         );
 
-        // Single parameter type (no name) with a return type.
         assert_snapshot!(
             display_signature_multiline(
                 db,
@@ -4398,7 +4295,6 @@ mod tests {
             @"(None, /) -> None"
         );
 
-        // Two parameters where one has annotation and the other doesn't.
         assert_snapshot!(
             display_signature_multiline(
                 db,
@@ -4419,7 +4315,6 @@ mod tests {
         "
         );
 
-        // All positional only parameters.
         assert_snapshot!(
             display_signature_multiline(
                 db,
@@ -4438,7 +4333,6 @@ mod tests {
         "
         );
 
-        // Positional-only parameters mixed with non-positional-only parameters.
         assert_snapshot!(
             display_signature_multiline(
                 db,
@@ -4457,7 +4351,6 @@ mod tests {
         "
         );
 
-        // All keyword-only parameters.
         assert_snapshot!(
             display_signature_multiline(
                 db,
@@ -4476,7 +4369,6 @@ mod tests {
         "
         );
 
-        // Keyword-only parameters mixed with non-keyword-only parameters.
         assert_snapshot!(
             display_signature_multiline(
                 db,
@@ -4495,7 +4387,6 @@ mod tests {
         "
         );
 
-        // A mix of all parameter kinds.
         assert_snapshot!(
             display_signature_multiline(
                 db,

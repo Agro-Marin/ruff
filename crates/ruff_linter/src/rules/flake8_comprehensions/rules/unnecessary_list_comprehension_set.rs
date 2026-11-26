@@ -65,15 +65,12 @@ pub(crate) fn unnecessary_list_comprehension_set(checker: &Checker, call: &ast::
     let mut diagnostic = checker.report_diagnostic(UnnecessaryListComprehensionSet, call.range());
     let one = TextSize::from(1);
 
-    // Replace `set(` with `{`.
     let call_start = Edit::replacement(
         pad_start("{", call.range(), checker.locator(), checker.semantic()),
         call.start(),
         call.arguments.start() + one,
     );
 
-    // Replace `)` with `}`.
-    // Place `}` at argument's end or at trailing comma if present
     let after_arg_tokens = checker
         .tokens()
         .in_range(TextRange::new(argument.end(), call.end()));
@@ -88,8 +85,6 @@ pub(crate) fn unnecessary_list_comprehension_set(checker: &Checker, call: &ast::
         call.end(),
     );
 
-    // If the list comprehension is parenthesized, remove the parentheses in addition to
-    // removing the brackets.
     let replacement_range =
         parenthesized_range(argument.into(), (&call.arguments).into(), checker.tokens())
             .unwrap_or_else(|| argument.range());

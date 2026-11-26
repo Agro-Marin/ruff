@@ -68,27 +68,8 @@ pub(crate) fn unnecessary_round(checker: &Checker, call: &ExprCall) {
     }
 
     let mut applicability = match rounded_value {
-        // ```python
-        // some_int: int
-        //
-        // rounded(1)
-        // rounded(1, None)
-        // rounded(1, 42)
-        // rounded(1, 4 + 2)
-        // rounded(1, some_int)
-        // ```
         RoundedValue::Int(InferredType::Equivalent) => Applicability::Safe,
 
-        // ```python
-        // some_int: int
-        // some_other_int: int
-        //
-        // rounded(some_int)
-        // rounded(some_int, None)
-        // rounded(some_int, 42)
-        // rounded(some_int, 4 + 2)
-        // rounded(some_int, some_other_int)
-        // ```
         RoundedValue::Int(InferredType::AssignableTo) => Applicability::Unsafe,
 
         _ => return,
@@ -154,11 +135,9 @@ pub(super) fn rounded_and_ndigits<'a>(
         return None;
     }
 
-    // *args
     if arguments.args.iter().any(Expr::is_starred_expr) {
         return None;
     }
-    // **kwargs
     if arguments.keywords.iter().any(|kw| kw.arg.is_none()) {
         return None;
     }

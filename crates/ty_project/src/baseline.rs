@@ -99,8 +99,6 @@ pub(crate) fn demote_diagnostics(db: &dyn Db, file: File, diagnostics: &mut [Dia
 
     let registry = db.lint_registry();
     let mut stored = Cow::Borrowed(baseline.entries);
-    // The writer records all entries for a file together, so each rule has one spelling in
-    // that file. Keep that spelling to reproduce the writer's ordering for equal ranges.
     let mut stored_names = FxHashMap::default();
     for (index, entry) in baseline.entries.iter().enumerate() {
         if let Some(lint) = registry.alias_target(&entry.rule) {
@@ -167,7 +165,6 @@ pub fn write(
 ) -> anyhow::Result<WriteResult> {
     let (baseline, mut remaining) = BaselineFile::from_diagnostics(db, diagnostics);
     let count = baseline.write(db, path)?;
-    // Errors from loading the old baseline no longer apply after a successful write.
     remaining.retain(|diagnostic| diagnostic.id() != DiagnosticId::InvalidBaseline);
     Ok(WriteResult {
         count,

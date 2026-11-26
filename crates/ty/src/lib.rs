@@ -59,7 +59,6 @@ pub fn run() -> anyhow::Result<ExitStatus> {
         Command::Server(server_args) => server::run(&server_args),
         Command::Version { output_format } => version(output_format).map(|()| ExitStatus::Success),
         Command::GenerateShellCompletion { shell } => {
-            // The generator panics on write errors. Handle stdout errors in the CLI instead.
             let mut completions = Vec::new();
             shell.generate(&mut Cli::command(), &mut completions);
             io::stdout().lock().write_all(&completions)?;
@@ -97,7 +96,6 @@ fn version(output_format: HelpFormat) -> Result<()> {
 }
 
 fn run_check(args: CheckCommand) -> anyhow::Result<ExitStatus> {
-    // Enabled ANSI colors on Windows 10.
     #[cfg(windows)]
     assert!(colored::control::set_virtual_terminal(true).is_ok());
 
@@ -105,8 +103,6 @@ fn run_check(args: CheckCommand) -> anyhow::Result<ExitStatus> {
     colored::control::set_override(color.should_colorize(&io::stdout()));
 
     if let Some(color_override) = color.as_override() {
-        // indicatif bars styled while hidden use the stdout setting (`set_colors_enabled`)
-        // even when later drawn on stderr. Bars styled after attachment to stderr use its setting.
         console::set_colors_enabled(color_override);
         console::set_colors_enabled_stderr(color_override);
     }
@@ -121,7 +117,6 @@ fn run_check(args: CheckCommand) -> anyhow::Result<ExitStatus> {
 
     tracing::debug!("Version: {}", version::version());
 
-    // The base path to which all CLI arguments are relative to.
     let cwd = current_directory()?;
 
     let project_path = args
@@ -185,8 +180,6 @@ fn run_check(args: CheckCommand) -> anyhow::Result<ExitStatus> {
             .read_to_string(path)
             .is_ok_and(|source| ScriptTag::parse(&source).is_some())
     {
-        // A single PEP 723 script uses its own uv environment, even with an explicit ty
-        // configuration file. The other explicit paths still discover workspace metadata.
         project_metadata = project_metadata.with_uv_workspace_discovery(false);
     }
 
@@ -211,26 +204,18 @@ fn run_check(args: CheckCommand) -> anyhow::Result<ExitStatus> {
         project.set_included_paths(&mut db, check_paths);
     }
 
-    // Disabling LRU only assumes that the database is short-lived; unlike freezing below, it does
-    // not require immutable inputs.
     if !watch {
         ruff_db::disable_lru(&mut db);
     }
 
-    // The CLI never opens files, so this is safe even where the freeze below isn't
     db.freeze_open_files();
 
-    // A one-shot check never mutates these heavily read inputs, so freezing them avoids recording
-    // unnecessary Salsa dependencies. Watch mode updates inputs incrementally, fix modes apply
-    // source-text overrides, and memory reports measure the database without this optimization, so
-    // they must keep the inputs mutable.
     if !watch && matches!(mode, MainLoopMode::Check) && memory_report.is_none() {
         db.freeze();
     }
 
     let (main_loop, main_loop_cancellation_token) = MainLoop::new(mode, printer, progress);
 
-    // Listen to Ctrl+C and abort the watch mode.
     let main_loop_cancellation_token = Mutex::new(Some(main_loop_cancellation_token));
     ctrlc::set_handler(move || {
         let mut lock = main_loop_cancellation_token.lock().unwrap();
@@ -377,8 +362,6 @@ impl MainLoop {
 
         self.spawn_indexing_task(db);
 
-        // Apply all queued changes before starting a pending check because every applied change
-        // cancels the running check.
         while let Ok(message) = crossbeam_channel::select_biased! {
             recv(uv_sync_wakeups) -> wakeup => {
                 wakeup.map(|()| MainLoopMessage::PollUvEnvironments)
@@ -396,7 +379,6 @@ impl MainLoop {
                     request_check(&check_sender);
                 }
                 MainLoopMessage::CheckWorkspace => {
-                    // Synchronization may have started after this request was queued.
                     if db.uv_environments().has_pending_synchronizations() {
                         tracing::debug!("Deferring check until uv synchronization completes");
                         continue;
@@ -406,8 +388,6 @@ impl MainLoop {
                     let sender = self.sender.clone();
                     let progress = self.progress.clone();
 
-                    // Spawn a new task that checks the project. This needs to be done in a separate thread
-                    // to prevent blocking the main loop here.
                     rayon::spawn(move || {
                         match salsa::Cancelled::catch(|| {
                             let mut reporter = IndicatifReporter::new(progress);
@@ -415,7 +395,6 @@ impl MainLoop {
                             reporter.into_sorted_diagnostics(&db)
                         }) {
                             Ok(result) => {
-                                // Send the result back to the main loop for printing.
                                 sender
                                     .send(MainLoopMessage::CheckCompleted { result, revision })
                                     .unwrap();
@@ -451,7 +430,6 @@ impl MainLoop {
 
                     let result = match self.mode {
                         MainLoopMode::Check => {
-                            // TODO: We should have an official flag to silence workspace diagnostics.
                             if std::env::var("TY_MEMORY_REPORT").as_deref() == Ok("json") {
                                 return Ok(ExitStatus::Success);
                             }
@@ -583,7 +561,6 @@ impl MainLoop {
 
                 MainLoopMessage::ApplyChanges(changes) => {
                     revision += 1;
-                    // Automatically cancels any pending queries and waits for them to complete.
                     let result = db.apply_changes(&changes);
                     self.synchronize_environments(db, &result)?;
 
@@ -594,7 +571,6 @@ impl MainLoop {
                     request_check(&check_sender);
                 }
                 MainLoopMessage::Exit => {
-                    // Cancel any pending queries and wait for them to complete.
                     db.trigger_cancellation();
                     return Ok(ExitStatus::Interrupted);
                 }
@@ -616,11 +592,8 @@ impl MainLoop {
             let reporter = IndicatifReporter::new(progress);
             reporter.start_indexing();
             let indexed = salsa::Cancelled::catch(|| db.project().files(&db));
-            // Indicatif skips terminal cleanup while unwinding.
             drop(reporter);
             if indexed.is_err() {
-                // On Ctrl-C, the main loop is already handling `Exit` and waiting
-                // for this worker to release its database handle.
                 return;
             }
             let _ = sender.send(MainLoopMessage::ProjectIndexed);
@@ -632,7 +605,6 @@ impl MainLoop {
         db: &mut ProjectDatabase,
         changes: &ChangeResult,
     ) -> Result<()> {
-        // Keep active progress visible after clearing the previous check's output.
         self.progress.suspend(Printer::clear_screen)?;
 
         let project_path = changes.project_sync_path();
@@ -698,8 +670,6 @@ impl MainLoop {
 
                 let stdout = self.printer.stream_for_details().lock();
 
-                // Only render diagnostics if they're going to be displayed, since doing
-                // so is expensive.
                 if stdout.is_enabled() {
                     let mut stdout = BufWriter::new(stdout);
                     let display_config = DisplayDiagnosticConfig::new("ty")
@@ -937,7 +907,6 @@ impl UvSyncProgress for UvSyncProgressBar {
     fn started(&mut self) {
         self.bar.reset();
         self.bars.insert(0, self.bar.clone());
-        // There are no periodic ticks to redraw this status line if drawing is rate-limited.
         self.bar.force_draw();
     }
 
@@ -989,8 +958,6 @@ enum MainLoopMessage {
 }
 
 fn request_check(sender: &crossbeam_channel::Sender<()>) {
-    // A full channel means that a check has already been requested. Keeping one pending request
-    // coalesces bursts of file changes while the main loop drains higher-priority work.
     let _ = sender.try_send(());
 }
 

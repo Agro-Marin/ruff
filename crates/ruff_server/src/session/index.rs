@@ -146,7 +146,6 @@ impl Index {
         new_version: DocumentVersion,
         encoding: PositionEncoding,
     ) -> crate::Result<()> {
-        // update notebook cell index
         if let Some(lsp_types::NotebookDocumentCellChangeStructure {
             did_open: Some(did_open),
             ..
@@ -160,7 +159,6 @@ impl Index {
                 self.notebook_cells
                     .insert(opened_cell.uri.clone(), path.clone());
             }
-            // deleted notebook cells are closed via textDocument/didClose - we don't close them here.
         }
 
         let controller = self.document_controller_for_key(key)?;
@@ -178,7 +176,6 @@ impl Index {
         global: &GlobalClientSettings,
         client: &Client,
     ) -> crate::Result<()> {
-        // TODO(jane): Find a way for workspace client settings to be added or changed dynamically.
         self.settings
             .register_workspace(&Workspace::new(uri), global, client)
     }
@@ -192,7 +189,6 @@ impl Index {
             .remove(&workspace_path)
             .ok_or_else(|| anyhow!("Tried to remove non-existent workspace URI {workspace_uri}"))?;
 
-        // O(n) complexity, which isn't ideal... but this is an uncommon operation.
         self.documents
             .retain(|uri, _| !Path::new(uri.path()).starts_with(&workspace_path));
         self.notebook_cells
@@ -214,11 +210,6 @@ impl Index {
                 if let Ok(file_path) = uri.to_file_path() {
                     settings.ruff_settings.get(&file_path)
                 } else {
-                    // For a new unsaved and untitled document, use the ruff settings from the top of the workspace
-                    // but only IF:
-                    // * It is the only workspace
-                    // * The ruff setting is at the top of the workspace (in the root folder)
-                    // Otherwise, use the fallback settings.
                     if self.settings.len() == 1 {
                         let workspace_path = self.settings.keys().next().unwrap();
                         settings.ruff_settings.get(&workspace_path.join("untitled"))
@@ -233,8 +224,6 @@ impl Index {
                     "No settings available for {} - falling back to default settings",
                     uri
                 );
-                // The path here is only for completeness, it's okay to use a non-existing path
-                // in case this is an unsaved (untitled) document.
                 let path = Path::new(uri.path());
                 let root = path.parent().unwrap_or(path);
                 Arc::new(RuffSettings::fallback(
@@ -265,7 +254,6 @@ impl Index {
 
         for change in changes {
             let Ok(changed_path) = change.uri.to_file_path() else {
-                // Files that don't map to a path can't be a workspace configuration file.
                 return;
             };
 
@@ -312,11 +300,6 @@ impl Index {
     }
 
     pub(super) fn close_document(&mut self, key: &DocumentKey) -> crate::Result<()> {
-        // Notebook cells URIs are removed from the index here, instead of during
-        // `update_notebook_document`. This is because a notebook cell, as a text document,
-        // is requested to be `closed` by VS Code after the notebook gets updated.
-        // This is not documented in the LSP specification explicitly, and this assumption
-        // may need revisiting in the future as we support more editors with notebook support.
         if let DocumentKey::NotebookCell(uri) = key {
             if self.notebook_cells.remove(uri).is_none() {
                 tracing::warn!("Tried to remove a notebook cell that does not exist: {uri}",);
@@ -365,7 +348,6 @@ impl Index {
         if let Ok(path) = uri.to_file_path() {
             self.settings_for_path(&path)
         } else {
-            // If there's only a single workspace, use that configuration for an untitled document.
             if self.settings.len() == 1 {
                 tracing::debug!(
                     "Falling back to configuration of the only active workspace for the new document '{uri}'."

@@ -49,7 +49,6 @@ impl Iterator for DocLines<'_> {
                     at_start_of_line = true;
                 }
                 TokenKind::Indent | TokenKind::Dedent => {
-                    // ignore
                 }
                 _ => {
                     at_start_of_line = false;

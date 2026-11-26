@@ -94,27 +94,20 @@ impl Violation for RedefinedWhileUnused {
 
 /// F811
 pub(crate) fn redefined_while_unused(checker: &Checker, scope_id: ScopeId, scope: &Scope) {
-    // Index the redefined bindings by statement.
     let mut redefinitions: FxHashMap<Option<NodeId>, Vec<EntryInfo<'_>>> = FxHashMap::default();
 
     for (name, binding_id) in scope.bindings() {
         for shadow in checker.semantic().shadowed_bindings(scope_id, binding_id) {
-            // If the shadowing binding is a loop variable, abort, to avoid overlap
-            // with F402.
             let binding = &checker.semantic().bindings[shadow.binding_id()];
             if binding.kind.is_loop_var() {
                 continue;
             }
 
-            // If the shadowed binding is used, abort.
             let shadowed = &checker.semantic().bindings[shadow.shadowed_id()];
             if shadowed.is_used() {
                 continue;
             }
 
-            // If the shadowing binding isn't considered a "redefinition" of the
-            // shadowed binding, abort — unless both are annotated assignments
-            // and preview mode is enabled (see #23802).
             if !binding.redefines(shadowed) {
                 if !(is_annotated_assignment_redefinition_enabled(checker.settings())
                     && is_annotated_assignment(binding, checker.semantic())
@@ -140,8 +133,6 @@ pub(crate) fn redefined_while_unused(checker: &Checker, scope_id: ScopeId, scope
             }
 
             if shadow.same_scope() {
-                // If the symbol is a dummy variable, abort, unless the shadowed
-                // binding is an import.
                 if !matches!(
                     shadowed.kind,
                     BindingKind::Import(..)
@@ -157,7 +148,6 @@ pub(crate) fn redefined_while_unused(checker: &Checker, scope_id: ScopeId, scope
                     continue;
                 };
 
-                // If this is an overloaded function, abort.
                 if shadowed.kind.is_function_definition() {
                     if checker
                         .semantic()
@@ -171,13 +161,10 @@ pub(crate) fn redefined_while_unused(checker: &Checker, scope_id: ScopeId, scope
                     }
                 }
             } else {
-                // A binding in a class body creates a class attribute; it doesn't rebind names
-                // in an enclosing module or function scope.
                 if scope.kind.is_class() {
                     continue;
                 }
 
-                // Only enforce cross-scope shadowing for imports.
                 if !matches!(
                     shadowed.kind,
                     BindingKind::Import(..)
@@ -188,15 +175,11 @@ pub(crate) fn redefined_while_unused(checker: &Checker, scope_id: ScopeId, scope
                     continue;
                 }
 
-                // Don't flag explicit re-exports (e.g., `from x import y as y`).
-                // A binding in a nested scope (like a class attribute) doesn't
-                // invalidate a module-level re-export.
                 if shadowed.is_explicit_export() {
                     continue;
                 }
             }
 
-            // If the bindings are in different forks, abort.
             if shadowed.source.is_none_or(|left| {
                 binding
                     .source
@@ -212,7 +195,6 @@ pub(crate) fn redefined_while_unused(checker: &Checker, scope_id: ScopeId, scope
         }
     }
 
-    // Create a fix for each source statement.
     let mut fixes = FxHashMap::default();
     #[expect(
         clippy::iter_over_hash_type,
@@ -260,7 +242,6 @@ pub(crate) fn redefined_while_unused(checker: &Checker, scope_id: ScopeId, scope
         }
     }
 
-    // Create diagnostics for each statement.
     #[expect(
         clippy::iter_over_hash_type,
         reason = "iteration order does not affect the diagnostics or fixes produced"

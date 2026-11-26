@@ -43,8 +43,6 @@ where
             MarkupKind::PlainText => self.code.fmt(f),
             MarkupKind::Markdown => {
                 let code = self.code.to_string();
-                // Type names can contain arbitrary text, including Markdown fences.
-                // Inspect the complete rendered value so a fence cannot span display writes.
                 let longest_backticks = code
                     .split(|character| character != '`')
                     .map(str::len)

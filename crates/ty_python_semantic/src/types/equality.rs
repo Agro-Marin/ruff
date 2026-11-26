@@ -218,8 +218,6 @@ fn evaluate_type_comparison<'db>(
     let branch = ComparisonBranch::from(is_positive);
     let condition_expects_equality = operator.condition_expects_equality(branch);
 
-    // Preserve the shared specialization of a constrained TypeVar. Expanding it before comparing
-    // with `left` would lose the correlation with other occurrences in the function.
     if condition_expects_equality
         && let Type::TypeVar(typevar) = right
         && let Some(TypeVarBoundOrConstraints::Constraints(constraints)) =
@@ -238,7 +236,6 @@ fn evaluate_type_comparison<'db>(
                 equality_truthiness(db, env, narrowed, *constraint, soundness_policy)
                     == Truthiness::AlwaysTrue
                     // Equal values need not have the same type: `False == 0` does not make
-                    // `Literal[False]` a valid specialization of a `Literal[0]` constraint.
                     && IntersectionBuilder::new(db, env)
                         .add_positive(left)
                         .add_positive(narrowed)
@@ -326,8 +323,6 @@ impl<'db> ContainerElementEqualityEvaluator<'db> {
     ) -> Result<Truthiness, BoolError<'db>> {
         let db = self.evaluator.db;
         if let Some(comparison) = WideLiteralComparison::new(db, &self.evaluator.env, left, right) {
-            // Builtin literal equality is reflexive and returns a boolean, so neither identity
-            // nor a rich-comparison method call can add an outcome here.
             return Ok(comparison.truthiness(db, LiteralComparisonKind::Equality));
         }
         let truthiness = evaluate_container_element_equality(&mut self.evaluator, left, right);
@@ -347,10 +342,8 @@ impl<'db> ContainerElementEqualityEvaluator<'db> {
             return Ok(Truthiness::Ambiguous);
         };
 
-        // Identity can turn a false equality result true, but cannot turn a true result false.
         Ok(match result.try_bool(db, &self.evaluator.env)? {
             Truthiness::AlwaysTrue => Truthiness::AlwaysTrue,
-            // If equality cannot return, shared identity is the only completing path.
             Truthiness::Uninhabited => Truthiness::AlwaysTrue,
             Truthiness::AlwaysFalse | Truthiness::Ambiguous => Truthiness::Ambiguous,
         })
@@ -757,8 +750,6 @@ fn evaluate_structural_comparison<'db>(
         }
         (_, Type::Dynamic(_)) => ComparisonResult::Ambiguous,
 
-        // A constrained TypeVar selects one constraint for the entire specialization, so each
-        // alternative can be checked independently without losing that correlation.
         (Type::TypeVar(left_var), Type::TypeVar(right_var))
             if left_var.is_same_typevar_as(db, right_var)
                 && let Some(TypeVarBoundOrConstraints::Constraints(constraints)) =
@@ -804,8 +795,6 @@ fn evaluate_structural_comparison<'db>(
         (other, Type::Union(union)) => {
             evaluate_union_right(evaluator, other, union.elements(db), branch, operator)
         }
-        // An excluded string literal rules out its runtime value only when the intersection
-        // already proves that the string has literal origin.
         (Type::Intersection(intersection), Type::LiteralValue(literal))
         | (Type::LiteralValue(literal), Type::Intersection(intersection))
             if literal.is_string()
@@ -900,8 +889,6 @@ fn evaluate_structural_comparison<'db>(
         {
             operator.result_from_equality(left == right)
         }
-        // A bare generic class can be the runtime class of any of its specializations.
-        // Comparing a specialized constructor with its origin must preserve its type arguments.
         (Type::SubclassOf(subclass), Type::ClassLiteral(class))
         | (Type::ClassLiteral(class), Type::SubclassOf(subclass))
             if class.generic_context(db).is_some()
@@ -1156,8 +1143,6 @@ pub(super) fn is_same_enum_domain<'db>(
     ty: Type<'db>,
     right: EnumLiteralType<'db>,
 ) -> bool {
-    // A proof made while another alias is active can still be disproved by a later union arm, so
-    // completed visits must not be cached.
     #[derive(Default)]
     struct EnumDomainVisitor<'db> {
         active_specializations: ActiveRecursionDetector<Type<'db>>,
@@ -1172,8 +1157,6 @@ pub(super) fn is_same_enum_domain<'db>(
         visitor: &EnumDomainVisitor<'db>,
     ) -> bool {
         match ty {
-            // The same specialization preserves the domain; different arguments can introduce
-            // values outside it even when the alias definition is the same.
             Type::TypeAlias(alias) => visitor.active_specializations.visit(
                 &ty,
                 || true,
@@ -1304,10 +1287,6 @@ fn evaluate_target_union<'db>(
         let Some(mut narrowed) = narrowed else {
             continue;
         };
-        // A surviving alternative that is disjoint from every rejected alternative already
-        // satisfies their exclusions. Constructing those redundant exclusions can exponentially
-        // expand intersections such as `Any & Literal["a"]` when the rejected alternatives are
-        // similarly shaped intersections with other string literals.
         if let Some(removed) = removed
             && !narrowed.is_disjoint_from(db, env, removed)
         {
@@ -1462,9 +1441,6 @@ fn evaluate_intersection_left<'db>(
             ComparisonResult::AlwaysTrue => any_true = true,
             ComparisonResult::AlwaysFalse => any_false = true,
             ComparisonResult::CanNarrow(narrowed) => {
-                // Literal-string origin is a static proof, not a runtime object property. An
-                // untrusted string can therefore equal a literal even when their static types
-                // are disjoint. Keep its original proof instead of making that branch unreachable.
                 if operator.condition_expects_equality(branch)
                     && original.is_disjoint_from(db, &evaluator.env, narrowed)
                     && original
@@ -1664,16 +1640,12 @@ fn compare_literal_to_other<'db>(
         } else if matches!(literal, LiteralValueTypeKind::Enum(_))
             && literal_semantics != KnownComparisonSemantics::Object
         {
-            // A plain string can compare equal to a `StrEnum` member.
             ComparisonResult::Ambiguous
         } else {
             ComparisonResult::CanNarrow(literal_type)
         }
     };
 
-    // Treat broad builtin types as if only the builtin literal itself can compare equal. This is
-    // intentionally unsafe: subclasses, including `bool` for `int`, can compare equal without
-    // inhabiting the literal type. Explicitly typed subclasses do not take this path.
     if evaluator.soundness_policy.allow_unsafe_equality
         && condition_expects_equality
         && literal_operand == LiteralOperand::Other
@@ -1690,17 +1662,12 @@ fn compare_literal_to_other<'db>(
         Some(other_semantics) if literal_semantics != other_semantics => {
             compare_different_semantics(db, env, literal_type, other, operator)
         }
-        // Object equality compares identity. `NewType` operands are evaluated using their concrete
-        // base before reaching this arm, so erased identities cannot make these types appear
-        // disjoint here.
         Some(KnownComparisonSemantics::Object)
             if literal_semantics == KnownComparisonSemantics::Object
                 && other.is_disjoint_from(db, env, literal_type) =>
         {
             ComparisonResult::from_bool(operator == ComparisonOperator::Inequality)
         }
-        // Inherited builtin comparison semantics do not imply type overlap. For example, a final
-        // `int` subclass can compare equal to `1` despite being disjoint from `Literal[1]`.
         Some(_)
             if literal_operand == LiteralOperand::Other
                 && !other.is_disjoint_from(db, env, literal_type) =>
@@ -1728,15 +1695,12 @@ fn compare_different_semantics<'db>(
     right: Type<'db>,
     operator: ComparisonOperator,
 ) -> ComparisonResult<'db> {
-    // NoneType is final and inherits only from object. This common case does not need
-    // ancestry checks, which would otherwise be repeated for each member of an optional enum.
     if left.is_none(db) || right.is_none(db) {
         return operator.result_from_equality(false);
     }
 
     match (left, right) {
         (Type::Intersection(intersection), other) | (other, Type::Intersection(intersection)) => {
-            // An intersection can only compare equal if all of its positive elements can.
             intersection
                 .positive(db)
                 .iter()
@@ -1836,9 +1800,6 @@ fn evaluate_container_element_equality<'db>(
         ComparisonOperator::Equality,
     ) {
         ComparisonResult::AlwaysTrue => Truthiness::AlwaysTrue,
-        // Known comparison semantics are reflexive, so a false result rules out shared runtime
-        // identity. Static disjointness alone is insufficient because `NewType` and similar
-        // wrappers can erase their distinction at runtime.
         ComparisonResult::AlwaysFalse
             if [left, right]
                 .into_iter()
@@ -1932,8 +1893,6 @@ impl KnownComparisonSemantics {
             {
                 class_comparison_semantics(db, env.program(db), metaclass, operator)
             }
-            // A subclass of C may use a subclass of C's metaclass. In strict mode we can
-            // rely on its comparison method only if the metaclass itself is final.
             Type::SubclassOf(subclass)
                 if let SubclassOfInner::Class(class) = subclass.subclass_of()
                     && let Type::ClassLiteral(metaclass) =
@@ -1973,8 +1932,6 @@ impl KnownComparisonSemantics {
                 if instance.class(db, env).is_final(db)
                     || soundness_policy.allow_unsafe_equality
                         && (
-                            // `object` can contain values whose classes define their own comparison
-                            // method, so treating it as exact would incorrectly eliminate those values.
                             !instance.has_known_class(db, KnownClass::Object)
                         ) =>
             {
@@ -2049,7 +2006,6 @@ fn class_comparison_semantics<'db>(
     if dunder.place.is_undefined() {
         if operator == ComparisonOperator::Inequality {
             let equality = lookup_dunder(db, env, class, "__eq__")?;
-            // `tuple.__ne__` delegates to its builtin equality implementation.
             let tuple_equality = lookup_dunder(
                 db,
                 env,
@@ -2094,10 +2050,6 @@ fn has_reflexive_equality_semantics<'db>(
     evaluator: &ComparisonEvaluator<'db>,
     ty: Type<'db>,
 ) -> bool {
-    // `comparison_semantics` identifies a single builtin comparison implementation. The evaluator
-    // normally distributes unions before that lookup, but this check receives the original operands.
-    // A union such as `Literal[1, "a"]` has reflexive equality in every alternative without sharing
-    // one comparison implementation, so check each alternative here.
     if let Type::Union(union) = ty.resolve_type_alias(evaluator.db) {
         return union
             .elements(evaluator.db)

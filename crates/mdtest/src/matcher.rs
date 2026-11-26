@@ -99,8 +99,6 @@ pub fn match_file(
     diagnostics: &[Diagnostic],
     options: RunOptions,
 ) -> Result<Vec<Diagnostic>, FailuresByLine> {
-    // Parse assertions from comments in the file, and get diagnostics from the file; both
-    // ordered by line number.
     let source = source_text(db, file);
     let line_index = line_index(db, file);
     let (assertions, diagnostics) = if file.path(db).extension() == Some("toml") {
@@ -118,9 +116,6 @@ pub fn match_file(
             &line_index,
         );
 
-        // Sort diagnostics according to the line number of the starting offset of the token in
-        // which the diagnostic appears. This can differ from the line containing the start of the
-        // diagnostic range, for example for syntax errors inside stringized annotations.
         let diagnostics = SortedDiagnostics::new(diagnostics, &|diagnostic_range| {
             let token_start = parsed
                 .tokens()
@@ -133,7 +128,6 @@ pub fn match_file(
 
     let mut line_diagnostics = diagnostics.iter_lines();
 
-    // Get iterators over assertions and diagnostics grouped by line, in ascending line order.
     let mut line_assertions = assertions.into_iter();
     let mut current_assertions = line_assertions.next();
     let mut current_diagnostics = line_diagnostics.next();
@@ -147,9 +141,6 @@ pub fn match_file(
             (Some(assertions), Some(diagnostics)) => {
                 match assertions.line_number.cmp(&diagnostics.line_number) {
                     Ordering::Equal => {
-                        // We have assertions and diagnostics on the same line; check for
-                        // matches and error on any that don't match, then advance both
-                        // iterators.
                         match matcher.match_line(diagnostics, assertions) {
                             Ok(inline_diagnostics) => {
                                 snapshot_diagnostics.extend(inline_diagnostics);
@@ -163,38 +154,28 @@ pub fn match_file(
                         current_diagnostics = line_diagnostics.next();
                     }
                     Ordering::Less => {
-                        // We have assertions on an earlier line than diagnostics; report these
-                        // assertions as all unmatched, and advance the assertions iterator.
                         failures.push(assertions.line_number, unmatched(&assertions.assertions));
                         current_assertions = line_assertions.next();
                     }
                     Ordering::Greater => {
-                        // We have diagnostics on an earlier line than assertions; report these
-                        // diagnostics as all unmatched, and advance the diagnostics iterator.
                         failures.push(diagnostics.line_number, unmatched(diagnostics));
                         current_diagnostics = line_diagnostics.next();
                     }
                 }
             }
             (Some(assertions), None) => {
-                // We've exhausted diagnostics but still have assertions; report these assertions
-                // as unmatched and advance the assertions iterator.
                 failures.push(assertions.line_number, unmatched(&assertions.assertions));
                 current_assertions = line_assertions.next();
             }
             (None, Some(diagnostics)) => {
-                // We've exhausted assertions but still have diagnostics; report these
-                // diagnostics as unmatched and advance the diagnostics iterator.
                 failures.push(diagnostics.line_number, unmatched(diagnostics));
                 current_diagnostics = line_diagnostics.next();
             }
-            // When we've exhausted both diagnostics and assertions, break.
             (None, None) => break,
         }
     }
 
     if failures.is_empty() {
-        // We need to re-sort the diagnostics because matching uses `swap_remove` internally, which can change ordering.
         snapshot_diagnostics
             .sort_unstable_by(|a, b| a.rendering_sort_key(&db).cmp(&b.rendering_sort_key(&db)));
         Ok(snapshot_diagnostics)
@@ -215,13 +196,6 @@ trait UnmatchedWithColumn {
     fn unmatched_with_column(&self, column: OneIndexed) -> Failure;
 }
 
-// This is necessary since we only parse assertions lazily,
-// and sometimes we know before parsing any assertions that an assertion will be unmatched,
-// e.g. if we've exhausted all diagnostics but there are still assertions left.
-//
-// TODO: the lazy parsing means that we sometimes won't report malformed assertions as
-// being invalid if we detect that they'll be unmatched before parsing them.
-// That's perhaps not the best user experience.
 impl Unmatched for UnparsedAssertion<'_> {
     fn unmatched(&self) -> Failure {
         Failure::new(format_args!("{} {self}", "unmatched assertion:".red()))
@@ -421,8 +395,6 @@ impl Matcher {
             }
             ParsedAssertion::Snapshot(rule) => {
                 let Some(rule) = rule else {
-                    // Similar to `error:` with the same diagnostic code. Match the first diagnostic even if this
-                    // is ambiguous (and somewhat problematic because we use swap_remove in many places).
                     if !unmatched.is_empty() {
                         return Some(unmatched.swap_remove(0).clone());
                     }
@@ -474,7 +446,6 @@ fn match_reveal_type_diagnostic(
 
         let primary_annotation = normalize_paths(primary_annotation);
 
-        // reveal_type, reveal_protocol_interface
         if matches!(
             headline_message,
             "Revealed type" | "Revealed protocol interface"
@@ -484,7 +455,6 @@ fn match_reveal_type_diagnostic(
             return true;
         }
 
-        // reveal_when_assignable_to, reveal_when_subtype_of, reveal_mro
         if matches!(
             headline_message,
             "Assignability holds" | "Subtyping holds" | "Revealed MRO"
@@ -497,8 +467,6 @@ fn match_reveal_type_diagnostic(
         false
     };
 
-    // Try to match against any reveal-type diagnostic.
-    // If the `undefined-reveal` diagnostic is present, we also match against it.
     let mut matched_revealed_type = None;
     let mut matched_undefined_reveal = false;
     let mut i = 0;

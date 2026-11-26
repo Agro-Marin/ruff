@@ -248,8 +248,6 @@ fn is_excluded_test_function<'db>(db: &'db dyn Db, definition: Definition<'db>) 
             Some(Type::ClassLiteral(class))
                 if class.is_known(db, KnownClass::Staticmethod)
                     || class.is_known(db, KnownClass::Classmethod) => {}
-            // Unknown outer decorators can transform the value. Only inspect beneath the
-            // method wrappers that pytest itself unwraps during collection.
             _ => return false,
         }
     }
@@ -380,11 +378,7 @@ fn pytest_test_class_kind<'db>(
         return None;
     }
 
-    // The subtype check models `isinstance(cls, ABCMeta)`. Inheriting from ABC supplies this
     // metaclass; @abstractmethod alone does not make a class abstract at runtime.
-    // Exclude classes with explicitly abstract members that have not been concretely overridden.
-    // Implicit abstract methods in protocols affect only type checking and are ignored here.
-    // Custom metaclass behavior is approximated.
     if Type::ClassLiteral(class).is_subtype_of(db, &env, KnownClass::ABCMeta.to_instance(db, &env))
         && class
             .identity_specialization(db)
@@ -670,7 +664,6 @@ class TestClass:
         7 |     def testMethod(self): ...
           |         ^^^^^^^^^^
         ");
-        // File-wide collection skips this name before checking individual bindings.
         assert!(pytest_test_for_binding(&test.db, test.function("Test_function")).is_none());
     }
 
@@ -736,9 +729,6 @@ def test_generic[T](value: T) -> None: ...
 
     #[test]
     fn treats_project_defined_unittest_test_case_as_an_ordinary_base() {
-        // The project-local `unittest` package shadows the standard library. Inheriting from its
-        // `unittest.case.TestCase` does not grant unittest collection: `Example` is excluded, while
-        // `TestExample` is collected by name because it starts with `Test`.
         let db = pytest_db_with_files(&[
             (
                 "/src/unittest/__init__.py",
@@ -785,7 +775,6 @@ def test_example(): ...
         );
 
         assert_snapshot!(test.collected_tests(), @"No tests collected");
-        // File-wide collection returns early without checking individual bindings.
         assert_eq!(
             pytest_test_for_binding(&test.db, test.function("test_example")),
             None
@@ -874,7 +863,6 @@ if False:
         21 |     def test_redefined_method(self): ...
            |         ^^^^^^^^^^^^^^^^^^^^^
         ");
-        // Check the original definition, which file-wide collection never visits.
         assert!(pytest_test_for_binding(&test.db, test.function("test_redefined")).is_none());
     }
 
@@ -974,7 +962,6 @@ def test_example(): ...
 "#,
         );
         assert_snapshot!(test.collected_tests(), @"No tests collected");
-        // File-wide collection returns early without checking individual bindings.
         assert!(pytest_test_for_binding(&test.db, test.function("test_example")).is_none());
     }
 
@@ -1287,7 +1274,6 @@ mark: MarkGenerator
         }
 
         let module = parsed_module(db, file.python_file(db)).load(db);
-        // Render one diagnostic per result so the snapshot preserves collection order.
         let diagnostics = tests
             .iter()
             .map(|test| {

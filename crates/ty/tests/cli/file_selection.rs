@@ -135,7 +135,6 @@ fn exclude_argument() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Test that exclude argument is recognized and works
     assert_cmd_snapshot!(case.command().arg("--exclude").arg("tests/"), @"
     success: false
     exit_code: 1
@@ -157,7 +156,6 @@ fn exclude_argument() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Test multiple exclude patterns
     assert_cmd_snapshot!(case.command().arg("--exclude").arg("tests/").arg("--exclude").arg("temp_*.py"), @"
     success: false
     exit_code: 1
@@ -200,7 +198,6 @@ fn configuration_include() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Test include via configuration - should only check included files
     case.write_file(
         "ty.toml",
         r#"
@@ -224,7 +221,6 @@ fn configuration_include() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Test multiple include patterns via configuration
     case.write_file(
         "ty.toml",
         r#"
@@ -268,7 +264,6 @@ fn configuration_include_no_extension() -> anyhow::Result<()> {
             "#,
     )])?;
 
-    // By default, `src/main` is excluded because the file has no supported extension.
     case.write_file(
         "ty.toml",
         r#"
@@ -287,7 +282,6 @@ fn configuration_include_no_extension() -> anyhow::Result<()> {
     WARN No python files found under the given path(s)
     ");
 
-    // The file can be included by adding an exactly matching pattern
     case.write_file(
         "ty.toml",
         r#"
@@ -338,7 +332,6 @@ fn configuration_exclude() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Test exclude via configuration
     case.write_file(
         "ty.toml",
         r#"
@@ -368,7 +361,6 @@ fn configuration_exclude() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Test multiple exclude patterns via configuration
     case.write_file(
         "ty.toml",
         r#"
@@ -419,7 +411,6 @@ fn exclude_precedence_over_include() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Include all src files but exclude test files - exclude should win
     case.write_file(
         "ty.toml",
         r#"
@@ -504,7 +495,6 @@ fn exclude_argument_precedence_include_argument() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Configuration includes all files, but CLI excludes tests
     case.write_file(
         "ty.toml",
         r#"
@@ -549,7 +539,6 @@ fn remove_default_exclude() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // By default, 'dist' directory should be excluded (see default excludes)
     assert_cmd_snapshot!(case.command(), @"
     success: false
     exit_code: 1
@@ -565,7 +554,6 @@ fn remove_default_exclude() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Now override the default exclude by using a negated pattern to re-include 'dist'
     case.write_file(
         "ty.toml",
         r#"
@@ -616,7 +604,6 @@ fn cli_removes_config_exclude() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Configuration excludes the build directory
     case.write_file(
         "ty.toml",
         r#"
@@ -625,7 +612,6 @@ fn cli_removes_config_exclude() -> anyhow::Result<()> {
         "#,
     )?;
 
-    // Verify that build/ is excluded by configuration
     assert_cmd_snapshot!(case.command(), @"
     success: false
     exit_code: 1
@@ -641,7 +627,6 @@ fn cli_removes_config_exclude() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Now remove the configuration exclude via CLI negation
     assert_cmd_snapshot!(case.command().arg("--exclude").arg("!build/"), @"
     success: false
     exit_code: 1
@@ -713,7 +698,6 @@ fn explicit_path_overrides_exclude() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Explicitly checking a file in an excluded directory should still check that file
     assert_cmd_snapshot!(case.command().arg("tests/generated.py"), @"
     success: false
     exit_code: 1
@@ -729,7 +713,6 @@ fn explicit_path_overrides_exclude() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Explicitly checking the entire excluded directory should check all files in it
     assert_cmd_snapshot!(case.command().arg("dist/"), @"
     success: false
     exit_code: 1
@@ -779,7 +762,6 @@ fn explicit_path_overrides_exclude_force_exclude() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Explicitly checking a file in an excluded directory should still check that file
     assert_cmd_snapshot!(case.command().arg("tests/generated.py").arg("src/main.py"), @"
     success: false
     exit_code: 1
@@ -801,7 +783,6 @@ fn explicit_path_overrides_exclude_force_exclude() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Except when `--force-exclude` is set.
     assert_cmd_snapshot!(case.command().arg("tests/generated.py").arg("src/main.py").arg("--force-exclude"), @"
     success: false
     exit_code: 1
@@ -817,7 +798,6 @@ fn explicit_path_overrides_exclude_force_exclude() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Explicitly checking the entire excluded directory should check all files in it
     assert_cmd_snapshot!(case.command().arg("dist/").arg("src/main.py"), @"
     success: false
     exit_code: 1
@@ -839,7 +819,6 @@ fn explicit_path_overrides_exclude_force_exclude() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Except when using `--force-exclude`
     assert_cmd_snapshot!(case.command().arg("dist/").arg("src/main.py").arg("--force-exclude"), @"
     success: false
     exit_code: 1
@@ -885,7 +864,6 @@ fn force_exclude_directory_exclusion() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Without --force-exclude, explicitly passed file overrides exclude.
     assert_cmd_snapshot!(case.command().arg("out/amd64/install/_setup_util.py"), @"
     success: false
     exit_code: 1
@@ -907,7 +885,6 @@ fn force_exclude_directory_exclusion() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // With --force-exclude, the exclude pattern is enforced even for explicit paths.
     assert_cmd_snapshot!(case.command().arg("--force-exclude").arg("out/amd64/install/_setup_util.py"), @"
     success: true
     exit_code: 0
@@ -918,7 +895,6 @@ fn force_exclude_directory_exclusion() -> anyhow::Result<()> {
     WARN No python files found under the given path(s)
     ");
 
-    // The exclusion also applies when the passed directory is inside an excluded directory.
     let output = case
         .command()
         .arg("--force-exclude")
@@ -1146,7 +1122,6 @@ fn invalid_include_pattern() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // By default, dist/ is excluded, so only src/main.py should be checked
     assert_cmd_snapshot!(case.command(), @r#"
     success: false
     exit_code: 2
@@ -1188,7 +1163,6 @@ fn invalid_include_pattern_concise_output() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // By default, dist/ is excluded, so only src/main.py should be checked
     assert_cmd_snapshot!(case.command().arg("--output-format").arg("concise"), @"
     success: false
     exit_code: 2
@@ -1222,7 +1196,6 @@ fn invalid_exclude_pattern() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // By default, dist/ is excluded, so only src/main.py should be checked
     assert_cmd_snapshot!(case.command(), @r#"
     success: false
     exit_code: 2
@@ -1281,7 +1254,6 @@ fn response_files_preserve_literal_at_paths() -> anyhow::Result<()> {
 #[cfg(unix)]
 fn bazel_symlinked_files() -> anyhow::Result<()> {
     let case = CliTest::with_files([
-        // Original source files in the project
         (
             "main.py",
             r#"
@@ -1298,7 +1270,6 @@ def process_data():
     return missing_value  # error: unresolved-reference
             "#,
         ),
-        // Another source file that won't be symlinked
         (
             "other.py",
             r#"
@@ -1307,11 +1278,8 @@ print(other_undefined)  # error: unresolved-reference
         ),
     ])?;
 
-    // Create Bazel-style symlinks pointing to the actual source files
-    // Bazel typically creates symlinks in bazel-out/k8-fastbuild/bin/ that point to actual sources
     std::fs::create_dir_all(case.project_dir.join("bazel-out/k8-fastbuild/bin"))?;
 
-    // Use absolute paths to ensure the symlinks work correctly
     case.write_symlink(
         case.project_dir.join("main.py"),
         "bazel-out/k8-fastbuild/bin/main.py",
@@ -1321,8 +1289,6 @@ print(other_undefined)  # error: unresolved-reference
         "bazel-out/k8-fastbuild/bin/library.py",
     )?;
 
-    // Change to the bazel-out directory and run ty from there
-    // The symlinks should be followed and errors should be found
     assert_cmd_snapshot!(case.command().current_dir(case.project_dir.join("bazel-out/k8-fastbuild/bin")), @"
     success: false
     exit_code: 1
@@ -1344,7 +1310,6 @@ print(other_undefined)  # error: unresolved-reference
     ----- stderr -----
     ");
 
-    // Test that when checking a specific symlinked file from the bazel-out directory, it works correctly
     assert_cmd_snapshot!(case.command().current_dir(case.project_dir.join("bazel-out/k8-fastbuild/bin")).arg("main.py"), @"
     success: false
     exit_code: 1
@@ -1368,7 +1333,6 @@ print(other_undefined)  # error: unresolved-reference
 #[cfg(unix)]
 fn exclude_symlink_source_not_target() -> anyhow::Result<()> {
     let case = CliTest::with_files([
-        // Target files with generic names
         (
             "src/module.py",
             r#"
@@ -1391,12 +1355,9 @@ print(regular_undefined)  # error: unresolved-reference
         ),
     ])?;
 
-    // Create symlinks with names that differ from their targets
-    // This simulates build systems that rename files during symlinking
     case.write_symlink("src/module.py", "generated_module.py")?;
     case.write_symlink("src/utils.py", "generated_utils.py")?;
 
-    // Exclude pattern should match on the symlink name (generated_*), not the target name
     assert_cmd_snapshot!(case.command().arg("--exclude").arg("generated_*.py"), @"
     success: false
     exit_code: 1
@@ -1424,7 +1385,6 @@ print(regular_undefined)  # error: unresolved-reference
     ----- stderr -----
     ");
 
-    // Exclude pattern on target path should not affect symlinks with different names
     assert_cmd_snapshot!(case.command().arg("--exclude").arg("src/*.py"), @"
     success: false
     exit_code: 1
@@ -1452,7 +1412,6 @@ print(regular_undefined)  # error: unresolved-reference
     ----- stderr -----
     ");
 
-    // Test that explicitly passing a symlink always checks it, even if excluded
     assert_cmd_snapshot!(case.command().arg("--exclude").arg("generated_*.py").arg("generated_module.py"), @"
     success: false
     exit_code: 1

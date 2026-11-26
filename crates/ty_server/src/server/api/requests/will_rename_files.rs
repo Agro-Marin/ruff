@@ -48,8 +48,6 @@ impl BackgroundRequestHandler for WillRenameFilesHandler {
             extend_lsp_edits(db, snapshot.position_encoding(), result, &mut changes);
         }
 
-        // Different projects can propose conflicting edits for the same file, so normalize only
-        // after collecting every project's results.
         normalize_lsp_edits(&mut changes);
 
         Ok((!changes.is_empty()).then(|| WorkspaceEdit::new(Some(changes), None, None)))

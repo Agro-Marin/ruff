@@ -1,9 +1,3 @@
-// +------------------------------------------------------------+
-// | Code adopted from:                                         |
-// | Repository: https://github.com/rust-lang/rust-analyzer.git |
-// | File: `crates/stdx/src/thread.rs`                          |
-// | Commit: 03b3cb6be9f21c082f4206b35c7fe7f291c94eaa           |
-// +------------------------------------------------------------+
 //! A utility module for working with threads that automatically joins threads upon drop
 //! and abstracts over operating system quality of service (QoS) APIs
 //! through the concept of a “thread priority”.
@@ -21,7 +15,6 @@
 //! Thus, [`ThreadPriority`] has no default value
 //! and every entry point to creating a thread requires a [`ThreadPriority`] upfront.
 
-// Keeps us from getting warnings about the word `QoS`
 #![allow(clippy::doc_markdown)]
 
 use std::fmt;
@@ -78,8 +71,6 @@ impl Builder {
 }
 
 pub(crate) struct JoinHandle<T = ()> {
-    // `inner` is an `Option` so that we can
-    // take ownership of the contained `JoinHandle`.
     inner: Option<jod_thread::JoinHandle<T>>,
     allow_leak: bool,
 }

@@ -84,23 +84,17 @@ pub(crate) fn implicit_namespace_package(
     context: &LintContext,
 ) {
     if package.is_none()
-        // Ignore non-`.py` files, which don't require an `__init__.py`.
         && PySourceType::try_from_path(path).is_some_and(PySourceType::is_py_file)
-        // Ignore `.pyw` files that are also PySourceType::Python but aren't importable namespaces
         && path.extension().is_some_and(|ext| ext == "py")
-        // Ignore any files that are direct children of the project root.
         && path
             .parent()
             .is_none_or( |parent| parent != project_root)
-        // Ignore any files that are direct children of a source directory (e.g., `src/manage.py`).
         && !path
             .parent()
             .is_some_and( |parent| src.iter().any(|src| src == parent))
-        // Ignore files that contain a shebang.
         && comment_ranges
             .first().filter(|range| range.start() == TextSize::from(0))
             .is_none_or(|range| ShebangDirective::try_extract(locator.slice(*range)).is_none())
-        // Ignore PEP 723 scripts.
         && ScriptTag::parse(locator.contents()).is_none()
     {
         context.report_diagnostic(
@@ -113,7 +107,6 @@ pub(crate) fn implicit_namespace_package(
     } else if allow_nested_roots {
         if let Some(PackageRoot::Nested { path: root }) = package.as_ref() {
             if path.ends_with("__init__.py") {
-                // Identify the intermediary package that's missing the `__init__.py` file.
                 if let Some(parent) = root
                     .ancestors()
                     .find(|parent| !parent.join("__init__.py").exists())

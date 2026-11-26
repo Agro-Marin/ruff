@@ -13,7 +13,6 @@ const PYODIDE_EXCLUDE = [
   "!**/node_modules",
 ];
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), viteStaticCopyPyodide()],
   optimizeDeps: { exclude: ["pyodide", "ty_wasm"] },

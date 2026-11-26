@@ -57,7 +57,6 @@ fn get_table_data(unicode_data: &'static str) -> TableData {
             let name = &name[1..name.len() - 1];
             if name.starts_with("CJK Ideograph") {
                 assert!(name.ends_with("First"));
-                // should be CJK Ideograph ..., Last
                 let line2 = iter.next().expect("unclosed ideograph range");
                 let (cp2, name2) = if let Some(extracted) = extract(line2.trim()) {
                     extracted
@@ -68,9 +67,6 @@ fn get_table_data(unicode_data: &'static str) -> TableData {
 
                 cjk_ideograph_ranges.push((cp, cp2));
             } else if name.starts_with("Hangul Syllable") {
-                // the main lib only knows this range, so lets make
-                // sure we're not going out of date wrt the unicode
-                // standard.
                 if name.ends_with("First") {
                     assert_eq!(cp, '\u{AC00}');
                 } else if name.ends_with("Last") {
@@ -126,7 +122,6 @@ fn create_lexicon_and_offsets(
 ) -> (String, Vec<(usize, Vec<u8>, usize)>) {
     codepoint_names.sort_by(|a, b| a.1.len().cmp(&b.1.len()).reverse());
 
-    // a trie of all the suffixes of the data,
     let mut t = trie::Trie::new();
     let mut output = String::new();
 
@@ -146,21 +141,12 @@ fn create_lexicon_and_offsets(
                     substring_o_bytes += n.len();
                 }
             } else {
-                // completely new element, i.e. not a substring of
-                // anything, so record its position & add it.
                 let offset = output.len();
                 t.set_offset(n.bytes(), offset);
                 output.push_str(n);
 
-                // insert the suffixes of this word which saves about
-                // 10KB (we could theoretically insert all substrings,
-                // upto a certain length, but this only saves ~300
-                // bytes or so and is noticeably slower).
                 for i in 1..n.len() {
                     if t.insert(n[i..].bytes(), Some(offset + i), true).0 {
-                        // once we've found a string that's already
-                        // been inserted, we know all suffixes will've
-                        // been inserted too.
                         break;
                     }
                 }
@@ -181,27 +167,20 @@ fn create_lexicon_and_offsets(
     (output, words)
 }
 
-// creates arrays t1, t2 and a shift such that `dat[i] == t2[t1[i >>
-// shift] << shift + i & mask]`; this allows us to share blocks of
-// length `1 << shift`, and so compress an array with a lot of repeats
-// (like the 0's of the phrasebook_offsets below).
 fn bin_data(dat: &[u32]) -> (Vec<u32>, Vec<u32>, usize) {
     let mut smallest = 0xFFFFFFFF;
     let mut data = (vec![], vec![], 0);
     let mut cache = HashMap::new();
 
-    // brute force search for the shift that words best.
     for shift in 0..14 {
         cache.clear();
 
         let mut t1 = vec![];
         let mut t2 = vec![];
         for chunk in dat.chunks(1 << shift) {
-            // have we stored this chunk already?
             let index = *match cache.entry(chunk) {
                 hash_map::Entry::Occupied(o) => o.into_mut(),
                 hash_map::Entry::Vacant(v) => {
-                    // no :(, better put it in.
                     let index = t2.len();
                     t2.extend(chunk.iter().cloned());
                     v.insert(index)
@@ -219,7 +198,6 @@ fn bin_data(dat: &[u32]) -> (Vec<u32>, Vec<u32>, usize) {
         }
     }
 
-    // verify.
     {
         let (ref t1, ref t2, shift) = data;
         let mask = (1 << shift) - 1;
@@ -239,45 +217,27 @@ fn write_codepoint_maps(ctxt: &mut Context, codepoint_names: Vec<(char, &str)>) 
 
     let num_escapes = lexicon_words.len().div_ceil(256);
 
-    // we reserve the high bit (end of word) and 127,126... for
-    // non-space splits.  The high bit saves about 10KB, and doing the
-    // extra splits reduces the space required even more (e.g. - is a
-    // reduction of 14KB).
     let short = 128 - SPLITTERS.len() - num_escapes;
 
-    // find the `short` most common elements
     lexicon_words.sort_by(|a, b| a.cmp(b).reverse());
 
-    // and then sort the rest into groups of equal length, to allow us
-    // to avoid storing the full length table; just the indices. The
-    // ordering is irrelevant here; just that they are in groups.
     lexicon_words[short..].sort_by_key(|(_, word, _offset)| word.len());
 
-    // the encoding for each word, to avoid having to recompute it
-    // each time, we can just blit it out of here.
     let mut word_encodings = HashMap::new();
     for (i, x) in SPLITTERS.iter().enumerate() {
-        // precomputed
         word_encodings.insert(vec![*x], vec![128 - 1 - i as u32]);
     }
 
-    // the indices into the main string
     let mut lexicon_offsets = vec![];
-    // and their lengths, for the most common strings, since these
-    // have no information about their length (they were chosen by
-    // frequency).
     let mut lexicon_short_lengths = vec![];
     let mut iter = lexicon_words.into_iter().enumerate();
 
     for (i, (_, word, offset)) in iter.by_ref().take(short) {
         lexicon_offsets.push(offset);
         lexicon_short_lengths.push(word.len());
-        // encoded as a single byte.
         assert!(word_encodings.insert(word, vec![i as u32]).is_none())
     }
 
-    // this stores (end point, length) for each block of words of a
-    // given length, where `end point` is one-past-the-end.
     let mut lexicon_ordered_lengths = vec![];
     let mut previous_len = 0xFFFF;
     for (i, (_, word, offset)) in iter {
@@ -298,15 +258,9 @@ fn write_codepoint_maps(ctxt: &mut Context, codepoint_names: Vec<(char, &str)>) 
                 .is_none()
         );
     }
-    // don't forget the last one.
     lexicon_ordered_lengths.push((lexicon_offsets.len(), previous_len));
 
-    // phrasebook encodes the words out of the lexicon that make each
-    // codepoint name.
     let mut phrasebook = vec![0u32];
-    // this is a map from `char` -> the index in phrasebook. it is
-    // currently huge, but it has a lot of 0's, so we compress it
-    // using the binning, below.
     let mut phrasebook_offsets: Vec<_> = std::iter::repeat_n(0, 0x10FFFF + 1).collect();
     let mut longest_name = 0;
     for &(cp, name) in codepoint_names.iter() {
@@ -321,19 +275,14 @@ fn write_codepoint_maps(ctxt: &mut Context, codepoint_names: Vec<(char, &str)>) 
                 .get(w.as_bytes())
                 .expect(concat!("option on ", line!()));
             last_len = data.len();
-            // info!("{}: '{}' {}", name, w, data);
 
-            // blit the data.
             phrasebook.extend(data.iter().cloned())
         }
 
-        // add the high bit to the first byte of the last encoded
-        // phrase, to indicate the end.
         let idx = phrasebook.len() - last_len;
         phrasebook[idx] |= 0b1000_0000;
     }
 
-    // compress the offsets, hopefully collapsing all the 0's.
     let (t1, t2, shift) = bin_data(&phrasebook_offsets);
 
     w!(

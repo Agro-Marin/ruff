@@ -18,22 +18,16 @@ pub(crate) enum MemberType {
 
 fn member_type(name: &str, settings: &Settings) -> MemberType {
     if settings.constants.contains(name) {
-        // Ex) `CONSTANT`
         MemberType::Constant
     } else if settings.classes.contains(name) {
-        // Ex) `CLASS`
         MemberType::Class
     } else if settings.variables.contains(name) {
-        // Ex) `variable`
         MemberType::Variable
     } else if name.len() > 1 && str::is_cased_uppercase(name) {
-        // Ex) `CONSTANT`
         MemberType::Constant
     } else if name.chars().next().is_some_and(char::is_uppercase) {
-        // Ex) `Class`
         MemberType::Class
     } else {
-        // Ex) `variable`
         MemberType::Variable
     }
 }
@@ -74,9 +68,7 @@ pub(crate) enum Distance {
 
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub(crate) enum ImportStyle {
-    // Ex) `import foo`
     Straight,
-    // Ex) `from foo import bar`
     From,
 }
 
@@ -102,7 +94,7 @@ impl<'a> ModuleKey<'a> {
         style: ImportStyle,
         settings: &Settings,
     ) -> Self {
-        let force_to_top = !name.is_some_and(|name| settings.force_to_top.contains(name)); // `false` < `true` so we get forced to top first
+        let force_to_top = !name.is_some_and(|name| settings.force_to_top.contains(name));
 
         let maybe_length = (settings.length_sort
             || (settings.length_sort_straight && style == ImportStyle::Straight))
@@ -157,7 +149,7 @@ pub(crate) struct MemberKey<'a> {
 
 impl<'a> MemberKey<'a> {
     pub(crate) fn from_member(name: &'a str, asname: Option<&'a str>, settings: &Settings) -> Self {
-        let not_star_import = name != "*"; // `false` < `true` so we get star imports first
+        let not_star_import = name != "*";
         let member_type = settings
             .order_by_type
             .then_some(member_type(name, settings));

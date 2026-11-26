@@ -6,7 +6,6 @@ use snapbox::{assert_data_eq, file};
 
 #[test]
 fn case() {
-    // https://github.com/rust-lang/rust/blob/4b94758d2ba7d0ef71ccf5fde29ce4bc5d6fe2a4/tests/ui/suggestions/multi-suggestion.rs
 
     let source = r#"#![allow(dead_code)]
 struct U <T> {

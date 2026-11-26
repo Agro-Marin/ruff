@@ -78,7 +78,6 @@ impl UniqueGroupIdBuilder {
 impl Default for UniqueGroupIdBuilder {
     fn default() -> Self {
         UniqueGroupIdBuilder {
-            // Start with 1 because `GroupId` wraps a `NonZeroU32` to reduce memory usage.
             next_id: AtomicU32::new(1),
         }
     }

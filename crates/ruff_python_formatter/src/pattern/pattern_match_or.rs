@@ -31,7 +31,6 @@ impl FormatNodeRule<PatternMatchOr> for FormatPatternMatchOr {
 
             for pattern in patterns {
                 let leading_value_comments = comments.leading(pattern);
-                // Format the expressions leading comments **before** the operator
                 if leading_value_comments.is_empty() {
                     write!(f, [in_parentheses_only_soft_line_break_or_space()])?;
                 } else {

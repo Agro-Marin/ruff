@@ -202,7 +202,6 @@ pub(crate) fn whitespace_before_comment(
                 }
             }
 
-            // Split into the portion before and after the first space.
             let mut parts = token_text.splitn(2, ' ');
             let symbol = parts.next().unwrap_or("");
             let comment = parts.next().unwrap_or("");

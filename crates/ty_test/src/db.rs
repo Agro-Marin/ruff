@@ -373,19 +373,9 @@ fn mdtest_lint_registry() -> &'static LintRegistry {
 }
 
 fn mdtest_rule_selection(rules: Option<&Rules>, required_rule: Option<&str>) -> RuleSelection {
-    // In general (as shown by the initialization of `selection` below), we enable even rules that
-    // are ignored by default in mdtests so that their behaviour is covered alongside the default
-    // rules. There are a few small exceptions to this, however:
     static DISABLED_IN_MDTESTS: &[&str] = &[
-        // `missing-override-decorator` is an exception: because it is extremely pedantic we have
-        // chosen to keep it opt-in to minimize churn in unrelated tests.
         "missing-override-decorator",
-        // `experimental-syntax` is also an exception: we make use of `&` and `~` for intersection and
-        // negation types in our tests for better readability.
         "experimental-syntax",
-        // The `unsound-*` rules and `redundant-condition-strict` are also exceptions because they
-        // are very strict, would result in lots of additional diagnostics in mdtests, and are not
-        // the default behaviour we'll show to our users.
         "unsound-assignment",
         "unsound-return",
         "unsound-yield",
@@ -411,14 +401,12 @@ fn mdtest_rule_selection(rules: Option<&Rules>, required_rule: Option<&str>) -> 
                 Err(()) => selection.disable(lint),
             };
 
-        // If "all" key is present, use it's value as the default for all rules.
         if let Some(level) = rules.get("all") {
             for lint in registry.lints() {
                 set_lint_level(&mut selection, *lint, *level);
             }
         }
 
-        // Apply overrides for specific (non-"all") rules.
         for (rule_name, level) in rules {
             if rule_name == "all" {
                 continue;
@@ -490,8 +478,6 @@ impl MdtestSystem {
         match &*self.0 {
             MdtestSystemInner::InMemory(_) => Cow::Borrowed(path),
             MdtestSystemInner::Os { os_system, .. } => {
-                // Make all paths relative to the current directory
-                // to avoid writing or reading from outside the temp directory.
                 let without_root: Utf8PathBuf = path
                     .components()
                     .skip_while(|component| {
@@ -521,7 +507,6 @@ impl System for MdtestSystem {
             .canonicalize_path(&self.normalize_path(path))?;
 
         if let MdtestSystemInner::Os { os_system, .. } = &*self.0 {
-            // Make the path relative to the current directory
             Ok(canonicalized
                 .strip_prefix(os_system.current_directory())
                 .unwrap()

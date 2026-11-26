@@ -1,7 +1,3 @@
-// These traits are copied verbatim from ../../ruff_formatter/shared_traits.rs.
-// They should stay in sync. Originally, they were included via
-// `include!("...")`, but this seems to break rust-analyzer as it treats the
-// included file as unlinked. Since there isn't much to copy, we just do that.
 
 /// Used to get an object that knows how to format this object.
 pub trait AsFormat<Context> {

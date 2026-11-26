@@ -195,13 +195,11 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
     };
 
     let replacement = match qualified_name.segments() {
-        // airflow.datasets.metadata
         ["airflow", "datasets", "metadata", "Metadata"] => Replacement::SourceModuleMovedToSDK {
             module: "airflow.sdk",
             name: "Metadata".to_string(),
             version: "1.0.0",
         },
-        // airflow.datasets
         ["airflow", "Dataset"] | ["airflow", "datasets", "Dataset"] => {
             Replacement::SourceModuleMovedToSDK {
                 module: "airflow.sdk",
@@ -233,7 +231,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             _ => return,
         },
 
-        // airflow.decorators
         [
             "airflow",
             "decorators",
@@ -258,7 +255,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             version: "1.0.0",
         },
 
-        // airflow.io
         ["airflow", "io", "path", "ObjectStoragePath"] => Replacement::SourceModuleMovedToSDK {
             module: "airflow.sdk",
             name: "ObjectStoragePath".to_string(),
@@ -270,7 +266,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             version: "1.0.0",
         },
 
-        // airflow.models
         ["airflow", "models", rest @ ("Connection" | "Variable")] => {
             Replacement::SourceModuleMovedToSDK {
                 module: "airflow.sdk",
@@ -289,7 +284,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             version: "1.0.0",
         },
 
-        // airflow.models.baseoperator
         [
             "airflow",
             "models",
@@ -308,7 +302,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             }
         }
 
-        // airflow.model..DAG
         ["airflow", "models", "dag", "DAG"] | ["airflow", "models", "DAG"] | ["airflow", "DAG"] => {
             Replacement::SourceModuleMovedToSDK {
                 module: "airflow.sdk",
@@ -317,7 +310,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             }
         }
 
-        // airflow.sensors.base
         [
             "airflow",
             "sensors",
@@ -335,13 +327,11 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             version: "1.0.0",
         },
 
-        // airflow.timetables
         ["airflow", "timetables", "datasets", "DatasetOrTimeSchedule"] => Replacement::Rename {
             module: "airflow.timetables.assets",
             name: "AssetOrTimeSchedule",
         },
 
-        // airflow.utils
         [
             "airflow",
             "utils",

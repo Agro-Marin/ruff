@@ -298,7 +298,6 @@ impl FromStr for QuoteStyle {
             "\"" | "double" | "Double" => Ok(Self::Double),
             "'" | "single" | "Single" => Ok(Self::Single),
             "preserve" | "Preserve" => Ok(Self::Preserve),
-            // TODO: replace this error with a diagnostic
             _ => Err("Value not supported for QuoteStyle"),
         }
     }
@@ -342,7 +341,6 @@ impl FromStr for MagicTrailingComma {
         match s {
             "respect" | "Respect" => Ok(Self::Respect),
             "ignore" | "Ignore" => Ok(Self::Ignore),
-            // TODO: replace this error with a diagnostic
             _ => Err("Value not supported for MagicTrailingComma"),
         }
     }
@@ -457,12 +455,6 @@ mod schema {
         schemars::json_schema!({ "const": "dynamic" })
     }
 
-    // We use a manual schema for `fixed` even thought it isn't strictly necessary according to the
-    // JSON schema specification to work around a bug in Even Better TOML with `allOf`.
-    // https://github.com/astral-sh/ruff/issues/15978#issuecomment-2639547101
-    //
-    // The only difference to the automatically derived schema is that we use `oneOf` instead of
-    // `allOf`. There's no semantic difference between `allOf` and `oneOf` for single element lists.
     pub(super) fn fixed(generator: &mut SchemaGenerator) -> Schema {
         let schema = generator.subschema_for::<LineWidth>();
         let mut schema_object = Schema::default();

@@ -52,9 +52,6 @@ impl Format<PyFormatContext<'_>> for FormatImplicitConcatenatedString<'_> {
             },
         );
 
-        // If the string can be joined, try joining the implicit concatenated string into a single string
-        // if it fits on the line. Otherwise, parenthesize the string parts and format each part on its
-        // own line.
         if let Some(flat) = flat {
             write!(
                 f,
@@ -84,7 +81,6 @@ impl Format<PyFormatContext<'_>> for FormatImplicitConcatenatedStringExpanded<'_
     fn fmt(&self, f: &mut Formatter<PyFormatContext<'_>>) -> FormatResult<()> {
         let comments = f.context().comments().clone();
 
-        // Keep implicit concatenated strings expanded unless they're already written on a single line.
         if matches!(self.layout, ImplicitConcatenatedLayout::Multipart)
             && self.string.parts().tuple_windows().any(|(a, b)| {
                 f.context()
@@ -136,35 +132,21 @@ impl<'a> FormatImplicitConcatenatedStringFlat<'a> {
     /// Creates a new formatter. Returns `None` if the string can't be merged into a single string.
     pub(crate) fn new(string: StringLike<'a>, context: &PyFormatContext) -> Option<Self> {
         fn merge_flags(string: StringLike, context: &PyFormatContext) -> Option<AnyStringFlags> {
-            // Multiline strings can never fit on a single line.
             if string.is_multiline(context) {
                 return None;
             }
 
             let first_part = string.parts().next()?;
 
-            // The string is either a regular string, f-string, t-string, or bytes string.
             let normalizer = StringNormalizer::from_context(context);
 
-            // Some if a part requires preserving its quotes.
             let mut preserve_quotes_requirement: Option<Quote> = None;
 
-            // Early exit if it's known that this string can't be joined
             for part in string.parts() {
-                // Similar to Black, don't collapse triple quoted and raw strings.
-                // We could technically join strings that are raw-strings and use the same quotes but lets not do this for now.
-                // Joining triple quoted strings is more complicated because an
-                // implicit concatenated string could become a docstring (if it's the first string in a block).
-                // That means the joined string formatting would have to call into
-                // the docstring formatting or otherwise guarantee that the output
-                // won't change on a second run.
                 if part.flags().is_triple_quoted() || part.flags().is_raw_string() {
                     return None;
                 }
 
-                // For now, preserve comments documenting a specific part over possibly
-                // collapsing onto a single line. Collapsing could result in pragma comments
-                // now covering more code.
                 if context.comments().leading_trailing(&part).next().is_some() {
                     return None;
                 }
@@ -172,7 +154,6 @@ impl<'a> FormatImplicitConcatenatedStringFlat<'a> {
                 match part {
                     StringLikePart::FString(fstring) => {
                         if matches!(string, StringLike::TString(_)) {
-                            // Don't concatenate t-strings and f-strings
                             return None;
                         }
                         if context.options().target_version().supports_pep_701() {
@@ -189,9 +170,6 @@ impl<'a> FormatImplicitConcatenatedStringFlat<'a> {
                                 preserve_quotes_requirement = Some(part.flags().quote_style());
                             }
                         }
-                        // Avoid invalid syntax for pre Python 312:
-                        // * When joining parts that have debug expressions with quotes: `f"{10 + len('bar')=}" f'{10 + len("bar")=}'
-                        // * When joining parts that contain triple quoted strings with quotes: `f"{'''test ' '''}" f'{"""other " """}'`
                         else if is_fstring_with_quoted_debug_expression(fstring, context)
                             || is_fstring_with_triple_quoted_literal_expression_containing_quotes(
                                 fstring, context,
@@ -223,12 +201,8 @@ impl<'a> FormatImplicitConcatenatedStringFlat<'a> {
                 }
             }
 
-            // The string is either a regular string, f-string, or bytes string.
             let mut merged_quotes: Option<QuoteMetadata> = None;
 
-            // Only preserve the string type but disregard the `u` and `r` prefixes.
-            // * It's not necessary to preserve the `r` prefix because Ruff doesn't support joining raw strings (we shouldn't get here).
-            // * It's not necessary to preserve the `u` prefix because Ruff discards the `u` prefix (it's meaningless in Python 3+)
             let prefix = match string {
                 StringLike::String(_) => AnyStringPrefix::Regular(StringLiteralPrefix::Empty),
                 StringLike::Bytes(_) => AnyStringPrefix::Bytes(ByteStringPrefix::Regular),
@@ -239,8 +213,6 @@ impl<'a> FormatImplicitConcatenatedStringFlat<'a> {
             let quote = if let Some(quote) = preserve_quotes_requirement {
                 quote
             } else {
-                // Only determining the preferred quote for the first string is sufficient
-                // because we don't support joining triple quoted strings with non triple quoted strings.
                 if let Ok(preferred_quote) =
                     Quote::try_from(normalizer.preferred_quote_style(first_part))
                 {
@@ -257,7 +229,6 @@ impl<'a> FormatImplicitConcatenatedStringFlat<'a> {
 
                     merged_quotes?.choose(preferred_quote)
                 } else {
-                    // Use the quotes of the first part if the quotes should be preserved.
                     first_part.flags().quote_style()
                 }
             };
@@ -287,22 +258,17 @@ impl<'a> FormatImplicitConcatenatedStringFlat<'a> {
 
 impl Format<PyFormatContext<'_>> for FormatImplicitConcatenatedStringFlat<'_> {
     fn fmt(&self, f: &mut Formatter<PyFormatContext<'_>>) -> FormatResult<()> {
-        // Merges all string parts into a single string.
         let quotes = StringQuotes::from(self.flags);
 
         write!(f, [self.flags.prefix(), quotes])?;
 
         let mut parts = self.string.parts().peekable();
 
-        // Trim implicit concatenated strings in docstring positions.
-        // Skip over any trailing parts that are all whitespace.
-        // Leading parts are handled as part of the formatting loop below.
         if self.docstring {
             for part in self.string.parts().rev() {
                 assert!(part.is_string_literal());
 
                 if f.context().source()[part.content_range()].trim().is_empty() {
-                    // Don't format the part.
                     parts.next_back();
                 } else {
                     break;
@@ -357,8 +323,6 @@ impl Format<PyFormatContext<'_>> for FormatImplicitConcatenatedStringFlat<'_> {
                                 }
                                 .fmt(f)?;
                             }
-                            // Formatting the expression here and in the expanded version is safe **only**
-                            // because we assert that the f/t-string never contains any comments.
                             InterpolatedStringElement::Interpolation(expression) => {
                                 FormatInterpolatedElement::new(expression, context).fmt(f)?;
                             }
@@ -390,8 +354,6 @@ impl Format<PyFormatContext<'_>> for FormatLiteralContent {
             self.flags.is_interpolated_string() && !self.is_interpolated_string,
         );
 
-        // Trim the start and end of the string if it's the first or last part of a docstring.
-        // This is rare, so don't bother with optimizing to use `Cow`.
         if self.trim_start {
             let trimmed = normalized.trim_start();
             if trimmed.len() < normalized.len() {

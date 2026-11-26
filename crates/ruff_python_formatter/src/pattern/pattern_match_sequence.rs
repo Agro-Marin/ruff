@@ -26,15 +26,11 @@ impl FormatNodeRule<PatternMatchSequence> for FormatPatternMatchSequence {
         let sequence_type = SequenceType::from_pattern(item, f.context().source());
 
         match (patterns.as_slice(), sequence_type) {
-            // If the sequence is empty, format the empty parentheses, along with any dangling
-            // comments.
             ([], SequenceType::Tuple | SequenceType::TupleNoParens) => {
                 return empty_parenthesized("(", dangling, ")").fmt(f);
             }
             ([], SequenceType::List) => return empty_parenthesized("[", dangling, "]").fmt(f),
 
-            // A single-element tuple should always be parenthesized, and the trailing comma
-            // should never cause it to expand.
             ([elt], SequenceType::Tuple | SequenceType::TupleNoParens) => {
                 return parenthesized("(", &format_args![elt.format(), token(",")], ")")
                     .with_dangling_comments(dangling)
@@ -103,34 +99,16 @@ impl SequenceType {
         if before_first_pattern.starts_with('[') && !after_last_pattern.ends_with(',') {
             SequenceType::List
         } else if before_first_pattern.starts_with('(') {
-            // If the pattern is empty, it must be a parenthesized tuple with no members. (This
-            // branch exists to differentiate between a tuple with and without its own parentheses,
-            // but a tuple without its own parentheses must have at least one member.)
             let Some(elt) = pattern.patterns.first() else {
                 return SequenceType::Tuple;
             };
 
-            // Count the number of open parentheses between the start of the pattern and the first
-            // element, and the number of close parentheses between the first element and its
-            // trailing comma. If the number of open parentheses is greater than the number of close
-            // parentheses,
-            // the pattern is parenthesized. For example, here, we have two parentheses before the
-            // first element, and one after it:
-            // ```python
-            // ((a), b, c)
-            // ```
-            //
-            // This algorithm successfully avoids false positives for cases like:
-            // ```python
-            // (a), b, c
-            // ```
             let open_parentheses_count =
                 SimpleTokenizer::new(source, TextRange::new(pattern.start(), elt.start()))
                     .skip_trivia()
                     .filter(|token| token.kind() == SimpleTokenKind::LParen)
                     .count();
 
-            // Count the number of close parentheses.
             let close_parentheses_count =
                 SimpleTokenizer::new(source, TextRange::new(elt.end(), elt.end()))
                     .skip_trivia()

@@ -102,17 +102,14 @@ pub(crate) fn unused_loop_control_variable(checker: &Checker, stmt_for: &ast::St
         reason = "iteration order does not affect the diagnostics or fixes produced"
     )]
     for (name, expr) in control_names {
-        // Ignore names that are already underscore-prefixed.
         if checker.settings().dummy_variable_rgx.is_match(name) {
             continue;
         }
 
-        // Ignore any names that are actually used in the loop body.
         if used_names.contains_key(name) {
             continue;
         }
 
-        // Avoid fixing any variables that _may_ be used, but undetectably so.
         let certainty = if helpers::uses_magic_variable_access(&stmt_for.body, |id| {
             checker.semantic().has_builtin_binding(id)
         }) {
@@ -121,9 +118,6 @@ pub(crate) fn unused_loop_control_variable(checker: &Checker, stmt_for: &ast::St
             Certainty::Certain
         };
 
-        // Attempt to rename the variable by prepending an underscore, but avoid
-        // applying the fix if doing so wouldn't actually cause us to ignore the
-        // violation in the next pass.
         let rename = format!("_{name}");
         let rename = checker
             .settings()
@@ -146,8 +140,6 @@ pub(crate) fn unused_loop_control_variable(checker: &Checker, stmt_for: &ast::St
 
         if let Some(rename) = rename {
             if certainty == Certainty::Certain {
-                // Avoid fixing if the variable, or any future bindings to the variable, are
-                // used _after_ the loop.
                 let scope = checker.semantic().current_scope();
                 if scope
                     .get_all(name)

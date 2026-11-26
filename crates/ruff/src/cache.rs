@@ -38,7 +38,6 @@ pub(crate) struct FileCacheKey {
 
 impl FileCacheKey {
     pub(crate) fn from_path(path: &Path) -> io::Result<FileCacheKey> {
-        // Construct a cache key for the file
         let metadata = path.metadata()?;
 
         #[cfg(unix)]
@@ -100,7 +99,6 @@ impl Cache {
         let serialized = match fs::read(&path) {
             Ok(serialized) => serialized,
             Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                // No cache exist yet, return an empty cache.
                 return Cache::empty(path, package_root);
             }
             Err(err) => {
@@ -120,7 +118,6 @@ impl Cache {
                 }
             };
 
-        // Sanity check.
         if package.package_root != package_root {
             warn_user!(
                 "Different package root in cache: expected `{}`, got `{}`",
@@ -148,7 +145,6 @@ impl Cache {
             package,
             changes: Mutex::new(Vec::new()),
             // SAFETY: this will be truncated to the year ~2554 (so don't use
-            // this code after that!).
             last_seen_cache: SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64,
         }
     }
@@ -156,19 +152,12 @@ impl Cache {
     /// Applies the pending changes and persists the cache to disk, if it has been changed.
     fn persist(mut self) -> Result<()> {
         if !self.save() {
-            // No changes made, no need to write the same cache file back to
-            // disk.
             return Ok(());
         }
 
-        // Write the cache to a temporary file first and then rename it for an "atomic" write.
-        // Protects against data loss if the process is killed during the write and races between different ruff
-        // processes, resulting in a corrupted cache file. https://github.com/astral-sh/ruff/issues/8147#issuecomment-1943345964
         let mut temp_file = tempfile_in(self.path.parent().expect("Write path must have a parent"))
             .context("Failed to create temporary file")?;
 
-        // Serialize to in-memory buffer because hyperfine benchmark showed that it's faster than
-        // using a `BufWriter` and our cache files are small enough that streaming isn't necessary.
         let serialized = rkyv::to_bytes::<rkyv::rancor::Error>(&self.package)
             .context("Failed to serialize cache data")?;
         temp_file
@@ -176,8 +165,6 @@ impl Cache {
             .context("Failed to write serialized cache to temporary file.")?;
 
         if let Err(err) = temp_file.persist(&self.path) {
-            // On Windows, writing to the cache file can fail if the file is still open (e.g., if
-            // the user is running Ruff from multiple processes over the same directory).
             if cfg!(windows) && err.error.kind() == io::ErrorKind::PermissionDenied {
                 warn_user!(
                     "Failed to write cache file `{}`: {}",
@@ -201,21 +188,19 @@ impl Cache {
     #[expect(clippy::cast_possible_truncation)]
     fn save(&mut self) -> bool {
         /// Maximum duration for which we keep a file in cache that hasn't been seen.
-        const MAX_LAST_SEEN: Duration = Duration::from_hours(720); // 30 days.
+        const MAX_LAST_SEEN: Duration = Duration::from_hours(720);
 
         let changes = std::mem::take(self.changes.get_mut().unwrap());
         if changes.is_empty() {
             return false;
         }
 
-        // Remove cached files that we haven't seen in a while.
         let now = self.last_seen_cache;
         self.package.files.retain(|_, file| {
             // SAFETY: this will be truncated to the year ~2554.
             (now - *file.last_seen.get_mut()) <= MAX_LAST_SEEN.as_millis() as u64
         });
 
-        // Apply any changes made and keep track of when we last saw files.
         for change in changes {
             let entry = self
                 .package
@@ -223,7 +208,6 @@ impl Cache {
                 .entry(change.path)
                 .and_modify(|existing| {
                     if existing.key != change.new_key {
-                        // Reset the data if the key change.
                         existing.data = FileCacheData::default();
                     }
 
@@ -263,7 +247,6 @@ impl Cache {
         let mut hasher = CacheKeyHasher::new();
         key.cache_key(&mut hasher);
 
-        // Make sure the file hasn't changed since the cached run.
         if file.key != hasher.finish() {
             return None;
         }
@@ -372,13 +355,10 @@ fn cache_key(package_root: &Path, settings: &Settings) -> u64 {
 
 /// Initialize the cache at the specified `Path`.
 fn init(path: &Path) -> Result<()> {
-    // Create the cache directories.
     fs::create_dir_all(path.join(VERSION))?;
 
-    // Add the CACHEDIR.TAG.
     cachedir::ensure_tag(path)?;
 
-    // Add the .gitignore.
     match fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -580,9 +560,6 @@ mod tests {
                 )
                 .unwrap();
                 if diagnostics.inner.is_empty() {
-                    // We won't load a notebook index from the cache for files without diagnostics,
-                    // so remove them from `expected_diagnostics` too. This allows us to keep the
-                    // full equality assertion below.
                     diagnostics
                         .notebook_indexes
                         .remove(&path.to_string_lossy().to_string());
@@ -604,7 +581,7 @@ mod tests {
 
         for path in &paths {
             if paths_with_diagnostics.binary_search(path).is_ok() {
-                continue; // We don't cache files with diagnostics.
+                continue;
             }
 
             let relative_path = cache.relative_path(path).unwrap();
@@ -765,7 +742,6 @@ mod tests {
         cache.persist().unwrap();
         let cache = test_cache.open();
 
-        // Update the modified time of the file to a time in the future
         set_file_mtime(
             source_path,
             FileTime::from_system_time(SystemTime::now() + std::time::Duration::from_secs(1)),
@@ -790,7 +766,6 @@ mod tests {
 
     #[test]
     fn cache_invalidated_on_permission_change() {
-        // Regression test for issue #3086.
 
         #[cfg(unix)]
         fn flip_execute_permission_bit(path: &Path) -> io::Result<()> {
@@ -822,7 +797,6 @@ mod tests {
         cache.persist().unwrap();
         let cache = test_cache.open();
 
-        // Flip the permissions on the file
         #[cfg(unix)]
         flip_execute_permission_bit(&path).unwrap();
         #[cfg(windows)]
@@ -849,7 +823,6 @@ mod tests {
         let test_cache = TestCache::new("cache_removes_stale_files_on_persist");
         let mut cache = test_cache.open();
 
-        // Add a file to the cache that hasn't been linted or seen since the '70s!
         let old_path_key = RelativePathBuf::from("old.py");
         cache.package.files.insert(
             old_path_key,
@@ -860,7 +833,6 @@ mod tests {
             },
         );
 
-        // Now actually lint a file.
         let source: &[u8] = b"a = 1\n\n__all__ = list([\"a\"])\n";
         test_cache.write_source_file("new.py", source);
         let new_path_key = RelativePathBuf::from("new.py");
@@ -870,9 +842,7 @@ mod tests {
             .lint_file_with_cache("new.py", &cache)
             .expect("Failed to lint test file");
 
-        // Storing the cache should remove the old (`old.py`) file.
         cache.persist().unwrap();
-        // So we when we open the cache again it shouldn't contain `old.py`.
         let cache = test_cache.open();
 
         assert_eq!(
@@ -928,7 +898,6 @@ mod tests {
         cache.persist().unwrap();
         let cache = test_cache.open();
 
-        // Cache the lint results
         test_cache
             .lint_file_with_cache("source.py", &cache)
             .expect("Failed to lint test file");
@@ -936,7 +905,6 @@ mod tests {
 
         let mut cache = test_cache.open();
 
-        // Now lint the file
         test_cache
             .format_file_with_cache("source.py", &cache)
             .expect("Failed to format test file");
@@ -968,7 +936,6 @@ mod tests {
         cache.persist().unwrap();
         let cache = test_cache.open();
 
-        // Cache the format and lint results
         test_cache
             .lint_file_with_cache("source.py", &cache)
             .expect("Failed to lint test file");
@@ -1013,14 +980,12 @@ mod tests {
 
     impl TestCache {
         fn new(test_case: &str) -> Self {
-            // Build a new cache directory and clear it
             let mut test_dir = temp_dir();
             test_dir.push("ruff_tests/cache");
             test_dir.push(test_case);
 
             let _ = fs::remove_dir_all(&test_dir);
 
-            // Create separate directories for the cache and the test package
             let cache_dir = test_dir.join("cache");
             let package_root = test_dir.join("package");
 

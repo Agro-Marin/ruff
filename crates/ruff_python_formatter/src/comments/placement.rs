@@ -73,16 +73,6 @@ fn handle_parenthesized_comment<'a>(
     comment: DecoratedComment<'a>,
     source: &str,
 ) -> CommentPlacement<'a> {
-    // As a special-case, ignore comments within f-strings, like:
-    // ```python
-    // (
-    //     f'{1}' # comment
-    //     f'{2}'
-    // )
-    // ```
-    // These can't be parenthesized, as they must fall between two string tokens in an implicit
-    // concatenation. But the expression ranges only include the `1` and `2` above, so we also
-    // can't lex the contents between them.
     if comment.enclosing_node().is_expr_f_string() {
         return CommentPlacement::Default(comment);
     }
@@ -95,43 +85,8 @@ fn handle_parenthesized_comment<'a>(
         return CommentPlacement::Default(comment);
     };
 
-    // TODO(charlie): Assert that there are no bogus tokens in these ranges. There are a few cases
-    // where we _can_ hit bogus tokens, but the parentheses need to come before them. For example:
-    // ```python
-    // try:
-    //     some_call()
-    // except (
-    //     UnformattedError
-    //     # trailing comment
-    // ) as err:
-    //     handle_exception()
-    // ```
-    // Here, we lex from the end of `UnformattedError` to the start of `handle_exception()`, which
-    // means we hit an "other" token at `err`. We know the parentheses must precede the `err`, but
-    // this could be fixed by including `as err` in the node range.
-    //
-    // Another example:
-    // ```python
     // @deco
-    // # comment
-    // def decorated():
-    //     pass
-    // ```
-    // Here, we lex from the end of `deco` to the start of the arguments of `decorated`. We hit an
-    // "other" token at `decorated`, but any parentheses must precede that.
-    //
-    // For now, we _can_ assert, but to do so, we stop lexing when we hit a token that precedes an
-    // identifier.
 
-    // Search for comments that to the right of a parenthesized node, e.g.:
-    // ```python
-    // [
-    //     x  # comment,
-    //     (
-    //         y,
-    //     ),
-    // ]
-    // ```
     let range = TextRange::new(preceding.end(), comment.start());
     let tokenizer = SimpleTokenizer::new(source, range);
     if tokenizer
@@ -154,15 +109,6 @@ fn handle_parenthesized_comment<'a>(
         return CommentPlacement::leading(following, comment);
     }
 
-    // Search for comments that to the right of a parenthesized node, e.g.:
-    // ```python
-    // [
-    //     (
-    //         x  # comment,
-    //     ),
-    //     y
-    // ]
-    // ```
     let range = TextRange::new(comment.end(), following.start());
     let tokenizer = SimpleTokenizer::new(source, range);
     if tokenizer
@@ -250,25 +196,15 @@ fn handle_enclosed_comment<'a>(
                 return handle_slice_comments(comment, expr_slice, trivia, source);
             }
 
-            // Handle non-slice subscript end-of-line comments coming after the `[`
-            // ```python
-            // repro(
-            //     "some long string that takes up some space"
-            //  )[  # some long comment also taking up space
-            //     0
-            // ]
-            // ```
             if comment.line_position().is_end_of_line()
                 && expr_subscript.value.end() < comment.start()
             {
-                // Ensure that there are no tokens between the open bracket and the comment.
                 let mut lexer = SimpleTokenizer::new(
                     source,
                     TextRange::new(expr_subscript.value.end(), comment.start()),
                 )
                 .skip_trivia();
 
-                // Skip to after the opening parenthesis (may skip some closing parentheses of value)
                 if !lexer
                     .by_ref()
                     .any(|token| token.kind() == SimpleTokenKind::LBracket)
@@ -276,9 +212,6 @@ fn handle_enclosed_comment<'a>(
                     return CommentPlacement::Default(comment);
                 }
 
-                // If there are no additional tokens between the open parenthesis and the comment, then
-                // it should be attached as a dangling comment on the brackets, rather than a leading
-                // comment on the first argument.
                 if lexer.next().is_none() {
                     return CommentPlacement::dangling(expr_subscript, comment);
                 }
@@ -327,13 +260,6 @@ fn handle_enclosed_comment<'a>(
         AnyNodeRef::TString(tstring) => CommentPlacement::dangling(tstring, comment),
         AnyNodeRef::InterpolatedElement(element) => {
             if let Some(preceding) = comment.preceding_node() {
-                // Own line comment before format specifier
-                // ```py
-                // aaaaaaaaaaa = f"""asaaaaaaaaaaaaaaaa {
-                //    aaaaaaaaaaaa + bbbbbbbbbbbb + ccccccccccccccc + dddddddd
-                //    # comment
-                //    :.3f} cccccccccc"""
-                // ```
                 if comment.line_position().is_own_line()
                     && element.format_spec.is_some()
                     && comment.following_node().is_some()
@@ -404,13 +330,6 @@ fn handle_end_of_line_comment_around_body<'a>(
         return CommentPlacement::Default(comment);
     }
 
-    // Handle comments before the first statement in a body
-    // ```python
-    // for x in range(10): # in the main body ...
-    //     pass
-    // else: # ... and in alternative bodies
-    //     pass
-    // ```
     if let Some(following) = comment.following_node() {
         if following.is_first_statement_in_body(comment.enclosing_node())
             && SimpleTokenizer::new(source, TextRange::new(comment.end(), following.start()))
@@ -422,17 +341,6 @@ fn handle_end_of_line_comment_around_body<'a>(
         }
     }
 
-    // Handle comments after a body
-    // ```python
-    // if True:
-    //     pass # after the main body ...
-    //
-    // try:
-    //     1 / 0
-    // except ZeroDivisionError:
-    //     print("Error") # ...  and after alternative bodies
-    // ```
-    // The first earlier branch filters out ambiguities e.g. around try-except-finally.
     if let Some(preceding) = comment.preceding_node() {
         if let Some(last_child) = preceding.last_child_in_body() {
             let innermost_child =
@@ -473,22 +381,10 @@ fn handle_own_line_comment_around_body<'a>(
         return CommentPlacement::Default(comment);
     }
 
-    // If the following is the first child in an alternative body, this must be the last child in
-    // the previous one
     let Some(preceding) = comment.preceding_node() else {
         return CommentPlacement::Default(comment);
     };
 
-    // If there's any non-trivia token between the preceding node and the comment, then it means
-    // we're past the case of the alternate branch, defer to the default rules
-    // ```python
-    // if a:
-    //     preceding()
-    //     # comment we place
-    // else:
-    //     # default placement comment
-    //     def inline_after_else(): ...
-    // ```
     let maybe_token =
         SimpleTokenizer::new(source, TextRange::new(preceding.end(), comment.start()))
             .skip_trivia()
@@ -497,11 +393,8 @@ fn handle_own_line_comment_around_body<'a>(
         return CommentPlacement::Default(comment);
     }
 
-    // Check if we're between bodies and should attach to the following body.
     handle_own_line_comment_between_branches(comment, preceding, source)
         .or_else(|comment| {
-            // Otherwise, there's no following branch or the indentation is too deep, so attach to the
-            // recursively last statement in the preceding body with the matching indentation.
             handle_own_line_comment_after_branch(comment, preceding, source)
         })
         .or_else(|comment| handle_own_line_comment_between_statements(comment, source))
@@ -539,12 +432,6 @@ fn handle_own_line_comment_between_statements<'a>(
         return CommentPlacement::Default(comment);
     };
 
-    // We're looking for comments between two statements, like:
-    // ```python
-    // x = 1
-    // # comment
-    // y = 2
-    // ```
     if !preceding.is_statement() || !following.is_statement() {
         return CommentPlacement::Default(comment);
     }
@@ -553,22 +440,6 @@ fn handle_own_line_comment_between_statements<'a>(
         return CommentPlacement::Default(comment);
     }
 
-    // If the comment is directly attached to the following statement; make it a leading
-    // comment:
-    // ```python
-    // x = 1
-    //
-    // # leading comment
-    // y = 2
-    // ```
-    //
-    // Otherwise, if there's at least one empty line, make it a trailing comment:
-    // ```python
-    // x = 1
-    // # trailing comment
-    //
-    // y = 2
-    // ```
     if max_empty_lines(&source[TextRange::new(comment.end(), following.start())]) == 0 {
         CommentPlacement::leading(following, comment)
     } else {
@@ -590,8 +461,6 @@ fn handle_own_line_comment_between_branches<'a>(
     preceding: AnyNodeRef<'a>,
     source: &str,
 ) -> CommentPlacement<'a> {
-    // The following statement must be the first statement in an alternate body, otherwise check
-    // if it's a comment after the final body and handle that case
     let Some(following) = comment.following_node() else {
         return CommentPlacement::Default(comment);
     };
@@ -599,99 +468,30 @@ fn handle_own_line_comment_between_branches<'a>(
         return CommentPlacement::Default(comment);
     }
 
-    // It depends on the indentation level of the comment if it is a leading comment for the
-    // following branch or if it a trailing comment of the previous body's last statement.
     let comment_indentation = comment_indentation_after(preceding, comment.range(), source);
 
     let preceding_indentation = indentation(source, &preceding).map_or_else(
-        // If `indentation` returns `None`, then there is leading
-        // content before the preceding node. In this case, we
-        // always treat the comment as being less-indented than the
-        // preceding. For example:
-        //
-        // ```python
-        // if True: pass
-        // # leading on `else`
-        // else:
-        //     pass
-        // ```
-        // Note we even do this if the comment is very indented
-        // (which matches `black`'s behavior as of 2025.11.11)
-        //
-        // ```python
-        // if True: pass
-        //          # leading on `else`
-        // else:
-        //     pass
-        // ```
         || {
-            // We could use any positive number here, it doesn't have to be `1`
-            // - we just want to hit the `Less` branch below
             comment_indentation + TextSize::new(1)
         },
         ruff_text_size::TextLen::text_len,
     );
 
-    // Compare to the last statement in the body
     match comment_indentation.cmp(&preceding_indentation) {
         Ordering::Greater => {
-            // The comment might belong to an arbitrarily deeply nested inner statement
-            // ```python
-            // while True:
-            //     def f_inner():
-            //         pass
-            //         # comment
-            // else:
-            //     print("noop")
-            // ```
             CommentPlacement::Default(comment)
         }
         Ordering::Equal => {
-            // The comment belongs to the last statement, unless the preceding branch has a body.
-            // ```python
-            // try:
-            //     pass
-            //     # I'm a trailing comment of the `pass`
-            // except ZeroDivisionError:
-            //     print()
-            // # I'm a dangling comment of the try, even if the indentation matches the except
-            // else:
-            //     pass
-            // ```
             if preceding.is_alternative_branch_with_node() {
-                // The indentation is equal, but only because the preceding branch has a node. The
-                // comment still belongs to the following branch, which may not have a node.
                 CommentPlacement::dangling(comment.enclosing_node(), comment)
             } else {
                 CommentPlacement::trailing(preceding, comment)
             }
         }
         Ordering::Less => {
-            // The comment is leading on the following block
             if following.is_alternative_branch_with_node() {
-                // For some alternative branches, there are nodes ...
-                // ```python
-                // try:
-                //     pass
-                // # I'm a leading comment of the `except` statement.
-                // except ZeroDivisionError:
-                //     print()
-                // ```
                 CommentPlacement::leading(following, comment)
             } else {
-                // ... while for others, such as "else" of for loops and finally branches, the bodies
-                // that are represented as a `Vec<Stmt>`, lacking a no node for the branch that we could
-                // attach the comments to. We mark these as dangling comments and format them manually
-                // in the enclosing node's formatting logic. For `try`, it's the formatters
-                // responsibility to correctly identify the comments for the `finally` and `orelse`
-                // block by looking at the comment's range.
-                // ```python
-                // for x in y:
-                //     pass
-                // # I'm a leading comment of the `else` branch but there's no `else` node.
-                // else:
-                //     print()
-                // ```
                 CommentPlacement::dangling(comment.enclosing_node(), comment)
             }
         }
@@ -704,30 +504,6 @@ fn handle_own_line_comment_after_branch<'a>(
     preceding: AnyNodeRef<'a>,
     source: &str,
 ) -> CommentPlacement<'a> {
-    // If the preceding node has a body, we want the last child - e.g.
-    //
-    // ```python
-    // if True:
-    //     def foo():
-    //         something
-    //         last_child
-    //             # comment
-    // else:
-    //     pass
-    // ```
-    //
-    // Otherwise, the preceding node may be the last statement in the body
-    // of the preceding branch, in which case we can take it as our
-    // `last_child` here - e.g.
-    //
-    // ```python
-    // if True:
-    //     something
-    //     last_child
-    //         # comment
-    // else:
-    //     pass
-    // ```
     let last_child = match preceding.last_child_in_body() {
         Some(last) => last,
         None if comment.following_node().is_some_and(|following| {
@@ -741,19 +517,8 @@ fn handle_own_line_comment_after_branch<'a>(
         }
     };
 
-    // We only care about the length because indentations with mixed spaces and tabs are only valid if
-    // the indent-level doesn't depend on the tab width (the indent level must be the same if the tab width is 1 or 8).
     let comment_indentation = comment_indentation_after(preceding, comment.range(), source);
 
-    // Keep the comment on the entire statement in case it's a trailing comment
-    // ```python
-    // if "first if":
-    //     pass
-    // elif "first elif":
-    //     pass
-    // # Trailing if comment
-    // ```
-    // Here we keep the comment a trailing comment of the `if`
     let preceding_indentation = indentation_at_offset(preceding.start(), source)
         .unwrap_or_default()
         .text_len();
@@ -769,49 +534,22 @@ fn handle_own_line_comment_after_branch<'a>(
             .unwrap_or_default()
             .text_len();
 
-        // There a three cases:
-        // ```python
-        // if parent_body:
-        //     if current_body:
-        //         child_in_body()
-        //         last_child_in_current_body  # may or may not have children on its own
-        // # less: Comment belongs to the parent block.
-        //   # less: Comment belongs to the parent block.
-        //     # equal: The comment belongs to this block.
-        //       # greater (but less in the next iteration)
-        //         # greater: The comment belongs to the inner block.
-        // ```
         match comment_indentation.cmp(&child_indentation) {
             Ordering::Less => {
                 return if let Some(parent_block) = parent {
-                    // Comment belongs to the parent block.
                     CommentPlacement::trailing(parent_block, comment)
                 } else {
-                    // The comment does not belong to this block.
-                    // ```python
-                    // if test:
-                    //     pass
-                    // # comment
-                    // ```
                     CommentPlacement::Default(comment)
                 };
             }
             Ordering::Equal => {
-                // The comment belongs to this block.
                 return CommentPlacement::trailing(last_child_in_parent, comment);
             }
             Ordering::Greater => {
                 if let Some(nested_child) = last_child_in_parent.last_child_in_body() {
-                    // The comment belongs to the inner block.
                     parent = Some(last_child_in_parent);
                     last_child_in_parent = nested_child;
                 } else {
-                    // The comment is overindented, we assign it to the most indented child we have.
-                    // ```python
-                    // if test:
-                    //     pass
-                    //       # comment
-                    // ```
                     return CommentPlacement::trailing(last_child_in_parent, comment);
                 }
             }
@@ -865,19 +603,11 @@ fn handle_parameter_comment<'a>(
         assert_eq!(colon.kind(), SimpleTokenKind::Colon);
 
         if comment.start() < colon.start() {
-            // The comment is before the colon, pull it out and make it a leading comment of the parameter.
             CommentPlacement::leading(parameter, comment)
         } else {
             CommentPlacement::Default(comment)
         }
     } else if comment.start() < parameter.name.start() {
-        // For lambdas, where the parameters cannot be parenthesized and the first parameter thus
-        // starts at the same position as the parent parameters, mark a comment before the first
-        // parameter as leading on the parameters rather than the individual parameter to prevent
-        // the whole parameter list from breaking.
-        //
-        // Note that this check is not needed above because lambda parameters cannot have
-        // annotations.
         if let Some(AnyNodeRef::Parameters(parameters)) = comment.enclosing_parent()
             && parameters.start() == parameter.start()
         {
@@ -906,7 +636,6 @@ fn handle_trailing_binary_expression_left_or_operator_comment<'a>(
     binary_expression: &'a ast::ExprBinOp,
     source: &str,
 ) -> CommentPlacement<'a> {
-    // Only if there's a preceding node (in which case, the preceding node is `left`).
     if comment.preceding_node().is_none() || comment.following_node().is_none() {
         return CommentPlacement::Default(comment);
     }
@@ -925,17 +654,8 @@ fn handle_trailing_binary_expression_left_or_operator_comment<'a>(
         .start();
 
     if comment.end() < operator_offset {
-        // ```python
-        // a = (
-        //      5
-        //      # comment
-        //      +
-        //      3
-        // )
-        // ```
         CommentPlacement::trailing(binary_expression.left.as_ref(), comment)
     } else if comment.line_position().is_end_of_line() {
-        // Is the operator on its own line.
         if source.contains_line_break(TextRange::new(
             binary_expression.left.end(),
             operator_offset,
@@ -943,41 +663,11 @@ fn handle_trailing_binary_expression_left_or_operator_comment<'a>(
             operator_offset,
             binary_expression.right.start(),
         )) {
-            // ```python
-            // a = (
-            //      5
-            //      + # comment
-            //      3
-            // )
-            // ```
             CommentPlacement::dangling(binary_expression, comment)
         } else {
-            // ```python
-            // a = (
-            //      5
-            //      +
-            //      3 # comment
-            // )
-            // ```
-            // OR
-            // ```python
-            // a = (
-            //      5 # comment
-            //      +
-            //      3
-            // )
-            // ```
             CommentPlacement::Default(comment)
         }
     } else {
-        // ```python
-        // a = (
-        //      5
-        //      +
-        //      # comment
-        //      3
-        // )
-        // ```
         CommentPlacement::Default(comment)
     }
 }
@@ -999,7 +689,6 @@ fn handle_trailing_binary_like_comment<'a>(
         comment.enclosing_node().is_expr_bool_op() || comment.enclosing_node().is_expr_compare()
     );
 
-    // Only if there's a preceding node (in which case, the preceding node is `left` or middle node).
     let (Some(left_operand), Some(right_operand)) =
         (comment.preceding_node(), comment.following_node())
     else {
@@ -1093,18 +782,15 @@ fn handle_module_level_own_line_comment_before_class_or_function_comment<'a>(
     source: &str,
 ) -> CommentPlacement<'a> {
     debug_assert!(comment.enclosing_node().is_module());
-    // Only applies for own line comments on the module level...
     if comment.line_position().is_end_of_line() {
         return CommentPlacement::Default(comment);
     }
 
-    // ... for comments with a preceding and following node,
     let (Some(preceding), Some(following)) = (comment.preceding_node(), comment.following_node())
     else {
         return CommentPlacement::Default(comment);
     };
 
-    // ... where the following is a function or class statement.
     if !matches!(
         following,
         AnyNodeRef::StmtFunctionDef(_) | AnyNodeRef::StmtClassDef(_)
@@ -1112,11 +798,9 @@ fn handle_module_level_own_line_comment_before_class_or_function_comment<'a>(
         return CommentPlacement::Default(comment);
     }
 
-    // Make the comment a leading comment if there's no empty line between the comment and the function / class header
     if max_empty_lines(&source[TextRange::new(comment.end(), following.start())]) == 0 {
         CommentPlacement::leading(following, comment)
     } else {
-        // Otherwise attach the comment as trailing comment to the previous statement
         CommentPlacement::trailing(preceding, comment)
     }
 }
@@ -1144,7 +828,6 @@ fn handle_slice_comments<'a>(
         step,
     } = expr_slice;
 
-    // Check for `foo[ # comment`, but only if they are on the same line
     let after_lbracket = matches!(
         BackwardsTokenizer::up_to(comment.start(), source, trivia.comments())
             .skip_trivia()
@@ -1155,13 +838,6 @@ fn handle_slice_comments<'a>(
         })
     );
     if comment.line_position().is_end_of_line() && after_lbracket {
-        // Keep comments after the opening bracket there by formatting them outside the
-        // soft block indent
-        // ```python
-        // "a"[ # comment
-        //     1:
-        // ]
-        // ```
         debug_assert_matches!(comment.enclosing_node(), AnyNodeRef::ExprSubscript(_));
         return CommentPlacement::dangling(comment.enclosing_node(), comment);
     }
@@ -1177,8 +853,6 @@ fn handle_slice_comments<'a>(
         if comment.start() < node.start() {
             CommentPlacement::leading(node.as_ref(), comment)
         } else {
-            // If a trailing comment is an end of line comment that's fine because we have a node
-            // ahead of it
             CommentPlacement::trailing(node.as_ref(), comment)
         }
     } else {
@@ -1256,14 +930,6 @@ fn handle_keyword_comment<'a>(
 ) -> CommentPlacement<'a> {
     let start = keyword.arg.as_ref().map_or(keyword.start(), Ranged::end);
 
-    // If the comment is parenthesized, it should be attached to the value:
-    // ```python
-    // func(
-    //     x=(  # comment
-    //         1
-    //     )
-    // )
-    // ```
     let mut tokenizer = SimpleTokenizer::new(source, TextRange::new(start, comment.start()));
     if tokenizer.any(|token| token.kind == SimpleTokenKind::LParen) {
         return CommentPlacement::Default(comment);
@@ -1286,14 +952,6 @@ fn handle_pattern_keyword_comment<'a>(
     pattern_keyword: &'a ast::PatternKeyword,
     source: &str,
 ) -> CommentPlacement<'a> {
-    // If the comment is parenthesized, it should be attached to the value:
-    // ```python
-    // case Point2D(
-    //     x=(  # comment
-    //         1
-    //     )
-    // )
-    // ```
     let mut tokenizer = SimpleTokenizer::new(
         source,
         TextRange::new(pattern_keyword.attr.end(), comment.start()),
@@ -1324,13 +982,10 @@ fn handle_dict_unpacking_comment<'a>(
         AnyNodeRef::ExprDict(_) | AnyNodeRef::ExprDictComp(_)
     );
 
-    // no node after our comment so we can't be between `**` and the name (node)
     let Some(following) = comment.following_node() else {
         return CommentPlacement::Default(comment);
     };
 
-    // we look at tokens between the previous node (or the start of the dict)
-    // and the comment
     let preceding_end = match comment.preceding_node() {
         Some(preceding) => preceding.end(),
         None => comment.enclosing_node().start(),
@@ -1339,8 +994,6 @@ fn handle_dict_unpacking_comment<'a>(
         .skip_trivia()
         .skip_while(|token| token.kind == SimpleTokenKind::RParen);
 
-    // if the remaining tokens from the previous node are exactly `**`,
-    // re-assign the comment to the one that follows the stars.
     if tokens.any(|token| token.kind == SimpleTokenKind::DoubleStar) {
         CommentPlacement::leading(following, comment)
     } else {
@@ -1372,14 +1025,6 @@ fn handle_key_value_comment<'a>(
         return CommentPlacement::Default(comment);
     };
 
-    // Ensure that the comment is between the key and the value by detecting the colon:
-    // ```python
-    // {
-    //     key  # comment
-    //     : value
-    // }
-    // ```
-    // This prevents against detecting comments on starred expressions as key-value comments.
     let tokens = SimpleTokenizer::new(source, TextRange::new(preceding.end(), following.start()));
     if tokens
         .skip_trivia()
@@ -1430,34 +1075,9 @@ fn handle_attribute_comment<'a>(
     source: &str,
 ) -> CommentPlacement<'a> {
     if comment.preceding_node().is_none() {
-        // ```text
-        // (    value)   .   attr
-        //  ^^^^ we're in this range
-        // ```
         return CommentPlacement::leading(attribute.value.as_ref(), comment);
     }
 
-    // If the comment is parenthesized, use the parentheses to either attach it as a trailing
-    // comment on the value or a dangling comment on the attribute.
-    // For example, treat this as trailing:
-    // ```python
-    // (
-    //     (
-    //         value
-    //         # comment
-    //     )
-    //     .attribute
-    // )
-    // ```
-    //
-    // However, treat this as dangling:
-    // ```python
-    // (
-    //     (value)
-    //     # comment
-    //     .attribute
-    // )
-    // ```
     if let Some(right_paren) = SimpleTokenizer::starts_at(attribute.value.end(), source)
         .skip_trivia()
         .take_while(|token| token.kind == SimpleTokenKind::RParen)
@@ -1468,23 +1088,6 @@ fn handle_attribute_comment<'a>(
         }
     }
 
-    // If the comment precedes the `.`, treat it as trailing _if_ it's on the same line as the
-    // value. For example, treat this as trailing:
-    // ```python
-    // (
-    //     value  # comment
-    //     .attribute
-    // )
-    // ```
-    //
-    // However, treat this as dangling:
-    // ```python
-    // (
-    //     value
-    //     # comment
-    //     .attribute
-    // )
-    // ```
     if comment.line_position().is_end_of_line() {
         let dot_token = find_only_token_in_range(
             TextRange::new(attribute.value.end(), attribute.attr.start()),
@@ -1536,7 +1139,6 @@ fn handle_expr_if_comment<'a>(
         SimpleTokenKind::If,
         source,
     );
-    // Between `if` and `test`
     if if_token.start() < comment.start() && comment.start() < test.start() {
         return CommentPlacement::leading(test.as_ref(), comment);
     }
@@ -1546,7 +1148,6 @@ fn handle_expr_if_comment<'a>(
         SimpleTokenKind::Else,
         source,
     );
-    // Between `else` and `orelse`
     if else_token.start() < comment.start() && comment.start() < orelse.start() {
         return CommentPlacement::leading(orelse.as_ref(), comment);
     }
@@ -1602,7 +1203,6 @@ fn handle_with_item_comment<'a>(
 ) -> CommentPlacement<'a> {
     debug_assert!(comment.enclosing_node().is_with_item());
 
-    // Needs to be a with item with an `as` expression.
     let (Some(context_expr), Some(optional_vars)) =
         (comment.preceding_node(), comment.following_node())
     else {
@@ -1616,10 +1216,8 @@ fn handle_with_item_comment<'a>(
     );
 
     if comment.end() < as_token.start() {
-        // If before the `as` keyword, then it must be a trailing comment of the context expression.
         CommentPlacement::trailing(context_expr, comment)
     } else if comment.line_position().is_end_of_line() {
-        // Trailing end of line comment coming after the `as` keyword`.
         CommentPlacement::dangling(comment.enclosing_node(), comment)
     } else {
         CommentPlacement::leading(optional_vars, comment)
@@ -1677,11 +1275,8 @@ fn handle_pattern_match_as_comment<'a>(
     };
 
     if comment.end() < as_token.start() {
-        // If before the `as` keyword, then it must be a trailing comment of the pattern.
         CommentPlacement::trailing(pattern, comment)
     } else {
-        // Otherwise, must be a dangling comment. (Any comments that follow the name will be
-        // trailing comments on the pattern match item, rather than enclosed by it.)
         CommentPlacement::dangling(comment.enclosing_node(), comment)
     }
 }
@@ -1717,24 +1312,18 @@ fn handle_pattern_match_mapping_comment<'a>(
     pattern: &'a ast::PatternMatchMapping,
     source: &str,
 ) -> CommentPlacement<'a> {
-    // The `**` has to come at the end, so there can't be another node after it. (The identifier,
-    // like `rest` above, isn't a node.)
     if comment.following_node().is_some() {
         return CommentPlacement::Default(comment);
     }
 
-    // If there's no rest pattern, no need to do anything special.
     let Some(rest) = pattern.rest.as_ref() else {
         return CommentPlacement::Default(comment);
     };
 
-    // If the comment falls after the `**rest` entirely, treat it as dangling on the enclosing
-    // node.
     if comment.start() > rest.end() {
         return CommentPlacement::dangling(comment.enclosing_node(), comment);
     }
 
-    // Look at the tokens between the previous node (or the start of the pattern) and the comment.
     let preceding_end = match comment.preceding_node() {
         Some(preceding) => preceding.end(),
         None => comment.enclosing_node().start(),
@@ -1742,7 +1331,6 @@ fn handle_pattern_match_mapping_comment<'a>(
     let mut tokens =
         SimpleTokenizer::new(source, TextRange::new(preceding_end, comment.start())).skip_trivia();
 
-    // If the remaining tokens from the previous node include `**`, mark as a dangling comment.
     if tokens.any(|token| token.kind == SimpleTokenKind::DoubleStar) {
         CommentPlacement::dangling(comment.enclosing_node(), comment)
     } else {
@@ -1784,11 +1372,8 @@ fn handle_named_expr_comment<'a>(
     );
 
     if comment.end() < colon_equal.start() {
-        // If the comment is before the `:=` token, then it must be a trailing comment of the
-        // target.
         CommentPlacement::trailing(target, comment)
     } else {
-        // Otherwise, treat it as dangling. We effectively treat it as a comment on the `:=` itself.
         CommentPlacement::dangling(comment.enclosing_node(), comment)
     }
 }
@@ -1828,24 +1413,6 @@ fn handle_lambda_comment<'a>(
     source: &str,
 ) -> CommentPlacement<'a> {
     if let Some(parameters) = lambda.parameters.as_deref() {
-        // End-of-line comments between the `lambda` and the parameters are dangling on the lambda:
-        // ```python
-        // (
-        //     lambda  # comment
-        //     x:
-        //     y
-        // )
-        // ```
-        //
-        // But own-line comments are leading on the first parameter, if it exists:
-        // ```python
-        // (
-        //     lambda
-        //     # comment
-        //     x:
-        //     y
-        // )
-        // ```
         if comment.start() < parameters.start() {
             return if comment.line_position().is_own_line() {
                 CommentPlacement::leading(parameters, comment)
@@ -1854,23 +1421,7 @@ fn handle_lambda_comment<'a>(
             };
         }
 
-        // Comments between the parameters and the body are dangling on the lambda:
-        // ```python
-        // (
-        //     lambda x:  # comment
-        //     y
-        // )
-        // ```
         if parameters.end() < comment.start() && comment.start() < lambda.body.start() {
-            // If the value is parenthesized, and the comment is within the parentheses, it should
-            // be a leading comment on the value, not a dangling comment in the lambda, as in:
-            // ```python
-            // (
-            //     lambda x:  (  # comment
-            //         y
-            //     )
-            // )
-            // ```
             let tokenizer =
                 SimpleTokenizer::new(source, TextRange::new(parameters.end(), comment.start()));
             if tokenizer
@@ -1883,23 +1434,7 @@ fn handle_lambda_comment<'a>(
             return CommentPlacement::dangling(comment.enclosing_node(), comment);
         }
     } else {
-        // Comments between the lambda and the body are dangling on the lambda:
-        // ```python
-        // (
-        //     lambda:  # comment
-        //     y
-        // )
-        // ```
         if comment.start() < lambda.body.start() {
-            // If the value is parenthesized, and the comment is within the parentheses, it should
-            // be a leading comment on the value, not a dangling comment in the lambda, as in:
-            // ```python
-            // (
-            //     lambda:  (  # comment
-            //         y
-            //     )
-            // )
-            // ```
             let tokenizer =
                 SimpleTokenizer::new(source, TextRange::new(lambda.start(), comment.start()));
             if tokenizer
@@ -1990,14 +1525,12 @@ fn handle_bracketed_end_of_line_comment<'a>(
     source: &str,
 ) -> CommentPlacement<'a> {
     if comment.line_position().is_end_of_line() {
-        // Ensure that there are no tokens between the open bracket and the comment.
         let mut lexer = SimpleTokenizer::new(
             source,
             TextRange::new(comment.enclosing_node().start(), comment.start()),
         )
         .skip_trivia();
 
-        // Skip the opening parenthesis.
         let Some(paren) = lexer.next() else {
             return CommentPlacement::Default(comment);
         };
@@ -2006,9 +1539,6 @@ fn handle_bracketed_end_of_line_comment<'a>(
             SimpleTokenKind::LParen | SimpleTokenKind::LBrace | SimpleTokenKind::LBracket
         );
 
-        // If there are no additional tokens between the open parenthesis and the comment, then
-        // it should be attached as a dangling comment on the brackets, rather than a leading
-        // comment on the first argument.
         if lexer.next().is_none() {
             return CommentPlacement::dangling(comment.enclosing_node(), comment);
         }
@@ -2060,25 +1590,6 @@ fn handle_import_from_comment<'a>(
     import_from: &'a ast::StmtImportFrom,
     source: &str,
 ) -> CommentPlacement<'a> {
-    // The comment needs to be on the same line, but before the first member. For example, we want
-    // to treat this as a dangling comment:
-    // ```python
-    // from foo import (  # comment
-    //     bar,
-    //     baz,
-    //     qux,
-    // )
-    // ```
-    // However, this should _not_ be treated as a dangling comment:
-    // ```python
-    // from foo import (bar,  # comment
-    //     baz,
-    //     qux,
-    // )
-    // ```
-    // Thus, we check whether the comment is an end-of-line comment _between_ the start of the
-    // statement and the first member. If so, the only possible position is immediately following
-    // the open parenthesis.
     if comment.line_position().is_end_of_line()
         && import_from.names.first().is_some_and(|first_name| {
             import_from.start() < comment.start() && comment.start() < first_name.start()
@@ -2093,7 +1604,6 @@ fn handle_import_from_comment<'a>(
             .skip_trivia()
             .next()
         {
-            // Treat comments before the comma as dangling, after as trailing (default)
             if let Some(AnyNodeRef::Alias(alias)) = comment.preceding_node() {
                 CommentPlacement::dangling(alias, comment)
             } else {
@@ -2201,20 +1711,10 @@ fn handle_comprehension_comment<'a>(
 ) -> CommentPlacement<'a> {
     let is_own_line = comment.line_position().is_own_line();
 
-    // Comments between the `for` and target
-    // ```python
-    // [
-    //      a
-    //      for  # attach as dangling on the comprehension
-    //      b in c
-    //  ]
-    // ```
     if comment.end() < comprehension.target.start() {
         return if is_own_line {
-            // own line comments are correctly assigned as leading the target
             CommentPlacement::Default(comment)
         } else {
-            // after the `for`
             CommentPlacement::dangling(comprehension, comment)
         };
     }
@@ -2225,39 +1725,18 @@ fn handle_comprehension_comment<'a>(
         source,
     );
 
-    // Comments between the target and the `in`
-    // ```python
-    // [
-    //      a for b
-    //      # attach as dangling on the target
-    //      # (to be rendered as leading on the "in")
-    //      in c
-    //  ]
-    // ```
     if comment.start() < in_token.start() {
-        // attach as dangling comments on the target
-        // (to be rendered as leading on the "in")
         return if is_own_line {
             CommentPlacement::dangling(comprehension, comment)
         } else {
-            // correctly trailing on the target
             CommentPlacement::Default(comment)
         };
     }
 
-    // Comments between the `in` and the iter
-    // ```python
-    // [
-    //      a for b
-    //      in  #  attach as dangling on the iter
-    //      c
-    //  ]
-    // ```
     if comment.start() < comprehension.iter.start() {
         return if is_own_line {
             CommentPlacement::Default(comment)
         } else {
-            // after the `in` but same line, turn into trailing on the `in` token
             CommentPlacement::dangling(comprehension, comment)
         };
     }
@@ -2265,23 +1744,6 @@ fn handle_comprehension_comment<'a>(
     let mut last_end = comprehension.iter.end();
 
     for if_node in &comprehension.ifs {
-        // ```python
-        // [
-        //     a
-        //     for
-        //     c
-        //     in
-        //     e
-        //     # above if   <-- find these own-line between previous and `if` token
-        //     if  # if     <-- find these end-of-line between `if` and if node (`f`)
-        //     # above f    <-- already correctly assigned as leading `f`
-        //     f  # f       <-- already correctly assigned as trailing `f`
-        //     # above if2
-        //     if  # if2
-        //     # above g
-        //     g  # g
-        // ]
-        // ```
         let if_token = find_only_token_in_range(
             TextRange::new(last_end, if_node.start()),
             SimpleTokenKind::If,
@@ -2374,7 +1836,6 @@ fn handle_trailing_implicit_concatenated_string_comment<'a>(
 /// Returns `true` if the parameters are parenthesized (as in a function definition), or `false` if
 /// not (as in a lambda).
 fn are_parameters_parenthesized(parameters: &Parameters, contents: &str) -> bool {
-    // A lambda never has parentheses around its parameters, but a function definition always does.
     contents[parameters.range()].starts_with('(')
 }
 

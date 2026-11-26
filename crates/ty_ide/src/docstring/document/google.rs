@@ -254,20 +254,15 @@ impl<'a> Parser<'a> {
             .then(|| Self::parse_header(line))
             .flatten();
 
-        // First, attempt to add the current line to the current section.
         if let Some(mut section) = self.current.take() {
-            // If the line is accepted by the current section, then continue parsing that section.
             if section.push_line(line, line_header) {
                 self.current = Some(section);
                 return;
             }
 
-            // If the line is rejected by the current section, then finalize it.
             self.finish_section(section);
         }
 
-        // Second, skip content owned by a preformatted or container block, where nested headers
-        // are inert.
         if self.scanner.consume_preformatted_line(line.text) {
             return;
         }
@@ -276,8 +271,6 @@ impl<'a> Parser<'a> {
             return;
         }
 
-        // Finally, start a new section from a standalone header, or observe syntax that may
-        // introduce a preformatted block.
         if let Some(header) = line_header
             && header.form == HeaderForm::Section
         {
@@ -291,7 +284,6 @@ impl<'a> Parser<'a> {
     fn parse_header(line: ParsedLine<'_>) -> Option<Header> {
         let trimmed = line.text.trim();
         if trimmed.ends_with("::") {
-            // A trailing double colon introduces a reST literal block rather than a section.
             return None;
         }
 
@@ -301,7 +293,6 @@ impl<'a> Parser<'a> {
         } else if name.chars().next().is_some_and(char::is_uppercase) {
             HeaderForm::Inline
         } else {
-            // Lowercase inline labels are more likely field-like content than section headers.
             return None;
         };
         let kind = HeaderKind::from_name(name)?;
@@ -350,7 +341,6 @@ impl<'a> SectionBuilder<'a> {
 
     /// Returns `false` when `line` belongs outside this section.
     fn push_line(&mut self, line: ParsedLine<'a>, line_header: Option<Header>) -> bool {
-        // First, let an active preformatted block consume the line before interpreting it.
         let preformatted_block_is_active = self.preformatted.is_active();
         let line_is_preformatted = self.preformatted.consume_preformatted_line(line.text);
         if preformatted_block_is_active && line_is_preformatted {
@@ -359,14 +349,11 @@ impl<'a> SectionBuilder<'a> {
             return true;
         }
 
-        // Second, defer blank lines until the next content line determines their ownership.
         if line.text.trim().is_empty() {
             self.pending_blank_lines.push(line);
             return true;
         }
 
-        // Third, classify a nonblank line and stop if it begins content outside
-        // this section.
         let also_parses_as_section_header =
             line_header.is_some() && line.text.trim().starts_with(char::is_uppercase);
         let item_line = ItemLine::classify(
@@ -384,8 +371,6 @@ impl<'a> SectionBuilder<'a> {
             return false;
         }
 
-        // Finally, commit the accepted line and update the state used to
-        // classify later lines.
         let boundary_item = item_line.boundary_item;
         self.commit_pending_blank_lines();
         self.push_content_line(line, item_line);
@@ -407,13 +392,10 @@ impl<'a> SectionBuilder<'a> {
         boundary_item: bool,
         has_leading_blank_lines: bool,
     ) -> bool {
-        // A sibling-level recognized header starts a new section.
         if line_header.is_some_and(|header| header.indent <= self.section_header.indent) {
             return true;
         }
 
-        // Returns and yields sections end before blank-separated sibling-level or dedented prose
-        // when no item indentation has been established.
         if matches!(
             self.section_header.kind,
             HeaderKind::Structured(SectionKind::Returns | SectionKind::Yields)
@@ -424,7 +406,6 @@ impl<'a> SectionBuilder<'a> {
             return true;
         }
 
-        // Blank-separated aligned prose ends a parameter section unless it starts another item.
         if has_leading_blank_lines
             && self.section_header.kind.is_parameter_section()
             && self.boundary_item_indent == Some(line.indent)
@@ -437,8 +418,6 @@ impl<'a> SectionBuilder<'a> {
             std::cmp::Ordering::Less => true,
             std::cmp::Ordering::Greater => false,
             std::cmp::Ordering::Equal => {
-                // Parameter sections can start with aligned prose before an item establishes the
-                // sibling indentation. Once established, aligned lines must match that indentation.
                 let item_indent_matches = self
                     .boundary_item_indent
                     .is_none_or(|indent| indent == line.indent);
@@ -495,13 +474,6 @@ impl HeaderKind {
             .join(" ")
             .to_ascii_lowercase();
 
-        // Google specifies the core sections for functions and classes:
-        // https://google.github.io/styleguide/pyguide.html#383-functions-and-methods
-        // https://google.github.io/styleguide/pyguide.html#384-classes
-        //
-        // Recognize additional headings and aliases for compatibility with Sphinx Napoleon and
-        // existing docstrings:
-        // https://www.sphinx-doc.org/en/master/usage/extensions/napoleon.html#docstring-sections
         Some(match normalized.as_str() {
             "args" | "arguments" | "parameters" => Self::Structured(SectionKind::Parameters),
             "keyword args" | "keyword arguments" => Self::Structured(SectionKind::KeywordArguments),
@@ -513,12 +485,10 @@ impl HeaderKind {
             "yield" | "yields" => Self::Structured(SectionKind::Yields),
             "raise" | "raises" => Self::Structured(SectionKind::Raises),
 
-            // Recognized headings without a structured representation still delimit sections.
             "attention" | "caution" | "danger" | "error" | "example" | "examples" | "hint"
             | "important" | "methods" | "note" | "notes" | "references" | "see also" | "tip"
             | "todo" | "todos" | "warning" | "warnings" | "warns" => Self::Opaque,
 
-            // Unrecognized headings remain ordinary content rather than creating a new section.
             _ => return None,
         })
     }
@@ -685,18 +655,14 @@ impl<'a> ItemLine<'a> {
         line_indent: TextSize,
         item_indent: TextSize,
     ) -> bool {
-        // More deeply indented lines are unambiguously part of the current item.
         if line_indent > item_indent {
             return true;
         }
 
-        // Although the style guide suggests indenting continuation lines,
-        // aligned parameter prose is common in practice.
         if line_indent == item_indent && section_kind.is_parameter_section() {
             return true;
         }
 
-        // Aligned URLs and paths are continuations despite resembling item headers.
         line_indent == item_indent && self.is_item_like_continuation
     }
 
@@ -724,8 +690,6 @@ impl<'a> ItemLine<'a> {
             kind,
             SectionKind::Parameters | SectionKind::KeywordArguments | SectionKind::OtherParameters
         ) {
-            // If malformed type syntax hides the delimiter, recover the conventional field shape
-            // and discard the type. The section remains opaque to the structured renderer.
             let Some(split) = recover_parameter_without_type(line_text) else {
                 return Self::default();
             };
@@ -789,11 +753,6 @@ impl<'a> ItemLine<'a> {
             SectionKind::Returns | SectionKind::Yields => return Self::default(),
         };
 
-        // URLs (`https://...`), Windows paths (`C:\\...`), and reST literal-block introductions
-        // (`Example::`) are description continuations rather than item headers.
-        //
-        // This was configured from a survey of such continuations in popular public projects that
-        // use Google-style docstrings; it may need to be reconfigured in the future.
         if matches!(
             inline_description.as_bytes().first(),
             Some(b'/' | b'\\' | b':')
@@ -860,7 +819,6 @@ fn consume_rest_prefix_role(cursor: &mut Cursor<'_>) -> bool {
         return false;
     };
 
-    // Resume delimiter scanning after the closing backtick in e.g., `` :exc:`ValueError` ``.
     cursor.skip_bytes(role.span().end().to_usize());
     true
 }
@@ -1228,7 +1186,6 @@ This line starts at column zero.
 
     #[test]
     fn finds_parameter_section_after_first_line_literal_block() {
-        // Regression for https://github.com/pytorch/pytorch/blob/e3f5bf0b18585511e6cd7d7a574ebf82f465e5ae/torch/_native/instrumentation.py#L365-L383
         assert_parameter_documentation(
             "\
 Instrument a single ``@triton.jit`` kernel, stacked above the jit::

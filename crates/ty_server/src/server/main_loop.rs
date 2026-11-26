@@ -88,7 +88,6 @@ impl Server {
                             )?;
                         }
 
-                        // Handle the response from the client to a server request
                         Message::Response(response) => {
                             if let Some(handler) = self
                                 .session
@@ -109,7 +108,6 @@ impl Server {
                 }
                 Event::Action(action) => match action {
                     Action::SendResponse(response) => {
-                        // Filter out responses for already canceled requests.
                         if let Some((start_time, method)) = self
                             .session
                             .request_queue_mut()
@@ -129,7 +127,6 @@ impl Server {
                     }
 
                     Action::RetryRequest(request) => {
-                        // Never retry canceled requests.
                         if self
                             .session
                             .request_queue()
@@ -164,10 +161,6 @@ impl Server {
                     Action::InitializeWorkspaces(workspaces_with_options) => {
                         self.session
                             .initialize_workspace_folders(&client, workspaces_with_options);
-                        // We do this here after workspaces have been initialized
-                        // so that the file watcher globs can take project search
-                        // paths into account.
-                        // self.try_register_file_watcher(&client);
                     }
                 },
                 Event::PollUvEnvironments { project_root } => {
@@ -183,13 +176,10 @@ impl Server {
     ///
     /// Returns `Ok(None)` if the client connection is closed.
     fn next_event(&mut self) -> Result<Option<Event>, crossbeam::channel::RecvError> {
-        // Deliver ready worker responses before replaying more deferred requests.
         if let Ok(event) = self.main_loop_receiver.try_recv() {
             return Ok(Some(event));
         }
 
-        // We can't queue those into the main loop because that could result in reordering if
-        // the `select` below picks a client message first.
         if let Some(deferred) = self.session.take_deferred_messages() {
             match &deferred {
                 Message::Request(req) => {
@@ -357,7 +347,6 @@ impl UvSyncWakeups {
         }
 
         debug_assert_eq!(index, connection_index);
-        // Ignore disconnect errors, they're handled by the main loop (it will exit).
         Ok(operation.recv(connection).ok().map(Event::Message))
     }
 }
@@ -391,7 +380,6 @@ mod tests {
             ClientName::Other,
             true,
         )?;
-        // A retry that reaches the worker would return InvalidParams for this unopened file.
         let request = Request::new(
             42.into(),
             CompletionRequest::METHOD.to_string(),

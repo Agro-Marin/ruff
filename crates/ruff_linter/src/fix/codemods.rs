@@ -51,7 +51,6 @@ pub(crate) fn remove_imports<'a>(
         _ => bail!("Expected import statement"),
     };
     let mut member_names = member_names.peekable();
-    // Deleting the only named import leaves no formatting to preserve.
     if let [alias] = names.as_slice()
         && alias.name.as_str() != "*"
         && member_names.peek().copied() == Some(alias.name.as_str())
@@ -78,8 +77,6 @@ pub(crate) fn remove_imports<'a>(
             if let ImportNames::Aliases(aliases) = names {
                 aliases
             } else if let ImportNames::Star(..) = names {
-                // Special-case: if the import is a `from ... import *`, then we delete the
-                // entire statement.
                 let mut found_star = false;
                 for member in member_names {
                     if member == "*" {
@@ -99,11 +96,8 @@ pub(crate) fn remove_imports<'a>(
         _ => bail!("Expected import statement"),
     };
 
-    // Preserve the trailing comma (or not) from the last entry.
     let trailing_comma = aliases.last().and_then(|alias| alias.comma.clone());
 
-    // Remove any imports that are specified in the `imports` iterator (but, e.g., if the name is
-    // provided once, only remove the first occurrence).
     let mut counts = member_names.fold(FxHashMap::<&str, usize>::default(), |mut map, name| {
         map.entry(name).and_modify(|c| *c += 1).or_insert(1);
         map
@@ -118,7 +112,6 @@ pub(crate) fn remove_imports<'a>(
         }
     });
 
-    // But avoid destroying any trailing comments.
     if let Some(alias) = aliases.last_mut() {
         let has_comment = if let Some(comma) = &alias.comma {
             match &comma.whitespace_after {
@@ -176,16 +169,13 @@ pub(crate) fn retain_imports(
         _ => bail!("Expected import statement"),
     };
 
-    // Preserve the trailing comma (or not) from the last entry.
     let trailing_comma = aliases.last().and_then(|alias| alias.comma.clone());
 
-    // Retain any imports that are specified in the `imports` iterator.
     let member_names = member_names.iter().copied().collect::<FxHashSet<_>>();
     aliases.retain(|alias| {
         member_names.contains(qualified_name_from_name_or_attribute(&alias.name).as_str())
     });
 
-    // But avoid destroying any trailing comments.
     if let Some(alias) = aliases.last_mut() {
         let has_comment = if let Some(comma) = &alias.comma {
             match &comma.whitespace_after {

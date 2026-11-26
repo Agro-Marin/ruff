@@ -90,9 +90,6 @@ impl ToRangeExt for TextRange {
         let mut end = source_index.source_location(self.end(), text, encoding.into());
         let starting_cell = notebook_index.cell(start.line);
 
-        // weird edge case here - if the end of the range is where the newline after the cell got added (making it 'out of bounds')
-        // we need to move it one character back (which should place it at the end of the last line).
-        // we test this by checking if the ending offset is in a different (or nonexistent) cell compared to the cell of the starting offset.
         if notebook_index.cell(end.line) != starting_cell {
             end.line = end.line.saturating_sub(1);
             end.character_offset = source_index

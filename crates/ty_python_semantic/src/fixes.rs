@@ -97,7 +97,6 @@ where
         .iter()
         .any(|diagnostic| fix_mode.is_fixable(diagnostic));
 
-    // Early return if there are no diagnostics that can be suppressed to avoid all the heavy work below.
     if !has_fixable {
         return Ok(FixAllResults {
             diagnostics,
@@ -107,7 +106,6 @@ where
 
     let mut by_file: BTreeMap<File, Vec<_>> = BTreeMap::new();
 
-    // Group the diagnostics by file, leave the file-agnostic diagnostics in `diagnostics`.
     for diagnostic in diagnostics.extract_if(.., |diagnostic| diagnostic.primary_span().is_some()) {
         let span = diagnostic
             .primary_span()
@@ -119,7 +117,6 @@ where
             .push(diagnostic);
     }
 
-    // Identify all files with fixes and queue them for fixing.
     let mut queue: Vec<(QueuedFile, Vec<ApplicableFix>)> = Vec::new();
     let mut source_texts = SourceTexts::default();
 
@@ -130,7 +127,6 @@ where
             continue;
         };
 
-        // Match the path formatting used by `UnifiedFile::relative_path`.
         let display_path = path
             .strip_prefix(db.system().current_directory())
             .unwrap_or(path);
@@ -159,7 +155,6 @@ where
         queue.push((QueuedFile::new(file, path, diagnostics), fixes));
     }
 
-    // Try applying the fixes. Iterate at most `MAX_ITERATIONS` times.
     let mut remaining_iterations = MAX_ITERATIONS;
     let mut completed: Vec<FixedFile> = Vec::with_capacity(queue.len());
 
@@ -187,8 +182,6 @@ where
             unstaged_fixes.push((file, applied_fixes));
         }
 
-        // Check if applying the files introduced any syntax errors, compute the remaining diagnostics and any new fixes.
-        // This is done outside the above loop so that it can run in parallel.
         let check_results = recheck_files(
             &*db,
             unstaged_fixes,
@@ -228,7 +221,6 @@ where
                         continue;
                     }
 
-                    // Requeue the file for another round of fixes.
                     queue.push((file, fixes));
                 }
 
@@ -236,7 +228,6 @@ where
                     mut file,
                     diagnostic,
                 } => {
-                    // Reset the file's state to the last staged changes (or the original source text if this is the first iteration)
                     source_texts.reset_unstaged(db, file.file);
                     file.push_diagnostic(diagnostic);
 
@@ -252,7 +243,6 @@ where
         remaining_iterations -= 1;
     }
 
-    // commit the changes: Write the changes to disk
     let mut fix_count = 0;
 
     for file in completed {
@@ -263,10 +253,8 @@ where
 
         if let Some(fixed) = source_texts.uncommitted(file.file) {
             if let Err(error) = write_changes(db, &*system, file.file, &file.path, fixed) {
-                // revert the source text back to its original content.
                 source_texts.revert(db, file.file);
 
-                // Writing failed, revert the source text override back to the file's original source.
                 let mut diagnostics = by_file.remove(&file.file).unwrap_or_default();
                 let mut diag = Diagnostic::new(
                     DiagnosticId::Io,
@@ -288,7 +276,6 @@ where
         by_file.insert(file.file, file.remaining_diagnostics);
     }
 
-    // Stitch the remaining diagnostics back together.
     diagnostics.extend(by_file.into_values().flatten());
     let resolver: &dyn ruff_db::Db = db;
     diagnostics.sort_by(|left, right| {
@@ -376,9 +363,6 @@ enum FixMode {
 
 impl FixMode {
     fn is_fixable(self, diagnostic: &Diagnostic) -> bool {
-        // The baseline demotes matching lint diagnostics to hints. Rechecking a file after an edit
-        // can return those hints again, so skip them here to keep `--fix` and `--add-ignore` from
-        // editing code for diagnostics the baseline already suppresses.
         if diagnostic.severity() == Severity::Hint && diagnostic.id().is_lint() {
             return false;
         }
@@ -389,7 +373,6 @@ impl FixMode {
 
         match self {
             FixMode::Suppress => {
-                // Don't suppress unused ignore comments.
                 primary_span.range().is_some()
                     && diagnostic
                         .id()
@@ -416,7 +399,6 @@ impl FixMode {
                     .filter_map(|diagnostic| {
                         let lint_id = diagnostic.id().as_lint()?;
 
-                        // We can't suppress diagnostics without a corresponding file or range.
                         let span = diagnostic.primary_span()?;
                         let range = span.range()?;
 
@@ -528,37 +510,28 @@ fn apply_fixes(source: &str, mut fixes: Vec<ApplicableFix>) -> FixedCode {
             .filter(|edit| !applied_edits.contains(edit))
             .peekable();
 
-        // If the fix contains at least one new edit, enforce isolation and positional requirements.
         if let Some(first) = edits.peek() {
-            // If this fix requires isolation, and we've already applied another fix in the
-            // same isolation group, skip it.
             if let IsolationLevel::Group(id) = fix.isolation() {
                 if !isolated.insert(id) {
                     continue;
                 }
             }
 
-            // If this fix overlaps with a fix we've already applied, skip it.
             if last_pos.is_some_and(|last_pos| last_pos >= first.start()) {
                 continue;
             }
         }
 
         for edit in edits {
-            // Add all contents from `last_pos` to `fix.location`.
             let slice = &source[TextRange::new(last_pos.unwrap_or_default(), edit.start())];
             output.push_str(slice);
 
-            // Add the start source marker for the patch.
             source_map.push_start_marker(edit, output.text_len());
 
-            // Add the patch itself.
             output.push_str(edit.content().unwrap_or_default());
 
-            // Add the end source marker for the added patch.
             source_map.push_end_marker(edit, output.text_len());
 
-            // Track that the edit was applied.
             last_pos = Some(edit.end());
         }
 
@@ -566,7 +539,6 @@ fn apply_fixes(source: &str, mut fixes: Vec<ApplicableFix>) -> FixedCode {
         applied_fixes += fixed_diagnostics;
     }
 
-    // Add the remaining content.
     let slice = &source[last_pos.unwrap_or_default().to_usize()..];
     output.push_str(slice);
 
@@ -645,13 +617,11 @@ impl SourceTexts {
             return;
         }
 
-        // Try to reset to the last staged changes
         let source = if let Some(staged) = self.staged_changes.get(&file) {
             staged
         } else if let Some(original) = self.originals.get(&file) {
             original
         } else {
-            // File was never overridden, nothing to do
             return;
         };
 
@@ -997,9 +967,6 @@ mod tests {
         "#);
     }
 
-    // A same-code suppression inserted at the end of a narrower multiline range can land on the
-    // start line of a wider multiline range, which makes the wider range's own suppression
-    // redundant.
     #[test]
     fn same_code_multiline_suppressions_with_different_ranges_can_become_redundant() {
         assert_snapshot!(
@@ -1277,8 +1244,6 @@ class B(A):
 
     #[test]
     fn add_ignore_matches_existing_suppression_against_diagnostic_range() {
-        // The first suppression is intentional: `not-a-rule` has no indexed suppression, and
-        // repeatedly extending the final suppression can't suppress a diagnostic before it.
         assert_snapshot!(
             suppress_all_in(r#"
                 seen_code = True
@@ -1701,8 +1666,6 @@ class B(A):
 
         let file = system_path_to_file(&db, "test.py").unwrap();
 
-        // For this test, we intentionally keep renaming a variable form `a` -> `b` and
-        // from `b` -> `a`. This ensures that the fix never converges.
         let check_file = |db: &dyn Db, file: File| {
             let text = source_text(db, file);
 
@@ -1742,8 +1705,6 @@ class B(A):
         )
         .expect("operation never gets cancelled");
 
-        // Returns two diagnostic: One is the not fixed diagnostic, the other a fatal diagnostic
-        // making the user aware of the non convergence.
         let [convergence_diagnostic, diagnostic] = &*fixes.diagnostics else {
             panic!(
                 "Expected `fix_all` to return two diagnostics but it returned  {}",
@@ -1760,7 +1721,6 @@ class B(A):
         assert_eq!(convergence_diagnostic.id(), DiagnosticId::InternalError);
         assert_snapshot!(convergence_diagnostic.headline_message(), @"Fixes failed to converge after 10 iterations.");
 
-        // It should keep the source text from the last allowed fix iteration.
         assert_eq!(&*source_text(&db, file), "a = 10");
     }
 
@@ -1776,8 +1736,6 @@ class B(A):
 
         let file = system_path_to_file(&db, "test.py").unwrap();
 
-        // For this test, we intentionally keep renaming a variable form `a` -> `b` and
-        // from `b` -> `a`. This ensures that the fix never converges.
         let check_file = |db: &dyn Db, file: File| {
             let text = source_text(db, file);
 
@@ -1798,7 +1756,6 @@ class B(A):
             let edit = if text.contains('a') {
                 Edit::range_replacement("b".to_string(), variable_range)
             } else {
-                // Insert an extra `=`, resulting in a syntax error
                 Edit::range_replacement("c =".to_string(), variable_range)
             };
 
@@ -1819,8 +1776,6 @@ class B(A):
         )
         .expect("operation never gets cancelled");
 
-        // Returns two diagnostic: One is the not fixed diagnostic, the other a fatal diagnostic
-        // making the user aware of the non convergence.
         let [syntax_error, diagnostic] = &*fixes.diagnostics else {
             panic!(
                 "Expected `fix_all` to return two diagnostics but it returned  {}",
@@ -1837,7 +1792,6 @@ class B(A):
         assert_eq!(syntax_error.id(), DiagnosticId::InternalError);
         assert_snapshot!(syntax_error.headline_message(), @"Applying fixes introduced a syntax error. Reverting changes.");
 
-        // It should revert the source to the last known error free version.
         assert_eq!(&*source_text(&db, file), "b = 10");
     }
 
@@ -1877,7 +1831,6 @@ class B(A):
         let initial_diagnostics = create_diagnostics(file);
 
         let check_file = |_: &dyn Db, file: File| {
-            // Normally, this would happen on another thread but we do it here for simplicity.
             cancellation_token_source.cancel();
 
             create_diagnostics(file)
@@ -1893,7 +1846,6 @@ class B(A):
 
         assert!(matches!(result, Err(ruff_db::cancellation::Canceled)));
 
-        // Cancellation should revert any staged or unstaged source text overrides.
         assert_eq!(&*source_text(&db, file), "a = 10");
     }
 
@@ -1911,11 +1863,6 @@ class B(A):
 
         let file = system_path_to_file(&db, "test.py").unwrap();
 
-        // Simulates two overlapping typing-modernization diagnostics for
-        // `Optional[List[int]]`: one rewrites the outer `Optional[...]` to `... | None`, while
-        // the other rewrites the nested `List[int]` to `list[int]` and, on the next pass,
-        // removes the now-unused `List` import. Because `List[int]` is nested inside
-        // `Optional[List[int]]`, only the outer rewrite can apply in the first iteration.
         let check_file = |db: &dyn Db, file: File| {
             let text = source_text(db, file);
 
@@ -1939,7 +1886,6 @@ class B(A):
                 (list, list_range)
             };
 
-            // Iteration 0: Replace `Optional[List[int]]` with `List[int] | None`
             if text.contains("Optional[List[int]]") {
                 let mut optional = Diagnostic::new(
                     DiagnosticId::lint("use-pep604-optional"),
@@ -1955,8 +1901,6 @@ class B(A):
                     optional_range,
                 )));
 
-                // This fix overlaps with `Optional[List[int]]` but the `Optional` fix applies
-                // first because its `range.start` sorts before `List[int]`.
                 let (mut list, list_range) = use_builtin_list_diagnostic(file);
                 list.set_fix(Fix::safe_edit(Edit::range_replacement(
                     "list[int]".to_string(),
@@ -1965,7 +1909,6 @@ class B(A):
 
                 vec![optional, list]
             }
-            // Iteration 2, replace `List[int] | None` with `list[int] | None`
             else if text.contains("List[int] | None") {
                 let (mut list, list_range) = use_builtin_list_diagnostic(file);
                 list.set_fix(Fix::safe_edits(
@@ -2055,8 +1998,6 @@ class B(A):
 
             let incidentally_fixed_diagnostics =
                 diff_diagnostics(&fixes.diagnostics, &unsuppressible_diagnostics);
-            // Adding a code to an empty suppression also resolves its
-            // `unused-ignore-comment`, without adding another suppression.
             assert!(incidentally_fixed_diagnostics.iter().all(|diagnostic| {
                 diagnostic
                     .id()

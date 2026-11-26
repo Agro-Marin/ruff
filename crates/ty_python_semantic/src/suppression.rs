@@ -122,7 +122,6 @@ pub(crate) fn suppressions(db: &dyn Db, file: PythonFile<'_>) -> Suppressions {
                         Err(error) => match error.kind {
                             ParseErrorKind::NotASuppression
                             | ParseErrorKind::CommentWithoutHash => {
-                                // Skip non suppression comments and comments that miss a hash (shouldn't ever happen)
                             }
                             ParseErrorKind::NoWhitespaceAfterIgnore(kind)
                             | ParseErrorKind::CodesMissingComma(kind)
@@ -172,8 +171,6 @@ fn check_blanket_suppressions(context: &mut CheckSuppressionsContext) {
     for suppression in context.suppressions.iter().filter(|suppression| {
         suppression.kind == SuppressionKind::Ty && suppression.target == SuppressionTarget::All
     }) {
-        // A blanket suppression cannot suppress its own diagnostic, but a lint-specific
-        // suppression can.
         if let Some(lint_suppression) = select_preferred_suppression(
             context
                 .suppressions
@@ -609,13 +606,11 @@ impl SuppressionTarget {
     /// overlap the queried lint.
     fn target_mask(self) -> u64 {
         match self {
-            // Keep blanket suppressions separate so they are always considered.
             SuppressionTarget::All => 1,
             SuppressionTarget::Empty => 0,
             SuppressionTarget::Lint(id) => {
                 let mut hasher = FxHasher::default();
                 id.hash(&mut hasher);
-                // The top bit is reserved for editable suppressions.
                 1 << (1 + hasher.finish() % 62)
             }
         }
@@ -668,12 +663,8 @@ impl<'a> SuppressionsBuilder<'a> {
 
     #[expect(clippy::needless_pass_by_value)]
     fn add_comment(&mut self, comment: SuppressionComment, line_range: TextRange, tokens: &Tokens) {
-        // ignore comments at the start of the file apply to the entire range.
         // > A # type: ignore comment on a line by itself at the top of a file, before any docstrings,
-        // > imports, or other executable code, silences all errors in the file.
-        // > Blank lines and other comments, such as shebang lines and coding cookies,
         // > may precede the # type: ignore comment.
-        // > https://typing.python.org/en/latest/spec/directives.html#type-ignore-comments
         let is_file_suppression = !self.seen_non_trivia_token;
         let comment_token_start = tokens.token_range(comment.range().start()).start();
 
@@ -696,7 +687,6 @@ impl<'a> SuppressionsBuilder<'a> {
         };
 
         match comment.codes() {
-            // `type: ignore`
             None => {
                 push_ignore_suppression(Suppression {
                     target: SuppressionTarget::All,
@@ -707,7 +697,6 @@ impl<'a> SuppressionsBuilder<'a> {
                 });
             }
 
-            // `ty: ignore[]` or `type: ignore[]`
             Some([]) => {
                 push_ignore_suppression(Suppression {
                     target: SuppressionTarget::Empty,
@@ -718,7 +707,6 @@ impl<'a> SuppressionsBuilder<'a> {
                 });
             }
 
-            // `ty: ignore[a, b]` or `type: ignore[a, b]`
             Some(codes) => {
                 for &code_range in codes {
                     let Some(code) =
@@ -763,21 +751,8 @@ fn own_line_suppression_range(range: TextRange, tokens: &Tokens) -> TextRange {
     let (before, after) = tokens.split_at(comment_token_start);
     let mut end = range.end();
 
-    // A suppression after a logical newline precedes a new logical line:
-    //
     // # ty: ignore
-    // value = (
-    //     missing
-    // )
-    //
-    // A suppression after a non-logical newline is inside an unfinished logical line:
-    //
-    // values = [
     //     # ty: ignore
-    //     missing,
-    // ]
-    //
-    // Walk backwards through comments and non-logical newlines to distinguish the two cases.
     let is_inner_comment = before.iter().rev().find_map(|token| match token.kind() {
         TokenKind::Newline => Some(false),
         TokenKind::NonLogicalNewline | TokenKind::Comment => None,
@@ -785,16 +760,12 @@ fn own_line_suppression_range(range: TextRange, tokens: &Tokens) -> TextRange {
     });
 
     let is_inner_comment = is_inner_comment.unwrap_or(false);
-    // For an inner suppression, the first non-logical newline ends the suppression's own
-    // physical line. Subsequent blank or comment-only lines are skipped before the range ends at
-    // the first physical line containing code.
     let mut is_blank_or_comment_only = true;
     let mut past_suppression_line = false;
 
     for token in after {
         match token.kind() {
             TokenKind::Newline => {
-                // A suppression preceding a logical line includes that complete logical line.
                 end = token.start();
                 break;
             }
@@ -947,8 +918,6 @@ impl IntervalIndex {
                             continue;
                         }
 
-                        // The stack is last-in, first-out, so push in source order to visit the
-                        // right subtree first.
                         pending.push(left);
                         pending.push(std::slice::from_ref(root));
                         pending.push(right);

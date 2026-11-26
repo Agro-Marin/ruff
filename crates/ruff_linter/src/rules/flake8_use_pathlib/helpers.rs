@@ -122,9 +122,6 @@ pub(crate) fn is_file_descriptor(expr: &Expr, semantic: &SemanticModel) -> bool 
         return true;
     }
 
-    // Resolve attribute expressions (e.g., `obj.fd` where `fd` is annotated at
-    // the class level) via the semantic model. Matches the existing behavior
-    // for `Name` expressions below.
     if let Expr::Attribute(_) = expr
         && let Some(binding_id) = semantic.lookup_attribute(expr)
     {

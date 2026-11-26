@@ -34,17 +34,11 @@ pub(super) fn check_unused_suppressions(context: &mut CheckSuppressionsContext) 
             .saturating_sub(diagnostics.used_len()),
     );
 
-    // Collect all suppressions that are unused after type-checking.
     for suppression in all.iter() {
         if diagnostics.is_used(suppression.id()) {
             continue;
         }
 
-        // `unused-ignore-comment` diagnostics can only be suppressed by specifying a
-        // code. This is necessary because every `type: ignore` would implicitly also
-        // suppress its own unused-ignore-comment diagnostic.
-        // An `unused-ignore-comment` suppression can't ignore itself. It can only ignore other
-        // suppressions, so exclude the suppression whose diagnostic we're checking.
         if let Some(unused_suppression) = select_preferred_suppression(
             all.lint_suppressions(suppression.range, LintId::of(&UNUSED_IGNORE_COMMENT))
                 .filter(|candidate| {
@@ -62,11 +56,7 @@ pub(super) fn check_unused_suppressions(context: &mut CheckSuppressionsContext) 
     let mut unused_iter = unused
         .iter()
         .filter(|suppression| {
-            // This looks silly but it's necessary to check again if a `unused-ignore-comment` is indeed unused
-            // in case the "unused" directive comes after it:
-            // ```py
             // a = 10 / 2  # ty: ignore[unused-ignore-comment, division-by-zero]
-            // ```
             !context.is_suppression_used(suppression.id())
         })
         .peekable();
@@ -96,9 +86,7 @@ pub(super) fn check_unused_suppressions(context: &mut CheckSuppressionsContext) 
                 ))
             }
             SuppressionTarget::Lint(_) => {
-                // A single code in a `ty: ignore[<code1>, <code2>, ...]` directive
 
-                // Is this the first code directly after the `[`?
                 let includes_first_code = source[..suppression.range.start().to_usize()]
                     .trim_end()
                     .ends_with('[');
@@ -106,8 +94,6 @@ pub(super) fn check_unused_suppressions(context: &mut CheckSuppressionsContext) 
                 let mut current = suppression;
                 let mut unused_codes = Vec::new();
 
-                // Group successive codes together into a single diagnostic,
-                // or report the entire directive if all codes are unused.
                 while let Some(next) = unused_iter.peek() {
                     if next.target.is_lint()
                         && next.comment_range == current.comment_range
@@ -123,12 +109,10 @@ pub(super) fn check_unused_suppressions(context: &mut CheckSuppressionsContext) 
                     }
                 }
 
-                // Is the last suppression code the last code before the closing `]`.
                 let includes_last_code = source[current.range.end().to_usize()..]
                     .trim_start()
                     .starts_with(']');
 
-                // If only some codes are unused
                 if !includes_first_code || !includes_last_code {
                     let mut codes = format!("'{}'", &source[suppression.range]);
                     for code in &unused_codes {
@@ -148,14 +132,12 @@ pub(super) fn check_unused_suppressions(context: &mut CheckSuppressionsContext) 
                             .unwrap()
                             .push_tag(ruff_db::diagnostic::DiagnosticTag::Unnecessary);
 
-                        // Delete everything up to the start of the next code.
                         let trailing_len: TextSize = source[current.range.end().to_usize()..]
                             .chars()
                             .take_while(|c: &char| c.is_whitespace() || *c == ',')
                             .map(TextLen::text_len)
                             .sum();
 
-                        // If we delete the last codes before `]`, ensure we delete any trailing comma
                         let leading_len: TextSize = if includes_last_code {
                             source[..suppression.range.start().to_usize()]
                                 .chars()
@@ -183,7 +165,6 @@ pub(super) fn check_unused_suppressions(context: &mut CheckSuppressionsContext) 
                     continue;
                 }
 
-                // All codes are unused
                 let Some(diag) = context.report_unchecked(unused_lint, suppression.comment_range)
                 else {
                     continue;
@@ -220,7 +201,6 @@ fn remove_comment_fix(suppression: &Suppression, source: &str, tokens: &Tokens) 
 
     if !after_comment.starts_with(['\n', '\r']) && !after_comment.is_empty() {
         // For example: `# ty: ignore # fmt: off`
-        // Don't remove the trailing whitespace up to the `ty: ignore` comment
         let edit = Edit::range_deletion(suppression.comment_range);
 
         if indentation_at_offset(comment_start, source).is_some() {
@@ -239,14 +219,7 @@ fn remove_comment_fix(suppression: &Suppression, source: &str, tokens: &Tokens) 
             .last()
             .map_or_else(|| source.bom_start_offset(), Ranged::end);
 
-        // Deleting the whole comment line here would change the value of `x` to 3.
-        //
-        //     x = 1 \
         //         # ty: ignore[invalid-assignment]
-        //     +2
-        //
-        // The lexer skips the backslash and its newline, so the token before the
-        // comment is `1`. Delete from the end of `1` and keep the newline before `+2`.
         if previous_end < line.start() {
             return Fix::safe_edit(Edit::deletion(previous_end, comment_end));
         }
@@ -254,8 +227,6 @@ fn remove_comment_fix(suppression: &Suppression, source: &str, tokens: &Tokens) 
         return Fix::safe_edit(Edit::range_deletion(line));
     }
 
-    // Remove any leading whitespace before the comment
-    // to avoid unnecessary trailing whitespace once the comment is removed
     let before_comment = &source[..comment_start.to_usize()];
 
     let mut leading_len = TextSize::default();

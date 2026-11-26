@@ -391,8 +391,6 @@ fn inlay_hint_burst_does_not_block_responses() -> Result<()> {
             .is_some_and(|hints| !hints.is_empty())
     );
 
-    // Queue the full burst before reading any responses so incoming messages and
-    // completed worker actions compete in the main loop.
     let uri = server.file_uri(file);
     let mut request_ids = Vec::with_capacity(REQUEST_COUNT as usize);
     for index in 0..REQUEST_COUNT {

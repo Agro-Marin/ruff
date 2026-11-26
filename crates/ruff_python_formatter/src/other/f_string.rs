@@ -27,7 +27,6 @@ impl FormatNodeRule<FString> for FormatFString {
             ),
         );
 
-        // Starting prefix and quote
         let quotes = StringQuotes::from(string_kind);
         write!(f, [string_kind.prefix(), quotes])?;
 
@@ -42,7 +41,6 @@ impl FormatNodeRule<FString> for FormatFString {
             }
         }
 
-        // Ending quote
         quotes.fmt(f)
     }
 }

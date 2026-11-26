@@ -103,12 +103,10 @@ impl Violation for NonPEP695GenericFunction {
 
 /// UP047
 pub(crate) fn non_pep695_generic_function(checker: &Checker, function_def: &StmtFunctionDef) {
-    // PEP-695 syntax is only available on Python 3.12+
     if checker.target_version() < PythonVersion::PY312 {
         return;
     }
 
-    // don't try to handle generic functions inside other functions or classes
     if in_nested_context(checker) {
         return;
     }
@@ -120,25 +118,10 @@ pub(crate) fn non_pep695_generic_function(checker: &Checker, function_def: &Stmt
         ..
     } = function_def;
 
-    // TODO(brent) handle methods, for now return early in a class body. For example, an additional
-    // generic parameter on the method needs to be handled separately from one already on the class
-    //
-    // ```python
-    // T = TypeVar("T")
-    // S = TypeVar("S")
-    //
-    // class Foo(Generic[T]):
-    //     def bar(self, x: T, y: S) -> S: ...
-    //
-    //
-    // class Foo[T]:
-    //     def bar[S](self, x: T, y: S) -> S: ...
-    // ```
     if checker.semantic().current_scope().kind.is_class() {
         return;
     }
 
-    // invalid to mix old-style and new-style generics
     if type_params.is_some() {
         return;
     }
@@ -159,7 +142,6 @@ pub(crate) fn non_pep695_generic_function(checker: &Checker, function_def: &Stmt
         }
     }
 
-    // Deduplicate type vars that appear in multiple parameter annotations
     let mut seen = FxHashSet::default();
     type_vars.retain(|tv| seen.insert(tv.name));
 
@@ -167,7 +149,6 @@ pub(crate) fn non_pep695_generic_function(checker: &Checker, function_def: &Stmt
         return;
     };
 
-    // build the fix as a String to avoid removing comments from the entire function body
     let type_params = DisplayTypeVars {
         type_vars: &type_vars,
         source: checker.source(),

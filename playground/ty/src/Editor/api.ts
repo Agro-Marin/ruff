@@ -4,13 +4,9 @@ const API_URL = import.meta.env.PROD
 
 export type Playground = {
   files: { [name: string]: string };
-  /// the name of the current file
   current: string;
 };
 
-/**
- * Fetch a playground by ID.
- */
 export async function fetchPlayground(id: string): Promise<Playground | null> {
   const response = await fetch(`${API_URL}/${encodeURIComponent(id)}`);
 
@@ -21,9 +17,6 @@ export async function fetchPlayground(id: string): Promise<Playground | null> {
   return await response.json();
 }
 
-/**
- * Save a playground and return its ID.
- */
 export async function savePlayground(playground: Playground): Promise<string> {
   const response = await fetch(API_URL, {
     method: "POST",

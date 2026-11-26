@@ -18,7 +18,6 @@ impl FormatNodeRule<ExprFString> for FormatExprFString {
         if let Some(f_string) = item.as_single_part_fstring() {
             f_string.format().fmt(f)
         } else {
-            // Always join fstrings that aren't parenthesized and thus, are always on a single line.
             if !f.context().node_level().is_parenthesized() {
                 if let Some(format_flat) =
                     FormatImplicitConcatenatedStringFlat::new(item.into(), f.context())
@@ -39,7 +38,6 @@ impl NeedsParentheses for ExprFString {
         context: &PyFormatContext,
     ) -> OptionalParentheses {
         if let Some(fstring_part) = self.as_single_part_fstring() {
-            // The f-string is not implicitly concatenated
             if StringLike::FString(self).is_multiline(context)
                 || InterpolatedStringLayout::from_interpolated_string_elements(
                     &fstring_part.elements,
@@ -52,7 +50,6 @@ impl NeedsParentheses for ExprFString {
                 OptionalParentheses::BestFit
             }
         } else {
-            // The f-string is implicitly concatenated
             OptionalParentheses::Multiline
         }
     }

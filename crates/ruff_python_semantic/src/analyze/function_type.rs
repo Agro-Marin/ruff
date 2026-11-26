@@ -40,9 +40,9 @@ pub fn classify(
         FunctionType::ClassMethod
     } else {
         match name {
-            "__new__" => FunctionType::NewMethod, // Implicit static method.
-            "__init_subclass__" | "__class_getitem__" => FunctionType::ClassMethod, // Implicit class methods.
-            _ => FunctionType::Method, // Default to instance method.
+            "__new__" => FunctionType::NewMethod,
+            "__init_subclass__" | "__class_getitem__" => FunctionType::ClassMethod,
+            _ => FunctionType::Method,
         }
     }
 }
@@ -85,7 +85,6 @@ fn is_static_method(
 ) -> bool {
     let decorator = map_callable(&decorator.expression);
 
-    // The decorator is an import, so should match against a qualified path.
     if semantic
         .resolve_qualified_name(decorator)
         .is_some_and(|qualified_name| {
@@ -100,7 +99,6 @@ fn is_static_method(
         return true;
     }
 
-    // We do not have a resolvable call path, most likely from a decorator like
     // `@someproperty.setter`. Instead, match on the last element.
     if !staticmethod_decorators.is_empty() {
         if UnqualifiedName::from_expr(decorator).is_some_and(|name| {
@@ -126,7 +124,6 @@ pub fn is_class_method(
 ) -> bool {
     let decorator = map_callable(&decorator.expression);
 
-    // The decorator is an import, so should match against a qualified path.
     if semantic
         .resolve_qualified_name(decorator)
         .is_some_and(|qualified_name| {
@@ -141,7 +138,6 @@ pub fn is_class_method(
         return true;
     }
 
-    // We do not have a resolvable call path, most likely from a decorator like
     // `@someproperty.setter`. Instead, match on the last element.
     if !classmethod_decorators.is_empty() {
         if UnqualifiedName::from_expr(decorator).is_some_and(|name| {

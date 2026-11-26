@@ -38,9 +38,6 @@ impl std::fmt::Debug for ScopedReachabilityConstraintId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut f = f.debug_tuple("ScopedReachabilityConstraintId");
         match *self {
-            // We use format_args instead of rendering the strings directly so that we don't get
-            // any quotes in the output: ScopedReachabilityConstraintId(AlwaysTrue) instead of
-            // ScopedReachabilityConstraintId("AlwaysTrue").
             ALWAYS_TRUE => f.field(&format_args!("AlwaysTrue")),
             AMBIGUOUS => f.field(&format_args!("Ambiguous")),
             ALWAYS_FALSE => f.field(&format_args!("AlwaysFalse")),
@@ -50,15 +47,6 @@ impl std::fmt::Debug for ScopedReachabilityConstraintId {
     }
 }
 
-// Internal details:
-//
-// There are 3 terminals, with hard-coded constraint IDs: true, ambiguous, and false.
-//
-// _Atoms_ are the underlying Predicates, which are the variables that are evaluated by the
-// ternary function.
-//
-// _Interior nodes_ provide the TDD structure for the formula. Interior nodes are stored in an
-// arena Vec, with the constraint ID providing an index into the arena.
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, get_size2::GetSize)]
 pub struct InteriorNode {
@@ -126,7 +114,6 @@ impl Idx for ScopedReachabilityConstraintId {
     }
 }
 
-// Rebind some constants locally so that we don't need as many qualifiers below.
 const ALWAYS_TRUE: ScopedReachabilityConstraintId = ScopedReachabilityConstraintId::ALWAYS_TRUE;
 const AMBIGUOUS: ScopedReachabilityConstraintId = ScopedReachabilityConstraintId::AMBIGUOUS;
 const ALWAYS_FALSE: ScopedReachabilityConstraintId = ScopedReachabilityConstraintId::ALWAYS_FALSE;
@@ -335,8 +322,6 @@ impl ReachabilityConstraintsBuilder {
         } else if b.is_terminal() {
             Ordering::Less
         } else {
-            // See https://github.com/astral-sh/ruff/pull/20098 for an explanation of why this
-            // ordering is reversed.
             self.interiors[a]
                 .atom
                 .cmp(&self.interiors[b].atom)
@@ -347,8 +332,6 @@ impl ReachabilityConstraintsBuilder {
     /// Adds an interior node, ensuring that we always use the same reachability constraint ID for
     /// equal nodes.
     fn add_interior(&mut self, node: InteriorNode) -> ScopedReachabilityConstraintId {
-        // If the true and false branches lead to the same node, we can override the ambiguous
-        // branch to go there too. And this node is then redundant and can be reduced.
         if node.if_true == node.if_false {
             return node.if_true;
         }
@@ -438,7 +421,6 @@ impl ReachabilityConstraintsBuilder {
             _ => {}
         }
 
-        // OR is commutative, which lets us halve the cache requirements
         let (a, b) = if b.0 < a.0 { (b, a) } else { (a, b) };
         if let Some(cached) = self.or_cache.get(&(a, b)) {
             return *cached;
@@ -519,7 +501,6 @@ impl ReachabilityConstraintsBuilder {
             _ => {}
         }
 
-        // AND is commutative, which lets us halve the cache requirements
         let (a, b) = if b.0 < a.0 { (b, a) } else { (a, b) };
         if let Some(cached) = self.and_cache.get(&(a, b)) {
             return *cached;

@@ -51,17 +51,14 @@ pub(crate) fn attr(checker: &Checker, attribute: &ast::ExprAttribute) {
         return;
     }
 
-    // Avoid, e.g., `x.values = y`.
     if !attribute.ctx.is_load() {
         return;
     }
 
-    // Check for, e.g., `df.values`.
     if attribute.attr.as_str() != "values" {
         return;
     }
 
-    // Avoid flagging on function calls (e.g., `df.values()`).
     if checker
         .semantic()
         .current_expression_parent()
@@ -70,8 +67,6 @@ pub(crate) fn attr(checker: &Checker, attribute: &ast::ExprAttribute) {
         return;
     }
 
-    // Avoid flagging on non-DataFrames (e.g., `{"a": 1}.values`), and on irrelevant bindings
-    // (like imports).
     if !matches!(
         test_expression(attribute.value.as_ref(), checker.semantic()),
         Resolution::RelevantLocal

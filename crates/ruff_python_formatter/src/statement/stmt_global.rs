@@ -8,9 +8,6 @@ pub struct FormatStmtGlobal;
 
 impl FormatNodeRule<StmtGlobal> for FormatStmtGlobal {
     fn fmt_fields(&self, item: &StmtGlobal, f: &mut PyFormatter) -> FormatResult<()> {
-        // Join the `global` names, breaking across continuation lines if necessary, unless the
-        // `global` statement has a trailing comment, in which case, breaking the names would
-        // move the comment "off" of the `global` statement.
         if f.context().comments().has_trailing(item) {
             let joined = format_with(|f| {
                 f.join_with(format_args![token(","), space()])

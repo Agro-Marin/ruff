@@ -251,8 +251,6 @@ impl<'a> Visitor<'a> for Walker {
                 )),
                 _ => None,
             };
-            // What runs per record: the element, the conditions and the iterables
-            // of the inner generators.
             if let Some((generators, elements)) = parts
                 && let Some((first, inner)) = generators.split_first()
                 && iterates_records(&first.iter)
@@ -279,12 +277,7 @@ pub(crate) fn n_plus_one_query(checker: &Checker, suite: &Suite) {
     }
     let mut walker = Walker::default();
     walker.visit_body(suite);
-    // The finding spans the whole call, but a chained call is usually broken
-    // across lines, and its `noqa` sits beside the method name:
-    //     records = (
-    //         self.env["res.partner"]
     //         .search(domain)  # noqa: E8507  one query per company
-    //     )
     for (range, name_start, method) in walker.found {
         let mut diagnostic = checker.report_diagnostic(NPlusOneQuery { method }, range);
         diagnostic.set_parent(name_start);

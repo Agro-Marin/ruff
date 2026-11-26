@@ -22,7 +22,6 @@ impl<'a> Resolver<'a> {
         path: &SystemPath,
         environment: ResolverEnvironment<'a>,
     ) -> Self {
-        // If we know the importing file we can potentially resolve more imports
         let file = system_path_to_file(db, path).ok();
         Self {
             db,
@@ -35,10 +34,8 @@ impl<'a> Resolver<'a> {
     pub(crate) fn resolve(&self, import: CollectedImport) -> impl Iterator<Item = &'a FilePath> {
         match import {
             CollectedImport::Import(import) => {
-                // Attempt to resolve the module (e.g., given `import foo`, look for `foo`).
                 let file = self.resolve_module(&import);
 
-                // If the file is a stub, look for the corresponding source file.
                 let source_file = file
                     .is_some_and(|file| file.extension() == Some("pyi"))
                     .then(|| self.resolve_real_module(&import))
@@ -49,9 +46,7 @@ impl<'a> Resolver<'a> {
                     .flatten()
             }
             CollectedImport::ImportFrom(import) => {
-                // Attempt to resolve the member (e.g., given `from foo import bar`, look for `foo.bar`).
                 if let Some(file) = self.resolve_module(&import) {
-                    // If the file is a stub, look for the corresponding source file.
                     let source_file = (file.extension() == Some("pyi"))
                         .then(|| self.resolve_real_module(&import))
                         .flatten();
@@ -61,13 +56,11 @@ impl<'a> Resolver<'a> {
                         .flatten();
                 }
 
-                // Attempt to resolve the module (e.g., given `from foo import bar`, look for `foo`).
                 let parent = import.parent();
                 let file = parent
                     .as_ref()
                     .and_then(|parent| self.resolve_module(parent));
 
-                // If the file is a stub, look for the corresponding source file.
                 let source_file = file
                     .is_some_and(|file| file.extension() == Some("pyi"))
                     .then(|| {
@@ -82,16 +75,12 @@ impl<'a> Resolver<'a> {
                     .flatten()
             }
             CollectedImport::StringImport(import, min_dots) => {
-                // Try the full name first, then progressively shorter prefixes.
-                // This handles cases like `"a.b.c.MyClass"` where `MyClass` is an
-                // attribute of module `a.b.c`, not a submodule.
                 let count = import.components().count();
                 let (resolved, source_file) = import
                     .ancestors()
                     .take(count.saturating_sub(min_dots))
                     .find_map(|name| {
                         let file = self.resolve_module(&name)?;
-                        // If the file is a stub, look for the corresponding source file.
                         if file.extension() == Some("pyi") {
                             Some((Some(file), self.resolve_real_module(&name)))
                         } else {

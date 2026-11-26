@@ -47,8 +47,6 @@ pub(super) fn disable_lru(db: &mut dyn Db) {
 }
 
 fn parsed_module_impl(db: &dyn Db, file: File, target_version: PythonVersion) -> Parsed<ModModule> {
-    // A bundled stub's AST is often enough for type inference. Only cache its decompressed
-    // source if a caller asks for the text itself.
     let source = if file.path(db).is_vendored_path() {
         read_source_text(db, file)
     } else {
@@ -58,9 +56,6 @@ fn parsed_module_impl(db: &dyn Db, file: File, target_version: PythonVersion) ->
 
     let options = ParseOptions::from(ty).with_target_version(target_version);
 
-    // Notebooks parse each cell as an independent module so a syntax error confined to one cell is
-    // surfaced instead of being masked by a later cell's content. Regular files take the existing
-    // single-parse path.
     if let Some(notebook) = source.as_notebook() {
         parse_cells_unchecked(&source, notebook.cell_offsets().content_ranges(), &options)
     } else {
@@ -76,7 +71,6 @@ pub fn parsed_string_annotation(
 ) -> Result<Parsed<ModExpression>, ParseError> {
     let expr = parse_string_annotation(source, string)?;
 
-    // We need the sub-ast of the string annotation to be indexed
     indexed::ensure_indexed(&expr, string.node_index().load()).map_err(|err| {
         let message = match err {
             NodeIndexError::NoParent => {
@@ -140,7 +134,6 @@ impl ParsedModule {
         let parsed = match self.inner.load_full() {
             Some(parsed) => parsed,
             None => {
-                // Re-parse the file.
                 let parsed = indexed::IndexedModule::new(parsed_module_impl(
                     db,
                     self.file,
@@ -479,7 +472,6 @@ mod indexed {
                         );
                     }
                 } else {
-                    // Wide chunks store one address word per entry followed by packed node kinds.
                     let entry_count = u8::try_from(node_chunk.len())
                         .expect("an index chunk contains at most 64 entries");
                     chunks.push(IndexChunk {
@@ -549,7 +541,6 @@ mod indexed {
             let entry_index = index % Self::CHUNK_LEN;
             let chunk = &self.chunks[chunk_index];
 
-            // A partial chunk's trailing bits are padding, not indexed nodes.
             assert!(
                 entry_index < usize::from(chunk.entry_count),
                 "index out of bounds: the len is {} but the index is {index}",
@@ -659,8 +650,6 @@ mod indexed {
             let (address, kind) = self.index.get(index);
 
             // SAFETY: By the `IndexedNodes` safety invariant, this is the exact exposed address and
-            // root-node kind recorded from the same node after `parsed` reached its stable address.
-            // `self` keeps the AST alive and immutable for the returned reference's lifetime.
             unsafe {
                 AnyRootNodeRef::from_raw_parts(
                     kind,
@@ -687,7 +676,6 @@ mod indexed {
             T: HasNodeIndex,
             AnyRootNodeRef<'ast>: From<&'ast T>,
         {
-            // Only check on write (the maximum is orders of magnitude less than u32::MAX)
             if self.index > self.max_index {
                 self.overflowed = true;
             } else {
@@ -710,7 +698,6 @@ mod indexed {
 
         #[inline]
         fn visit_annotation(&mut self, expr: &'a Expr) {
-            // `walk_annotation` delegates to `visit_expr`, which indexes the expression once.
             walk_annotation(self, expr);
         }
 
@@ -1099,7 +1086,6 @@ else:
 
         assert!(parsed.has_valid_syntax());
 
-        // Parsing alone leaves the source-text query unevaluated.
         db.clear_salsa_events();
         let _ = source_text(&db, file);
         assert!(

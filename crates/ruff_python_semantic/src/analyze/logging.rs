@@ -25,7 +25,6 @@ pub fn is_logger_candidate(
         return false;
     };
 
-    // If the attribute is an inline instantiation, match against known constructors.
     if let Expr::Call(ast::ExprCall { func, .. }) = &**value {
         return semantic
             .resolve_qualified_name(func)
@@ -37,8 +36,6 @@ pub fn is_logger_candidate(
             });
     }
 
-    // If the symbol was imported from another module, ensure that it's either a user-specified
-    // logger object, the `logging` module itself, or `flask.current_app.logger`.
     if let Some(qualified_name) = semantic.resolve_qualified_name(value) {
         if matches!(
             qualified_name.segments(),
@@ -57,8 +54,6 @@ pub fn is_logger_candidate(
         return false;
     }
 
-    // Otherwise, if the symbol was defined in the current module, match against some common
-    // logger names.
     if let Some(name) = UnqualifiedName::from_expr(value) {
         if let Some(tail) = name.segments().last() {
             if tail.starts_with("log")
@@ -81,12 +76,10 @@ pub fn is_logger_candidate(
 pub fn exc_info<'a>(arguments: &'a Arguments, semantic: &SemanticModel) -> Option<&'a Keyword> {
     let exc_info = arguments.find_keyword("exc_info")?;
 
-    // Ex) `logging.error("...", exc_info=True)`
     if is_const_true(&exc_info.value) {
         return Some(exc_info);
     }
 
-    // Ex) `logging.error("...", exc_info=sys.exc_info())`
     if exc_info
         .value
         .as_call_expr()

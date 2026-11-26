@@ -15,7 +15,6 @@ impl<'a> ShebangDirective<'a> {
     pub(crate) fn try_extract(line: &'a str) -> Option<Self> {
         let mut cursor = Cursor::new(line);
 
-        // Trim the `#!` prefix.
         if !cursor.eat_char('#') {
             return None;
         }

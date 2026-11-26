@@ -53,20 +53,6 @@ impl AlwaysFixableViolation for ParenthesizeChainedOperators {
 
 /// RUF021
 pub(crate) fn parenthesize_chained_logical_operators(checker: &Checker, expr: &ast::ExprBoolOp) {
-    // We're only interested in `and` expressions inside `or` expressions:
-    // - `a or b or c` => `BoolOp(values=[Name("a"), Name("b"), Name("c")], op=Or)`
-    // - `a and b and c` => `BoolOp(values=[Name("a"), Name("b"), Name("c")], op=And)`
-    // - `a or b and c` => `BoolOp(value=[Name("a"), BoolOp(values=[Name("b"), Name("c")], op=And), op=Or)`
-    //
-    // While it is *possible* to get an `Or` node inside an `And` node,
-    // you can only achieve it by parenthesizing the `or` subexpression
-    // (since normally, `and` always binds more tightly):
-    // - `a and (b or c)` => `BoolOp(values=[Name("a"), BoolOp(values=[Name("b"), Name("c"), op=Or), op=And)`
-    //
-    // We only care about unparenthesized boolean subexpressions here
-    // (if they're parenthesized already, that's great!),
-    // so we can ignore all cases where an `Or` node
-    // exists inside an `And` node.
     if expr.op.is_and() {
         return;
     }

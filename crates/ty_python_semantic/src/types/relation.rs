@@ -218,15 +218,8 @@ fn has_missing_generic_nominal_bound<'db>(
     source: IntersectionType<'db>,
     target: IntersectionType<'db>,
 ) -> bool {
-    // With only nominal source positives, each nominal target positive needs a matching
-    // source positive. Classes without explicit bases can supply only their own origin or
-    // object. Since the target is generic, a missing origin proves failure without inspecting
-    // arguments, exclusions, or MROs. Keep matching origins and inheritance on the full path.
     !source.positive(db).is_empty()
         && target.positive(db).iter().any(|&target| {
-            // The proof also applies to non-generic targets other than object, but this extra
-            // filtering costs more than it saves for them: their general relation already
-            // avoids recursion guards and specialization checks.
             let Type::NominalInstance(instance) = target else {
                 return false;
             };
@@ -355,11 +348,8 @@ impl<'db> Type<'db> {
             | Type::AlwaysFalsy
             | Type::AlwaysTruthy => true,
 
-            // `T` is always a subtype of itself,
-            // and `T` is always a subtype of `T | None`
             Type::TypeVar(_) => true,
 
-            // might inherit `Any`, but subtyping is still reflexive
             Type::ClassLiteral(_) => true,
 
             Type::BoundMethod(_)
@@ -540,9 +530,6 @@ impl<'db> Type<'db> {
         relation: TypeRelation,
         target: Type<'db>,
     ) -> ErrorContextTree<'db> {
-        // For example, if `Base.f` accepts `bytes`, overloads of `Child.f` for `int` and `str`
-        // both fail the original check. The checker suppresses notes for individual alternatives,
-        // so trying those overloads again would leave the error context empty.
         if let (Type::Callable(source), Type::Callable(target)) = (self, target)
             && !source
                 .signatures(db)
@@ -685,8 +672,6 @@ impl<'db> Type<'db> {
             return true;
         }
 
-        // Type variables must be converted into constraints before applying the remaining
-        // relation shortcuts.
         if self.is_type_var() || target.is_type_var() {
             return false;
         }
@@ -801,9 +786,6 @@ impl<'db> Type<'db> {
         env: &ProgramEnvironment<'db>,
         other: Type<'db>,
     ) -> bool {
-        // Comparing inferred signatures can depend on the union being simplified. Preserve
-        // failed redundancy checks during a cycle so changes to that union cannot make the
-        // comparison alternate between true and false. Keeping an extra alternative is safe.
         #[salsa::tracked(
             returns(copy),
             cycle_initial=|_, _, _| true,
@@ -830,8 +812,6 @@ impl<'db> Type<'db> {
             return true;
         }
 
-        // Avoid creating a cached relation query for comparisons that class origins alone can
-        // reject. The general relation below would also return false; this is only a shortcut.
         if let (Type::Intersection(source), Type::Intersection(target)) = (self, other)
             && has_missing_generic_nominal_bound(db, env, source, target)
         {
@@ -942,7 +922,6 @@ impl<'db> Type<'db> {
         other: Type<'db>,
     ) -> bool {
         if let (Type::Never, ty) | (ty, Type::Never) = (self, other) {
-            // `Never` is redundant with every type, so only the converse needs checking.
             return ty.might_be_equivalent_to_never(db)
                 && ty.is_pure_redundant_with(db, env, Type::Never);
         }
@@ -1260,12 +1239,6 @@ pub(super) struct TypeRelationChecker<'a, 'c, 'db> {
     context_tree: Option<ErrorContextTree<'db>>,
     perform_expensive_checks: bool,
 
-    // N.B. these fields are private to reduce the risk of
-    // "double-visiting" a given pair of types. You should
-    // generally only ever call `self.relation_visitor.visit()`
-    // or `self.disjointness_visitor.visit()` from
-    // `check_type_pair`, never from `check_typeddict_pair` or
-    // any other more "low-level" method.
     relation_visitor: &'a HasRelationToVisitor<'db, 'c>,
     disjointness_visitor: &'a IsDisjointVisitor<'db, 'c>,
     pub(super) signature_relation_visitor: &'a SignatureRelationVisitor<'db>,
@@ -1469,9 +1442,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
         target: Type<'db>,
     ) -> ConstraintSet<'db, 'c> {
         if let Some(supertype) = union.common_literal_supertype(db, self.env) {
-            // Use the broader supertype only as a positive proof. If it has the requested
-            // relation to the target, then every literal in the union does too. Otherwise,
-            // check each literal individually.
             let supertype_result =
                 self.without_context_collection(|| self.check_type_pair(db, supertype, target));
             if supertype_result.is_trivially_always_satisfied() {
@@ -1510,23 +1480,15 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             return self.check_type_pair(db, alternatives, target);
         }
 
-        // Fast path for pattern narrowing, which can compare many intersections against the
-        // same wide union. If the source intersection and every arm require a single nominal
-        // class and have only nominal exclusions, the cached index lets us skip arms the
-        // source cannot match. Keep the full traversal when collecting error context for each arm.
         if source.is_intersection()
             && !self.is_context_collection_enabled()
             && let Some(source_class) = nominal_intersection_bound(db, self.env, source)
             && let Some(index) = nominal_union_index(db, self.env.program(db), union)
-            // A gradual base can make the source assignable to a class outside its known MRO.
             && !(self.relation.is_assignability()
                 && source_class.iter_mro(db).any(|base| {
                     matches!(base, ClassBase::Any | ClassBase::Dynamic(_) | ClassBase::Divergent(_))
                 }))
         {
-            // A successful alternative needs the same nominal class or one of its bases.
-            // Check class identity separately: an unspecialized generic class acquires default
-            // arguments in its MRO. The full relation still checks each alternative's exclusions.
             let mut matching = std::iter::once(source_class)
                 .chain(source_class.iter_mro(db).filter_map(|base| match base {
                     ClassBase::Class(ClassType::NonGeneric(class)) if class != source_class => {
@@ -1538,8 +1500,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             let Some(elements) = matching.next() else {
                 return self.never();
             };
-            // One group preserves the target union's comparison order. If several bounds match,
-            // use the original traversal so recursive inherited specializations keep that order.
             if matching.next().is_none() {
                 return elements.iter().when_any(db, self.constraints, |&element| {
                     self.check_type_pair(db, source, element)
@@ -1549,11 +1509,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
 
         let elements = union.elements(db);
         let check_expanded_source = || {
-            // Normally non-unions cannot directly contain unions in our model due to the fact that
-            // we enforce a DNF structure on our set-theoretic types. However, it *is* possible for
-            // there to be a newtype of a union, for an intersection to contain a newtype of a
-            // union, or for a non-inferable typevar (possibly inside an intersection) to widen to a
-            // bound or set of constraints that exposes a union; this requires special handling.
             match source {
                 Type::TypeVar(typevar)
                     if !typevar.is_inferable(db, self.inferable)
@@ -1565,9 +1520,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 Type::Intersection(intersection)
                     if self.should_expand_intersection(db, intersection) =>
                 {
-                    // A plain type-variable arm already records the required lower bound if all
-                    // other arms are disjoint. Expanding `int & U` to `int` when matching
-                    // `T | None` can erase `U`.
                     let is_plain_typevar = |element: Type<'db>| {
                         element
                             .as_typevar()
@@ -1634,12 +1586,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                     return self.never();
                 }
 
-                // A gradual union can cover the source collectively even when no arm does:
-                // `U` is assignable to `(U & ~Top[A]) | A`. Materializing the covering arm A
-                // gives `(U & ~Top[A]) | Top[A]`, which simplifies to `U | Top[A]`: Top[A]
-                // restores the part excluded from U. Leave intersections with exclusions intact.
-                // Keep type-variable domains unchanged, since they describe the specializations
-                // allowed in this relation.
                 let materialization_visitor = ApplyTypeMappingVisitor {
                     materialize_typevar_bounds_and_defaults: false,
                     ..self.materialization_visitor.for_new_materialization_root()
@@ -1709,21 +1655,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 constraint_set
             })
             .and(db, self.constraints, || {
-                // For subtyping, we would want to check whether the *top materialization* of
-                // `source` is disjoint from the *top materialization* of `negative`. As an
-                // optimization, however, we can avoid this explicit transformation here, since
-                // our `Type::is_disjoint_from` implementation already only returns true for
-                // `T.is_disjoint_from(U)` if the *top materialization* of `T` is disjoint from the
-                // *top materialization* of `U`.
-                //
-                // Note that the implementation of redundancy here may be too strict from a
-                // theoretical perspective: under redundancy, `T <: ~U` if `Bottom[T]` is disjoint
-                // from `Top[U]` and `Bottom[U]` is disjoint from `Top[T]`. It's possible that this
-                // could be improved. For now, however, we err on the side of strictness for our
-                // redundancy implementation: a fully complete implementation of redundancy may
-                // lead to non-transitivity (highly undesirable); and pragmatically, a full
-                // implementation of redundancy may not generally lead to simpler types in many
-                // situations.
                 let source_ty = match self.relation {
                     TypeRelation::Subtyping | TypeRelation::Redundancy { .. } => source,
                     TypeRelation::Assignability => source.bottom_materialization(db, self.env),
@@ -1754,17 +1685,12 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
     ) -> Option<ConstraintSet<'db, 'c>> {
         let positive = intersection.iter_positive(db).exactly_one().ok()?;
         let typevar = positive.as_typevar()?;
-        // When specializing a generic callable, prefer the target as evidence for its local
-        // type variable. For example, matching `(T) -> T & ~str` against `(U) -> int`
-        // can infer `int` for both T and U.
         if typevar.domain(db) != TypeVarDomain::Type || typevar.is_inferable(db, self.inferable) {
             return None;
         }
 
         let env = self.env;
         let upper_elements = || std::iter::once(target).chain(intersection.iter_negative(db));
-        // Match type variables and structural types in place. A protocol member or
-        // TypedDict field can refer to another type variable that needs its own evidence.
         if upper_elements().any(|ty| {
             any_over_type_expanding_aliases(db, env, ty, |nested| {
                 matches!(
@@ -1777,14 +1703,10 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
         }
 
         let expanded = intersection.with_expanded_typevars_and_newtypes(db, env);
-        // For a fixed U, compare what remains of its declared domain. Keeping a gradual
-        // bound intact lets it materialize during assignability.
         if self.typevar_evaluation == TypeVarEvaluation::Eager {
             return Some(self.check_type_pair(db, expanded, target));
         }
 
-        // The declared domain can establish the relation without constraining U.
-        // Its top materialization covers every legal choice of U.
         let when_expanded = self.check_type_pair(db, expanded.top_materialization(db, env), target);
         Some(when_expanded.or(db, self.constraints, || {
             let upper = UnionType::from_elements(db, env, upper_elements());
@@ -1804,9 +1726,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             return self.check_type_pair(db, alternatives, target);
         }
 
-        // An intersection type is a subtype of another type if at least one of its positive
-        // elements is a subtype of that type. If there are no positive elements, we treat `object`
-        // as the implicit positive element (e.g., `~str` is semantically `object & ~str`).
         let mut elements_context = vec![];
         let context_tree = self.context_tree.as_ref().filter(|tree| tree.is_enabled());
 
@@ -1910,8 +1829,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             return false;
         }
 
-        // These displays already expose the signature being compared; wrapping them would
-        // duplicate the lower-level callable mismatch context.
         !matches!(
             source,
             Type::Callable(_)
@@ -1933,10 +1850,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             .try_visit(
                 db,
                 (source, target, self.relation, self.typevar_evaluation),
-                // Cached constraints do not retain explanations. When collecting context,
-                // recompute unsatisfiable comparisons while preserving the active recursion
-                // guards. Satisfiable constraints remain reusable, including those that
-                // constrain type variables.
                 |result| {
                     !collect_context || !result.is_never_satisfied(db, self.env, self.inferable)
                 },
@@ -1956,13 +1869,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             return nominally_satisfied;
         }
 
-        // TODO: Recursively-specialized structural types can encode context-free languages,
-        // whose inclusion and equivalence are undecidable. No complete fallback exists, but
-        // more decidable cases can be recognized here before conservatively rejecting the pair.
-        //
-        // Strictly speaking, it is incorrect to use either `never` or `always` as a conservative result.
-        // The correct choice here is a logical value that is "neither true nor false", and expressing this requires the introduction of 3-valued logic.
-        // Discussion: https://github.com/astral-sh/ty/issues/4050
         self.never()
     }
 
@@ -2061,7 +1967,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
         source: Type<'db>,
         target: Type<'db>,
     ) -> ConstraintSet<'db, 'c> {
-        // Reflexivity and lazy constraints can bypass the RecursiveVar match arm below.
         source.assert_not_recursive_var();
         target.assert_not_recursive_var();
         if let Some(source) = source.materialized_divergent_fallback() {
@@ -2072,25 +1977,13 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             return self.check_type_pair(db, source, target);
         }
 
-        // Subtyping implies assignability, so if subtyping is reflexive and the two types are
-        // equal, it is both a subtype and assignable. Assignability is always reflexive.
-        //
-        // Note that we could do a full equivalence check here, but that would be both expensive
-        // and unnecessary. This early return is only an optimisation.
         if source == target && self.relation.can_safely_assume_reflexivity(source) {
             return self.always();
         }
 
         let env = self.env;
 
-        // With lazy evaluation, comparisons with a type variable are translated directly into a
-        // constraint set.
         if self.typevar_evaluation == TypeVarEvaluation::Lazy {
-            // A typevar satisfies a relation when...it satisfies the relation. Yes that's a
-            // tautology! We're moving the caller's subtyping/assignability requirement into a
-            // constraint set. If the typevar has an upper bound or constraints, then the relation
-            // only has to hold when the typevar has a valid specialization (i.e., one that
-            // satisfies the upper bound/constraints).
             if let Type::TypeVar(bound_typevar) = source {
                 let upper = if self.relation.is_subtyping() {
                     target.bottom_materialization(db, env)
@@ -2126,14 +2019,11 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             (Type::RecursiveVar(_), _) | (_, Type::RecursiveVar(_)) => {
                 unreachable!("semantic operation on an unbound recursive variable")
             }
-            // Everything is a subtype of `object`.
             (_, Type::NominalInstance(target)) if target.is_object() => self.always(),
             (_, Type::ProtocolInstance(target)) if target.is_equivalent_to_object(db) => {
                 self.always()
             }
 
-            // `Never` is the bottom type, the empty set.
-            // It is a subtype of all other types.
             (Type::Never, _) => self.always(),
 
             (Type::TypeVar(source_typevar), Type::TypeVar(target_typevar))
@@ -2143,14 +2033,11 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             }
 
             // In some specific situations, `Any`/`Unknown`/`@Todo` can be simplified out of unions and intersections,
-            // but this is not true for divergent types (and moving this case any lower down appears to cause
-            // "too many cycle iterations" panics).
             (Type::Divergent(_), _) | (_, Type::Divergent(_)) => {
                 ConstraintSet::from_bool(self.constraints, self.relation.is_assignability())
             }
 
             (Type::Recursive(source_recursive), _) => {
-                // Both comparing arguments and unfolding can revisit this pair.
                 self.with_recursion_guard(db, source, target, || {
                     let by_arguments = if let Type::Recursive(target_recursive) = target {
                         self.when_recursive_types_relate_by_arguments(
@@ -2187,8 +2074,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 })
             }
 
-            // Instances of classes that inherit from an explicit `Any` base retain their nominal
-            // identity and precise members, but have the same assignability as `Any`.
             (Type::NominalInstance(source), _)
                 if self.relation.is_assignability() && source.inherits_from_explicit_any() =>
             {
@@ -2207,9 +2092,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 })
             }
 
-            // Mapped negations retain alias references to avoid repeatedly unfolding recursive
-            // types. Expand direct aliases for comparison so `~A` and `~list[Any]` compare
-            // identically when `type A = list[Any]`.
             (Type::Intersection(intersection), _) if intersection.has_aliases(db) => self
                 .with_recursion_guard(db, source, target, || {
                     self.check_type_pair(db, intersection.expand_aliases(db, env), target)
@@ -2220,9 +2102,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                     self.check_type_pair(db, source, intersection.expand_aliases(db, env))
                 }),
 
-            // Annotation unions retain type aliases so recursive aliases can be represented.
-            // Normalize direct alias elements together before checking the union so reductions
-            // that depend on multiple elements, such as all members of an enum, are visible.
             (_, Type::Union(union)) if union.has_aliases(db) => {
                 self.with_recursion_guard(db, source, target, || {
                     self.check_type_pair(db, source, union.expand_aliases(db, env))
@@ -2300,27 +2179,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.check_type_pair(db, source, complement.to_intersection(db, env))
             }
 
-            // Field definitions in dataclasses and dataclass-transformers can involve calls to
-            // `dataclasses.field` or custom field-specifier functions. The annotated return type
-            // of these functions is often explicitly wrong to "help" type checkers. We therefore
-            // overwrite their return type unconditionally and pretend that all field-specifier
-            // calls return a `KnownInstanceType::Field`.
-            //
-            // Here, we model assignability of this special type to the declared field type. In
-            // order to catch mistakes in the field definition, we only consider this known instance
-            // type to be assignable if the default value and converter output type is compatible
-            // with the declared field type.
-            //
-            // We consider three cases:
-            //     1. If a converter is provided, we validate the output/return type of the converter
-            //        function against the declared field type. The presence of a default value is
-            //        irrelevant in this case, as the converter is expected to handle conversion from
-            //        the default value's type to the declared field type. Incompatibilities between
-            //        the two must be caught by the field-specifier function's signature.
-            //     2. If no converter is provided, we validate the default value's type against the
-            //        declared field type.
-            //     3. If neither a converter nor a default value is provided, we allow the field to be
-            //        considered assignable to any type.
             (Type::KnownInstance(KnownInstanceType::Field(field)), _)
                 if self.relation.is_assignability() =>
             {
@@ -2345,9 +2203,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             ) if source.inner(db).is_recursive_divergent()
                 || target.inner(db).is_recursive_divergent() =>
             {
-                // Recursive inference preserves an Annotated object while replacing its wrapped
-                // type with Divergent. That approximation must accept another unfolding of the
-                // object, without making distinct concrete Annotated values interchangeable.
                 self.check_relation_in_invariant_position(
                     db,
                     source.inner(db),
@@ -2357,8 +2212,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 )
             }
 
-            // The read-only `__func__` and `__wrapped__` attributes expose the complete wrapped
-            // object, so its attributes matter here as well as its call signature.
             (
                 Type::KnownInstance(KnownInstanceType::MethodWrapper(source_wrapper)),
                 Type::KnownInstance(KnownInstanceType::MethodWrapper(target_wrapper)),
@@ -2376,30 +2229,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 Type::KnownInstance(KnownInstanceType::FunctoolsPartialCall(source_partial)),
                 Type::KnownInstance(KnownInstanceType::FunctoolsPartialCall(target_partial)),
             ) => self.with_recursion_guard(db, source, target, || {
-                // The reduced signature of `partial(boolean)` is `() -> bool`, which is a
-                // subtype of the `() -> int` signature of `partial(integer)`. The wrapped
-                // functions still differ, and `.func` exposes which one was chosen:
-                //
-                // ```py
-                // from functools import partial
-                //
-                // def integer() -> int:
-                //     return 1
-                //
-                // def boolean() -> bool:
-                //     return True
-                //
-                // int_partial = partial(integer)
-                // bool_partial = partial(boolean)
-                //
-                // def choose(flag: bool) -> bool:
-                //     selected = bool_partial if flag else int_partial
-                //     return reveal_type(selected.func is boolean)  # revealed: bool
-                // ```
-                //
-                // The comparison is true when `flag` is true. Dropping `bool_partial` from the
-                // union based only on its reduced signature would make ty reveal `Literal[False]`
-                // instead of `bool`. Check the wrapped callable as well as the reduced signature.
                 self.check_type_pair(
                     db,
                     source_partial.wrapped(db).inner(db),
@@ -2422,9 +2251,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 source_sentinel.is_same_sentinel(db, target_sentinel),
             ),
 
-            // A nominal descriptor annotation specifies the wrapped callable through `__func__`.
-            // Comparing that contract directly preserves overloads and avoids replacing the
-            // wrapped callable's parameter and return types with the default specialization.
             (
                 Type::KnownInstance(KnownInstanceType::MethodWrapper(wrapper)),
                 Type::NominalInstance(target_instance),
@@ -2449,8 +2275,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 })
             }
 
-            // When checking `FunctoolsPartial <: functools.partial[T]`, we need to specialize
-            // the nominal instance with the partial's return type so the check is precise.
             (
                 Type::KnownInstance(KnownInstanceType::FunctoolsPartial(partial)),
                 Type::NominalInstance(target_instance),
@@ -2462,13 +2286,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.check_type_pair(db, specialized, target)
             }
 
-            // Dynamic is only a subtype of `object` and only a supertype of `Never`; both were
-            // handled above. It's always assignable, though.
-            //
-            // Redundancy sits in between subtyping and assignability. `Any <: T` only holds true
-            // if `T` is also a dynamic type or a union that contains a dynamic type. Similarly,
-            // `T <: Any` only holds true if `T` is a dynamic type or an intersection that
-            // contains a dynamic type.
             (Type::Dynamic(_dynamic), _) => ConstraintSet::from_bool(
                 self.constraints,
                 match self.relation {
@@ -2489,7 +2306,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                     TypeRelation::Redundancy { .. } => match source {
                         Type::Dynamic(_) => true,
                         Type::Intersection(intersection) => {
-                            // If a `Divergent` type is involved, it must not be eliminated.
                             intersection
                                 .positive(db)
                                 .iter()
@@ -2500,13 +2316,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 },
             ),
 
-            // In general, a TypeVar `T` is not redundant with a type `S` unless one of the two conditions is satisfied:
-            // 1. `T` is a bound TypeVar and `T`'s upper bound is a subtype of `S`.
-            //    TypeVars without an explicit upper bound are treated as having an implicit upper bound of `object`.
-            // 2. `T` is a constrained TypeVar and all of `T`'s constraints are subtypes of `S`.
-            //
-            // However, there is one exception to this general rule: for any given typevar `T`,
-            // `T` will always be a subtype of any union containing `T`.
             (_, Type::Union(union))
                 if self.relation.can_safely_assume_reflexivity(source)
                     && union.contains_member(db, source) =>
@@ -2514,7 +2323,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.always()
             }
 
-            // A similar rule applies in reverse to intersection types.
             (Type::Intersection(intersection), _)
                 if self.relation.can_safely_assume_reflexivity(target)
                     && intersection.positive(db).contains(&target) =>
@@ -2526,12 +2334,8 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                     && intersection.positive(db).iter().any(Type::is_dynamic) =>
             {
                 // If the intersection contains `Any`/`Unknown`/`@Todo`, it is assignable to any type.
-                // `Any` could materialize to `Never`, `Never & T & ~S` simplifies to `Never` for any
-                // `T` and any `S`, and `Never` is a subtype of all types.
                 self.always()
             }
-            // A specialization can span several union arms, so check its upper bound
-            // before splitting a union target.
             (Type::Intersection(intersection), _)
                 if let Some(constraints) =
                     self.check_typevar_with_exclusions(db, intersection, target) =>
@@ -2545,11 +2349,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.never()
             }
 
-            // When `A` has an exact instance projection, `type[T]` is a subtype of `A` if `T`
-            // is a subtype of that projection. If `A` is a metaclass instance (instance of a specific
-            // subclass of `type`), we instead compare in the metaclass-instance domain, since
-            // collapsing `A` through `to_instance()` would erase it to `object` (we have no
-            // precise representation for "all instances of any classes with a given metaclass").
             (Type::SubclassOf(subclass_of), _)
                 if let Some(constraint_set) =
                     self.check_typevar_subclass_relation_to_target(db, subclass_of, target) =>
@@ -2557,8 +2356,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 constraint_set
             }
 
-            // And vice versa. (No special metaclass handling is needed in this direction, since
-            // "collapse to 'object'" in this case is a sound over-approximation.)
             (_, Type::SubclassOf(subclass_of))
                 if let Some(type_var) = subclass_of.into_type_var()
                     && let Some(instance) = source.to_instance_approximation(db, env) =>
@@ -2566,9 +2363,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.check_type_pair(db, instance, Type::TypeVar(type_var))
             }
 
-            // A TypeVarTuple specialization is represented by one tuple value. Keep inferable
-            // TypeVarTuples bare for constraint solving, but compare fixed symbolic values using
-            // the same tuple relation as concrete specializations.
             (Type::TypeVar(bound_typevar), target)
                 if !bound_typevar.is_inferable(db, self.inferable)
                     && bound_typevar.is_typevartuple(db)
@@ -2580,9 +2374,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                     target,
                 )
             }
-            // A fixed tuple cannot satisfy every specialization of a non-inferable TypeVarTuple.
-            // Let it reach the ordinary rejection below; expanding the target would repeat the
-            // same tuple comparison and cause the recursion guard to accept it.
             (source, Type::TypeVar(bound_typevar))
                 if !bound_typevar.is_inferable(db, self.inferable)
                     && bound_typevar.is_typevartuple(db)
@@ -2597,10 +2388,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 )
             }
 
-            // A gradual `ParamSpec` value (`...`) is assignability-consistent with any concrete
-            // `ParamSpec` value. This only applies to fixed `ParamSpec` values in already-
-            // specialized generic aliases; inferable `ParamSpec`s are handled by the inference
-            // paths below.
             (Type::TypeVar(bound_typevar), Type::Callable(other))
             | (Type::Callable(other), Type::TypeVar(bound_typevar))
                 if self.is_eager_assignability()
@@ -2611,8 +2398,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.always()
             }
 
-            // Compare fixed `ParamSpec`s with the endpoints of the materialization range of `...`:
-            // its bottom is below every `ParamSpec`, and its top is above every `ParamSpec`.
             (Type::TypeVar(bound_typevar), Type::Callable(other))
                 if !bound_typevar.is_inferable(db, self.inferable)
                     && bound_typevar.domain(db) == TypeVarDomain::ParameterSignature
@@ -2629,9 +2414,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.always()
             }
 
-            // If the typevar is constrained, there must be multiple constraints, and the typevar
-            // might be specialized to any one of them. However, the constraints do not have to be
-            // disjoint, which means an lhs type might be a subtype of all of the constraints.
             (_, Type::TypeVar(bound_typevar))
                 if !bound_typevar.is_inferable(db, self.inferable)
                     && let constraints = bound_typevar
@@ -2648,31 +2430,22 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             }
 
             (Type::TypeVar(bound_typevar), _) if bound_typevar.is_inferable(db, self.inferable) => {
-                // The implicit lower bound of a typevar is `Never`, which means
-                // that it is always assignable to any other type.
 
-                // TODO: record the unification constraints
 
                 self.always()
             }
 
-            // Fast path for various types that we know `object` is never a subtype of.
             (
                 Type::NominalInstance(source),
                 Type::NominalInstance(_) | Type::SubclassOf(_) | Type::Callable(_),
             ) if source.is_object() => self.never(),
 
-            // `object` is not a subtype of a non-universal protocol because some subclasses
-            // might not implement it. For assignability, still inspect its actual members:
-            // `object()` is hashable and commonly used as a sentinel for `Hashable` parameters.
             (Type::NominalInstance(source), Type::ProtocolInstance(_))
                 if source.is_object() && !self.relation.is_assignability() =>
             {
                 self.never()
             }
 
-            // Fast path: `object` is not a subtype of any non-inferable type variable, since the
-            // type variable could be specialized to a type smaller than `object`.
             (Type::NominalInstance(source), Type::TypeVar(typevar))
                 if source.is_object() && !typevar.is_inferable(db, self.inferable) =>
             {
@@ -2686,19 +2459,13 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             (Type::Union(union), _) => self.check_source_union(db, union, target),
             (_, Type::Union(union)) => self.check_target_union(db, source, union),
 
-            // If both sides are intersections we need to handle the right side first
-            // (A & B & C) is a subtype of (A & B) because the left is a subtype of both A and B,
-            // but none of A, B, or C is a subtype of (A & B).
             (_, Type::Intersection(intersection)) => {
                 self.check_target_intersection(db, source, intersection)
             }
 
-            // Check an inferable target's bound before splitting a source intersection.
-            // For `T: A & B`, neither `A` nor `B` alone need satisfy the bound, but `A & B` does.
             (_, Type::TypeVar(typevar))
                 if self.is_eager_assignability() && typevar.is_inferable(db, self.inferable) =>
             {
-                // TODO: record the unification constraints
                 typevar.typevar(db).upper_bound(db, env).when_none_or(
                     db,
                     self.constraints,
@@ -2710,16 +2477,11 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.check_source_intersection(db, intersection, target)
             }
 
-            // A fully static typevar is a subtype of its upper bound, and to something similar to
-            // the union of its constraints. An unbound, unconstrained, fully static typevar has an
-            // implicit upper bound of `object` (which is handled above).
             (Type::TypeVar(bound_typevar), _)
                 if !bound_typevar.is_inferable(db, self.inferable)
                     && let Some(bound_or_constraints) =
                         bound_typevar.typevar(db).bound_or_constraints(db, env) =>
             {
-                // Upcast the type variable directly rather than promoting it to its upper bound,
-                // such that `Self` in the callable signature refers back to the original type variable.
                 if let Type::Callable(target_callable) = target
                     && let Some(callables) = source.try_upcast_to_callable_with_policy(
                         db,
@@ -2735,56 +2497,36 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 }
             }
 
-            // `Never` is the bottom type, the empty set.
             (_, Type::Never) => self.never(),
 
-            // Other than the special cases checked above, no other types are a subtype of a
-            // typevar, since there's no guarantee what type the typevar will be specialized to.
-            // (If the typevar is bounded, it might be specialized to a smaller type than the
-            // bound. This is true even if the bound is a final class, since the typevar can still
-            // be specialized to `Never`.)
             (_, Type::TypeVar(bound_typevar))
                 if !bound_typevar.is_inferable(db, self.inferable) =>
             {
                 self.never()
             }
 
-            // TODO: Infer specializations here
             (_, Type::TypeVar(typevar)) if typevar.is_inferable(db, self.inferable) => self.never(),
             (Type::TypeVar(bound_typevar), _) => {
-                // All inferable cases should have been handled above
                 assert!(!bound_typevar.is_inferable(db, self.inferable));
                 self.never()
             }
 
-            // All other `NewType` assignments fall back to the concrete base type.
-            // This case must come after the TypeVar cases above, so that when checking
-            // `NewType <: TypeVar`, we use the TypeVar handling rather than falling back
-            // to the NewType's concrete base type.
             (Type::NewTypeInstance(source_newtype), _) => {
                 self.check_type_pair(db, source_newtype.concrete_base_type(db), target)
             }
 
-            // Note that the definition of `Type::AlwaysFalsy` depends on the return value of `__bool__`.
-            // If `__bool__` always returns True or False, it can be treated as a subtype of `AlwaysTruthy` or `AlwaysFalsy`, respectively.
             (_, Type::AlwaysFalsy) => {
                 ConstraintSet::from_bool(self.constraints, !source.bool(db, env).may_be_true())
             }
             (_, Type::AlwaysTruthy) => {
                 ConstraintSet::from_bool(self.constraints, !source.bool(db, env).may_be_false())
             }
-            // Currently, the only supertype of `AlwaysFalsy` and `AlwaysTruthy` is the universal set (object instance).
             (Type::AlwaysFalsy | Type::AlwaysTruthy, _) => {
                 self.with_recursion_guard(db, source, target, || {
                     self.check_type_pair(db, Type::object(), target)
                 })
             }
 
-            // These clauses handle type variants that include function literals. A function
-            // literal is the subtype of itself, and not of any other function literal. However,
-            // our representation of a function literal includes any specialization that should be
-            // applied to the signature. Different specializations of the same function literal are
-            // only subtypes of each other if they result in the same signature.
             (Type::FunctionLiteral(source_function), Type::FunctionLiteral(target_function)) => {
                 self.check_function_pair(db, source_function, target_function)
             }
@@ -2810,15 +2552,12 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.check_known_bound_method_pair(db, source_method, target_method)
             }
 
-            // All `StringLiteral` types are a subtype of `LiteralString`.
             (Type::LiteralValue(source), Type::LiteralValue(target))
                 if source.is_string() && target.is_literal_string() =>
             {
                 self.always()
             }
 
-            // For union simplification, we want to preserve the unpromotable form of a literal value,
-            // and so redundancy is not symmetric.
             (Type::LiteralValue(source), Type::LiteralValue(target))
                 if matches!(self.relation, TypeRelation::Redundancy { pure: false }) =>
             {
@@ -2832,10 +2571,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 ConstraintSet::from_bool(self.constraints, source.kind() == target.kind())
             }
 
-            // No literal type is a subtype of any other literal type, unless they are the same
-            // type (which is handled above). This case is not necessary from a correctness
-            // perspective (the fallback cases below will handle it correctly), but it is important
-            // for performance of simplifying large unions of literal types.
             (
                 Type::LiteralValue(_)
                 | Type::ClassLiteral(_)
@@ -2863,8 +2598,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
 
             (_, Type::Callable(target_callable)) => {
                 self.with_recursion_guard(db, source, target, || {
-                    // Bound methods can be assigned to inferred function-like callback types,
-                    // but are not nominal subtypes of functions.
                     let target_callable = if self.relation.is_assignability()
                         && matches!(source, Type::BoundMethod(_))
                         && target_callable.is_function_like(db)
@@ -2897,12 +2630,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 })
             }
 
-            // `type[Any]` is assignable to arbitrary protocols as it has arbitrary attributes
-            // (this is handled by a lower-down branch), but it is only a subtype of a given
-            // protocol if `type` is a subtype of that protocol. Similarly, `type[T]` will
-            // always be assignable to any protocol if `type[<upper bound of T>]` is assignable
-            // to that protocol (handled lower down), but it is only a subtype of that protocol
-            // if `type` is a subtype of that protocol.
             (Type::SubclassOf(source_subclass_ty), Type::ProtocolInstance(_))
                 if (source_subclass_ty.is_dynamic() || source_subclass_ty.is_type_var())
                     && !self.relation.is_assignability() =>
@@ -2916,7 +2643,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 })
             }
 
-            // A protocol instance can never be a subtype of a nominal type, with the *sole* exception of `object`.
             (Type::ProtocolInstance(_), _) => self.never(),
 
             (Type::TypedDict(source_td), Type::TypedDict(target_td)) => {
@@ -2930,9 +2656,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                     let dict_value_type =
                         typed_dict.dict_value_type_if(db, |field_ty, extra_ty| {
                             let result = if self.relation.is_assignability() {
-                                // Mutual assignability lets gradual field types satisfy the mutable
-                                // dict contract. Check the schema without inferring type variables or
-                                // contributing error context, but keep the active recursion guards.
                                 let checker = Self {
                                     inferable: TypeVarSet::None,
                                     typevar_evaluation: TypeVarEvaluation::Eager,
@@ -3010,11 +2733,8 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 })
             }
 
-            // A non-`TypedDict` cannot subtype a `TypedDict`
             (_, Type::TypedDict(_)) => self.never(),
 
-            // A string literal `Literal["abc"]` is assignable to `str` *and* to
-            // `Sequence[Literal["a", "b", "c"]]` because strings are sequences of their characters.
             (Type::LiteralValue(literal), Type::NominalInstance(instance))
                 if let Some(value) = literal.as_string() =>
             {
@@ -3040,9 +2760,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                     0 => Type::Never,
                     1 => Type::single_char_string_literal(db, *chars.iter().next().unwrap()),
                     _ => {
-                        // Optimisation: since we know this union will only include string-literal types,
-                        // avoid eagerly creating string-literal types when unnecessary, and avoid going
-                        // via the union-builder.
                         let union_elements: Box<[Type<'db>]> = chars
                             .iter()
                             .map(|c| Type::single_char_string_literal(db, *c))
@@ -3060,8 +2777,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
 
             (Type::LiteralValue(literal), _) if literal.is_string() => self.never(),
 
-            // A bytes literal `Literal[b"abc"]` is assignable to `bytes` *and* to
-            // `Sequence[Literal[97, 98, 99]]` because bytes are sequences of integers.
             (Type::LiteralValue(literal), Type::NominalInstance(instance))
                 if let Some(value) = literal.as_bytes() =>
             {
@@ -3106,8 +2821,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
 
             (Type::LiteralValue(literal), _) if literal.is_bytes() => self.never(),
 
-            // An instance is a subtype of an enum literal, if it is an instance of the enum class
-            // and the enum has only one member.
             (Type::NominalInstance(_), Type::LiteralValue(literal))
                 if let Some(target_enum_literal) = literal.as_enum() =>
             {
@@ -3121,9 +2834,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 }
             }
 
-            // Except for the special `BytesLiteral`, `LiteralString`, and string literal cases above,
-            // most `Literal` types delegate to their instance fallbacks
-            // unless `source` is exactly equivalent to `target` (handled above)
             (Type::ModuleLiteral(_) | Type::LiteralValue(_) | Type::FunctionLiteral(_), _) => {
                 source.literal_fallback_instance(db, env).when_some_and(
                     db,
@@ -3132,7 +2842,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 )
             }
 
-            // The same reasoning applies for these special callable types:
             (Type::BoundMethod(_), _) => {
                 self.check_type_pair(db, KnownClass::MethodType.to_instance(db, env), target)
             }
@@ -3146,11 +2855,9 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
             ),
 
             (Type::DataclassDecorator(_) | Type::DataclassTransformer(_), _) => {
-                // TODO: Implement subtyping using an equivalent `Callable` type.
                 self.never()
             }
 
-            // `TypeIs` is invariant.
             (Type::TypeIs(source), Type::TypeIs(target)) => self
                 .check_relation_in_invariant_position(
                     db,
@@ -3160,12 +2867,10 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                     target.materialization_kind(db),
                 ),
 
-            // `TypeGuard` is covariant.
             (Type::TypeGuard(source), Type::TypeGuard(target)) => {
                 self.check_type_pair(db, source.return_type(db), target.return_type(db))
             }
 
-            // `TypeIs[T]` and `TypeGuard[T]` are subtypes of `bool`.
             (Type::TypeIs(_) | Type::TypeGuard(_), _) => {
                 self.check_type_pair(db, KnownClass::Bool.to_instance(db, env), target)
             }
@@ -3190,8 +2895,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.never()
             }
 
-            // `Literal[<class 'C'>]` is a subtype of `type[B]` if `C` is a subclass of `B`,
-            // since `type[B]` describes all possible runtime subclasses of the class object `B`.
             (Type::ClassLiteral(source_cls), Type::SubclassOf(target_subclass_ty)) => {
                 match target_subclass_ty.subclass_of() {
                     SubclassOfInner::Protocol(target_protocol) => self
@@ -3218,10 +2921,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 }
             }
 
-            // Similarly, `<class 'C'>` is assignable to `<class 'C[...]'>` (a generic-alias type)
-            // if the default specialization of `C` is assignable to `C[...]`. This scenario occurs
-            // with final generic types, where `type[C[...]]` is simplified to the generic-alias
-            // type `<class 'C[...]'>`, due to the fact that `C[...]` has no subclasses.
             (Type::ClassLiteral(source_cls), Type::GenericAlias(target_alias)) => self
                 .check_class_pair(
                     db,
@@ -3229,7 +2928,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                     ClassType::Generic(target_alias),
                 ),
 
-            // For generic aliases, we delegate to the underlying class type.
             (Type::GenericAlias(source_alias), Type::GenericAlias(target_alias)) => self
                 .check_class_pair(
                     db,
@@ -3259,14 +2957,10 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 }
             }
 
-            // This branch asks: given two types `type[T]` and `type[S]`, is `type[T]` a subtype of `type[S]`?
             (Type::SubclassOf(source), Type::SubclassOf(target)) => {
                 self.check_subclassof_pair(db, source, target)
             }
 
-            // `Literal[str]` is a subtype of `type` because the `str` class object is an instance of its metaclass `type`.
-            // `Literal[abc.ABC]` is a subtype of `abc.ABCMeta` because the `abc.ABC` class object
-            // is an instance of its metaclass `abc.ABCMeta`.
             (Type::ClassLiteral(source_class), _) => {
                 self.check_type_pair(db, source_class.metaclass_instance_type(db, env), target)
             }
@@ -3276,7 +2970,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 target,
             ),
 
-            // `type[Any]` is a subtype of `type[object]`, and is assignable to any `type[...]`
             (Type::SubclassOf(subclass_of_ty), _) if subclass_of_ty.is_dynamic() => self
                 .check_type_pair(db, KnownClass::Type.to_instance(db, env), target)
                 .or(db, self.constraints, || {
@@ -3286,29 +2979,18 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                         })
                 }),
 
-            // Any `type[...]` type is assignable to `type[Any]`
             (_, Type::SubclassOf(subclass_of_ty))
                 if subclass_of_ty.is_dynamic() && self.relation.is_assignability() =>
             {
                 self.check_type_pair(db, source, KnownClass::Type.to_instance(db, env))
             }
 
-            // `type[str]` (== `SubclassOf("str")` in ty) describes all possible runtime subclasses
-            // of the class object `str`. It is a subtype of `type` (== `Instance("type")`) because `str`
-            // is an instance of `type`, and so all possible subclasses of `str` will also be instances of `type`.
-            //
-            // Similarly `type[enum.Enum]`  is a subtype of `enum.EnumMeta` because `enum.Enum`
-            // is an instance of `enum.EnumMeta`. `type[Any]` and `type[Unknown]` do not participate in subtyping,
-            // however, as they are not fully static types.
             (Type::SubclassOf(subclass_of_ty), _) => {
                 self.check_type_pair(db, subclass_of_ty.to_metaclass_instance(db, env), target)
             }
 
             (Type::TypeForm(_), _) => self.check_type_pair(db, Type::object(), target),
 
-            // For example: `Type::SpecialForm(SpecialFormType::Type)` is a subtype of `Type::NominalInstance(_SpecialForm)`,
-            // because `Type::SpecialForm(SpecialFormType::Type)` is a set with exactly one runtime value in it
-            // (the symbol `typing.Type`), and that symbol is known to be an instance of `typing._SpecialForm` at runtime.
             (Type::SpecialForm(source_form), _) => {
                 self.check_type_pair(db, source_form.instance_fallback(db, env), target)
             }
@@ -3317,13 +2999,7 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.check_type_pair(db, source.instance_fallback(db, env), target)
             }
 
-            // `bool` is a subtype of `int`, because `bool` subclasses `int`,
-            // which means that all instances of `bool` are also instances of `int`
             (Type::NominalInstance(source_i), Type::NominalInstance(target_i)) => {
-                // As an optimization, skip the recursion guard when the target is
-                // non-generic and has no tuple specification. These comparisons only
-                // inspect MRO class identities; there are no type arguments or tuple
-                // elements whose comparison could recurse.
                 if target_i.own_tuple_spec(db).is_none()
                     && matches!(target_i.class(db, env), ClassType::NonGeneric(_))
                 {
@@ -3356,8 +3032,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 source,
                 KnownClass::MemberDescriptorType.to_instance(db, env),
             ),
-            // Other than the special cases enumerated above, nominal-instance types are never
-            // subtypes of any other variants
             (Type::NominalInstance(_), _) => self.never(),
         }
     }
@@ -3450,12 +3124,6 @@ pub(super) struct EquivalenceChecker<'a, 'c, 'db> {
     perform_expensive_checks: bool,
     typevar_evaluation: TypeVarEvaluation,
 
-    // N.B. these fields are private to reduce the risk of
-    // "double-visiting" a given pair of types. You should
-    // generally only ever call `self.relation_visitor.visit()`
-    // or `self.disjointness_visitor.visit()` from
-    // `check_type_pair`, never from `check_typeddict_pair` or
-    // any other more "low-level" method.
     relation_visitor: &'a HasRelationToVisitor<'db, 'c>,
     disjointness_visitor: &'a IsDisjointVisitor<'db, 'c>,
     signature_relation_visitor: &'a SignatureRelationVisitor<'db>,
@@ -3497,9 +3165,6 @@ impl<'c, 'db> EquivalenceChecker<'_, 'c, 'db> {
         left: Type<'db>,
         right: Type<'db>,
     ) -> ConstraintSet<'db, 'c> {
-        // Recursive materialization fallbacks depend on the comparison root, so each directional
-        // pass needs fresh materialization caches. Nested equivalence checks still share the
-        // materialization-equivalence recursion guard to avoid re-entering the same comparison.
         let left_to_right_materialization_visitor =
             self.materialization_visitor.for_new_materialization_root();
         self.as_relation_checker(&left_to_right_materialization_visitor)
@@ -3521,12 +3186,6 @@ pub(super) struct DisjointnessChecker<'a, 'c, 'db> {
     provenance: ConstraintProvenance,
     perform_expensive_checks: bool,
 
-    // N.B. these fields are private to reduce the risk of
-    // "double-visiting" a given pair of types. You should
-    // generally only ever call `self.relation_visitor.visit()`
-    // or `self.disjointness_visitor.visit()` from
-    // `check_type_pair`, never from `check_typeddict_pair` or
-    // any other more "low-level" method.
     disjointness_visitor: &'a IsDisjointVisitor<'db, 'c>,
     relation_visitor: &'a HasRelationToVisitor<'db, 'c>,
     signature_relation_visitor: &'a SignatureRelationVisitor<'db>,
@@ -3714,8 +3373,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
             let subtyping_checker = self.as_relation_checker(TypeRelation::Subtyping);
 
             (
-                // As an optimization, test an exact exclusion before unrelated positive components.
-                // Gradual types need the full reflexive subtyping check: `Any` is not a subtype of itself.
                 ConstraintSet::from_bool(self.constraints, negative_elements.contains(&other)).and(
                     db,
                     self.constraints,
@@ -3731,7 +3388,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                     })
             })
             .or(db, self.constraints, || {
-                // A & B & Not[C] is disjoint from C
                 negative_elements
                     .iter()
                     .when_any(db, self.constraints, |&neg_ty| {
@@ -3754,7 +3410,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
         if let Some(context) = self.report_context()
             && !result.is_always_satisfied(db, self.env, self.inferable)
         {
-            // A failed alternative is not evidence for a later successful disjointness check.
             context.take();
         }
         result
@@ -3840,7 +3495,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 self.check_type_pair(db, other, complement.remaining_literal_union(db, env))
             }),
 
-            // `type[T]` and `TypeForm[S]` overlap whenever their represented instance types do.
             (Type::SubclassOf(subclass_of), Type::TypeForm(typeform))
             | (Type::TypeForm(typeform), Type::SubclassOf(subclass_of)) => {
                 nontrivial_check(self, || {
@@ -3852,7 +3506,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }
 
-            // `type[T]` is disjoint from a class object `A` if every instance of `T` is disjoint from an instance of `A`.
             (Type::SubclassOf(subclass_of), other) | (other, Type::SubclassOf(subclass_of))
                 if let Some(type_var) = subclass_of.into_type_var()
                     && let Some(instance) = other.to_instance_approximation(db, env) =>
@@ -3862,10 +3515,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }
 
-            // A typevar is never disjoint from itself, since all occurrences of the typevar must
-            // be specialized to the same type. (This is an important difference between typevars
-            // and `Any`!) Different typevars might be disjoint, depending on their bounds and
-            // constraints, which are handled below.
             (Type::TypeVar(left_tvar), Type::TypeVar(right_tvar))
                 if !left_tvar.is_inferable(db, self.inferable)
                     && left_tvar.is_same_typevar_as(db, right_tvar) =>
@@ -3881,10 +3530,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 self.always()
             }
 
-            // An unbounded typevar is never disjoint from any other type, since it might be
-            // specialized to any type. A bounded typevar is not disjoint from its bound, and is
-            // only disjoint from other types if its bound is. A constrained typevar is disjoint
-            // from a type if all of its constraints are.
             (Type::TypeVar(tvar), other) | (other, Type::TypeVar(tvar))
                 if !tvar.is_inferable(db, self.inferable) =>
             {
@@ -3905,13 +3550,10 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }
 
-            // TODO: Infer specializations here
             (Type::TypeVar(_), _) | (_, Type::TypeVar(_)) => self.never(),
 
             (Type::Union(union), other) | (other, Type::Union(union)) => {
                 nontrivial_check(self, || {
-                    // Fast-path: If the type is inhabited and an exact member of the union,
-                    // the types cannot be disjoint.
                     if self.report_context().is_none()
                         && union.contains_member(db, other)
                         && self
@@ -3953,9 +3595,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }
 
-            // If we have two intersections, we test the positive elements of each one against the other intersection
-            // Negative elements need a positive element on the other side in order to be disjoint.
-            // This is similar to what would happen if we tried to build a new intersection that combines the two
             (Type::Intersection(left_intersection), Type::Intersection(right_intersection)) => {
                 nontrivial_check(self, || {
                     if let Some(alternatives) = left_intersection.finite_alternative_union(db, env)
@@ -4001,14 +3640,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 }
             }),
 
-            // A NewType's concrete base can be a metaclass: `N = NewType("N", Meta)`, where `Meta`
-            // subclasses `type`. Unwrapping it here lets the earlier `to_instance_approximation`
-            // arm reduce `type[T]` versus `Meta` to `T` versus `object`.
-            // If we transposed first (the next arm), a protocol bound on T could instead make us
-            // compare the protocol's own metaclass with Meta, incorrectly concluding that the
-            // types are disjoint. Other NewType comparisons need their specialized checks before
-            // unwrapping; in particular, protocol member lookup must preserve the NewType receiver
-            // for `Self`.
             (class @ Type::SubclassOf(_), Type::NewTypeInstance(newtype))
             | (Type::NewTypeInstance(newtype), class @ Type::SubclassOf(_)) => {
                 nontrivial_check(self, || {
@@ -4016,19 +3647,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }
 
-            // `type[T]` is disjoint from another type if its transposed upper bound or constraints are.
-            // Transposition preserves T's identity but replaces its bounds. The match arms that
-            // perform the following operations must remain above this branch:
-            // - Unfold aliases and recursive types, which can expose other cases in this list.
-            // - Project class objects and TypeForms to their instance types, including metaclasses
-            //   exposed by unwrapping a NewType.
-            // - Handle bare typevars: T and its transpose share an identity but have different bounds.
-            // - Decompose unions and intersections: their members can refer to T or exclude type[T],
-            //   as in `type[T]` versus `Not[type[T]] | int`.
-            // The cases after this do not rely on the original typevar identity at the outer
-            // level.
-            // Keep transposition before protocol checks: a final bound can expose an exact class
-            // type whose missing members prove disjointness.
             (Type::SubclassOf(subclass_of), other) | (other, Type::SubclassOf(subclass_of))
                 if let Some(type_var) = subclass_of
                     .subclass_of()
@@ -4087,8 +3705,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 !left_sentinel.is_same_sentinel(db, right_sentinel),
             ),
 
-            // Distinct wrapper types can describe the same descriptor when their wrapped types
-            // overlap; they do not necessarily represent distinct objects.
             (
                 Type::KnownInstance(KnownInstanceType::MethodWrapper(left_wrapper)),
                 Type::KnownInstance(KnownInstanceType::MethodWrapper(right_wrapper)),
@@ -4128,14 +3744,10 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
             ) if left.inner(db).is_recursive_divergent()
                 || right.inner(db).is_recursive_divergent() =>
             {
-                // A recursive approximation can represent the same Annotated object as a
-                // concrete unfolding, even though their wrapped types differ.
                 self.never()
             }
 
-            // These types are disjoint whenever their represented objects differ.
             (
-                // `LiteralString` can represent different strings and is handled above.
                 left @ (Type::FunctionLiteral(..)
                 | Type::KnownBoundMethod(..)
                 | Type::WrapperDescriptor(..)
@@ -4172,14 +3784,11 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
             ) => self.always(),
 
             (Type::AlwaysTruthy, ty) | (ty, Type::AlwaysTruthy) => {
-                // `Truthiness::Ambiguous` may include `AlwaysTrue` as a subset, so it's not guaranteed to be disjoint.
-                // They are disjoint if `ty` cannot produce a truthy value.
                 nontrivial_check(self, || {
                     ConstraintSet::from_bool(self.constraints, !ty.bool(db, env).may_be_true())
                 })
             }
             (Type::AlwaysFalsy, ty) | (ty, Type::AlwaysFalsy) => {
-                // Similarly, they are disjoint if `ty` cannot produce a falsy value.
                 nontrivial_check(self, || {
                     ConstraintSet::from_bool(self.constraints, !ty.bool(db, env).may_be_false())
                 })
@@ -4219,33 +3828,7 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }
 
-            // The absence of a protocol member on one of these types guarantees
-            // that the type will be disjoint from the protocol,
-            // but the type will not be disjoint from the protocol if it has a member
-            // that is of the correct type but is possibly unbound.
-            // If accessing a member on this type returns a possibly unbound `Place`,
-            // the type will not be a subtype of the protocol but it will also not be
-            // disjoint from the protocol, since there are possible subtypes of the type
-            // that could satisfy the protocol.
-            //
-            // ```py
-            // class Foo:
-            //     if coinflip():
-            //         X = 42
-            //
-            // class HasX(Protocol):
             //     @property
-            //     def x(self) -> int: ...
-            //
-            // # `TypeOf[Foo]` (a class-literal type) is not a subtype of `HasX`,
-            // # but `TypeOf[Foo]` & HasX` should not simplify to `Never`,
-            // # or this branch would be incorrectly understood to be unreachable,
-            // # since we would understand the type of `Foo` in this branch to be
-            // # `TypeOf[Foo] & HasX` due to `hasattr()` narrowing.
-            //
-            // if hasattr(Foo, "X"):
-            //     print(Foo.X)
-            // ```
             (
                 ty @ (Type::LiteralValue(..)
                 | Type::ClassLiteral(..)
@@ -4267,9 +3850,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }),
 
-            // This is the same as the branch above --
-            // once guard patterns are stabilised, it could be unified with that branch
-            // (<https://github.com/rust-lang/rust/issues/129967>)
             (Type::ProtocolInstance(protocol), Type::NominalInstance(nominal))
             | (Type::NominalInstance(nominal), Type::ProtocolInstance(protocol))
                 if self.perform_expensive_checks && nominal.class(db, env).is_final(db) =>
@@ -4394,8 +3974,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 nontrivial_check(self, || self.check_subclassof_pair(db, left, right))
             }
 
-            // for `type[Any]`/`type[Unknown]`/`type[Todo]`, we know the type cannot be any larger than `type`,
-            // so although the type is dynamic we can still determine disjointedness in some situations
             (Type::SubclassOf(subclass_of_ty), other)
             | (other, Type::SubclassOf(subclass_of_ty)) => {
                 nontrivial_check(self, || match subclass_of_ty.subclass_of() {
@@ -4473,8 +4051,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }
 
-            // Guard wrappers describe boolean results. Different narrowed types or guard kinds
-            // do not prove that those results are disjoint.
             (Type::TypeIs(_) | Type::TypeGuard(_), Type::TypeIs(_) | Type::TypeGuard(_)) => {
                 self.never()
             }
@@ -4486,8 +4062,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
 
             (Type::TypeIs(_) | Type::TypeGuard(_), Type::NominalInstance(instance))
             | (Type::NominalInstance(instance), Type::TypeIs(_) | Type::TypeGuard(_)) => {
-                // A boolean literal must be an instance of exactly `bool`
-                // (it cannot be an instance of a `bool` subclass)
                 nontrivial_check(self, || {
                     KnownClass::Bool
                         .when_subclass_of(db, env, instance.class(db, env), self.constraints)
@@ -4511,9 +4085,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
 
             (Type::LiteralValue(_), _) | (_, Type::LiteralValue(_)) => self.always(),
 
-            // A class-literal type `X` is always disjoint from an instance type `Y`,
-            // unless the type expressing "all instances of `Z`" is a subtype of `Y`,
-            // where `Z` is `X`'s metaclass.
             (Type::ClassLiteral(class), Type::NominalInstance(instance))
             | (Type::NominalInstance(instance), Type::ClassLiteral(class)) => {
                 nontrivial_check(self, || {
@@ -4548,7 +4119,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
 
             (Type::FunctionLiteral(function), Type::NominalInstance(instance))
             | (Type::NominalInstance(instance), Type::FunctionLiteral(function)) => {
-                // Function literals and their descriptor wrappers have an exact runtime class.
                 nontrivial_check(self, || {
                     function
                         .runtime_class(db)
@@ -4574,8 +4144,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }
 
-            // A `BoundMethod` type includes instances of the same method bound to a
-            // subtype/subclass of the self type.
             (Type::BoundMethod(a), Type::BoundMethod(b)) => {
                 let (Some(a_function), Some(b_function)) = (a.function(db), b.function(db)) else {
                     return nontrivial_check(self, || {
@@ -4587,11 +4155,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                     });
                 };
                 if a_function.name(db) != b_function.name(db) {
-                    // We typically ask about `BoundMethod` disjointness when we're looking at a
-                    // method call on an intersection type like `A & B`. In that case, the same
-                    // method name would show up on both sides of this check. However for
-                    // completeness, if we're ever comparing `BoundMethod` types with different
-                    // method names, then they're clearly disjoint.
                     return self.always();
                 }
 
@@ -4601,37 +4164,10 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                         && b_function.has_known_decorator(db, FunctionDecorators::FINAL)
                     {
                         // If *both* methods are `@final` (and they're not literally the same
-                        // definition), they must be disjoint.
-                        //
                         // Note that we can't establish disjointness when only one side is `@final`,
-                        // because we have to worry about cases like this:
-                        //
-                        // ```
-                        // class A:
-                        //      def f(self): ...
-                        // class B:
                         //      @final
-                        //      def f(self): ...
-                        // # Valid in this order, though `C(A, B)` would be invalid.
-                        // class C(B, A): ...
-                        // ```
                         self.always()
                     } else {
-                        // The names match, so `BoundMethod` disjointness depends on whether the bound
-                        // self types are disjoint. Note that this can produce confusing results in the
-                        // face of Liskov violations. For example:
-                        // ```
-                        // class A:
-                        //     def f(self) -> int: ...
-                        // class B:
-                        //     def f(self) -> str: ...
-                        // def _(x: Intersection[A, B]):
-                        //     x.f()
-                        // ```
-                        // `class C(A, B)` could inhabit that intersection, but `int` and `str` are
-                        // disjoint, so the type of `x.f()` there is going to be inferred as `Never`.
-                        // That's probably not correct in practice, but the right way to address it is
-                        // to emit a diagnostic on the definition of `C.f`.
                         self.check_type_pair(db, a.self_instance(db), b.self_instance(db))
                     }
                 })
@@ -4661,18 +4197,11 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
 
             (Type::Callable(_) | Type::FunctionLiteral(_), Type::Callable(_))
             | (Type::Callable(_), Type::FunctionLiteral(_)) => {
-                // No two callable types are ever disjoint because
-                // `(*args: object, **kwargs: object) -> Never` is a subtype of all fully static
-                // callable types.
                 self.never()
             }
 
             (Type::Callable(_), Type::SpecialForm(special_form))
             | (Type::SpecialForm(special_form), Type::Callable(_)) => {
-                // A callable type is disjoint from special form types, except for special forms
-                // that are callable (like TypedDict and collection constructors).
-                // Most special forms are type constructors/annotations (like `typing.Literal`,
-                // `typing.Union`, etc.) that are subscripted, not called.
                 ConstraintSet::from_bool(self.constraints, !special_form.is_callable())
             }
 
@@ -4714,13 +4243,11 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 _,
                 Type::Callable(_) | Type::DataclassDecorator(_) | Type::DataclassTransformer(_),
             ) => {
-                // TODO: Implement disjointness for general callable type with other types
                 self.never()
             }
 
             (Type::ModuleLiteral(..), Type::NominalInstance(instance))
             | (Type::NominalInstance(instance), Type::ModuleLiteral(..)) => {
-                // Modules *can* actually be instances of `ModuleType` subclasses
                 nontrivial_check(self, || {
                     self.check_type_pair(
                         db,
@@ -4784,10 +4311,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }),
 
-            // For any type `T`, if `dict[str, Any]` is not assignable to `T`, then all `TypedDict`
-            // types will always be disjoint from `T`. This doesn't cover all cases -- in fact
-            // `dict` *itself* is almost always disjoint from `TypedDict` -- but it's a good
-            // approximation, and some false negatives are acceptable.
             (Type::TypedDict(_), other) | (other, Type::TypedDict(_)) => {
                 nontrivial_check(self, || {
                     let dict_str_any = KnownClass::Dict.to_specialized_instance(

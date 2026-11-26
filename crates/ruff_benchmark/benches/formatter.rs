@@ -48,7 +48,6 @@ fn benchmark_formatter(criterion: &mut Criterion) {
             BenchmarkId::from_parameter(case.name()),
             &case,
             |b, case| {
-                // Parse the source.
                 let parsed = parse(case.code(), ParseOptions::from(Mode::Module))
                     .expect("Input should be a valid Python code");
 

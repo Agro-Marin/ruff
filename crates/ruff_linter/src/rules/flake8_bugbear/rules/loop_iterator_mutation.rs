@@ -68,15 +68,11 @@ pub(crate) fn loop_iterator_mutation(checker: &Checker, stmt_for: &StmtFor) {
 
     let (index, target, iter) = match iter.as_ref() {
         Expr::Name(_) | Expr::Attribute(_) => {
-            // Ex) Given, `for item in items:`, `item` is the index and `items` is the iterable.
             (&**target, &**target, &**iter)
         }
-        // Ex) Given `for i, item in enumerate(items):`, `i` is the index and `items` is the
-        // iterable.
         Expr::Call(ExprCall {
             func, arguments, ..
         }) if checker.semantic().match_builtin_expr(func, "enumerate") => {
-            // Ex) `items`
             let Some(iter) = arguments.args.first() else {
                 return;
             };
@@ -89,7 +85,6 @@ pub(crate) fn loop_iterator_mutation(checker: &Checker, stmt_for: &StmtFor) {
                 return;
             };
 
-            // Ex) `i`
             (index, target, iter)
         }
         _ => {
@@ -97,14 +92,12 @@ pub(crate) fn loop_iterator_mutation(checker: &Checker, stmt_for: &StmtFor) {
         }
     };
 
-    // Collect mutations to the iterable.
     let mutations = {
         let mut visitor = LoopMutationsVisitor::new(iter, target, index);
         visitor.visit_body(body);
         visitor.mutations
     };
 
-    // Create a diagnostic for each mutation.
     for mutation in mutations.values().flatten() {
         let name = UnqualifiedName::from_expr(iter)
             .map(|name| name.to_string())
@@ -134,7 +127,6 @@ impl StatementVisitor<'_> for SkipsElseFinder {
     fn visit_body(&mut self, body: &[Stmt]) {
         for stmt in body {
             self.visit_stmt(stmt);
-            // After a terminator, remaining statements are unreachable.
             if matches!(
                 stmt,
                 Stmt::Break(_) | Stmt::Return(_) | Stmt::Continue(_) | Stmt::Raise(_)
@@ -149,16 +141,10 @@ impl StatementVisitor<'_> for SkipsElseFinder {
             return;
         }
         match stmt {
-            // `break`/`return`/`raise` all skip the enclosing loop's
-            // `else` clause; see Python docs on `else` clauses for loops.
             Stmt::Break(_) | Stmt::Return(_) | Stmt::Raise(_) => self.found = true,
-            // Don't look inside nested loop bodies, but do check their
-            // `else` clause — a `break` there targets the enclosing loop.
             Stmt::For(StmtFor { orelse, .. }) | Stmt::While(StmtWhile { orelse, .. }) => {
                 self.visit_body(orelse);
             }
-            // Nested function/class bodies can't affect the enclosing
-            // loop's control flow.
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
             _ => statement_visitor::walk_stmt(self, stmt),
         }
@@ -262,7 +248,6 @@ impl<'a> LoopMutationsVisitor<'a> {
                 ctx: _,
             }) = target
             {
-                // Find, e.g., `del items[0]`.
                 if ComparableExpr::from(self.iter) == ComparableExpr::from(value) {
                     self.add_mutation(range);
                 }
@@ -281,9 +266,7 @@ impl<'a> LoopMutationsVisitor<'a> {
                 ctx: _,
             }) = target
             {
-                // Find, e.g., `items[0] = 1`.
                 if ComparableExpr::from(self.iter) == ComparableExpr::from(value) {
-                    // But allow, e.g., `for item in items: items[item] = 1`.
                     if ComparableExpr::from(self.index) != ComparableExpr::from(slice)
                         && ComparableExpr::from(self.target) != ComparableExpr::from(slice)
                     {
@@ -312,7 +295,6 @@ impl<'a> LoopMutationsVisitor<'a> {
         }) = func
         {
             if is_mutating_function(attr.as_str()) {
-                // Find, e.g., `items.remove(1)`.
                 if ComparableExpr::from(self.iter) == ComparableExpr::from(value) {
                     self.add_mutation(*range);
                 }
@@ -326,7 +308,6 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
     fn visit_body(&mut self, body: &'a [Stmt]) {
         for stmt in body {
             self.visit_stmt(stmt);
-            // After a terminator, remaining statements are unreachable.
             if matches!(
                 stmt,
                 Stmt::Break(_) | Stmt::Return(_) | Stmt::Continue(_) | Stmt::Raise(_)
@@ -338,7 +319,6 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
 
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
-            // Ex) `del items[0]`
             Stmt::Delete(StmtDelete {
                 range,
                 targets,
@@ -348,19 +328,16 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
                 visitor::walk_stmt(self, stmt);
             }
 
-            // Ex) `items[0] = 1`
             Stmt::Assign(StmtAssign { range, targets, .. }) => {
                 self.handle_assign(*range, targets);
                 visitor::walk_stmt(self, stmt);
             }
 
-            // Ex) `items += [1]`
             Stmt::AugAssign(StmtAugAssign { range, target, .. }) => {
                 self.handle_aug_assign(*range, target);
                 visitor::walk_stmt(self, stmt);
             }
 
-            // Ex) `for y in other: ...`
             Stmt::For(StmtFor {
                 target,
                 iter,
@@ -379,9 +356,6 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
                 self.loop_depth -= 1;
                 self.merge_branch_into(saved_branch);
 
-                // If the body may `break`, `return`, or `raise`, the `else`
-                // clause may not run, so its terminators must not clear
-                // mutations from the body.
                 if !orelse.is_empty() {
                     if body_may_skip_else(body) {
                         self.enter_new_branch();
@@ -393,7 +367,6 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
                 }
             }
 
-            // Ex) `while cond: ...`
             Stmt::While(StmtWhile {
                 test, body, orelse, ..
             }) => {
@@ -418,7 +391,6 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
                 }
             }
 
-            // Ex) `if True: items.append(1)`
             Stmt::If(StmtIf {
                 test,
                 body,
@@ -427,13 +399,11 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
             }) => {
                 let saved_branch = self.branch;
 
-                // Handle the `if` branch.
                 self.enter_new_branch();
                 self.visit_expr(test);
                 self.visit_body(body);
                 self.merge_branch_into(saved_branch);
 
-                // Handle the `elif` and `else` branches.
                 for clause in elif_else_clauses {
                     self.enter_new_branch();
                     self.visit_elif_else_clause(clause);
@@ -441,7 +411,6 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
                 }
             }
 
-            // Ex) `try: ... except: ... else: ... finally: ...`
             Stmt::Try(StmtTry {
                 body,
                 handlers,
@@ -475,17 +444,11 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
                     self.merge_branch_into(saved_branch);
                 }
 
-                // Give `finally` its own branch so siblings don't
-                // cross-clear through it.
                 if !finalbody.is_empty() {
                     self.enter_new_branch();
                     self.visit_body(finalbody);
                     self.merge_branch_into(saved_branch);
 
-                    // If `finally` unconditionally terminates (e.g., ends in
-                    // `return`), the entire `try` statement always exits the
-                    // enclosing control flow, so earlier mutations never
-                    // reach another iteration.
                     if unconditionally_terminates(finalbody)
                         && let Some(mutations) = self.mutations.get_mut(&saved_branch)
                     {
@@ -494,15 +457,12 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
                 }
             }
 
-            // Return exits the function; the loop can't re-iterate.
             Stmt::Return(_) => {
                 if let Some(mutations) = self.mutations.get_mut(&self.branch) {
                     mutations.clear();
                 }
             }
 
-            // Only clear at the outermost loop — a nested break doesn't
-            // stop the outer iteration.
             Stmt::Break(_) => {
                 if self.loop_depth == 0
                     && let Some(mutations) = self.mutations.get_mut(&self.branch)
@@ -511,13 +471,10 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
                 }
             }
 
-            // Mutation still reachable on the next iteration.
             Stmt::Continue(_) => {}
 
-            // Avoid recursion for class and function definitions.
             Stmt::ClassDef(_) | Stmt::FunctionDef(_) => {}
 
-            // Default case.
             _ => {
                 visitor::walk_stmt(self, stmt);
             }
@@ -525,7 +482,6 @@ impl<'a> Visitor<'a> for LoopMutationsVisitor<'a> {
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
-        // Ex) `items.append(1)`
         if let Expr::Call(ExprCall { func, .. }) = expr {
             self.handle_call(func);
         }

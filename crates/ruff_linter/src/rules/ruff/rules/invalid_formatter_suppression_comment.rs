@@ -130,7 +130,6 @@ impl<'src, 'loc> UselessSuppressionComments<'src, 'loc> {
         &self,
         comment: &SuppressionCommentData,
     ) -> Result<(), IgnoredReason> {
-        // check if the comment is inside of an expression.
         if comment
             .enclosing
             .is_some_and(|n| !is_valid_enclosing_node(n))
@@ -138,7 +137,6 @@ impl<'src, 'loc> UselessSuppressionComments<'src, 'loc> {
             return Err(IgnoredReason::InNonStatement);
         }
 
-        // check if a skip comment is at the end of a line
         if comment.kind == SuppressionKind::Skip && !comment.line_position.is_end_of_line() {
             return Err(IgnoredReason::SkipHasToBeTrailing);
         }
@@ -172,7 +170,6 @@ impl<'src, 'loc> UselessSuppressionComments<'src, 'loc> {
                 (comment.enclosing, comment.preceding, comment.following)
             {
                 if following.is_first_statement_in_alternate_body(enclosing) {
-                    // check indentation
                     let comment_indentation = comment_indentation_after(
                         preceding,
                         comment.range,
@@ -191,7 +188,6 @@ impl<'src, 'loc> UselessSuppressionComments<'src, 'loc> {
         }
 
         if comment.kind == SuppressionKind::On {
-            // Ensure the comment is not a trailing comment
             if !comment.line_position.is_own_line() {
                 return Err(IgnoredReason::FmtOnCannotBeTrailing);
             }

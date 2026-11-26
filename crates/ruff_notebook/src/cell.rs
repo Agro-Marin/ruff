@@ -70,8 +70,6 @@ impl Cell {
             }
             _ => return false,
         };
-        // Ignore cells containing cell magic as they act on the entire cell
-        // as compared to line magic which acts on a single line.
         !match source {
             SourceValue::String(string) => Self::is_magic_cell(string.lines()),
             SourceValue::StringArray(string_array) => {
@@ -84,27 +82,9 @@ impl Cell {
     fn is_magic_cell<'a>(lines: impl Iterator<Item = &'a str>) -> bool {
         let mut lines = lines.peekable();
 
-        // Detect automatic line magics (automagic), which aren't supported by the parser. If a line
-        // magic uses automagic, Jupyter doesn't allow following it with non-magic lines anyway, so
-        // we aren't missing out on any valid Python code.
-        //
-        // For example, this is valid:
-        // ```jupyter
-        // cat /path/to/file
-        // cat /path/to/file
-        // ```
-        //
-        // But this is invalid:
-        // ```jupyter
-        // cat /path/to/file
-        // x = 1
-        // ```
-        //
-        // See: https://ipython.readthedocs.io/en/stable/interactive/magics.html
         if let Some(line) = lines.peek() {
             let mut tokens = line.split_whitespace();
 
-            // The first token must be an automagic, like `load_exit`.
             if tokens.next().is_some_and(|token| {
                 matches!(
                     token,
@@ -187,9 +167,6 @@ impl Cell {
                         | "xmode"
                 )
             }) {
-                // The second token must _not_ be an operator, like `=` (to avoid false positives).
-                // The assignment operators can never follow an automagic. Some binary operators
-                // _can_, though (e.g., `cd -` is valid), so we omit them.
                 if !tokens.next().is_some_and(|token| {
                     matches!(
                         token,
@@ -201,7 +178,6 @@ impl Cell {
             }
         }
 
-        // Detect cell magics (which operate on multiple lines).
         lines.any(|line| {
             let Some(first) = line.split_whitespace().next() else {
                 return false;
@@ -212,32 +188,6 @@ impl Cell {
             let Some(command) = first.strip_prefix("%%") else {
                 return false;
             };
-            // These cell magics are special in that the lines following them are valid
-            // Python code and the variables defined in that scope are available to the
-            // rest of the notebook.
-            //
-            // For example:
-            //
-            // Cell 1:
-            // ```python
-            // x = 1
-            // ```
-            //
-            // Cell 2:
-            // ```python
-            // %%time
-            // y = x
-            // ```
-            //
-            // Cell 3:
-            // ```python
-            // print(y)  # Here, `y` is available.
-            // ```
-            //
-            // This is to avoid false positives when these variables are referenced
-            // elsewhere in the notebook.
-            //
-            // Refer https://github.com/astral-sh/ruff/issues/13718 for `ipytest`.
             !matches!(
                 command,
                 "capture"

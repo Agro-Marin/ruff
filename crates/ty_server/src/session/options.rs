@@ -79,8 +79,6 @@ impl InitializationOptions {
             return Ok((Self::default(), None));
         };
 
-        // Parse trust separately so an unrelated deserialization error cannot turn an
-        // untrusted workspace into a trusted one.
         let workspace_trust = match options.get("untrustedWorkspace") {
             Some(value) => WorkspaceTrust::deserialize(value)
                 .context("Invalid `untrustedWorkspace` setting")?,
@@ -431,12 +429,6 @@ pub struct CompletionOptions {
 }
 
 impl CompletionOptions {
-    // N.B. It's important for the defaults here to
-    // match the defaults for `CompletionSettings`.
-    // This is because `WorkspaceSettings::default()`
-    // uses `CompletionSettings::default()`. But
-    // `WorkspaceOptions::default().into_settings()` will use this
-    // definition.
     fn into_settings(self) -> CompletionSettings {
         CompletionSettings {
             auto_import: self.auto_import.unwrap_or(true),
@@ -490,12 +482,6 @@ impl DiagnosticMode {
 impl Combine for DiagnosticMode {
     fn combine_with(&mut self, other: Self) {
         // Diagnostic mode is a global option but as it can be updated without a server restart,
-        // it is part of the dynamic option set. But, there's no easy way to enforce the fact that
-        // this option should not be set for individual workspaces. The ty VS Code extension
-        // enforces this but we're not in control of other clients.
-        //
-        // So, this is a workaround to ensure that if the diagnostic mode is set to `workspace` in
-        // either an initialization options or one of the workspace options, it is always set to
         // `workspace` in the global options.
         if other != DiagnosticMode::default() {
             *self = other;
@@ -516,8 +502,6 @@ pub struct Experimental {
 
 impl Experimental {
     fn into_settings(self) -> ExperimentalSettings {
-        // `use_uv` is resolved separately before project discovery because changing it requires
-        // rebuilding every project database.
         let Self { use_uv: _ } = self;
         ExperimentalSettings {}
     }

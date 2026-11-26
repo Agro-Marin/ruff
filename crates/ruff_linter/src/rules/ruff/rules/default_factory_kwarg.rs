@@ -82,22 +82,18 @@ pub(crate) fn default_factory_kwarg(
     call: &ast::ExprCall,
     qualified_name: &QualifiedName,
 ) {
-    // If the call isn't a `defaultdict` constructor, return.
     if !matches!(qualified_name.segments(), ["collections", "defaultdict"]) {
         return;
     }
 
-    // If the user provided a positional argument for `default_factory`, return.
     if !call.arguments.args.is_empty() {
         return;
     }
 
-    // If the user didn't provide a `default_factory` keyword argument, return.
     let Some(keyword) = call.arguments.find_keyword("default_factory") else {
         return;
     };
 
-    // If the value is definitively not callable, return.
     if is_non_callable_value(&keyword.value) {
         return;
     }
@@ -138,15 +134,12 @@ fn convert_to_positional(
     tokens: &Tokens,
 ) -> Result<Fix> {
     if call.arguments.len() == 1 {
-        // Ex) `defaultdict(default_factory=list)`
         Ok(Fix::unsafe_edit(Edit::range_replacement(
             locator.slice(&default_factory.value).to_string(),
             default_factory.range(),
         )))
     } else {
-        // Ex) `defaultdict(member=1, default_factory=list)`
 
-        // First, remove the `default_factory` keyword argument.
         let removal_edit = remove_argument(
             default_factory,
             &call.arguments,
@@ -155,7 +148,6 @@ fn convert_to_positional(
             tokens,
         )?;
 
-        // Second, insert the value as the first positional argument.
         let insertion_edit = Edit::insertion(
             format!("{}, ", locator.slice(&default_factory.value)),
             call.arguments

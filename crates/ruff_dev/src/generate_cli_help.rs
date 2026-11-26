@@ -37,13 +37,11 @@ fn replace_docs_section(
     begin_pragma: &str,
     end_pragma: &str,
 ) -> Result<String> {
-    // Extract the prefix.
     let index = existing
         .find(begin_pragma)
         .with_context(|| "Unable to find begin pragma")?;
     let prefix = &existing[..index + begin_pragma.len()];
 
-    // Extract the suffix.
     let index = existing
         .find(end_pragma)
         .with_context(|| "Unable to find end pragma")?;
@@ -53,13 +51,10 @@ fn replace_docs_section(
 }
 
 pub(super) fn main(args: &Args) -> Result<()> {
-    // Generate `ruff help`.
     let command_help = trim_lines(&help_text());
 
-    // Generate `ruff help check`.
     let check_help = trim_lines(&subcommand_help_text("check")?);
 
-    // Generate `ruff help format`.
     let format_help = trim_lines(&subcommand_help_text("format")?);
 
     if args.mode.is_dry_run() {
@@ -69,7 +64,6 @@ pub(super) fn main(args: &Args) -> Result<()> {
         return Ok(());
     }
 
-    // Read the existing file.
     let filename = "docs/configuration.md";
     let file = PathBuf::from(ROOT_DIR).join(filename);
     let existing = fs::read_to_string(&file)?;
@@ -122,8 +116,6 @@ fn help_text() -> String {
 fn subcommand_help_text(subcommand: &str) -> Result<String> {
     let mut cmd = args::Args::command().term_width(79);
 
-    // The build call is necessary for the help output to contain `Usage: ruff
-    // check` instead of `Usage: check` see https://github.com/clap-rs/clap/issues/4685
     cmd.build();
 
     Ok(cmd

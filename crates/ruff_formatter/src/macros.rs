@@ -329,7 +329,6 @@ macro_rules! format {
 #[macro_export]
 macro_rules! best_fitting {
     ($least_expanded:expr, $($tail:expr),+ $(,)?) => {
-        // OK because the macro syntax requires at least two variants.
         $crate::BestFitting::from_arguments_unchecked($crate::format_args!($least_expanded, $($tail),+))
     }
 }
@@ -388,7 +387,6 @@ mod tests {
         use crate::Formatted;
         use crate::prelude::*;
 
-        // The second variant below should be selected when printing at a width of 30
         let formatted_best_fitting = format!(
             SimpleFormatContext::default(),
             [
@@ -434,8 +432,6 @@ mod tests {
         )
         .unwrap();
 
-        // This matches the IR above except that the `best_fitting` was replaced with
-        // the contents of its second variant.
         let formatted_normal_list = format!(
             SimpleFormatContext::default(),
             [
@@ -496,8 +492,6 @@ mod tests {
         .as_code()
         .to_string();
 
-        // The variant that "fits" will print its contents as if it were a normal list
-        // outside of a BestFitting element.
         assert_eq!(best_fitting_code, normal_list_code);
     }
 }

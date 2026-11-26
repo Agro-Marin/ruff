@@ -70,9 +70,6 @@ impl RelativePathBuf {
             }
         };
 
-        // Expand tildes and environment variables in the path (e.g. `~/.cache/foo`).
-        // Use `full_with_context` to route lookups through the `System` trait,
-        // ensuring correct behavior in tests, WASM, and the LSP.
         let expanded = shellexpand::full_with_context(
             self.0.as_str(),
             || system.env_var("HOME").ok(),
@@ -204,7 +201,6 @@ mod tests {
         );
         let resolved = path.absolute(SystemPath::new("/project"), &system);
 
-        // When the variable is not found, the original path is used as a fallback.
         assert_eq!(resolved, SystemPathBuf::from("/project/$NONEXISTENT/foo"));
     }
 

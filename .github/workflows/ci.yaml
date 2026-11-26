@@ -29,17 +29,15 @@ env:
   RUSTUP_MAX_RETRIES: 10
   PACKAGE_NAME: ruff
   PYTHON_VERSION: "3.14"
-  # The parser uses the first 501 seeds from ty's corpus.
   FUZZ_CORPUS_SEEDS: 0-20000
   NEXTEST_PROFILE: ci
-  # Enable mdtests that require external dependencies
   MDTEST_EXTERNAL: "1"
 
 jobs:
   security-review:
     needs: determine_changes
     if: ${{ github.event_name == 'pull_request' && github.repository == 'astral-sh/ruff' && github.event.pull_request.head.repo.full_name == github.repository && needs.determine_changes.outputs.code == 'true' }}
-    uses: astral-sh/github-actions/.github/workflows/pull-request-security-review.yml@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889 # 2026.11.16.0
+    uses: astral-sh/github-actions/.github/workflows/pull-request-security-review.yml@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889
     with:
       threat-models: .agents/references
       runner: depot-ubuntu-22.04-16
@@ -47,7 +45,6 @@ jobs:
       # renovate: datasource=github-release-attachments depName=astral-sh/uv
       uv-version: "0.13.9"
       uv-checksum: "a7fbaff2b9a271d85c1bdb540941090fd1ce011797b4abeb48e4dcd39c2471d5"
-      # Keep the review tools outside the checkout when switching to the PR head.
       setup-command: |
         export UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/pull-request-review-tools"
         uv sync --locked --only-dev
@@ -61,7 +58,6 @@ jobs:
 
   determine_changes:
     name: "Determine changes"
-    # CI on main is redundant in the security repository.
     if: ${{ github.repository != 'astral-sh/ruff-security' || github.ref != 'refs/heads/main' }}
     runs-on: ${{ github.repository == 'astral-sh/ruff' && 'github-ubuntu-24.04-x86_64-4' || 'ubuntu-latest' }}
     permissions:
@@ -70,33 +66,21 @@ jobs:
     outputs:
       fuzz-corpus-run-id: ${{ steps.fuzz_corpus.outputs.run-id }}
       comparison_base: ${{ steps.merge_base.outputs.sha }}
-      # Flag that is raised when any code that affects parser is changed
       parser: ${{ steps.check_parser.outputs.changed }}
-      # Flag that is raised when any code that affects linter is changed
       linter: ${{ steps.check_linter.outputs.changed }}
-      # Flag that is raised when any code that affects formatter is changed
       formatter: ${{ steps.check_formatter.outputs.changed }}
-      # Flag that is raised when any code is changed
-      # This is superset of the linter and formatter
       code: ${{ steps.check_code.outputs.changed }}
-      # Flag that is raised when any code that affects the fuzzer is changed
       fuzz: ${{ steps.check_fuzzer.outputs.changed }}
-      # Flag that is set to "true" when code related to ty changes.
       ty: ${{ steps.check_ty.outputs.changed }}
-      # Flag that is set to "true" when code related to the py-fuzzer folder changes.
       py-fuzzer: ${{ steps.check_py_fuzzer.outputs.changed }}
-      # Flag that is set to "true" when code related to the playground changes.
       playground: ${{ steps.check_playground.outputs.changed }}
-      # Flag that is set to "true" when code related to the benchmarks changes.
       benchmarks: ${{ steps.check_benchmarks.outputs.changed }}
-      # Flag that is set to "true" when release build inputs change.
       release: ${{ steps.check_release.outputs.changed }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      # Faster to do this separately than to use `fetch-depth: 0` with `actions/checkout`
       - name: Fetch full history without tags
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,8 +101,6 @@ jobs:
           fi
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
 
-      # Change filters on main compare against main itself. Check the corpus directly
-      # so expiry or a Python patch release can trigger publication on the next push.
       - name: Set up uv for the fuzz corpus lookup
         if: ${{ github.event_name == 'push' }}
         continue-on-error: true
@@ -335,7 +317,7 @@ jobs:
     needs: determine_changes
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: "Install Rust toolchain"
@@ -348,10 +330,10 @@ jobs:
     needs: determine_changes
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: "1.27.3"
       - name: "Run ShellCheck"
@@ -376,10 +358,10 @@ jobs:
     env:
       CARGO_BUILD_WARNINGS: deny
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Install Rust toolchain"
@@ -402,12 +384,12 @@ jobs:
       RUSTC_BOOTSTRAP: "1"
       CARGO_UNSTABLE_CHECKSUM_FRESHNESS: "true"
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Install Rust toolchain
         run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
-      - uses: astral-sh/github-actions/rust-workspace-cache@61a5a2c7e0df1c0caf46fe5d1e74a4cb8a7205f8 # 2026.11.16.1
+      - uses: astral-sh/github-actions/rust-workspace-cache@61a5a2c7e0df1c0caf46fe5d1e74a4cb8a7205f8
         with:
           target-directory: target/hawk
           extra-target-directory: hawk-fragments
@@ -431,10 +413,10 @@ jobs:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-test') && (needs.determine_changes.outputs.code == 'true' || github.ref == 'refs/heads/main') }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "cargo publish dry-run"
@@ -447,13 +429,12 @@ jobs:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-test') && (needs.determine_changes.outputs.code == 'true' || github.ref == 'refs/heads/main') }}
     timeout-minutes: 20
     env:
-      # Line-tables-only debug info: faster builds, backtraces still work.
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           shared-key: ruff-linux-debug
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -468,23 +449,13 @@ jobs:
         env:
           NO_COLOR: 1
           MDTEST_GITHUB_ANNOTATIONS_FORMAT: 1
-        # Ignore errors if this step fails; we want to continue to later steps in the workflow anyway.
-        # This step is just to get nice GitHub annotations on the PR diff in the files-changed tab.
         run: cargo test -p ty_python_semantic --test mdtest || true
       - name: "Run tests"
         run: uv run --locked --only-dev cargo insta test --all-features --unreferenced reject --test-runner nextest --disable-nextest-doctest
       - name: "Run doctests"
         run: cargo test --doc --all-features
-      # A workspace build enables stacker through the CLI crates' dependencies.
       - name: "Check parser without stacker"
         run: cargo check --locked -p ruff_python_parser --no-default-features --all-targets
-      # On a PR, the annotation mdtests step above can install a Python version
-      # that uv can reuse for py-fuzzer. When the annotation step is skipped (as
-      # on pushes to `main`), uv may select a newer Python for the step below, for
-      # which py-fuzzer's locked dependencies may not have wheels. With source
-      # builds of those dependencies disabled, installation fails. We therefore set
-      # `--python` explicitly to use the version in `PYTHON_VERSION`, even if it
-      # differs from one used by the annotation mdtests.
       - name: Dogfood ty on py-fuzzer
         run: uv run --quiet --python="${PYTHON_VERSION}" --project=./python/py-fuzzer cargo run --quiet -p ty check --project=./python/py-fuzzer --color=always
       - name: Dogfood ty on ty_benchmark
@@ -492,30 +463,19 @@ jobs:
       - name: Dogfood ty on scripts
         env:
           UV_LOCKED: "true"
-          # Set `UV_PYTHON` to select the configured Python version for both the
-          # uv command below and the uv subprocesses ty uses to install script
-          # dependencies. If a locked script dependency lacks a wheel for a newer
-          # Python version, installation fails because source builds are disabled.
           UV_PYTHON: ${{ env.PYTHON_VERSION }}
         run: |
           uv run --locked scripts/check-scripts.py --write-ty-args-file "$RUNNER_TEMP/script-paths.txt"
           cargo run --quiet -p ty check "@$RUNNER_TEMP/script-paths.txt" --color=always
-      # Check for broken links in the documentation.
       - run: cargo doc --all --no-deps
         env:
           RUSTDOCFLAGS: "-D warnings"
-      # Use --document-private-items so that all our doc comments are kept in
-      # sync, not just public items. Eventually we should do this for all
-      # crates; for now add crates here as they are warning-clean to prevent
-      # regression.
       - run: cargo doc --no-deps -p ty_python_semantic -p ty_python_core -p ty_module_resolver -p ty_site_packages -p ty_combine -p ty_project -p ty_ide -p ty_wasm -p ty_vendored -p ty_static -p ty -p ty_test -p ruff_db -p ruff_python_formatter --document-private-items
         env:
-          # Setting RUSTDOCFLAGS because `cargo doc --check` isn't yet implemented (https://github.com/rust-lang/cargo/issues/10025).
           RUSTDOCFLAGS: "-D warnings"
 
   cargo-test-linux-release:
     name: "cargo test (linux, release)"
-    # release builds timeout on GitHub runners, so this job is just skipped on forks in the `if` check
     runs-on: depot-ubuntu-22.04-16
     needs: determine_changes
     if: |
@@ -524,13 +484,12 @@ jobs:
       (needs.determine_changes.outputs.code == 'true' || github.ref == 'refs/heads/main')
     timeout-minutes: 20
     env:
-      # Line-tables-only debug info: faster builds, backtraces still work.
       CARGO_PROFILE_PROFILING_DEBUG: line-tables-only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Install Rust toolchain"
@@ -557,18 +516,16 @@ jobs:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-test') && (needs.determine_changes.outputs.code == 'true' || github.ref == 'refs/heads/main') }}
     timeout-minutes: 20
     env:
-      # Line-tables-only debug info: faster builds, backtraces still work.
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - if: runner.os == 'macOS'
-        uses: astral-sh/github-actions/demudhra@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889 # 2026.11.16.0
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: astral-sh/github-actions/demudhra@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          # Fix for https://github.com/Swatinem/rust-cache/issues/341
           cache-bin: "false"
       - name: "Install Rust toolchain"
         run: rustup show
@@ -588,20 +545,20 @@ jobs:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-test') && (needs.determine_changes.outputs.code == 'true' || github.ref == 'refs/heads/main') }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Install Rust toolchain"
         run: rustup target add wasm32-unknown-unknown
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 26.12.1
           cache: "npm"
           cache-dependency-path: playground/package-lock.json
-      - uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
+      - uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa
         with:
           version: v0.13.1
       - name: "Test ruff_wasm"
@@ -620,18 +577,17 @@ jobs:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-test') && (needs.determine_changes.outputs.code == 'true' || github.ref == 'refs/heads/main') }}
     timeout-minutes: 20
     env:
-      # Line-tables-only debug info: faster builds, backtraces still work.
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: SebRollen/toml-action@b1b3628f55fc3a28208d4203ada8b737e9687876 # v1.2.0
+      - uses: SebRollen/toml-action@b1b3628f55fc3a28208d4203ada8b737e9687876
         id: msrv
         with:
           file: "Cargo.toml"
           field: "workspace.package.rust-version"
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Install Rust toolchain"
@@ -650,10 +606,10 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' || needs.determine_changes.outputs.fuzz == 'true' || needs.determine_changes.outputs.code == 'true' }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: "fuzz -> target"
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -666,7 +622,6 @@ jobs:
 
   fuzz-parser:
     name: "fuzz parser"
-    # Concurrent pushes can observe the same missing corpus before either publishes it.
     concurrency: ${{ github.workflow }}-fuzz-parser-${{ github.ref }}
     runs-on: ${{ github.repository == 'astral-sh/ruff' && 'depot-ubuntu-22.04-16' || 'ubuntu-latest' }}
     needs: determine_changes
@@ -681,18 +636,17 @@ jobs:
     timeout-minutes: ${{ github.repository == 'astral-sh/ruff' && 40 || 240 }}
     env:
       FORCE_COLOR: 1
-      # Keep in sync with the job's timeout-minutes.
       FUZZ_JOB_TIMEOUT_MINUTES: ${{ github.repository == 'astral-sh/ruff' && 40 || 240 }}
     steps:
       - name: Record job start time
         run: echo "FUZZ_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup-ruff-workspace
         with:
           enable-cache: auto
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           shared-key: ruff-linux-debug
           save-if: false
@@ -700,7 +654,6 @@ jobs:
         run: rustup show
       - name: Build Ruff binary
         env:
-          # Line-tables-only debug info: faster builds, backtraces still work.
           CARGO_PROFILE_DEV_DEBUG: line-tables-only
         run: cargo build --bin ruff
       - name: Prepare the fuzz corpus
@@ -735,10 +688,10 @@ jobs:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-test') && (needs.determine_changes.outputs.code == 'true' || github.ref == 'refs/heads/main') }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: $/.github/actions/setup-ruff-workspace
@@ -746,12 +699,9 @@ jobs:
           enable-cache: auto
       - name: "Install Rust toolchain"
         run: rustup component add rustfmt
-      # Run all code generation scripts, and verify that the current output is
-      # already checked into git.
       - run: python crates/ruff_python_ast/generate.py
       - run: python crates/ruff_python_formatter/generate.py
       - run: test -z "$(git status --porcelain)"
-      # Verify that adding a plugin or rule produces clean code.
       - run: ./scripts/add_rule.py --name DoTheThing --prefix F --code 999 --linter pyflakes --category correctness
       - run: cargo check
       - run: |
@@ -759,11 +709,6 @@ jobs:
           ./scripts/add_rule.py --name FirstRule --prefix TST --code 001 --linter test --category correctness
       - run: cargo check
       - run: uv run --python="${PYTHON_VERSION}" --directory=./python/ruff-ecosystem python -m unittest discover -s tests
-      # Lint/format/type-check py-fuzzer
-      # (dogfooding with ty is done in a separate job)
-      # Pass `--python` explicitly because the fuzzer's locked dependencies may
-      # lack wheels for newer Python versions. Source builds of those
-      # dependencies are disabled, so installation would fail.
       - run: uv run --python="${PYTHON_VERSION}" --directory=./python/py-fuzzer mypy
       - run: uv run --python="${PYTHON_VERSION}" --directory=./python/py-fuzzer ruff format --check
       - run: uv run --python="${PYTHON_VERSION}" --directory=./python/py-fuzzer ruff check
@@ -774,8 +719,6 @@ jobs:
     needs: determine_changes
     outputs:
       html-files: ${{ steps.reports.outputs.html-files }}
-    # Only runs on pull requests, since that is the only we way we can find the base version for comparison.
-    # Ecosystem check needs linter and/or formatter changes.
     if: |
       !contains(github.event.pull_request.labels.*.name, 'no-test') && github.event_name == 'pull_request' &&
       (
@@ -784,10 +727,9 @@ jobs:
       )
     timeout-minutes: 20
     env:
-      # Line-tables-only debug info: faster builds, backtraces still work.
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.determine_changes.outputs.comparison_base }}
           persist-credentials: false
@@ -801,7 +743,7 @@ jobs:
       - name: "Install Rust toolchain"
         run: rustup show
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           shared-key: ruff-linux-debug
           save-if: false
@@ -811,7 +753,7 @@ jobs:
           cargo build --bin ruff
           mv target/debug/ruff target/debug/ruff-baseline
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           clean: false
@@ -875,7 +817,7 @@ jobs:
           cat ecosystem-result-format-preview >> ecosystem-result
           echo "" >> ecosystem-result
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         name: Upload Results
         with:
           name: ecosystem-result
@@ -907,7 +849,7 @@ jobs:
           PYTHON
 
       - name: Upload full reports
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ecosystem-html
           path: ecosystem-html/
@@ -947,7 +889,6 @@ jobs:
     runs-on: ${{ github.repository == 'astral-sh/ruff' && 'depot-ubuntu-22.04-16' || 'ubuntu-latest' }}
     needs:
       - determine_changes
-    # Only runs on pull requests, since that is the only we way we can find the base version for comparison.
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-test') && github.event_name == 'pull_request' && (needs.determine_changes.outputs.ty == 'true' || needs.determine_changes.outputs.py-fuzzer == 'true') }}
     outputs:
       failures: ${{ steps.upload-failures.outputs.artifact-id }}
@@ -957,15 +898,13 @@ jobs:
       contents: read
     timeout-minutes: ${{ github.repository == 'astral-sh/ruff' && 40 || 240 }}
     env:
-      # Keep in sync with the job's timeout-minutes.
       FUZZ_JOB_TIMEOUT_MINUTES: ${{ github.repository == 'astral-sh/ruff' && 40 || 240 }}
     steps:
       - name: Record job start time
         run: echo "FUZZ_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      # Faster to do this separately than to use `fetch-depth: 0` with `actions/checkout`
       - name: Fetch full history without tags
         env:
           GH_TOKEN: ${{ github.token }}
@@ -975,7 +914,7 @@ jobs:
       - uses: $/.github/actions/setup-ruff-workspace
         with:
           enable-cache: auto
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Install Rust toolchain"
@@ -993,7 +932,6 @@ jobs:
           FUZZ_CORPUS: ${{ steps.corpus.outputs.path }}
           FORCE_COLOR: 1
           MERGE_BASE: ${{ needs.determine_changes.outputs.comparison_base }}
-          # Line-tables-only debug info: faster builds, backtraces still work.
           CARGO_PROFILE_PROFILING_DEBUG: line-tables-only
         run: |
           echo "new commit"
@@ -1029,7 +967,7 @@ jobs:
       - name: Upload failing inputs and ty binaries
         id: upload-failures
         if: ${{ failure() && steps.fuzz.outcome == 'failure' && hashFiles('ty-fuzz-failures/*.py') != '' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ty-fuzz-failures
           path: |
@@ -1060,7 +998,7 @@ jobs:
       - name: Upload the fuzz status messages
         id: upload-status
         if: ${{ !cancelled() && steps.status.outcome == 'success' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ty-fuzz-status
           path: ${{ runner.temp }}/ty-fuzz-status
@@ -1094,22 +1032,21 @@ jobs:
       contents: read
     timeout-minutes: 40
     env:
-      # Keep in sync with the job's timeout-minutes.
       FUZZ_JOB_TIMEOUT_MINUTES: 40
     outputs:
       report: ${{ steps.upload-report.outputs.artifact-id }}
     steps:
       - name: Record job start time
         run: echo "FUZZ_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
         with:
           # renovate: datasource=github-release-attachments depName=astral-sh/uv
           version: "0.13.9"
           checksum: "a7fbaff2b9a271d85c1bdb540941090fd1ce011797b4abeb48e4dcd39c2471d5"
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           artifact-ids: ${{ needs.fuzz-ty.outputs.failures }}
           path: ${{ runner.temp }}/ty-fuzz
@@ -1125,7 +1062,7 @@ jobs:
       - name: Upload the fuzz report
         id: upload-report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ty-fuzz-report
           path: ${{ runner.temp }}/ty-fuzz-report.md
@@ -1133,7 +1070,6 @@ jobs:
           overwrite: true
 
   publish-ty-fuzz-report:
-    # The progress notice must finish first so it cannot overwrite the reproducers.
     needs: [fuzz-ty, notify-ty-fuzz, minimize-ty-fuzz]
     if: >-
       always() && needs.fuzz-ty.outputs.failures != '' &&
@@ -1162,10 +1098,10 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: astral-sh/github-actions/cargo-cooldowns@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889 # 2026.11.16.0
+      - uses: astral-sh/github-actions/cargo-cooldowns@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889
 
   cargo-deny:
     name: "cargo deny"
@@ -1174,7 +1110,7 @@ jobs:
     needs: determine_changes
     if: ${{ needs.determine_changes.outputs.code == 'true' || github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup-ruff-workspace
@@ -1195,7 +1131,7 @@ jobs:
     needs: determine_changes
     if: ${{ needs.determine_changes.outputs.code == 'true' || github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup-ruff-workspace
@@ -1209,16 +1145,15 @@ jobs:
     needs: determine_changes
     if: ${{ needs.determine_changes.outputs.ty == 'true' || github.ref == 'refs/heads/main' }}
     env:
-      # Line-tables-only debug info: faster builds, backtraces still work.
       CARGO_PROFILE_PROFILING_DEBUG: line-tables-only
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup-ruff-workspace
         with:
           enable-cache: auto
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Install Rust toolchain"
@@ -1235,20 +1170,20 @@ jobs:
     timeout-minutes: 20
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-test') }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           architecture: x64
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Prep README.md"
         run: python scripts/transform_readme.py --target pypi
       - name: "Build wheels"
-        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b
         with:
           args: --out dist
       - name: "Test wheel"
@@ -1266,14 +1201,14 @@ jobs:
     if: ${{ needs.determine_changes.outputs.release == 'true' && !contains(github.event.pull_request.labels.*.name, 'no-build') }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           architecture: x64
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Install LLVM profiling tools"
@@ -1287,17 +1222,17 @@ jobs:
     needs: determine_changes
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup-ruff-workspace
         with:
           enable-cache: auto
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "^26.12.1"
       - name: "Cache prek"
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/prek
           key: prek-${{ hashFiles('.pre-commit-config.yaml') }}
@@ -1318,17 +1253,16 @@ jobs:
     needs: determine_changes
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Install Rust toolchain"
         run: rustup show
       - uses: $/.github/actions/setup-ruff-workspace
         with:
-          # Keep this in sync with the version used for releases in publish-docs.yml.
           python-version: 3.13
           enable-cache: auto
       - name: "Update README File"
@@ -1347,10 +1281,10 @@ jobs:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-test') && (needs.determine_changes.outputs.formatter == 'true' || github.ref == 'refs/heads/main') }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: "Install Rust toolchain"
@@ -1370,22 +1304,22 @@ jobs:
       - determine_changes
     if: ${{ (needs.determine_changes.outputs.playground == 'true') }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: "Install Rust toolchain"
         run: rustup target add wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 26.12.1
           cache: "npm"
           cache-dependency-path: |
             playground/package-lock.json
             playground/deploy/package-lock.json
-      - uses: jetli/wasm-bindgen-action@20b33e20595891ab1a0ed73145d8a21fc96e7c29 # v0.2.0
+      - uses: jetli/wasm-bindgen-action@20b33e20595891ab1a0ed73145d8a21fc96e7c29
       - name: "Check deployment dependencies"
         env:
           WRANGLER_SEND_METRICS: "false"
@@ -1422,15 +1356,15 @@ jobs:
       )
     timeout-minutes: 20
     permissions:
-      contents: read # required for actions/checkout
-      id-token: write # required for OIDC authentication with CodSpeed
+      contents: read
+      id-token: write
     steps:
       - name: "Checkout Branch"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -1455,7 +1389,7 @@ jobs:
             | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
 
       - name: "Run benchmarks"
-        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f
         with:
           mode: "simulation,memory"
           run: uv run --only-dev cargo codspeed run
@@ -1474,11 +1408,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: "Checkout Branch"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -1493,7 +1427,7 @@ jobs:
         run: uv run --only-dev cargo codspeed build -m simulation -m memory --features "codspeed,module_resolution,ty_instrumented" --profile profiling --no-default-features -p ruff_benchmark --bench module_resolution --bench ty --bench ty_constraint_set
 
       - name: "Upload benchmark binary"
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: benchmarks-instrumented-ty-binary
           compression-level: 1
@@ -1507,13 +1441,12 @@ jobs:
     needs: benchmarks-instrumented-ty-build
     timeout-minutes: 20
     permissions:
-      contents: read # required for actions/checkout
-      id-token: write # required for OIDC authentication with CodSpeed
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Group the micro benchmarks by initial letter to balance wall time in both modes.
           - name: micro-1
             target: ty
             filter: 'ty_micro\[[m-r]'
@@ -1552,7 +1485,7 @@ jobs:
             mode: simulation
     steps:
       - name: "Checkout Branch"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup-ruff-workspace
@@ -1560,13 +1493,12 @@ jobs:
           enable-cache: auto
 
       - name: "Download benchmark binary"
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: benchmarks-instrumented-ty-binary
           path: target/codspeed
 
       - name: "Restore binary permissions"
-        # codspeed keeps changing the paths to the executable, so we have to be a bit more flexible
         run: find target/codspeed -type f -exec chmod +x {} +
 
       - name: "Configure apt mirror fallback"
@@ -1581,7 +1513,7 @@ jobs:
             | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
 
       - name: "Run benchmarks"
-        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f
         with:
           mode: ${{ matrix.mode }}
           disable-memory-capture-stack: true
@@ -1603,11 +1535,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: "Checkout Branch"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: $/.github/actions/setup-ruff-workspace
@@ -1621,7 +1553,7 @@ jobs:
         run: uv run --only-dev cargo codspeed build -m walltime -m memory --features "codspeed,ruff_walltime" --profile profiling --no-default-features -p ruff_benchmark --bench ruff_walltime
 
       - name: "Upload benchmark binary"
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: benchmarks-walltime-ruff-binary
           compression-level: 1
@@ -1635,11 +1567,11 @@ jobs:
     needs: benchmarks-walltime-ruff-build
     timeout-minutes: 20
     permissions:
-      contents: read # required for actions/checkout
-      id-token: write # required for OIDC authentication with CodSpeed
+      contents: read
+      id-token: write
     steps:
       - name: "Checkout Branch"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
@@ -1648,17 +1580,16 @@ jobs:
           enable-cache: auto
 
       - name: "Download benchmark binary"
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: benchmarks-walltime-ruff-binary
           path: target/codspeed
 
       - name: "Restore binary permissions"
-        # codspeed keeps changing the paths to the executable, so we have to be a bit more flexible
         run: find target/codspeed -type f -exec chmod +x {} +
 
       - name: "Run benchmarks"
-        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f
         env:
           CODSPEED_PERF_ENABLED: false
           CODSPEED_DISABLE_MEMORY_CAPTURE_STACK: true
@@ -1668,8 +1599,6 @@ jobs:
 
   benchmarks-walltime-ty-build:
     name: "benchmarks walltime ty (build)"
-    # We only run this job if `github.repository == 'astral-sh/ruff'`,
-    # so hardcoding depot here is fine
     runs-on: depot-ubuntu-24.04-4
     needs: determine_changes
     if: |
@@ -1685,11 +1614,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: "Checkout Branch"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: $/.github/actions/setup-ruff-workspace
@@ -1703,7 +1632,7 @@ jobs:
         run: uv run --only-dev cargo codspeed build -m walltime --features "codspeed,ty_ide,ty_walltime" --profile profiling --no-default-features -p ruff_benchmark --bench ty_walltime --bench ty_script --bench ty_ide
 
       - name: "Upload benchmark binary"
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: benchmarks-walltime-binary
           compression-level: 1
@@ -1717,11 +1646,11 @@ jobs:
     needs: benchmarks-walltime-ty-build
     timeout-minutes: 20
     permissions:
-      contents: read # required for actions/checkout
-      id-token: write # required for OIDC authentication with CodSpeed
+      contents: read
+      id-token: write
     steps:
       - name: "Checkout Branch"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
@@ -1730,23 +1659,18 @@ jobs:
           enable-cache: auto
 
       - name: "Download benchmark binary"
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: benchmarks-walltime-binary
           path: target/codspeed
 
       - name: "Restore binary permissions"
-        # codspeed keeps changing the paths to the executable, so we have to be a bit more flexible
         run: find target/codspeed -type f -exec chmod +x {} +
 
       - name: "Run benchmarks"
-        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f
         env:
-          # enabling walltime flamegraphs adds ~6 minutes to the CI time, and they don't
-          # appear to provide much useful insight for our walltime benchmarks right now
-          # (see https://github.com/astral-sh/ruff/pull/20419)
           CODSPEED_PERF_ENABLED: false
-          # Benchmarks manage any disposable uv environments they create.
           UV_LOCKED: 0
         with:
           mode: walltime

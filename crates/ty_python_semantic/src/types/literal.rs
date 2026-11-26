@@ -318,8 +318,6 @@ impl<'db> From<LiteralValueType<'db>> for Type<'db> {
     }
 }
 
-// This type has the same alignment as `salsa::Id`, allowing `LiteralValueType` to use a smaller
-// discriminant.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, get_size2::GetSize)]
 pub(crate) struct IntLiteralType {
     high: u32,
@@ -372,7 +370,6 @@ pub struct StringLiteralType<'db> {
     pub(crate) value: CompactString,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for StringLiteralType<'_> {}
 
 impl<'db> StringLiteralType<'db> {
@@ -388,7 +385,6 @@ pub struct BytesLiteralType<'db> {
     pub(crate) value: Box<[u8]>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for BytesLiteralType<'_> {}
 
 impl<'db> BytesLiteralType<'db> {
@@ -416,7 +412,6 @@ pub struct EnumLiteralType<'db> {
     pub(crate) name: Name,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for EnumLiteralType<'_> {}
 
 impl<'db> EnumLiteralType<'db> {
@@ -468,8 +463,6 @@ impl<'db> WideLiteralComparison<'db> {
         left: Type<'db>,
         right: Type<'db>,
     ) -> Option<Self> {
-        // Only unions and their aliases need expansion. In particular, a single literal
-        // against a wide union still gets a precise, linear comparison.
         if !matches!(left, Type::Union(_) | Type::TypeAlias(_))
             || !matches!(right, Type::Union(_) | Type::TypeAlias(_))
         {
@@ -497,7 +490,6 @@ impl<'db> WideLiteralComparison<'db> {
     /// comparison between later elements.
     pub(super) fn truthiness(self, db: &'db dyn Db, kind: LiteralComparisonKind) -> Truthiness {
         if self.matching_literals(db, kind).next().is_some() {
-            // Even when some values match, the wide union also contains other values.
             Truthiness::Ambiguous
         } else {
             Truthiness::AlwaysFalse
@@ -518,21 +510,17 @@ impl<'db> WideLiteralComparison<'db> {
                 Some(LiteralValueTypeKind::Bool(value)) => (bool_key(value), None),
                 Some(kind) => (Type::LiteralValue(LiteralValueType::promotable(kind)), None),
                 None if ty.is_bool(db) => (bool_key(false), Some(bool_key(true))),
-                None => (ty, None), // NoneType
+                None => (ty, None),
             };
             std::iter::once(first).chain(second)
         };
 
-        // Equality filters the left operand. An identity check constrains it by the right
-        // operand's type, including its union order and the promotability of its literals.
         let (candidates, other) = match kind {
             LiteralComparisonKind::Equality => (self.left, self.right),
             LiteralComparisonKind::Identity => (self.right, self.left),
         };
         let other_keys: FxHashSet<_> = other.iter().copied().flat_map(keys).collect();
         candidates.iter().copied().filter_map(move |ty| {
-            // For identity, intersecting the left operand with the right-hand `bool` already
-            // preserves the literal flags of any matching left-hand boolean.
             if matches!(kind, LiteralComparisonKind::Equality) && ty.is_bool(db) {
                 let [matches_false, matches_true] =
                     [false, true].map(|value| other_keys.contains(&bool_key(value)));
@@ -552,7 +540,6 @@ impl<'db> WideLiteralComparison<'db> {
             Some(LiteralValueTypeKind::Bytes(_)) => Some(KnownClass::Bytes),
             Some(LiteralValueTypeKind::Int(_)) => Some(KnownClass::Int),
             Some(LiteralValueTypeKind::Bool(_)) => Some(KnownClass::Bool),
-            // Both boolean literals together simplify to `bool`.
             None if ty.is_bool(db) => Some(KnownClass::Bool),
             None if ty.is_none(db) => Some(KnownClass::NoneType),
             _ => None,

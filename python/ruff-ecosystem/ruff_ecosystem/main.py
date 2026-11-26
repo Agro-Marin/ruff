@@ -50,7 +50,6 @@ async def main(
         logger.debug("Using format comparison type %s", format_comparison.value)
     logger.debug("Checking %s targets", len(targets))
 
-    # Limit parallelism to avoid high memory consumption
     semaphore = asyncio.Semaphore(max_parallelism)
 
     async def limited_parallelism(coroutine: Awaitable[T]) -> T:
@@ -75,7 +74,6 @@ async def main(
     )
     comparisons_by_target = dict(zip(targets, comparisons, strict=True))
 
-    # Split comparisons into errored / completed
     errored: list[tuple[Project, BaseException]] = []
     completed: list[tuple[Project, Comparison]] = []
     for target, comparison in comparisons_by_target.items():

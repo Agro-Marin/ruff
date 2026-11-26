@@ -50,12 +50,10 @@ pub(crate) fn auto_return_type(
     function: &ast::StmtFunctionDef,
     semantic: &SemanticModel,
 ) -> Option<AutoPythonType> {
-    // Collect all the `return` statements.
     let returns = {
         let mut visitor = ReturnTypeVisitor::default();
         visitor.visit_body(&function.body);
 
-        // Ignore generators.
         if visitor.is_generator {
             return None;
         }
@@ -63,22 +61,16 @@ pub(crate) fn auto_return_type(
         visitor.returns
     };
 
-    // Determine the terminal behavior (i.e., implicit return, no return, etc.).
     let terminal = Terminal::from_function(function, semantic);
 
-    // If every control flow path raises NotImplementedError, don't suggest NoReturn
-    // since these are abstract methods that should have the actual return type.
     if terminal == Terminal::RaiseNotImplemented {
         return None;
     }
 
-    // If every control flow path raises an exception (other than NotImplementedError),
-    // suggest NoReturn.
     if terminal == Terminal::Raise {
         return Some(AutoPythonType::Never);
     }
 
-    // Determine the return type of the first `return` statement.
     let Some((return_statement, returns)) = returns.split_first() else {
         return Some(AutoPythonType::Atom(PythonType::None));
     };
@@ -87,7 +79,6 @@ pub(crate) fn auto_return_type(
         ResolvedPythonType::from,
     );
 
-    // Merge the return types of the remaining `return` statements.
     for return_statement in returns {
         return_type = return_type.union(return_statement.value.as_deref().map_or(
             ResolvedPythonType::Atom(PythonType::None),
@@ -95,12 +86,6 @@ pub(crate) fn auto_return_type(
         ));
     }
 
-    // If the function has an implicit return, union with `None`, as in:
-    // ```python
-    // def func(x: int):
-    //     if x > 0:
-    //         return 1
-    // ```
     if terminal.has_implicit_return() {
         return_type = return_type.union(ResolvedPythonType::Atom(PythonType::None));
     }
@@ -177,7 +162,6 @@ impl AutoPythonType {
             AutoPythonType::Atom(python_type) => type_expr(python_type, checker, at),
             AutoPythonType::Union(python_types) => {
                 if target_version >= PythonVersion::PY310 {
-                    // Aggregate all the individual types (e.g., `int`, `float`).
                     let mut all_edits = Vec::new();
                     let names = python_types
                         .iter()
@@ -189,7 +173,6 @@ impl AutoPythonType {
                         })
                         .collect::<Option<Vec<_>>>()?;
 
-                    // Wrap in a bitwise union (e.g., `int | float`).
                     let expr = pep_604_union(&names);
 
                     Some((expr, all_edits))
@@ -203,7 +186,6 @@ impl AutoPythonType {
                         [python_type, PythonType::None] | [PythonType::None, python_type] => {
                             let (element, mut edits) = type_expr(*python_type, checker, at)?;
 
-                            // Ex) `Optional[int]`
                             let (optional_edit, binding) = checker
                                 .typing_importer("Optional", PythonVersion::lowest())?
                                 .import(at)
@@ -223,7 +205,6 @@ impl AutoPythonType {
                                 })
                                 .collect::<Option<Vec<_>>>()?;
 
-                            // Ex) `Union[int, str]`
                             let (union_edit, binding) = checker
                                 .typing_importer("Union", PythonVersion::lowest())?
                                 .import(at)

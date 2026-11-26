@@ -283,7 +283,6 @@ impl ResolvedClientCapabilities {
         if client_capabilities
             .experimental
             .as_ref()
-            // Protocol: https://docs.astral.sh/ty/features/language-server/#full-diagnostic-output
             .and_then(|experimental| experimental.get("fullDiagnosticOutput"))
             .and_then(serde_json::Value::as_bool)
             .unwrap_or_default()
@@ -444,11 +443,8 @@ pub(crate) fn server_capabilities(
 ) -> ServerCapabilities {
     let diagnostic_provider =
         if resolved_client_capabilities.supports_diagnostic_dynamic_registration() {
-            // If the client supports dynamic registration, we will register the diagnostic
-            // capabilities dynamically based on the `ty.diagnosticMode` setting.
             None
         } else {
-            // Otherwise, we always advertise support for workspace and pull diagnostics.
             Some(DiagnosticProvider::DiagnosticOptions(
                 server_diagnostic_options(true),
             ))
@@ -542,8 +538,6 @@ pub(crate) fn server_capabilities(
         ),
         workspace: Some(lsp_types::WorkspaceOptions {
             workspace_folders: Some(lsp_types::WorkspaceFoldersServerCapabilities {
-                // N.B. It seems this is purely informational:
-                // https://github.com/microsoft/language-server-protocol/issues/1720#issuecomment-1514732305
                 supported: Some(true),
                 change_notifications: Some(true.into()),
             }),
@@ -583,8 +577,6 @@ pub(crate) fn server_diagnostic_options(workspace_diagnostics: bool) -> Diagnost
         inter_file_dependencies: true,
         workspace_diagnostics,
         work_done_progress_options: WorkDoneProgressOptions {
-            // Currently, the server only supports reporting work done progress for "workspace"
-            // diagnostic mode.
             work_done_progress: Some(workspace_diagnostics),
         },
     }

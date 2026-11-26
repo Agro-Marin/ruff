@@ -70,8 +70,6 @@ pub(crate) fn raise_vanilla_args(checker: &Checker, expr: &Expr) {
         return;
     };
 
-    // Ignore some built-in exceptions that don't make sense to subclass, like
-    // `NotImplementedError`.
     if checker
         .semantic()
         .match_builtin_expr(func, "NotImplementedError")

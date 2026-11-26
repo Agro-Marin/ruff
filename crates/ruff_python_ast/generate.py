@@ -20,7 +20,6 @@ from typing import Any
 
 import tomllib
 
-# Types that require `crate::`. We can slowly remove these types as we move them to generate scripts.
 types_requiring_crate_prefix = {
     "IpyEscapeKind",
     "ExprContext",
@@ -55,9 +54,6 @@ class VisitorInfo:
     accepts_sequence: bool = False
 
 
-# Map of AST node types to their corresponding visitor information.
-# Only visitors that are different from the default `visit_*` method are included.
-# These visitors either have a different name or accept a sequence of items.
 type_to_visitor_function: dict[str, VisitorInfo] = {
     "TypeParams": VisitorInfo("visit_type_params", True),
     "Parameters": VisitorInfo("visit_parameters", True),
@@ -80,8 +76,6 @@ def write_rustdoc(out: list[str], doc: str) -> None:
         out.append(f"/// {line}")
 
 
-# ------------------------------------------------------------------------------
-# Read AST description
 
 
 def load_ast(root: Path) -> Ast:
@@ -91,8 +85,6 @@ def load_ast(root: Path) -> Ast:
     return Ast(ast)
 
 
-# ------------------------------------------------------------------------------
-# Preprocess
 
 
 @dataclass
@@ -217,11 +209,6 @@ class Field:
         ]
 
 
-# Extracts the type argument from a Rust type used in AST field syntax.
-# Box<str> -> str
-# Box<Expr> -> Expr
-# If the type does not have a type argument, it will return the string.
-# Does not support nested types
 def extract_type_argument(rust_type_str: str) -> str:
     open_bracket_index = rust_type_str.find("<")
     if open_bracket_index == -1:
@@ -290,8 +277,6 @@ class FieldType:
         self.inner = extract_type_argument(self.name)
 
 
-# ------------------------------------------------------------------------------
-# Preamble
 
 
 def write_preamble(out: list[str]) -> None:
@@ -304,8 +289,6 @@ def write_preamble(out: list[str]) -> None:
     """)
 
 
-# ------------------------------------------------------------------------------
-# Owned enum
 
 
 def write_owned_enum(out: list[str], ast: Ast) -> None:
@@ -381,7 +364,7 @@ def write_owned_enum(out: list[str], ast: Ast) -> None:
 
         out.append(
             "#[allow(dead_code, clippy::match_wildcard_for_single_variants)]"
-        )  # Not all is_methods are used
+        )
         out.append(f"impl {group.name} {{")
         for node in group.nodes:
             is_name = to_snake_case(node.variant)
@@ -507,8 +490,6 @@ def write_owned_enum(out: list[str], ast: Ast) -> None:
         """)
 
 
-# ------------------------------------------------------------------------------
-# Ref enum
 
 
 def write_ref_enum(out: list[str], ast: Ast) -> None:
@@ -600,8 +581,6 @@ def write_ref_enum(out: list[str], ast: Ast) -> None:
         """)
 
 
-# ------------------------------------------------------------------------------
-# AnyNodeRef
 
 
 def write_anynoderef(out: list[str], ast: Ast) -> None:
@@ -670,7 +649,6 @@ def write_anynoderef(out: list[str], ast: Ast) -> None:
             }
         """)
 
-        # `as_*` methods to convert from `AnyNodeRef` to e.g. `ExprRef`
         out.append(f"""
             impl<'a> AnyNodeRef<'a> {{
                 pub fn as_{to_snake_case(group.ref_enum_ty)}(self) -> Option<{group.ref_enum_ty}<'a>> {{
@@ -773,8 +751,6 @@ def write_anynoderef(out: list[str], ast: Ast) -> None:
         """)
 
 
-# ------------------------------------------------------------------------------
-# AnyRootNodeRef
 
 
 def write_root_anynoderef(out: list[str], ast: Ast) -> None:
@@ -1000,8 +976,6 @@ def write_root_anynoderef(out: list[str], ast: Ast) -> None:
     """)
 
 
-# ------------------------------------------------------------------------------
-# NodeKind
 
 
 def write_nodekind(out: list[str], ast: Ast) -> None:
@@ -1045,8 +1019,6 @@ def write_nodekind(out: list[str], ast: Ast) -> None:
     """)
 
 
-# ------------------------------------------------------------------------------
-# Node structs
 
 
 def write_node(out: list[str], ast: Ast) -> None:
@@ -1096,8 +1068,6 @@ def write_node(out: list[str], ast: Ast) -> None:
             out.append("")
 
 
-# ------------------------------------------------------------------------------
-# Source order visitor
 
 
 def write_source_order(out: list[str], ast: Ast) -> None:
@@ -1166,8 +1136,6 @@ impl {name} {{
         """)
 
 
-# ------------------------------------------------------------------------------
-# Format and write output
 
 
 def generate(ast: Ast) -> list[str]:
@@ -1188,8 +1156,6 @@ def write_output(root: Path, out: list[str]) -> None:
     out_path.write_text(rustfmt("\n".join(out)))
 
 
-# ------------------------------------------------------------------------------
-# Main
 
 
 def main() -> None:

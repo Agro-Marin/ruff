@@ -57,7 +57,6 @@ pub(crate) fn string_or_bytes_too_long(checker: &Checker, string: StringLike) {
 
     let parent = semantic.current_statement();
 
-    // Ignore docstrings.
     if is_docstring_stmt(parent) {
         return;
     }
@@ -78,8 +77,6 @@ pub(crate) fn string_or_bytes_too_long(checker: &Checker, string: StringLike) {
         StringLike::String(ast::ExprStringLiteral { value, .. }) => value.chars().count(),
         StringLike::Bytes(ast::ExprBytesLiteral { value, .. }) => value.len(),
         StringLike::FString(node) => count_f_string_chars(node),
-        // TODO(dylan): decide how to count chars, especially
-        // if interpolations are of different type than `str`
         StringLike::TString(_) => {
             return;
         }
@@ -118,7 +115,6 @@ fn count_f_string_chars(f_string: &ast::ExprFString) -> usize {
 }
 
 fn is_warnings_dot_deprecated(expr: Option<&ast::Expr>, semantic: &SemanticModel) -> bool {
-    // Does `expr` represent a call to `warnings.deprecated` or `typing_extensions.deprecated`?
     let Some(expr) = expr else {
         return false;
     };

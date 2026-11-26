@@ -85,7 +85,6 @@ pub(crate) fn unnecessary_regular_expression(
     call: &ExprCall,
     qualified_name: &QualifiedName,
 ) {
-    // adapted from unraw_re_pattern
     let semantic = checker.semantic();
 
     if !semantic.seen_module(Modules::RE) {
@@ -96,19 +95,14 @@ pub(crate) fn unnecessary_regular_expression(
         return;
     };
 
-    // skip calls with more than `pattern` and `string` arguments (and `repl`
-    // for `sub`)
     let Some(re_func) = ReFunc::from_call_expr(semantic, call, func) else {
         return;
     };
 
-    // For now, restrict this rule to string literals and variables that can be resolved to literals
     let Some(literal) = resolve_literal(re_func.pattern, semantic) else {
         return;
     };
 
-    // For now, reject any regex metacharacters. Compare to the complete list
-    // from https://docs.python.org/3/howto/regex.html#matching-characters
     let has_metacharacters = match &literal {
         Literal::Str(str_lit) => str_lit.value.to_str().contains(METACHARACTERS),
         Literal::Bytes(bytes_lit) => bytes_lit
@@ -121,14 +115,10 @@ pub(crate) fn unnecessary_regular_expression(
         return;
     }
 
-    // `str.split("")` raises `ValueError: empty separator` while `re.split("", s)` succeeds,
-    // so skip the diagnostic for `re.split` with an empty pattern.
     if matches!(re_func.kind, ReFuncKind::Split) && literal.is_empty() {
         return;
     }
 
-    // Now we know the pattern is a string literal with no metacharacters, so
-    // we can proceed with the str method replacement.
     let new_expr = re_func.replacement();
 
     let repl = new_expr.map(|expr| checker.generator().expr(&expr));
@@ -154,7 +144,6 @@ pub(crate) fn unnecessary_regular_expression(
 /// The `re` functions supported by this rule.
 #[derive(Debug)]
 enum ReFuncKind<'a> {
-    // Only `Some` if it's a fixable `re.sub()` call
     Sub { repl: Option<&'a Expr> },
     Match,
     Search,
@@ -177,8 +166,6 @@ impl<'a> ReFunc<'a> {
         call: &'a ExprCall,
         func_name: &str,
     ) -> Option<Self> {
-        // the proposed fixes for match, search, and fullmatch rely on the
-        // return value only being used for its truth value or being compared to None
         let comparison_to_none = get_comparison_to_none(semantic);
         let in_truthy_context = semantic.in_boolean_test() || comparison_to_none.is_some();
 
@@ -188,8 +175,6 @@ impl<'a> ReFunc<'a> {
         };
 
         match (func_name, call.arguments.len()) {
-            // `split` is the safest of these to fix, as long as metacharacters
-            // have already been filtered out from the `pattern`
             ("split", 2) => Some(ReFunc {
                 kind: ReFuncKind::Split,
                 pattern: call.arguments.find_argument_value("pattern", 0)?,
@@ -197,9 +182,6 @@ impl<'a> ReFunc<'a> {
                 comparison_to_none,
                 range,
             }),
-            // `sub` is only safe to fix if `repl` is a string. `re.sub` also
-            // allows it to be a function, which will *not* work in the str
-            // version
             ("sub", 3) => {
                 let repl = call.arguments.find_argument_value("repl", 1)?;
                 let lit = resolve_literal(repl, semantic)?;
@@ -207,19 +189,7 @@ impl<'a> ReFunc<'a> {
 
                 match lit {
                     Literal::Str(lit_str) => {
-                        // Perform escape analysis for replacement literals.
                         for (c, next) in lit_str.value.to_str().chars().tuple_windows() {
-                            // `\\0` (or any other ASCII digit) and `\\g` have special meaning in `repl` strings.
-                            // Meanwhile, nearly all other escapes of ASCII letters in a `repl` string causes
-                            // `re.PatternError` to be raised at runtime.
-                            //
-                            // If we see that the escaped character is an alphanumeric ASCII character,
-                            // we should only emit a diagnostic suggesting to replace the `re.sub()` call with
-                            // `str.replace`if we can detect that the escaped character is one that is both
-                            // valid in a `repl` string *and* does not have any special meaning in a REPL string.
-                            //
-                            // It's out of scope for this rule to change invalid `re.sub()` calls into something
-                            // that would not raise an exception at runtime. They should be left as-is.
                             if c == '\\' && next.is_ascii_alphanumeric() {
                                 if ESCAPABLE_SINGLE_CHARACTERS.contains(next) {
                                     fixable = false;
@@ -286,27 +256,21 @@ impl<'a> ReFunc<'a> {
     ///     `re.search("abc", s)` => `"abc" in s`
     fn replacement(&self) -> Option<Expr> {
         match (&self.kind, &self.comparison_to_none) {
-            // string.replace(pattern, repl)
             (ReFuncKind::Sub { repl }, _) => repl
                 .cloned()
                 .map(|repl| self.method_expr("replace", vec![self.pattern.clone(), repl])),
-            // string.split(pattern)
             (ReFuncKind::Split, _) => Some(self.method_expr("split", vec![self.pattern.clone()])),
-            // pattern in string
             (ReFuncKind::Search, None | Some(ComparisonToNone::IsNot)) => {
                 Some(ReFunc::compare_expr(self.pattern, CmpOp::In, self.string))
             }
-            // pattern not in string
             (ReFuncKind::Search, Some(ComparisonToNone::Is)) => Some(ReFunc::compare_expr(
                 self.pattern,
                 CmpOp::NotIn,
                 self.string,
             )),
-            // string.startswith(pattern)
             (ReFuncKind::Match, None | Some(ComparisonToNone::IsNot)) => {
                 Some(self.method_expr("startswith", vec![self.pattern.clone()]))
             }
-            // not string.startswith(pattern)
             (ReFuncKind::Match, Some(ComparisonToNone::Is)) => {
                 let expr = self.method_expr("startswith", vec![self.pattern.clone()]);
                 let negated_expr = Expr::UnaryOp(ExprUnaryOp {
@@ -317,11 +281,9 @@ impl<'a> ReFunc<'a> {
                 });
                 Some(negated_expr)
             }
-            // string == pattern
             (ReFuncKind::Fullmatch, None | Some(ComparisonToNone::IsNot)) => {
                 Some(ReFunc::compare_expr(self.string, CmpOp::Eq, self.pattern))
             }
-            // string != pattern
             (ReFuncKind::Fullmatch, Some(ComparisonToNone::Is)) => Some(ReFunc::compare_expr(
                 self.string,
                 CmpOp::NotEq,

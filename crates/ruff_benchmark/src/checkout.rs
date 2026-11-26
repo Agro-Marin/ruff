@@ -13,7 +13,6 @@ pub fn checkout_project(name: &str, repository: &str, commit: &str) -> Result<Pa
         run_git(&path, &["init", "--quiet"])?;
     }
 
-    // A cached revision can be checked out offline.
     if !Command::new("git")
         .args(["cat-file", "-e", commit])
         .current_dir(&path)

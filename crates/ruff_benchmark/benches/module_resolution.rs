@@ -15,7 +15,6 @@ use ty_project::metadata::value::RelativePathBuf;
 use ty_project::{Db as _, ProjectDatabase, ProjectMetadata};
 
 const SEEDED_TARGETS: &[&str] = &["target_0", "target_1", "target_2", "target_3", "target_4"];
-// Exercise stub-overlay discovery followed by normal fallback.
 const NONEXISTENT_NAMES: &[&str] = &[
     "nonexistent_0.child",
     "nonexistent_1.child",
@@ -73,7 +72,6 @@ fn setup_case(n: usize) -> Case {
 
     let db = ProjectDatabase::fallible(metadata, system).unwrap();
 
-    // Keep lazy program and resolver initialization out of the measured module-resolution queries.
     let _ = db.project().program(&db).resolver_environment(&db);
 
     let importing_file = system_path_to_file(&db, &importing_path).unwrap();

@@ -157,7 +157,6 @@ pub(crate) fn whitespace_around_named_parameter_equals(line: &LogicalLine, conte
                         }
                     }
                 } else {
-                    // If there's space between the preceding token and the equals sign, report it.
                     if token.start() != prev_end {
                         if let Some(mut diagnostic) = context.report_diagnostic_if_enabled(
                             UnexpectedSpacesAroundKeywordParameterEquals,
@@ -168,7 +167,6 @@ pub(crate) fn whitespace_around_named_parameter_equals(line: &LogicalLine, conte
                         }
                     }
 
-                    // If there's space between the equals sign and the following token, report it.
                     while let Some(next) = iter.peek() {
                         if next.kind() == TokenKind::NonLogicalNewline {
                             iter.next();

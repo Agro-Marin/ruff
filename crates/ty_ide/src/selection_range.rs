@@ -14,11 +14,9 @@ pub fn selection_range(db: &dyn Db, file: PythonFile<'_>, offset: TextSize) -> V
     let covering = covering_node(parsed.syntax().into(), range);
 
     let mut ranges = Vec::new();
-    // Start with the largest range (the root), so iterate ancestors backwards
     for node in covering.ancestors().rev() {
         if should_include_in_selection(node) {
             let range = node.range();
-            // Eliminate duplicates when parent and child nodes have the same range
             if ranges.last() != Some(&range) {
                 ranges.push(range);
             }
@@ -36,10 +34,7 @@ pub fn selection_range(db: &dyn Db, file: PythonFile<'_>, offset: TextSize) -> V
 fn should_include_in_selection(node: ruff_python_ast::AnyNodeRef) -> bool {
     use ruff_python_ast::AnyNodeRef;
 
-    // We will likely need to tune this based on user feedback. Some users may
-    // prefer finer-grained selections while others may prefer coarser-grained.
     match node {
-        // Exclude nodes that don't represent meaningful semantic units for selection
         AnyNodeRef::StmtExpr(_) => false,
 
         _ => true,
@@ -445,7 +440,6 @@ b"123a𝐁<CURSOR>c"
                 return "No selection range found".to_string();
             }
 
-            // Create one diagnostic per range for clearer visualization
             let diagnostics: Vec<SelectionRangeDiagnostic> = ranges
                 .iter()
                 .enumerate()

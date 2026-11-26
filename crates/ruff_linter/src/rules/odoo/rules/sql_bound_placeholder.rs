@@ -124,9 +124,6 @@ struct Executions<'a> {
 
 impl<'a> Visitor<'a> for Executions<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        // A function's decorators and defaults run in the scope that defines
-        // it, but test_lint reads them in the function's own, as their parent
-        // node is the function.
         if let Stmt::FunctionDef(function) = stmt {
             let outer = std::mem::replace(&mut self.scope, &function.body);
             visitor::walk_stmt(self, stmt);

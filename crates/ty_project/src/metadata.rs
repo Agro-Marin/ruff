@@ -158,8 +158,6 @@ impl ProjectMetadata {
             .unwrap_or_else(|| ProjectName::new(root.file_name().unwrap_or("root")));
 
         if let Some(project) = project {
-            // If the `options` don't specify a python version but the `project.requires-python` field is set,
-            // use that as a lower bound instead.
             strategy.fallback(
                 options.apply_requires_python(project.requires_python.as_ref()),
                 |error| tracing::debug!("skipping invalid requires_python lower bound: {error}"),
@@ -291,7 +289,6 @@ impl ProjectMetadata {
             None
         };
 
-        // A `ty.toml` takes precedence over a `pyproject.toml`.
         let ty_toml_path = project_root.join("ty.toml");
         if let Ok(ty_str) = system.read_to_string(&ty_toml_path) {
             let options = match Options::from_toml_str(
@@ -311,7 +308,6 @@ impl ProjectMetadata {
                 .as_ref()
                 .is_some_and(|project| project.ty().is_some())
             {
-                // TODO: Consider using a diagnostic here
                 tracing::warn!(
                     "Ignoring the `tool.ty` section in `{pyproject_path}` because `{ty_toml_path}` takes precedence."
                 );
@@ -430,10 +426,6 @@ impl ProjectMetadata {
     }
 
     pub(crate) fn try_add_project_root(&self, db: &dyn Db) {
-        // This adds a file root for the project itself. This enables
-        // tracking of when changes are made to the files in a project
-        // at the directory level. At time of writing (2025-07-17),
-        // this is used for caching completions for submodules.
         db.files()
             .try_add_root(db, self.root(), FileRootKind::Project);
     }
@@ -764,7 +756,6 @@ mod tests {
             "#);
         });
 
-        // Discovery from a subdirectory uses the same `pyproject.toml`.
         let from_src = ProjectMetadata::discover(&root.join("db"), &system)
             .context("Failed to discover project from src sub-directory")?;
 
@@ -1222,7 +1213,6 @@ unclosed table, expected `]`
             Err(DependencyMetadataError::EnvironmentResolution(_))
         );
 
-        // Creating the selected environment refreshes program settings without changing metadata.
         system.memory_file_system().write_file_all(
             selected_environment.join("pyvenv.cfg"),
             "home = /missing\nversion = 3.13.0\ninclude-system-site-packages = false",
@@ -1245,7 +1235,6 @@ unclosed table, expected `]`
                 if selected == &selected_environment
         );
 
-        // Directory availability is tracked independently of the resolved program settings.
         system
             .memory_file_system()
             .remove_directory(&uv_environment)?;
@@ -1304,7 +1293,6 @@ unclosed table, expected `]`
         let project = db.project();
         assert_matches!(project.dependency_metadata(&db), Ok(Some(_)));
 
-        // The selected prefix is canonical, but uv's original path must remain available too.
         std::fs::remove_file(&link)?;
         File::sync_path(&mut db, &link);
         assert_matches!(
@@ -1316,7 +1304,6 @@ unclosed table, expected `]`
         File::sync_path(&mut db, &link);
         assert_matches!(project.dependency_metadata(&db), Ok(Some(_)));
 
-        // Syncing only the target must invalidate the query without refreshing program settings.
         std::fs::remove_dir_all(&environment)?;
         File::sync_path(&mut db, &environment);
         assert_matches!(
@@ -1375,7 +1362,6 @@ unclosed table, expected `]`
         assert_matches!(project.dependency_metadata(&db), Ok(Some(_)));
         let search_paths = project.program_settings(&db).search_paths.clone();
 
-        // Repeated failures must retain the checking program and the environment used for watching.
         std::fs::remove_file(&selected_link)?;
         for _ in 0..2 {
             let workspace = project.metadata(&db).uv_workspace().clone();
@@ -1393,7 +1379,6 @@ unclosed table, expected `]`
         }
 
         std::os::unix::fs::symlink(&environment, &selected_link)?;
-        // A different settings error must clear the stale environment error, too.
         let system = OsSystem::new(&root);
         system.create_directory_all(&root.join("broken-typeshed/stdlib"))?;
         system.write_file(
@@ -1483,7 +1468,6 @@ unclosed table, expected `]`
 
         std::fs::remove_file(&uv_link)?;
         std::os::unix::fs::symlink(&selected_environment, &uv_link)?;
-        // An unrelated program change invalidates the query without refreshing uv metadata.
         let mut settings = project.program_settings(&db).clone();
         settings.python_version.version = PythonVersion::PY312;
         project.update_program(&mut db, settings);
@@ -1594,8 +1578,6 @@ unclosed table, expected `]`
         )?);
         project.apply_uv_workspace(&system, workspace)?;
 
-        // uv's environment takes precedence over `pyproject.toml`, user configuration,
-        // and fallback options.
         assert_eq!(
             project
                 .to_merged_options()
@@ -1607,7 +1589,6 @@ unclosed table, expected `]`
             Some(environment.as_path())
         );
 
-        // An explicit override takes precedence over uv.
         project.set_override_options(Options::from_toml_str(
             r#"
             [environment]

@@ -176,7 +176,6 @@ pub(crate) fn call(checker: &Checker, func: &Expr) {
         return;
     };
 
-    // Ignore irrelevant bindings (like imports).
     if !matches!(
         test_expression(value, checker.semantic()),
         Resolution::RelevantLocal | Resolution::PandasModule
@@ -186,19 +185,15 @@ pub(crate) fn call(checker: &Checker, func: &Expr) {
 
     let range = func.range();
     match attr.as_str() {
-        // PD003
         "isnull" if checker.is_rule_enabled(Rule::PandasUseOfDotIsNull) => {
             checker.report_diagnostic(PandasUseOfDotIsNull, range);
         }
-        // PD004
         "notnull" if checker.is_rule_enabled(Rule::PandasUseOfDotNotNull) => {
             checker.report_diagnostic(PandasUseOfDotNotNull, range);
         }
-        // PD010
         "pivot" | "unstack" if checker.is_rule_enabled(Rule::PandasUseOfDotPivotOrUnstack) => {
             checker.report_diagnostic(PandasUseOfDotPivotOrUnstack, range);
         }
-        // PD013
         "stack" if checker.is_rule_enabled(Rule::PandasUseOfDotStack) => {
             checker.report_diagnostic(PandasUseOfDotStack, range);
         }

@@ -60,15 +60,12 @@ pub(crate) fn invalid_bytes_return(checker: &Checker, function_def: &ast::StmtFu
         return;
     }
 
-    // Determine the terminal behavior (i.e., implicit return, no return, etc.).
     let terminal = Terminal::from_function(function_def, checker.semantic());
 
-    // If every control flow path raises an exception, ignore the function.
     if terminal.is_always_raise() {
         return;
     }
 
-    // If there are no return statements, add a diagnostic.
     if terminal == Terminal::Implicit {
         checker.report_diagnostic(InvalidBytesReturnType, function_def.identifier());
         return;
@@ -89,7 +86,6 @@ pub(crate) fn invalid_bytes_return(checker: &Checker, function_def: &ast::StmtFu
                 checker.report_diagnostic(InvalidBytesReturnType, value.range());
             }
         } else {
-            // Disallow implicit `None`.
             checker.report_diagnostic(InvalidBytesReturnType, stmt.range());
         }
     }

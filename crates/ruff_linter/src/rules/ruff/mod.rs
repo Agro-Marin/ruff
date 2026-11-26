@@ -848,7 +848,6 @@ mod tests {
         regex_pattern: &str,
         id: u8,
     ) -> Result<()> {
-        // Compile the regex from the pattern string
         let regex = Regex::new(regex_pattern).unwrap();
 
         let snapshot = format!(

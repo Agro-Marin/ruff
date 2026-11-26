@@ -91,8 +91,6 @@ pub(crate) fn pytest_raises_ambiguous_pattern(
         return;
     }
 
-    // It *can* be passed as a positional argument if you try very hard,
-    // but pytest only documents it as a keyword argument, and it's quite hard pass it positionally
     let Some(ast::Keyword { value, .. }) = call.arguments.find_keyword("match") else {
         return;
     };

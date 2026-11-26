@@ -256,9 +256,7 @@ fn ty_environment_is_system_not_virtual() -> anyhow::Result<()> {
     let ty_package_path = format!("{ty_system_site_packages}/system_package/__init__.py");
 
     let case = CliTest::with_files([
-        // Package in system Python installation (should be discovered)
         (ty_package_path.as_str(), "class SystemClass: ..."),
-        // Note: NO pyvenv.cfg - this is a system installation, not a venv
         (
             "test.py",
             r"
@@ -312,7 +310,6 @@ fn ty_system_environment_and_local_venv() -> anyhow::Result<()> {
     let case = CliTest::with_files([
         (ty_unique_package.as_str(), "class SystemEnvClass: ..."),
         (local_unique_package.as_str(), "class LocalClass: ..."),
-        // Note: NO pyvenv.cfg for system-python - this is a system installation, not a venv
         (
             ".venv/pyvenv.cfg",
             r"

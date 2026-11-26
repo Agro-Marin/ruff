@@ -105,8 +105,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let owner_and_declaration = self.final_attribute_declaration(object_ty, attribute);
         let final_declaration = owner_and_declaration.and_then(|(_, definition)| definition);
 
-        // TODO: Use the full assignment statement range for these diagnostics instead of
-        // just the attribute target range.
 
         let is_in_allowed_initializer = self
             .current_function_definition()
@@ -146,14 +144,9 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return true;
         };
 
-        // Check that the target attribute expression is an instance attribute assignment
-        // (i.e. the object is the implicit `self`/`cls` receiver), not just any parameter
-        // that happens to have the right type.
         let is_self_parameter =
             is_instance_attribute_assignment(db, self.index, self.scope(), target);
 
-        // Final ownership is nominal: checking structural protocol requirements can
-        // incorrectly reject the declaring class's own receiver.
         let is_current_class_instance = is_self_parameter
             && object_ty
                 .nominal_class(db, env)
@@ -167,7 +160,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
         if let Some((class_literal, _)) = class_ty.static_class_literal(db) {
             if owner_and_declaration.is_some_and(|(owner, _)| owner != class_literal) {
-                // Name mangling gives each class its own attribute for this spelling.
                 if is_mangled_private(attribute) {
                     return false;
                 }
@@ -247,8 +239,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         attribute: &str,
     ) -> bool {
         let db = self.db();
-        // Check each possible receiver type separately. If one of them makes the
-        // attribute `Final`, another type must not make it writable.
         match object_ty {
             Type::TypeAlias(alias) => {
                 return self.validate_final_attribute_assignment(

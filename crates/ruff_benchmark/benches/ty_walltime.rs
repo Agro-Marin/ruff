@@ -133,7 +133,6 @@ static NUMPY: Benchmark = Benchmark::new(RealWorldProject {
     repository: "https://github.com/numpy/numpy",
     commit: "b92fa9da0b7b2bc650d9298085876fc8db28df5e",
     paths: &["numpy"],
-    // ty uses its vendored typeshed stub for `typing_extensions`, so we omit the package here.
     dependencies: &["hypothesis", "packaging", "pytest"],
     max_dep_date: TY_ECOSYSTEM_PIN,
     python_version: SupportedPythonVersion::Py312,
@@ -191,9 +190,6 @@ static STATIC_FRAME: Benchmark = Benchmark::new(RealWorldProject {
     repository: "https://github.com/static-frame/static-frame",
     commit: "0b1e2fc2e819cde1b9b99be7cc57be08ee43d8de",
     paths: &["static_frame"],
-    // N.B. `arraykit` is installed as a dependency during ecosystem runs,
-    // but it takes much longer to be installed in a Codspeed run
-    // (seems to be built from source on the Codspeed CI runners for some reason).
     dependencies: &["numpy"],
     max_dep_date: TY_ECOSYSTEM_PIN,
     python_version: SupportedPythonVersion::Py311,
@@ -254,7 +250,6 @@ fn colour_science(bencher: Bencher) {
 
 #[bench(sample_size = 1, sample_count = 2)]
 fn numpy(bencher: Bencher) {
-    // Checking NumPy and its tests on a single thread takes too long for CI.
     run_multithreaded(bencher, &NUMPY);
 }
 
@@ -270,7 +265,6 @@ fn sympy(bencher: Bencher) {
 
 #[bench(sample_size = 3, sample_count = 8)]
 fn multithreaded(bencher: Bencher) {
-    // Use the same workload as `altair` so we can compare single- and multithreaded check times.
     run_multithreaded(bencher, &ALTAIR);
 }
 
@@ -286,10 +280,6 @@ fn main() {
 
     let _logging = setup_logging_with_filter(&filter).expect("Filter to be valid");
 
-    // Salsa uses an optimized lookup for the ingredient index when using only a single database.
-    // This optimization results in at least a 10% speedup compared to when using multiple databases.
-    // To reduce noise, run one benchmark so that all benchmarks take the less optimized "not the first db"
-    // branch when looking up the ingredient index.
     {
         let db = TANJUN.setup_iteration();
         check_project(&db, TANJUN.project.name);

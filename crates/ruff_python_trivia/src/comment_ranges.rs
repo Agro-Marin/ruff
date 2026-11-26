@@ -95,7 +95,6 @@ impl CommentRanges {
         let start = self
             .raw
             .partition_point(|comment| comment.start() < range.start());
-        // We expect there are few comments, so switching to find should be faster
         match self.raw[start..]
             .iter()
             .find_position(|comment| comment.end() > range.end())
@@ -169,9 +168,7 @@ impl CommentRanges {
             let line_end = source.full_line_end(offset);
             let column = offset - line_start;
 
-            // If this is an end-of-line comment, reset the current block.
             if !Self::is_own_line(offset, source) {
-                // Push the current block, and reset.
                 if current_block.len() > 1 && current_block_non_empty {
                     block_comments.extend(current_block);
                 }
@@ -182,17 +179,13 @@ impl CommentRanges {
                 continue;
             }
 
-            // If there's a blank line between this comment and the previous
-            // comment, reset the current block.
             if prev_line_end.is_some_and(|prev_line_end| {
                 source.contains_line_break(TextRange::new(prev_line_end, line_start))
             }) {
-                // Push the current block.
                 if current_block.len() > 1 && current_block_non_empty {
                     block_comments.extend(current_block);
                 }
 
-                // Reset the block state.
                 current_block = vec![offset];
                 current_block_column = Some(column);
                 current_block_non_empty = !Self::is_empty(*comment_range, source);
@@ -202,29 +195,24 @@ impl CommentRanges {
 
             if let Some(current_column) = current_block_column {
                 if column == current_column {
-                    // Add the comment to the current block.
                     current_block.push(offset);
                     current_block_non_empty |= !Self::is_empty(*comment_range, source);
                     prev_line_end = Some(line_end);
                 } else {
-                    // Push the current block.
                     if current_block.len() > 1 && current_block_non_empty {
                         block_comments.extend(current_block);
                     }
 
-                    // Reset the block state.
                     current_block = vec![offset];
                     current_block_column = Some(column);
                     current_block_non_empty = !Self::is_empty(*comment_range, source);
                     prev_line_end = Some(line_end);
                 }
             } else {
-                // Push the current block.
                 if current_block.len() > 1 && current_block_non_empty {
                     block_comments.extend(current_block);
                 }
 
-                // Reset the block state.
                 current_block = vec![offset];
                 current_block_column = Some(column);
                 current_block_non_empty = !Self::is_empty(*comment_range, source);
@@ -232,7 +220,6 @@ impl CommentRanges {
             }
         }
 
-        // Push any lingering blocks.
         if current_block.len() > 1 && current_block_non_empty {
             block_comments.extend(current_block);
         }

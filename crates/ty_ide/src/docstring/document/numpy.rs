@@ -162,7 +162,6 @@ impl<'a> Parser<'a> {
         let index = self.current_line;
         self.current_line += 1;
 
-        // First, attempt to add the current line to the current section.
         if let Some(mut section) = self.current_section.take() {
             if section.push_line(line, line_header, &self.lines[self.current_line..]) {
                 self.current_section = Some(section);
@@ -172,8 +171,6 @@ impl<'a> Parser<'a> {
             self.finish_section(section);
         }
 
-        // Second, skip content owned by a preformatted or container block, where nested headers
-        // are inert.
         if self.scanner.consume_preformatted_line(line.text) {
             return;
         }
@@ -182,8 +179,6 @@ impl<'a> Parser<'a> {
             return;
         }
 
-        // Finally, start a new section from a standalone header, or observe syntax that may
-        // introduce a preformatted block.
         if let Some(header) = line_header {
             self.current_section = Some(SectionBuilder::new(header));
             self.current_line += 1;
@@ -202,13 +197,10 @@ impl<'a> Parser<'a> {
         }
 
         let indent = if index == 0 {
-            // PEP 257 trimming strips the indentation from the first line,
-            // so instead use the underline to determine this section's indentation.
             underline.indent
         } else if underline.indent == line.indent {
             line.indent
         } else {
-            // After the first line, each underline must align with its section title.
             return None;
         };
 
@@ -256,7 +248,6 @@ impl<'a> SectionBuilder<'a> {
         line_header: Option<Header>,
         following_lines: &[ParsedLine<'_>],
     ) -> bool {
-        // Let an active preformatted block consume the line before interpreting it.
         let preformatted_block_is_active = self.preformatted.is_active();
         let line_is_preformatted = self.preformatted.consume_preformatted_line(line.text);
         if preformatted_block_is_active && line_is_preformatted {
@@ -264,18 +255,11 @@ impl<'a> SectionBuilder<'a> {
             return true;
         }
 
-        // Defer blank lines until the next content line determines their ownership.
         if line.text.trim().is_empty() {
             self.pending_blank_lines.push(line);
             return true;
         }
 
-        // Omit a marker for a static substitution from extracted parameter
-        // documentation, but keep scanning explicit parameters and leave the
-        // section raw when rendering.
-        //
-        // This is an edge case, but static substitutions commonly appear in
-        // some popular libraries (e.g., SciPy and Matplotlib).
         if self.section_header.kind.is_parameter_section()
             && line_header.is_none()
             && !line_is_preformatted
@@ -285,7 +269,6 @@ impl<'a> SectionBuilder<'a> {
             return true;
         }
 
-        // Parse the line as an item and determine whether it belongs to this section.
         let item_line = ItemLine::parse(self.section_header, line, following_lines);
         let starts_item_block = item_line.is_some();
         let has_leading_blank_lines = !self.pending_blank_lines.is_empty();
@@ -298,7 +281,6 @@ impl<'a> SectionBuilder<'a> {
             return false;
         }
 
-        // Finally, commit the accepted line and update the state used to classify later lines.
         self.push_body_line(line, item_line);
         self.has_seen_item_block |= starts_item_block;
         if !line_is_preformatted {
@@ -316,13 +298,10 @@ impl<'a> SectionBuilder<'a> {
         starts_item_block: bool,
         has_leading_blank_lines: bool,
     ) -> bool {
-        // A sibling-level underlined header starts a new section.
-        // Every section, including an opaque one, ends at a sibling or shallower header.
         if line_header.is_some_and(|header| header.indent <= self.section_header.indent) {
             return false;
         }
 
-        // Items are not parsed in opaque sections so only the above header can end them.
         if self.section_header.kind == HeaderKind::Opaque {
             return true;
         }
@@ -332,9 +311,6 @@ impl<'a> SectionBuilder<'a> {
             std::cmp::Ordering::Greater => true,
             std::cmp::Ordering::Equal => {
                 if self.section_header.kind.is_parameter_section() {
-                    // Parameter sections may contain leading prose and aligned continuations.
-                    // After an item establishes the list, a blank line followed by an aligned
-                    // non-item ends the section.
                     !self.has_seen_item_block || !has_leading_blank_lines || starts_item_block
                 } else {
                     starts_item_block
@@ -348,14 +324,11 @@ impl<'a> SectionBuilder<'a> {
         self.range = self.range.cover(line.range);
 
         if let BodyBuilder::ItemList(builder) = &mut self.body {
-            // At item indentation, the substitution may expand into more items, so end the
-            // preceding item. An indented substitution remains within the current description.
             if line.indent == self.section_header.indent {
                 builder.finish_current_item();
                 self.has_seen_item_block = true;
             }
 
-            // The unknown expansion cannot be reproduced by structured rendering.
             builder.has_structural_ambiguity = true;
         }
     }
@@ -515,7 +488,6 @@ impl<'a> ItemListBuilder<'a> {
     fn push_line(&mut self, line: ParsedLine<'a>, item_line: Option<ItemLine<'a>>) {
         let is_at_item_indent = line.indent == self.required_item_indent;
 
-        // An item starts a new fragment; its description is collected from later lines.
         if let Some(ItemLine {
             item,
             has_structural_ambiguity,
@@ -527,19 +499,14 @@ impl<'a> ItemListBuilder<'a> {
             return;
         }
 
-        // Record when preserving the remaining line as prose or a continuation loses structure.
         if is_at_item_indent {
-            // Aligned prose after an item may instead be another, malformed item.
             if self.current_item.is_some() {
                 self.has_structural_ambiguity = true;
             }
         } else if self.current_item.is_none() && self.preserve_leading_prose {
-            // Indented content before the first item may be nested content or code rather than
-            // section-level prose, so interpreting it as prose could discard meaningful structure.
             self.has_structural_ambiguity = true;
         }
 
-        // Preserve the line as an item continuation or leading prose when supported.
         if let Some(item) = &mut self.current_item {
             item.description.push_continuation(line.text);
         } else if self.preserve_leading_prose {
@@ -591,12 +558,10 @@ impl<'a> ItemLine<'a> {
         line: ParsedLine<'a>,
         following_lines: &[ParsedLine<'_>],
     ) -> Option<Self> {
-        // Only aligned lines can start items. Other lines are prose or item continuations.
         if line.indent != section_header.indent {
             return None;
         }
 
-        // Each structured section has its own item grammar. Opaque sections only delimit content.
         let HeaderKind::Structured(kind) = section_header.kind else {
             return None;
         };
@@ -617,7 +582,6 @@ impl<'a> ItemLine<'a> {
         let text = line.text.trim();
 
         let Some(separator) = parse_type_separator(text) else {
-            // Named items may omit their type.
             return is_item_name(text)
                 .then(|| Self::new(ItemBuilder::new(Some(text), None, ""), false));
         };
@@ -625,13 +589,10 @@ impl<'a> ItemLine<'a> {
         let name_is_valid = is_item_name(separator.name);
         let item = ItemBuilder::new(Some(separator.name), Some(separator.ty), "");
 
-        // Conventional `name : type` syntax establishes an item boundary even when the name is
-        // invalid, preventing it from absorbing adjacent items.
         if separator.has_whitespace_before_colon {
             return Some(Self::new(item, !name_is_valid));
         }
 
-        // Compact syntax requires a valid name and either a type or description.
         if name_is_valid
             && (!separator.ty.is_empty() || has_indented_description(&line, following_lines))
         {
@@ -644,23 +605,17 @@ impl<'a> ItemLine<'a> {
     fn parse_return_item(line: ParsedLine<'a>, following_lines: &[ParsedLine<'_>]) -> Option<Self> {
         let text = line.text.trim();
 
-        // Block openers at item indentation belong outside the section, not to a return item.
         if starts_preformatted_block(text) || starts_container_block(text) {
             return None;
         }
 
-        // A complete code span is an anonymous type even when its contents contain a colon.
         if is_wrapped_in_markdown_code_span(text) {
             return Some(Self::new(ItemBuilder::new(None, Some(text), ""), false));
         }
 
-        // Next, prefer the named `name : type` form. A colon adjacent to the name needs a
-        // description block to distinguish it from prose.
         let Some(separator) =
             parse_type_separator(text).filter(|separator| !separator.name.is_empty())
         else {
-            // Otherwise, accept an anonymous type only when its shape or description
-            // distinguishes it from prose.
             let has_description = has_indented_description(&line, following_lines);
             return is_anonymous_return_item(text, has_description)
                 .then(|| Self::new(ItemBuilder::new(None, Some(text), ""), false));
@@ -668,12 +623,10 @@ impl<'a> ItemLine<'a> {
 
         let item = ItemBuilder::new(Some(separator.name), Some(separator.ty), "");
 
-        // Conventional `name : type` syntax is sufficient on its own.
         if separator.has_whitespace_before_colon {
             return Some(Self::new(item, separator.has_structural_ambiguity));
         }
 
-        // A compact separator needs a description to distinguish it from prose.
         has_indented_description(&line, following_lines)
             .then(|| Self::new(item, separator.has_structural_ambiguity))
     }
@@ -681,7 +634,6 @@ impl<'a> ItemLine<'a> {
     fn parse_raise_item(line: ParsedLine<'a>) -> Option<Self> {
         let text = line.text.trim();
 
-        // Raises use a named item, with an optional inline description after the first colon.
         let (name, description) = text
             .split_once(':')
             .map_or((text, ""), |(name, description)| {

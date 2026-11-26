@@ -61,10 +61,6 @@ impl Indentation {
     pub(super) fn add_tab(self) -> Self {
         Self {
             character: Character(self.character.0 + 1),
-            // Compute the column index:
-            // * Adds `TAB_SIZE` if `column` is a multiple of `TAB_SIZE`
-            // * Rounds `column` up to the next multiple of `TAB_SIZE` otherwise.
-            // https://github.com/python/cpython/blob/2cf99026d6320f38937257da1ab014fc873a11a6/Parser/tokenizer.c#L1818
             column: Column(self.column.0 + tab_offset_u32(self.column.0, Self::TAB_SIZE)),
         }
     }
@@ -109,11 +105,6 @@ impl Indentations {
 
         match new_indentation.try_compare(*self.current())? {
             Ordering::Less | Ordering::Equal => Ok(previous),
-            // ```python
-            // if True:
-            //     pass
-            //   pass <- The indentation is greater than the expected indent of 0.
-            // ```
             Ordering::Greater => Err(UnexpectedIndentation),
         }
     }

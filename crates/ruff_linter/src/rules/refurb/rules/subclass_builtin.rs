@@ -95,13 +95,10 @@ pub(crate) fn subclass_builtin(checker: &Checker, class: &StmtClassDef) {
         return;
     };
 
-    // Expect only one base class else return
     let [base] = &**bases else {
         return;
     };
 
-    // Check if the base class is a subscript expression so that only the name expr
-    // is checked and modified.
     let base_expr = map_subscript(base);
 
     let Some(symbol) = checker.semantic().resolve_builtin_symbol(base_expr) else {

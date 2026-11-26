@@ -1,5 +1,4 @@
 # Configuration for the actionlint tool, which we run via prek
-# to verify the correctness of the syntax in our GitHub Actions workflows.
 
 self-hosted-runner:
   # Various runners we use that aren't recognized out-of-the-box by actionlint:
@@ -24,7 +23,6 @@ self-hosted-runner:
 paths:
   ".github/workflows/*.{yml,yaml}":
     ignore:
-      # `actionlint` does not yet recognize GitHub's `$/` syntax.
       # https://github.com/rhysd/actionlint/issues/711
       - '^reusable workflow call "\$/\.github/workflows/[^"/]+\.ya?ml" at "uses" is not following the format '
       - '^specifying action "\$/\.github/actions/setup-ruff-workspace" in invalid format because ref is missing\.'
@@ -42,5 +40,4 @@ paths:
   ".github/workflows/{ty-ecosystem-analyzer,memory_report,sync_typeshed}.yaml":
     ignore:
       # actionlint doesn't yet support the cache-mode feature.
-      # The schema hook validates it.
       - '^unexpected key "cache-mode" for "workflow" section\.'

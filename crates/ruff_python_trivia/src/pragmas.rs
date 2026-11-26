@@ -17,7 +17,6 @@ pub fn is_pragma_comment(comment: &str) -> bool {
     };
     let trimmed = content.trim_start();
 
-    // Case-insensitive match against `noqa` (which doesn't require a trailing colon).
     if matches!(
         trimmed.as_bytes(),
         [b'n' | b'N', b'o' | b'O', b'q' | b'Q', b'a' | b'A', ..]
@@ -25,12 +24,10 @@ pub fn is_pragma_comment(comment: &str) -> bool {
         return true;
     }
 
-    // Case-insensitive match against pragmas that don't require a trailing colon.
     if trimmed.starts_with("nosec") {
         return true;
     }
 
-    // Case-sensitive match against a variety of pragmas that _do_ require a trailing colon.
     trimmed.split_once(':').is_some_and(|(maybe_pragma, _)| {
         matches!(
             maybe_pragma,

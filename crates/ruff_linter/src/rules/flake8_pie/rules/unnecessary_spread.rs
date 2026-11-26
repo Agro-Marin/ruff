@@ -47,12 +47,9 @@ impl Violation for UnnecessarySpread {
 
 /// PIE800
 pub(crate) fn unnecessary_spread(checker: &Checker, dict: &ast::ExprDict) {
-    // The first "end" is the start of the dictionary, immediately following the open bracket.
     let mut prev_end = dict.start() + TextSize::from(1);
     for ast::DictItem { key, value } in dict {
         if key.is_none() {
-            // We only care about when the key is None which indicates a spread `**`
-            // inside a dict.
             if let Expr::Dict(inner) = value {
                 let mut diagnostic = checker.report_diagnostic(UnnecessarySpread, value.range());
                 if let Some(fix) = unnecessary_spread_fix(inner, prev_end, checker.tokens()) {
@@ -70,7 +67,6 @@ fn unnecessary_spread_fix(
     prev_end: TextSize,
     tokens: &Tokens,
 ) -> Option<Fix> {
-    // Find the `**` token preceding the spread.
     let doublestar = tokens
         .after(prev_end)
         .iter()
@@ -97,7 +93,6 @@ fn unnecessary_spread_fix(
                 break;
             }
             _ => {
-                // Unexpected token, bail
                 return None;
             }
         }
@@ -135,7 +130,6 @@ fn unnecessary_spread_fix(
                 found_r_curly = true;
             }
             _ => {
-                // Unexpected token, bail
                 return None;
             }
         }

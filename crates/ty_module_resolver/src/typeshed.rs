@@ -162,7 +162,6 @@ impl FromStr for TypeshedVersions {
         let mut map = FxOrderMap::default();
 
         for (line_index, line) in s.lines().enumerate() {
-            // humans expect line numbers to be 1-indexed
             let line_number = NonZeroUsize::new(line_index.saturating_add(1)).unwrap();
 
             let Ok(line_number) = NonZeroU16::try_from(line_number) else {
@@ -242,9 +241,6 @@ impl PyVersionRange {
         fmt::from_fn(|f| match self {
             PyVersionRange::AvailableFrom(range_from) => write!(f, "{}+", range_from.start),
             PyVersionRange::AvailableWithin(range_inclusive) => {
-                // Don't trust the start Python version if it's 3.0 or lower.
-                // Typeshed doesn't attempt to give accurate start versions if a module was added
-                // in the Python 2 era.
                 if range_inclusive.start() <= &(PythonVersion { major: 3, minor: 0 }) {
                     write!(f, "<={}", range_inclusive.end())
                 } else {
@@ -385,7 +381,6 @@ mod tests {
             }
 
             let top_level_module = if let Some(extension) = relative_path.extension() {
-                // It was a file; strip off the file extension to get the module name:
                 let extension = extension.to_str().unwrap_or_else(|| {
                     panic!(
                         "Expected all file extensions to be UTF-8; \
@@ -403,7 +398,6 @@ mod tests {
                         )
                     })
             } else {
-                // It was a directory; no need to do anything to get the module name
                 relative_path_str
             };
 

@@ -236,10 +236,8 @@ impl TestServer {
 
         let (server_connection, client_connection) = Connection::memory();
 
-        // Create OS system with the test directory as cwd
         let os_system = OsSystem::new(test_context.root());
 
-        // Create test system and set environment variable overrides
         let test_system = Arc::new(TestSystem::new(os_system));
         test_system.clear_env_vars();
         for (name, value) in env_vars {
@@ -251,9 +249,7 @@ impl TestServer {
             }
         }
 
-        // Start the server in a separate thread
         let server_thread = std::thread::spawn(move || {
-            // TODO: This should probably be configurable to test concurrency issues
             let worker_threads = NonZeroUsize::new(1).unwrap();
 
             match Server::new(worker_threads, server_connection, test_system, true) {
@@ -331,8 +327,6 @@ impl TestServer {
 
     /// Drain all messages from the server.
     fn drain_messages(&mut self) {
-        // Don't wait too long to drain the messages, as this is called in the `Drop`
-        // implementation which happens everytime the test ends.
         while let Ok(()) = self.receive(Some(Duration::from_millis(10))) {}
     }
 
@@ -402,7 +396,6 @@ impl TestServer {
     where
         R: Request,
     {
-        // Track if an Exit notification is being sent
         if R::METHOD == lsp_types::ShutdownRequest::METHOD {
             self.shutdown_requested = true;
         }
@@ -809,12 +802,6 @@ impl TestServer {
                 unimplemented!("Handling global configuration requests is not implemented yet");
             };
             let config_value = if let Some(options) = self.workspace_configurations.get(scope_uri) {
-                // Return the configuration for the specific workspace
-                //
-                // As per the spec:
-                //
-                // > If the client can't provide a configuration setting for a given scope
-                // > then null needs to be present in the returned array.
                 match item.section.as_deref() {
                     Some("ty") => match serde_json::to_value(options) {
                         Ok(value) => value,
@@ -863,7 +850,6 @@ impl TestServer {
         content: impl AsRef<str>,
     ) -> Result<()> {
         let file_path = self.file_path(path);
-        // Ensure parent directories exists
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent.as_std_path())?;
         }
@@ -1232,18 +1218,12 @@ impl fmt::Debug for TestServer {
 
 impl Drop for TestServer {
     fn drop(&mut self) {
-        // If initialization panicked, there is no running session to shut down. Trying to send
-        // another request could panic again while the test is already unwinding.
         if self.initialize_response.is_none() {
             return;
         }
 
         self.drain_messages();
 
-        // Follow the LSP protocol to shutdown the server gracefully.
-        //
-        // The `server_thread` could be `None` if the server exited unexpectedly or panicked or if
-        // it dropped the client connection.
         let shutdown_error = if self.server_thread.is_some() && !self.shutdown_requested {
             let shutdown_id = self.send_request::<ShutdownRequest>(());
             match self.try_await_response::<ShutdownRequest>(&shutdown_id, None) {
@@ -1258,18 +1238,14 @@ impl Drop for TestServer {
             None
         };
 
-        // Drop the client connection before joining the server thread to avoid any hangs
-        // in case the server didn't respond to the shutdown request.
         if let Some(client_connection) = self.client_connection.take() {
             if !std::thread::panicking() {
-                // Wait for the client sender to drop (confirmation that it processed the exit notification).
 
                 match client_connection
                     .receiver
                     .recv_timeout(Duration::from_secs(20))
                 {
                     Err(RecvTimeoutError::Disconnected) => {
-                        // Good, the server terminated
                     }
                     Err(RecvTimeoutError::Timeout) => {
                         tracing::warn!(
@@ -1284,7 +1260,6 @@ impl Drop for TestServer {
         }
 
         if std::thread::panicking() {
-            // If the test server panicked, avoid further assertions.
             return;
         }
 
@@ -1314,15 +1289,6 @@ pub(crate) struct TestServerBuilder {
 impl TestServerBuilder {
     /// Create a new builder
     pub(crate) fn new() -> Result<Self> {
-        // Default client capabilities for the test server:
-        //
-        // These are common capabilities that all clients support:
-        // - Supports publishing diagnostics
-        //
-        // These are enabled by default for convenience but can be disabled using the builder
-        // methods:
-        // - Supports pulling workspace configuration
-        // - Support for pull diagnostics
         let client_capabilities = ClientCapabilities {
             text_document: Some(TextDocumentClientCapabilities {
                 publish_diagnostics: Some(PublishDiagnosticsClientCapabilities::default()),
@@ -1633,7 +1599,6 @@ impl TestServerBuilder {
         content: impl AsRef<str>,
     ) -> Result<Self> {
         let file_path = self.file_path(path);
-        // Ensure parent directories exists
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent.as_std_path())?;
         }
@@ -1683,9 +1648,6 @@ impl TestContext {
     pub(crate) fn new() -> anyhow::Result<Self> {
         let temp_dir = TempDir::new()?;
 
-        // Canonicalize the tempdir path because macos uses symlinks for tempdirs
-        // and that doesn't play well with our snapshot filtering.
-        // Simplify with dunce because otherwise we get UNC paths on Windows.
         let project_dir = SystemPathBuf::from_path_buf(
             dunce::simplified(
                 &temp_dir
@@ -1707,7 +1669,6 @@ impl TestContext {
             .map_err(|()| anyhow!("Failed to convert root directory to uri"))?;
         settings.add_filter(&tempdir_filter(project_dir.as_str()), "<temp_dir>/");
         settings.add_filter(&tempdir_filter(project_dir_uri.path()), "<temp_dir>/");
-        // Absolute globs use forward slashes on every platform.
         settings.add_filter(
             &tempdir_filter(project_dir.as_str().replace('\\', "/")),
             "<temp_dir>/",

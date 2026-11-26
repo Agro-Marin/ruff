@@ -105,8 +105,6 @@ pub(crate) fn setattr_with_constant(checker: &Checker, expr: &Expr, func: &Expr,
     if !is_identifier(name.to_str()) {
         return;
     }
-    // Ignore if the attribute name is `__debug__`. Assigning to the `__debug__` property is a
-    // `SyntaxError`.
     if name.to_str() == "__debug__" {
         return;
     }
@@ -117,14 +115,8 @@ pub(crate) fn setattr_with_constant(checker: &Checker, expr: &Expr, func: &Expr,
         return;
     }
 
-    // Mark fixes as unsafe for non-NFKC attribute names. Python normalizes identifiers using NFKC, so using
-    // attribute syntax (e.g., `obj.attr = value`) would normalize the name and potentially change
-    // program behavior.
     let attr_name = name.to_str();
 
-    // We can only replace a `setattr` call (which is an `Expr`) with an assignment
-    // (which is a `Stmt`) if the `Expr` is already being used as a `Stmt`
-    // (i.e., it's directly within an `Stmt::Expr`).
     if let Stmt::Expr(ast::StmtExpr {
         value: child,
         range: statement_range,
@@ -132,8 +124,6 @@ pub(crate) fn setattr_with_constant(checker: &Checker, expr: &Expr, func: &Expr,
     }) = checker.semantic().current_statement()
     {
         if expr == child.as_ref() {
-            // Replace the whole statement rather than just the call, so that any parentheses
-            // around the call are removed too: `(obj.attr = value)` is a syntax error.
             let has_comments = checker.comment_ranges().intersects(*statement_range);
             let is_unsafe = attr_name.nfkc().collect::<String>() != attr_name || has_comments;
             let mut diagnostic = checker.report_diagnostic(SetAttrWithConstant, expr.range());

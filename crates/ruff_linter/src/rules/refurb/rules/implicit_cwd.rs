@@ -67,12 +67,8 @@ pub(crate) fn no_implicit_cwd(checker: &Checker, call: &ExprCall) {
         return;
     };
 
-    // Match on arguments, but ignore keyword arguments. `Path()` accepts keyword arguments, but
-    // ignores them. See: https://github.com/python/cpython/issues/98094.
     match &*arguments.args {
-        // Ex) `Path().resolve()`
         [] => {}
-        // Ex) `Path(".").resolve()`
         [arg] => {
             let Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) = arg else {
                 return;
@@ -81,7 +77,6 @@ pub(crate) fn no_implicit_cwd(checker: &Checker, call: &ExprCall) {
                 return;
             }
         }
-        // Ex) `Path("foo", "bar").resolve()`
         _ => return,
     }
 

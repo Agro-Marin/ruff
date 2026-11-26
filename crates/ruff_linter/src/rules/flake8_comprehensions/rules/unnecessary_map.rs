@@ -113,7 +113,6 @@ pub(crate) fn unnecessary_map(checker: &Checker, call: &ast::ExprCall) {
                 _ => None,
             };
 
-            // Exclude the parent if already matched by other arms.
             if parent_call_func.is_some_and(|func| is_list_set_or_dict(func, semantic)) {
                 return;
             }
@@ -150,16 +149,11 @@ pub(crate) fn unnecessary_map(checker: &Checker, call: &ast::ExprCall) {
         }
     };
 
-    // If the lambda body contains a `yield` or `yield from`, rewriting `map(lambda ...)` to a
-    // generator expression or any comprehension is invalid Python syntax
-    // (e.g., `yield` is not allowed inside generator or comprehension expressions). In such cases, skip.
     if lambda_contains_yield(&lambda.body) {
         return;
     }
 
     for iterable in iterables {
-        // For example, (x+1 for x in (c:=a)) is invalid syntax
-        // so we can't suggest it.
         if any_over_expr(iterable, ruff_python_ast::Expr::is_named_expr) {
             return;
         }
@@ -342,17 +336,13 @@ impl<'a> Visitor<'a> for LateBindingVisitor<'a> {
                 ctx: ExprContext::Load,
                 ..
             }) => {
-                // If we're within a nested lambda...
                 if !self.lambdas.is_empty() {
-                    // If the name is defined in the current lambda...
                     if self.parameters.includes(id) {
-                        // And isn't overridden by any nested lambdas...
                         if !self.lambdas.iter().any(|parameters| {
                             parameters
                                 .as_ref()
                                 .is_some_and(|parameters| parameters.includes(id))
                         }) {
-                            // Then it's late-bound.
                             self.late_bound = true;
                         }
                     }

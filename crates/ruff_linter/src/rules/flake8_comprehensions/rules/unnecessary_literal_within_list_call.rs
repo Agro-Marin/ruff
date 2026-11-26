@@ -91,24 +91,18 @@ pub(crate) fn unnecessary_literal_within_list_call(checker: &Checker, call: &ast
         call.range(),
     );
 
-    // Convert `list([1, 2])` to `[1, 2]`
     let fix = {
-        // Delete from the start of the call to the start of the argument.
         let call_start = Edit::deletion(call.start(), argument.start());
 
-        // Delete from the end of the argument to the end of the call.
         let call_end = Edit::deletion(argument.end(), call.end());
 
-        // If this is a tuple, we also need to convert the inner argument to a list.
         if argument.is_tuple_expr() {
-            // Replace `(` with `[`.
             let argument_start = Edit::replacement(
                 "[".to_string(),
                 argument.start(),
                 argument.start() + TextSize::from(1),
             );
 
-            // Replace `)` with `]`.
             let argument_end = Edit::replacement(
                 "]".to_string(),
                 argument.end() - TextSize::from(1),

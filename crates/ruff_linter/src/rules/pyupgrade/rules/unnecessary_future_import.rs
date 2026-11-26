@@ -68,7 +68,6 @@ impl AlwaysFixableViolation for UnnecessaryFutureImport<'_> {
 }
 
 const REMOVE_FUTURES: &[&str] = &[
-    // Removed in Python 3.3
     "nested_scopes",
     "generators",
     "with_statement",
@@ -76,7 +75,6 @@ const REMOVE_FUTURES: &[&str] = &[
     "absolute_import",
     "print_function",
     "unicode_literals",
-    // Removed in Python 3.7
     "generator_stop",
 ];
 

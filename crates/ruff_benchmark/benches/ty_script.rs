@@ -52,7 +52,6 @@ def greet(user: User) -> str:
     )
     .unwrap();
 
-    // Synchronize once before measuring so this benchmark covers the warm uv cache case.
     let output = Command::new(uv.as_std_path())
         .args(["workspace", "metadata", "--sync", "--script"])
         .arg(root.join("script.py").as_std_path())
@@ -68,7 +67,6 @@ def greet(user: User) -> str:
     bencher
         .with_inputs(|| setup_iteration(root, &uv))
         .bench_local_refs(|db| {
-            // Include environment initialization in the measurement, as in the CLI.
             let environments = db.uv_environments().clone();
             let scripts: Vec<_> = db.project().script_files(db).iter().collect();
             for script in scripts {

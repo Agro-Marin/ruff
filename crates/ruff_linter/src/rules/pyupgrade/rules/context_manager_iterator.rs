@@ -164,9 +164,6 @@ pub(crate) fn context_manager_iterator(checker: &Checker, function: &ast::StmtFu
             function.start(),
             checker.semantic(),
         );
-        // Reuse an existing import from the other module if it conflicts with
-        // adding the generator next to the iterator. The collections.abc
-        // generics cannot be subscripted at runtime before Python 3.9.
         let (import_edit, binding) = if module == "collections.abc" {
             import.or_else(|_| {
                 checker.importer().get_or_import_symbol(

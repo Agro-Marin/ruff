@@ -102,8 +102,6 @@ pub(crate) fn try_except_in_loop(checker: &Checker, body: &[Stmt]) {
         return;
     };
 
-    // Avoid flagging `try`-`except` blocks that contain `break` or `continue`,
-    // which rely on the exception handling mechanism.
     if has_break_or_continue(body) {
         return;
     }
@@ -128,7 +126,6 @@ impl StatementVisitor<'_> for LoopControlFlowVisitor {
         match stmt {
             Stmt::Break(_) | Stmt::Continue(_) => self.has_break_or_continue = true,
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
-                // Don't recurse.
             }
             _ => walk_stmt(self, stmt),
         }

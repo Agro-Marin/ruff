@@ -15,7 +15,6 @@ fn batch_updates_only_indexed_sources() -> anyhow::Result<()> {
         .with_files([
             ("old.py", ""),
             ("other.py", ""),
-            // This consumer stays closed, so it must be found through the project index.
             (
                 "consumer.py",
                 "import old, other
@@ -25,14 +24,11 @@ old",
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // An open virtual notebook is absent from the project index.
     let mut notebook = NotebookBuilder::virtual_file("consumer.ipynb");
     notebook.add_python_cell("import other");
     notebook.open(&mut server);
-    // Consume the cell's diagnostics so the test server has no unclaimed notifications at teardown.
     server.collect_publish_diagnostic_notifications(1);
 
-    // One batch updates the indexed file but not the open notebook cell.
     let edit = rename_edit(
         &mut server,
         &[("old.py", "new.py"), ("other.py", "renamed.py")],
@@ -139,8 +135,6 @@ fn closed_script_import_is_preserved_before_uv_sync() -> anyhow::Result<()> {
         "venv/lib/python3.13/site-packages/project.pth"
     };
 
-    // The project exposes its own attrs.define submodule through its virtual environment.
-    // The script uses the define function from its declared attrs dependency.
     let mut server = builder
         .with_workspace(
             SystemPath::new("workspace"),
@@ -219,9 +213,7 @@ fn unsupported_renames_do_not_suppress_supported_edits() -> anyhow::Result<()> {
     let edit = rename_edit(
         &mut server,
         &[
-            // Non-Python renames are unsupported and must be skipped.
             ("notes.txt", "new.txt"),
-            // The Python rename must still update its consumer in the same batch.
             ("old.py", "new.py"),
         ],
     );
@@ -259,8 +251,6 @@ fn combines_project_edits_and_skips_conflicting_files() -> anyhow::Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // The projects agree on `old` but resolve `conflict` in their respective roots.
-    // `conflicted.py` must receive no edits, including the agreed replacement for `old`.
     let edit = rename_edit(
         &mut server,
         &[
@@ -319,7 +309,6 @@ fn file_renames_use_the_source_workspace_setting() -> anyhow::Result<()> {
             Some(ClientOptions::default().with_disable_language_services(true)),
         )?
         .with_files([
-            // Both workspaces discover the project at `repo`, which indexes files in both.
             ("repo/ty.toml", ""),
             ("repo/disabled/__init__.py", ""),
             ("repo/disabled/old.py", ""),
@@ -338,7 +327,6 @@ fn file_renames_use_the_source_workspace_setting() -> anyhow::Result<()> {
         ],
     );
 
-    // The disabled source is skipped. The enabled source can still update a disabled importer.
     assert_edits(
         edit.as_ref(),
         &[(

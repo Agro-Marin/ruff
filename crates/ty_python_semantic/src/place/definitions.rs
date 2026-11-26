@@ -84,13 +84,10 @@ impl<'db> DefinitionResolution<'db> {
             PlaceLoadSourceKind::Implicit(ImplicitPlaceLoad::DunderClass(class_def)) => {
                 self.push_definition(db, *class_def);
 
-                // The statement `class C` binds the name `C`. Python fills the `__class__` cell
-                // for its methods implicitly, so no statement binds the name `__class__` there.
                 self.identifies_all_bindings = false;
                 return;
             }
             PlaceLoadSourceKind::Implicit(_) => {
-                // If the fallback is undefined, there is no missing binding to account for.
                 self.identifies_all_bindings &= resolved_source.place().place.is_undefined();
                 return;
             }
@@ -100,7 +97,6 @@ impl<'db> DefinitionResolution<'db> {
             && let Place::Defined(defined) = resolved_source.place().place
             && defined.origin.is_declared()
         {
-            // An annotation such as `widget: int` declares a type without binding a value.
             self.identifies_all_bindings = false;
         }
     }
@@ -134,7 +130,6 @@ impl<'db> DefinitionResolution<'db> {
         while let Some(definition) = pending.pop() {
             let kind = definition.kind(db);
             if kind.is_loop_header() {
-                // Expand each header only once because it can appear in multiple binding lists.
                 if expanded_headers.insert(definition) {
                     pending.extend(
                         loop_header_reachability(db, definition)

@@ -57,7 +57,6 @@ impl Violation for Pep484StylePositionalOnlyParameter {
 
 /// PYI063
 pub(crate) fn pep_484_positional_parameter(checker: &Checker, function_def: &ast::StmtFunctionDef) {
-    // PEP 570 was introduced in Python 3.8.
     if checker.target_version() < PythonVersion::PY38 {
         return;
     }
@@ -81,7 +80,6 @@ pub(crate) fn pep_484_positional_parameter(checker: &Checker, function_def: &ast
         &checker.settings().pep8_naming.staticmethod_decorators,
     );
 
-    // If the method has a `self` or `cls` argument, skip it.
     let skip = usize::from(matches!(
         function_type,
         function_type::FunctionType::Method

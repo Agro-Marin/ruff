@@ -107,18 +107,11 @@ impl fmt::Display for StatMethod {
     }
 }
 
-// PTH116
 pub(crate) fn os_stat(checker: &Checker, call: &ExprCall, segment: &[&str]) {
     if segment != ["os", "stat"] {
         return;
     }
 
-    // `dir_fd` is not supported by pathlib, so check if it's set to non-default values.
-    // Signature as of Python 3.13 (https://docs.python.org/3/library/os.html#os.stat)
-    // ```text
-    //           0         1           2
-    // os.stat(path, *, dir_fd=None, follow_symlinks=True)
-    // ```
     if is_keyword_only_argument_non_default(&call.arguments, "dir_fd") {
         return;
     }

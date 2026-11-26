@@ -148,12 +148,10 @@ pub(crate) fn unexpected_special_method_signature(
         return;
     }
 
-    // Ignore methods with keyword-only parameters or variadic parameters.
     if !parameters.kwonlyargs.is_empty() || parameters.kwarg.is_some() {
         return;
     }
 
-    // Method has no parameter, will be caught by no-method-argument (E0211/N805).
     if parameters.args.is_empty() && parameters.vararg.is_none() {
         return;
     }

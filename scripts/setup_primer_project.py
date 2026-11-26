@@ -1,5 +1,4 @@
 #!/usr/bin/env -S uv run --script
-#
 # /// script
 # requires-python = ">=3.11"
 # dependencies = ["mypy-primer"]
@@ -96,7 +95,6 @@ def clone_project(
 ) -> None:
     depth = [] if full_history else ["--depth", "1"]
     if revision is not None and not full_history:
-        # Fetch the requested commit without first downloading the default branch.
         run("git", "init", str(target_dir))
         run("git", "remote", "add", "origin", location, cwd=target_dir)
         run("git", "fetch", *depth, "origin", revision, cwd=target_dir)
@@ -108,8 +106,6 @@ def clone_project(
     if checkout is not None:
         run("git", "checkout", checkout, "--", cwd=target_dir)
 
-    # Initialize only the selected revision's submodules. Force checkout so that
-    # configured merge/rebase strategies cannot override the recorded gitlinks.
     run(
         "git",
         "submodule",
@@ -174,7 +170,6 @@ def main() -> None:
             message += "If the server rejects shallow fetches, retry in a fresh directory with --full-history.\n"
         parser.exit(1, message)
 
-    # Create venv (matching primer's Venv.make_venv())
     venv_dir = target_dir / ".venv"
     print(f"Creating virtualenv at {venv_dir}...")
     subprocess.run(
@@ -187,15 +182,12 @@ def main() -> None:
     if args.exclude_newer:
         install_base += f" --exclude-newer {shlex.quote(args.exclude_newer)}"
 
-    # Run custom install command if the project defines one (matching primer's setup())
     if project.install_cmd is not None:
         assert "{install}" in project.install_cmd
         install_cmd = project.install_cmd.format(install=install_base)
         print(f"Running install command: {install_cmd}")
-        # Primer install commands are trusted project metadata and may use shell syntax.
         subprocess.run(install_cmd, cwd=target_dir, shell=True, check=True)  # ruff: ignore[subprocess-popen-with-shell-equals-true]
 
-    # Install listed dependencies (matching primer's setup())
     if project.deps is not None:
         deps_cmd_parts = shlex.split(install_base) + project.deps
         print(f"Installing dependencies: {', '.join(project.deps)}")

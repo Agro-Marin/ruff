@@ -60,14 +60,6 @@ pub struct GlobalConfigArgs {
     )]
     config: Vec<SingleConfigArgument>,
     /// Ignore all configuration files.
-    //
-    // Note: We can't mark this as conflicting with `--config` here
-    // as `--config` can be used for specifying configuration overrides
-    // as well as configuration files.
-    // Specifying a configuration file conflicts with `--isolated`;
-    // specifying a configuration override does not.
-    // If a user specifies `ruff check --isolated --config=ruff.toml`,
-    // we emit an error later on, after the initial parsing by clap.
     #[arg(long, help_heading = "Global options", global = true)]
     isolated: bool,
 
@@ -92,7 +84,6 @@ impl GlobalConfigArgs {
     }
 }
 
-// Configures Clap v3-style help menu colors
 const STYLES: Styles = Styles::styled()
     .header(AnsiColor::Green.on_default().effects(Effects::BOLD))
     .usage(AnsiColor::Green.on_default().effects(Effects::BOLD))
@@ -214,7 +205,6 @@ pub struct AnalyzeGraphCommand {
     no_type_checking_imports: bool,
 }
 
-// The `Parser` derive is for ruff_dev, for ruff `Args` would be sufficient
 #[derive(Clone, Debug, clap::Parser)]
 #[expect(clippy::struct_excessive_bools)]
 pub struct CheckCommand {
@@ -428,7 +418,6 @@ pub struct CheckCommand {
     /// Show counts for every rule with at least one violation.
     #[arg(
         long,
-        // Unsupported default-command arguments.
         conflicts_with = "diff",
         conflicts_with = "watch",
     )]
@@ -441,11 +430,9 @@ pub struct CheckCommand {
         default_missing_value = "",
         num_args = 0..=1,
         require_equals = true,
-        // conflicts_with = "add_noqa",
         conflicts_with = "add_ignore",
         conflicts_with = "show_files",
         conflicts_with = "show_settings",
-        // Unsupported default-command arguments.
         conflicts_with = "ignore_noqa",
         conflicts_with = "statistics",
         conflicts_with = "stdin_filename",
@@ -463,11 +450,9 @@ pub struct CheckCommand {
         default_missing_value = "",
         num_args = 0..=1,
         require_equals = true,
-        // conflicts_with = "add_ignore",
         conflicts_with = "add_noqa",
         conflicts_with = "show_files",
         conflicts_with = "show_settings",
-        // Unsupported default-command arguments.
         conflicts_with = "ignore_noqa",
         conflicts_with = "statistics",
         conflicts_with = "stdin_filename",
@@ -479,11 +464,8 @@ pub struct CheckCommand {
     /// See the files Ruff will be run against with the current settings.
     #[arg(
         long,
-        // Fake subcommands.
         conflicts_with = "add_noqa",
-        // conflicts_with = "show_files",
         conflicts_with = "show_settings",
-        // Unsupported default-command arguments.
         conflicts_with = "ignore_noqa",
         conflicts_with = "statistics",
         conflicts_with = "stdin_filename",
@@ -493,11 +475,8 @@ pub struct CheckCommand {
     /// See the settings Ruff will use to lint a given Python file.
     #[arg(
         long,
-        // Fake subcommands.
         conflicts_with = "add_noqa",
         conflicts_with = "show_files",
-        // conflicts_with = "show_settings",
-        // Unsupported default-command arguments.
         conflicts_with = "ignore_noqa",
         conflicts_with = "statistics",
         conflicts_with = "stdin_filename",
@@ -826,7 +805,6 @@ impl CheckCommand {
             select: self.select,
             target_version: self.target_version.map(ast::PythonVersion::from),
             unfixable: self.unfixable,
-            // TODO(charlie): Included in `pyproject.toml`, but not inherited.
             cache_dir: self.cache_dir,
             fix: resolve_bool_arg(self.fix, self.no_fix),
             fix_only: resolve_bool_arg(self.fix_only, self.no_fix_only),
@@ -992,9 +970,7 @@ impl TypedValueParser for ConfigArgumentParser {
         arg: Option<&clap::Arg>,
         value: &std::ffi::OsStr,
     ) -> Result<Self::Value, clap::Error> {
-        // Convert to UTF-8.
         let Some(value) = value.to_str() else {
-            // But respect non-UTF-8 paths.
             let path_to_config_file = PathBuf::from(value);
             if path_to_config_file.is_file() {
                 return Ok(SingleConfigArgument::FilePath(path_to_config_file));
@@ -1002,7 +978,6 @@ impl TypedValueParser for ConfigArgumentParser {
             return Err(clap::Error::new(clap::error::ErrorKind::InvalidUtf8));
         };
 
-        // Expand environment variables and tildes.
         if let Ok(path_to_config_file) =
             shellexpand::full(value).map(|config| PathBuf::from(&*config))
         {
@@ -1055,8 +1030,6 @@ impl TypedValueParser for ConfigArgumentParser {
             }
         };
 
-        // small hack so that multiline tips
-        // have the same indent on the left-hand side:
         let tip_indent = " ".repeat("  tip: ".len());
 
         let mut tip = format!(
@@ -1066,10 +1039,6 @@ A `--config` flag must either be a path to a `.toml` configuration file
 {tip_indent}option"
         );
 
-        // Here we do some heuristics to try to figure out whether
-        // the user was trying to pass in a path to a configuration file
-        // or some inline TOML.
-        // We want to display the most helpful error to the user as possible.
         if Path::new(value)
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
@@ -1394,7 +1363,6 @@ struct ExplicitConfigOverrides {
     select: Option<Vec<UnresolvedRuleSelector>>,
     target_version: Option<ast::PythonVersion>,
     unfixable: Option<Vec<UnresolvedRuleSelector>>,
-    // TODO(charlie): Captured in pyproject.toml as a default, but not part of `Settings`.
     cache_dir: Option<PathBuf>,
     fix: Option<bool>,
     fix_only: Option<bool>,

@@ -23,9 +23,6 @@ impl CliTest {
     pub fn new() -> anyhow::Result<Self> {
         let temp_dir = TempDir::new()?;
 
-        // Canonicalize the tempdir path because macos uses symlinks for tempdirs
-        // and that doesn't play well with our snapshot filtering.
-        // Simplify with dunce because otherwise we get UNC paths on Windows.
         let temp_dir_path = dunce::simplified(
             &temp_dir
                 .path()
@@ -41,7 +38,6 @@ impl CliTest {
         settings.add_filter(&tempdir_filter(&project_dir), "<temp_dir>/");
         settings.add_filter(r"\bty\.exe\b", "ty");
         settings.add_filter(r#"\\(\w\w|\s|\.|")"#, "/$1");
-        // 0.003s
         settings.add_filter(r"\d.\d\d\ds", "0.000s");
         settings.add_filter(
             "INFO Checking file `[^`]+` took more than 100ms \\([^)]+\\)\n",
@@ -94,9 +90,6 @@ impl CliTest {
     #[must_use]
     pub fn with_filter(mut self, pattern: &str, replacement: &str) -> Self {
         self.settings.add_filter(pattern, replacement);
-        // Drop the old scope before binding a new one, otherwise the old scope is dropped _after_
-        // binding and assigning the new one, restoring the settings to their state before the old
-        // scope was bound.
         drop(self.settings_scope.take());
         self.settings_scope = Some(self.settings.bind_to_scope());
         self
@@ -154,9 +147,7 @@ impl CliTest {
         let mut command = Command::new(&self.ty_binary_path);
         command.current_dir(&self.project_dir).arg(subcommand);
 
-        // Unset all environment variables because they can affect test behavior.
         command.env_clear();
-        // Point user config discovery at a test-local directory to avoid picking up host config.
         command.env(
             user_config_directory_env_var(),
             self.user_config_directory(),

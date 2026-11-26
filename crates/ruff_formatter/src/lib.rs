@@ -457,23 +457,7 @@ impl Printed {
         let mut start_marker: Option<SourceMarker> = None;
         let mut end_marker: Option<SourceMarker> = None;
 
-        // Note: The printer can generate multiple source map entries for the same source position.
-        // For example if you have:
-        // * token("a + b")
-        // * `source_position(276)`
-        // * `token(")")`
-        // * `source_position(276)`
-        // *  `hard_line_break`
-        // The printer uses the source position 276 for both the tokens `)` and the `\n` because
-        // there were multiple `source_position` entries in the IR with the same offset.
-        // This can happen if multiple nodes start or end at the same position. A common example
-        // for this are expressions and expression statement that always end at the same offset.
-        //
-        // Warning: Source markers are often emitted sorted by their source position but it's not guaranteed
-        // and depends on the emitted `IR`.
-        // They are only guaranteed to be sorted in increasing order by their destination position.
         for marker in self.sourcemap {
-            // Take the closest start marker, but skip over start_markers that have the same start.
             if marker.source <= source_range.start()
                 && start_marker.is_none_or(|existing| existing.source < marker.source)
             {
@@ -498,7 +482,6 @@ impl Printed {
         let source_range = TextRange::new(source_start, source_end);
         let formatted_range = TextRange::new(formatted_start, formatted_end);
 
-        // Extend both ranges to include the indentation
         let source_range = extend_range_to_include_indent(source_range, source);
         let formatted_range = extend_range_to_include_indent(formatted_range, &self.code);
 
@@ -632,7 +615,6 @@ where
 impl<Context> Format<Context> for () {
     #[inline]
     fn fmt(&self, _: &mut Formatter<Context>) -> FormatResult<()> {
-        // Intentionally left empty
         Ok(())
     }
 }
@@ -903,9 +885,6 @@ where
     Context: FormatContext,
 {
     let source_length = context.source_code().as_str().len();
-    // Use a simple heuristic to guess the number of expected format elements.
-    // See [#6612](https://github.com/astral-sh/ruff/pull/6612) for more details on how the formula was determined. Changes to our formatter, or supporting
-    // more languages may require fine tuning the formula.
     let estimated_buffer_size = source_length / 2;
     let mut state = FormatState::new(context);
     let mut buffer = VecBuffer::with_capacity(estimated_buffer_size, &mut state);

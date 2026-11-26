@@ -109,13 +109,10 @@ impl Notebook {
         let raw_notebook = match raw {
             Ok(notebook) => notebook,
             Err(err) => {
-                // Translate the error into a diagnostic
                 return Err(match err.classify() {
                     Category::Io => NotebookError::Json(err),
                     Category::Syntax | Category::Eof => NotebookError::InvalidJson(err),
                     Category::Data => {
-                        // We could try to read the schema version here but if this fails it's
-                        // a bug anyway.
                         NotebookError::InvalidSchema(err)
                     }
                 });
@@ -128,9 +125,7 @@ impl Notebook {
         mut raw_notebook: RawNotebook,
         trailing_newline: bool,
     ) -> Result<Self, NotebookError> {
-        // v4 is what everybody uses
         if raw_notebook.nbformat != 4 {
-            // bail because we should have already failed at the json schema stage
             return Err(NotebookError::InvalidFormat(raw_notebook.nbformat));
         }
 
@@ -142,12 +137,7 @@ impl Notebook {
             .map(|(cell_index, _)| u32::try_from(cell_index).unwrap())
             .collect::<Vec<_>>();
 
-        // Add cell ids to 4.5+ notebooks if they are missing
-        // https://github.com/astral-sh/ruff/issues/6834
-        // https://github.com/jupyter/enhancement-proposals/blob/master/62-cell-id/cell-id.md#required-field
-        // https://github.com/jupyter/enhancement-proposals/blob/master/62-cell-id/cell-id.md#questions
         if raw_notebook.nbformat == 4 && raw_notebook.nbformat_minor >= 5 {
-            // We use a insecure random number generator to generate deterministic uuids
             let mut rng = rand::rngs::StdRng::seed_from_u64(0);
             let mut existing_ids = HashSet::new();
 
@@ -239,10 +229,6 @@ impl Notebook {
             cell_offsets.push(TextSize::of(&source_code));
         }
 
-        // The additional newline maintains a consistent source representation
-        // for notebooks without any valid Python code cells. Synthetic newlines
-        // are removed before updating the raw cell content. Refer
-        // `update_cell_content`.
         if valid_code_cells.is_empty() {
             source_code.push(SYNTHETIC_CELL_SEPARATOR);
         }
@@ -252,25 +238,16 @@ impl Notebook {
 
     /// Update the cell offsets as per the given [`SourceMap`].
     fn update_cell_offsets(&mut self, source_map: &SourceMap) {
-        // When there are multiple cells without any edits, the offsets of those
-        // cells will be updated using the same marker. So, we can keep track of
-        // the last marker used to update the offsets and check if it's still
-        // the closest marker to the current offset.
         let mut last_marker: Option<&SourceMarker> = None;
 
-        // The first offset is always going to be at 0, so skip it.
         for (index, offset) in self.cell_offsets.iter_mut().skip(1).rev().enumerate() {
             let closest_marker = match last_marker {
                 Some(marker) if marker.source() < *offset => marker,
                 _ => {
                     let mut markers = source_map.markers().iter().rev();
                     let Some(marker) = markers.find(|marker| marker.source() <= *offset) else {
-                        // There are no markers above the current offset, so we can
-                        // stop here.
                         break;
                     };
-                    // An internal offset is also the start of the following cell, so prefer the
-                    // first marker at that offset. The final offset is only a cell end.
                     let marker = if index > 0 && marker.source() == *offset {
                         markers
                             .take_while(|marker| marker.source() == *offset)
@@ -320,8 +297,6 @@ impl Notebook {
             missing_separator |= !cell_content.ends_with(SYNTHETIC_CELL_SEPARATOR);
             self.raw.cells[idx as usize].set_source(SourceValue::StringArray(
                 UniversalNewlineIterator::from(
-                    // We only need to strip the trailing newline which we added
-                    // while concatenating the cell contents.
                     cell_content.strip_suffix('\n').unwrap_or(cell_content),
                 )
                 .map(|line| line.as_full_str().to_string())
@@ -355,7 +330,6 @@ impl Notebook {
 
         for (&cell_index, range) in self.valid_code_cells.iter().zip(self.cell_offsets.ranges()) {
             let raw_cell_index = cell_index as usize;
-            // Record the starting row of this cell
             cell_starts.push(CellStart {
                 start_row: current_row,
                 raw_cell_index: OneIndexed::from_zero_indexed(raw_cell_index),
@@ -406,8 +380,6 @@ impl Notebook {
     /// [`NotebookIndex::cell`] returns. Returns `None` for cells that aren't part of the
     /// concatenated document, such as Markdown cells and code cells that use a cell magic.
     pub fn cell_range(&self, cell: OneIndexed) -> Option<TextRange> {
-        // The concatenated document only contains valid Python code cells, so the cell offsets
-        // are indexed by the cell's position among those cells, not among all cells.
         let raw_cell_index = u32::try_from(cell.to_zero_indexed()).ok()?;
         let code_cell_index = self.valid_code_cells.binary_search(&raw_cell_index).ok()?;
 
@@ -438,18 +410,12 @@ impl Notebook {
 
     /// Update the notebook with the given sourcemap and transformed content.
     pub fn update(&mut self, source_map: &SourceMap, transformed: String) {
-        // Cell offsets must be updated before updating the cell content as
-        // it depends on the offsets to extract the cell content.
         self.index.take();
         self.update_cell_offsets(source_map);
 
         let needs_rebuild = self.update_cell_content(&transformed);
 
         if needs_rebuild {
-            // A fix that empties a cell can also remove its synthetic newline
-            // separator. For example, deleting `"import os\n"` from the first
-            // cell changes offsets `[0, 10, 16]` to `[0, 0, 6]`. Rebuild the
-            // source and offsets to restore the separator as `[0, 1, 7]`.
             (self.source_code, self.cell_offsets) =
                 Self::source_code_and_cell_offsets(&self.raw, &self.valid_code_cells);
         } else {
@@ -478,7 +444,6 @@ impl Notebook {
 
     /// Write the notebook back to the given [`Write`] implementer.
     pub fn write(&self, writer: &mut dyn Write) -> Result<(), NotebookError> {
-        // https://github.com/psf/black/blob/69ca0a4c7a365c5f5eea519a90980bab72cab764/src/black/__init__.py#LL1041
         let formatter = serde_json::ser::PrettyFormatter::with_indent(b" ");
         let mut serializer = serde_json::Serializer::with_formatter(writer, formatter);
         SortAlphabetically(&self.raw)
@@ -569,10 +534,6 @@ mod tests {
         notebook.write(&mut serialized)?;
         let reloaded = Notebook::from_source_code(std::str::from_utf8(&serialized)?)?;
 
-        // Updating preserves the original Python cell selection, so the edited source still
-        // contains this cell. Reloading recognizes `%%markdown` and excludes it instead.
-        // The raw cells match, but the Python source returned to callers differs, so comparing
-        // only the raw notebook would incorrectly treat these notebooks as equal.
         assert_eq!(notebook.cells(), reloaded.cells());
         assert_eq!(notebook.source_code(), transformed);
         assert_eq!(reloaded.source_code(), "\n");
@@ -690,7 +651,6 @@ print("after empty cells")
     fn cell_range_by_raw_cell_index() -> Result<(), NotebookError> {
         let notebook = Notebook::from_path(&notebook_path("valid.ipynb"))?;
 
-        // The third cell is the notebook's second Python cell.
         let third_cell = OneIndexed::from_zero_indexed(2);
         assert_eq!(
             notebook.cell_range(third_cell),
@@ -701,7 +661,6 @@ print("after empty cells")
             Some(TextRange::new(90.into(), 167.into()))
         );
 
-        // The second cell is a Markdown cell.
         let second_cell = OneIndexed::from_zero_indexed(1);
         assert_eq!(notebook.cell_range(second_cell), None);
         assert_eq!(notebook.cell_content_range(second_cell), None);

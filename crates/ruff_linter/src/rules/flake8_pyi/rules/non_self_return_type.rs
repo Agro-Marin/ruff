@@ -169,7 +169,6 @@ pub(crate) fn non_self_return_type(
         return;
     };
 
-    // Skip any abstract or overloaded methods.
     if is_abstract(decorator_list, semantic) || is_overload(decorator_list, semantic) {
         return;
     }
@@ -184,7 +183,6 @@ pub(crate) fn non_self_return_type(
         return;
     }
 
-    // In-place methods that are expected to return `Self`.
     if is_inplace_bin_op(name) {
         if is_name_or_stringized_name(returns, &class_def.name, checker) {
             add_diagnostic(checker, stmt, returns, class_def, name);
@@ -225,7 +223,6 @@ fn add_diagnostic(
     class_def: &ast::StmtClassDef,
     method_name: &str,
 ) {
-    // PEP 673 forbids the use of `typing(_extensions).Self` in metaclasses.
     if !matches!(
         analyze::class::is_metaclass(class_def, checker.semantic()),
         analyze::class::IsMetaclass::No
@@ -266,7 +263,6 @@ fn replace_with_self_fix(
         let first = parameters.iter().next()?;
         let annotation = first.annotation()?;
 
-        // The parameter's range includes any parentheses around the annotation, e.g. `self: (Foo)`.
         is_class_reference(semantic, annotation, &class_def.name)
             .then(|| Edit::deletion(first.name().end(), first.as_parameter().end()))
     };

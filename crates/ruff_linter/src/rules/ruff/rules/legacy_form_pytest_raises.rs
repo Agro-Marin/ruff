@@ -188,14 +188,6 @@ fn try_fix_legacy_call(
         Stmt::Expr(StmtExpr { value, .. }) => {
             let call = value.as_call_expr()?;
 
-            // Handle two patterns for legacy calls:
-            // 1. Direct usage: `pytest.raises(ZeroDivisionError, func, 1, b=0)`
-            // 2. With match method: `pytest.raises(ZeroDivisionError, func, 1, b=0).match("division by zero")`
-            //
-            // The second branch specifically looks for raises().match() pattern which only exists for
-            // `raises` (not `warns`/`deprecated_call`) since only `raises` returns an ExceptionInfo
-            // object with a .match() method. We need to preserve this match condition when converting
-            // to context manager form.
             if PytestContextType::from_expr_name(&call.func, semantic) == Some(context_type) {
                 generate_with_statement(context_type, call, None, None, None)
             } else if let PytestContextType::Raises = context_type {
@@ -274,7 +266,6 @@ fn generate_with_statement(
             keywords: match_arg
                 .map(|expr| ast::Keyword {
                     node_index: AtomicNodeIndex::NONE,
-                    // Take range from the original expression so that the keyword
                     // argument is generated after positional arguments
                     range: expr.range(),
                     arg: Some(ast::Identifier::new("match", TextRange::default())),

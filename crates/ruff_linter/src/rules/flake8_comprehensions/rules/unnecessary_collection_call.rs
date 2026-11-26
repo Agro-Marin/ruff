@@ -76,15 +76,12 @@ pub(crate) fn unnecessary_collection_call(
                 || (!settings.allow_dict_calls_with_keyword_arguments
                     && call.arguments.keywords.iter().all(|kw| kw.arg.is_some())) =>
         {
-            // `dict()` or `dict(a=1)` (as opposed to `dict(**a)`)
             Collection::Dict
         }
         "list" if call.arguments.keywords.is_empty() => {
-            // `list()
             Collection::List
         }
         "tuple" if call.arguments.keywords.is_empty() => {
-            // `tuple()`
             Collection::Tuple
         }
         _ => return,
@@ -93,10 +90,8 @@ pub(crate) fn unnecessary_collection_call(
     let mut diagnostic =
         checker.report_diagnostic(UnnecessaryCollectionCall { kind: collection }, call.range());
 
-    // Convert `dict()` to `{}`.
     if call.arguments.keywords.is_empty() {
         diagnostic.set_fix({
-            // Replace from the start of the call to the start of the argument.
             let call_start = Edit::replacement(
                 match collection {
                     Collection::Dict => {
@@ -109,7 +104,6 @@ pub(crate) fn unnecessary_collection_call(
                 call.arguments.start() + TextSize::from(1),
             );
 
-            // Replace from the end of the inner list or tuple to the end of the call with `}`.
             let call_end = Edit::replacement(
                 match collection {
                     Collection::Dict => {
@@ -125,7 +119,6 @@ pub(crate) fn unnecessary_collection_call(
             Fix::unsafe_edits(call_start, [call_end])
         });
     } else {
-        // Convert `dict(a=1, b=2)` to `{"a": 1, "b": 2}`.
         diagnostic.try_set_fix(|| {
             fixes::fix_unnecessary_collection_call(call, checker).map(Fix::unsafe_edit)
         });

@@ -192,10 +192,6 @@ impl<'stmt> CFGBuilder<'stmt> {
 
     /// Runs the core logic for the builder.
     fn process_stmts(&mut self, stmts: &'stmt [Stmt]) {
-        // SAFETY With notation as below, we always maintain the invariant
-        // `start <= end + 1`. Since `end <= stmts.len() -1` we conclude that
-        // `start <= stmts.len()`. It is therefore always safe to use `start` as
-        // the beginning of a range for the purposes of slicing into `stmts`.
         let mut start = 0;
         for (end, stmt) in stmts.iter().enumerate() {
             let cache_exit = self.exit();
@@ -214,19 +210,15 @@ impl<'stmt> CFGBuilder<'stmt> {
                 | Stmt::Pass(_)
                 | Stmt::Delete(_)
                 | Stmt::IpyEscapeCommand(_) => {}
-                // Loops
                 Stmt::While(_) => {}
                 Stmt::For(_) => {}
 
-                // Switch statements
                 Stmt::If(_) => {}
                 Stmt::Match(_) => {}
 
-                // Exception handling statements
                 Stmt::Try(_) => {}
                 Stmt::With(_) => {}
 
-                // Jumps
                 Stmt::Return(_) => {
                     let edges = Edges::always(self.cfg.terminal());
                     self.set_current_block_stmts(&stmts[start..=end]);
@@ -252,20 +244,13 @@ impl<'stmt> CFGBuilder<'stmt> {
                     }
                 }
 
-                // An `assert` is a mixture of a switch and a jump.
                 Stmt::Assert(_) => {}
             }
-            // Restore exit
             self.update_exit(cache_exit);
         }
-        // It can happen that we have statements left over
-        // and not yet occupying a block. In that case,
-        // `self.current` should be pointing to an empty block
-        // and we push the remaining statements to it here.
         if start < stmts.len() {
             self.set_current_block_stmts(&stmts[start..]);
         }
-        // Add edge to exit if not already present
         if self.cfg.blocks[self.current].out.is_empty() {
             let edges = Edges::always(self.exit());
             self.set_current_block_edges(edges);

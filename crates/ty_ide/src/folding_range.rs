@@ -76,7 +76,6 @@ pub fn folding_ranges(
         "all active block fold start lines should be cleared after traversal"
     );
 
-    // Add remaining ranges not covered by the AST visitor.
     let own_line_comment_ranges: Vec<_> = parsed
         .tokens()
         .iter()
@@ -150,8 +149,6 @@ impl<'a> FoldingRangeVisitor<'a> {
 
     /// Adds a folding range for an expression.
     fn add_expression_range(&mut self, range: TextRange) -> bool {
-        // Block folds preserve statement headers, so they take precedence over expression folds
-        // when both would render a folding trigger on the same line.
         let line_start = self.source.line_start(range.start());
         if self
             .active_block_fold_start_lines
@@ -277,12 +274,10 @@ impl<'a> FoldingRangeVisitor<'a> {
             }
 
             if matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_)) {
-                // Check if there's a blank line between this import and the previous one.
                 let has_blank_line = prev_import_end
                     .is_some_and(|prev_end| self.has_blank_line_between(prev_end, stmt.start()));
 
                 if has_blank_line {
-                    // Finalize the current import block and start a new one.
                     if let Some(range) = import_range {
                         self.add_range(
                             FoldingRange::from(range).with_kind(FoldingRangeKind::Imports),
@@ -364,7 +359,6 @@ impl<'a> FoldingRangeVisitor<'a> {
                 !text.starts_with("region") && !text.starts_with("endregion");
 
             if is_non_region_comment {
-                // Extend the current comment block unless a blank line or a statement separates the comments.
                 if let Some(ref mut comment_block_range) = comment_block_range {
                     let has_text_between = !self.source
                         [TextRange::new(comment_block_range.end(), comment_range.start())]
@@ -594,35 +588,21 @@ impl<'a> SourceOrderVisitor<'a> for FoldingRangeVisitor<'a> {
             AnyNodeRef::ModModule(module) => {
                 self.add_docstring_range(&module.body);
             }
-            // Compound statements that create folding regions
             AnyNodeRef::StmtFunctionDef(func) => {
                 self.add_block_ranges(node, &func.body);
-                // Note that this may be duplicative with folding
-                // ranges added for string literals. But I don't think
-                // the LSP protocol specifies that this is a problem.
-                // If we do need to de-dupe, then we'll want to keep
-                // this one since it attaches a "comment" folding range
-                // kind to the range. So we'll need to skip over the
-                // corresponding range for the literal.
                 self.add_docstring_range(&func.body);
             }
             AnyNodeRef::StmtClassDef(class) => {
                 self.add_block_ranges(node, &class.body);
-                // See comment above for class docstrings about this
-                // being duplicative with adding folding ranges for
-                // string literals.
                 self.add_docstring_range(&class.body);
             }
             AnyNodeRef::StmtIf(if_stmt) => {
-                // Fold each branch individually rather than the entire if block.
                 self.add_block_ranges(node, &if_stmt.body);
             }
             AnyNodeRef::ElifElseClause(clause) => {
-                // Each elif/else clause has its own range.
                 self.add_block_ranges(node, &clause.body);
             }
             AnyNodeRef::StmtFor(for_stmt) => {
-                // Fold the for body separately from the else block.
                 self.add_block_ranges(node, &for_stmt.body);
                 if let Some(body_last) = for_stmt.body.last() {
                     self.add_block_ranges_after_keyword(
@@ -634,7 +614,6 @@ impl<'a> SourceOrderVisitor<'a> for FoldingRangeVisitor<'a> {
                 }
             }
             AnyNodeRef::StmtWhile(while_stmt) => {
-                // Fold the while body separately from the else block.
                 self.add_block_ranges(node, &while_stmt.body);
                 if let Some(body_last) = while_stmt.body.last() {
                     self.add_block_ranges_after_keyword(
@@ -649,10 +628,7 @@ impl<'a> SourceOrderVisitor<'a> for FoldingRangeVisitor<'a> {
                 self.add_block_ranges(node, &with_stmt.body);
             }
             AnyNodeRef::StmtTry(try_stmt) => {
-                // Fold the try body separately from handlers, else, and finally.
                 self.add_block_ranges(node, &try_stmt.body);
-                // Exception handlers are folded via ExceptHandlerExceptHandler.
-                // Fold the else block if present.
                 if let Some(previous_block_end) = try_stmt
                     .handlers
                     .last()
@@ -666,7 +642,6 @@ impl<'a> SourceOrderVisitor<'a> for FoldingRangeVisitor<'a> {
                         &try_stmt.orelse,
                     );
                 }
-                // Fold the finally block if present.
                 if let Some(previous_block_end) = try_stmt
                     .orelse
                     .last()
@@ -686,21 +661,17 @@ impl<'a> SourceOrderVisitor<'a> for FoldingRangeVisitor<'a> {
                 self.add_block_ranges(node, &match_stmt.cases);
             }
 
-            // Match cases within match statements
             AnyNodeRef::MatchCase(case) => {
                 self.add_block_ranges(node, &case.body);
             }
 
-            // Exception handlers
             AnyNodeRef::ExceptHandlerExceptHandler(handler) => {
                 self.add_block_ranges(node, &handler.body);
             }
 
-            // Multiline expressions
             AnyNodeRef::ExprList(_) | AnyNodeRef::ExprListComp(_) | AnyNodeRef::TypeParams(_) => {
                 self.add_delimited_expression_range(node.range(), BRACKETS);
             }
-            // Only fold parenthesized tuples.
             AnyNodeRef::ExprTuple(tuple) if tuple.parenthesized => {
                 self.add_delimited_expression_range(node.range(), PARENTHESES);
             }
@@ -720,12 +691,10 @@ impl<'a> SourceOrderVisitor<'a> for FoldingRangeVisitor<'a> {
                 self.add_subscript_expression_ranges(subscript, node);
             }
 
-            // Function calls with foldable callables or arguments.
             AnyNodeRef::ExprCall(call) => {
                 self.add_call_expression_ranges(call, node);
             }
 
-            // String and bytes literals
             AnyNodeRef::ExprStringLiteral(_)
             | AnyNodeRef::ExprBytesLiteral(_)
             | AnyNodeRef::ExprFString(_)
@@ -750,7 +719,6 @@ impl<'a> SourceOrderVisitor<'a> for FoldingRangeVisitor<'a> {
     }
 
     fn visit_body(&mut self, body: &'a [Stmt]) {
-        // Handle import blocks in any body (module, function, class, etc.).
         self.add_import_ranges(body);
         walk_body(self, body);
     }
@@ -2533,7 +2501,6 @@ with open("file.txt") as f:
 
     #[test]
     fn test_folding_multiline() {
-        // A single LF new-line results in a folding range.
         let test = CursorTest::builder()
             .source("main.py", "class MyClass:\n    pass\n<CURSOR>")
             .build();
@@ -2547,7 +2514,6 @@ with open("file.txt") as f:
           | |________^
         ");
 
-        // So does a single CRLF new-line.
         let test = CursorTest::builder()
             .source("main.py", "class MyClass:\r\n    pass\r\n<CURSOR>")
             .build();
@@ -2561,7 +2527,6 @@ with open("file.txt") as f:
           | |________^
         ");
 
-        // And so to does a single CR new-line.
         let test = CursorTest::builder()
             .source("main.py", "class MyClass:\r    pass\r<CURSOR>")
             .build();
@@ -2664,7 +2629,6 @@ class MyClass:
             )
             .build();
 
-        // Single decorator is one line, so no decorator folding range is emitted.
         assert_snapshot!(test.folding_ranges(), @"
         info[folding-range]: Folding Range
          --> main.py:3:15

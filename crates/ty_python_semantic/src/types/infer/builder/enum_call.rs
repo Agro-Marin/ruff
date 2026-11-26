@@ -205,7 +205,6 @@ fn next_auto_value<'db>(
             };
             match base_class {
                 KnownClass::Flag | KnownClass::IntFlag => {
-                    // next power of two after highest bit in the last value
                     if last <= 0 {
                         Type::int_literal(1)
                     } else {
@@ -402,8 +401,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             self.infer_enum_mixin_argument(&kw.value, base_class)
         });
 
-        // Only 1 extra positional arg is allowed (the `names` parameter).
-        // `Enum("Color", "RED", "GREEN")` is invalid at runtime.
         let has_too_many_positional = args.len() > 2;
         if has_too_many_positional
             && let Some(builder) = self
@@ -446,8 +443,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             has_too_many_positional || has_positional_keyword_conflict || !valid_mixin_type,
         );
 
-        // Non-literal names use the ordinary `type[EnumSubclass]` overload result
-        // instead of synthesizing a `DynamicEnumLiteral`.
         let Some(name) = self.infer_enum_name_argument(name_arg, base_class) else {
             return SubclassOfType::try_from_type(db, env, base_class.to_class_literal(db, env));
         };
@@ -590,8 +585,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                         .iter()
                         .any(|(name, _)| !seen.insert(name.clone()))
                     {
-                        // Duplicate member names raise at runtime, so degrade to an unknown
-                        // member set and let normal call binding surface the rest.
                         (vec![], false)
                     } else if let Some(mixin_type) = mixin_type {
                         match TypeMixinMemberBehavior::from_mixin(
@@ -610,8 +603,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                                     None => (vec![], false),
                                 }
                             }
-                            // `type=` can change aliasing and resulting values, so when the mixin
-                            // semantics are not predictable we avoid exposing a precise member set.
                             TypeMixinMemberBehavior::UnknownMembers => (vec![], false),
                         }
                     } else {
@@ -763,8 +754,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         }
 
         let mut members = Vec::with_capacity(elts.len());
-        // Explicit-value forms match static enums: `start` is ignored and a leading `auto()`
-        // still begins from the default seed of `1`.
         let mut last_int_value = Some(0);
         for (name, value) in explicit_members {
             let value = if value.is_instance_of(db, KnownClass::Auto) {

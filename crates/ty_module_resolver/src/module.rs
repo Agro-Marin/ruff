@@ -20,7 +20,6 @@ pub enum Module<'db> {
     Namespace(NamespacePackage<'db>),
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for Module<'_> {}
 
 #[salsa::tracked]
@@ -276,7 +275,6 @@ pub enum KnownModule {
     Numbers,
     #[strum(serialize = "struct", serialize = "_struct")]
     Struct,
-    // Third-party modules
     #[strum(serialize = "django.db.models.base")]
     DjangoDbModelsBase,
     #[strum(serialize = "django.db.models.fields")]

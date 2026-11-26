@@ -110,7 +110,6 @@ pub(crate) fn compound_statements(
     source_type: PySourceType,
     cell_offsets: Option<&CellOffsets>,
 ) {
-    // Track the last seen instance of a variety of tokens.
     let mut colon = None;
     let mut semi = None;
     let mut case = None;
@@ -126,14 +125,10 @@ pub(crate) fn compound_statements(
     let mut while_ = None;
     let mut with = None;
 
-    // As a special-case, track whether we're at the first token after a colon.
-    // This is used to allow `class C: ...`-style definitions in stubs.
     let mut allow_ellipsis = false;
 
-    // Track indentation.
     let mut indent = 0u32;
 
-    // Use an iterator to allow passing it around.
     let mut token_iter = tokens.iter_with_context();
 
     while let Some(token) = token_iter.next() {
@@ -179,7 +174,6 @@ pub(crate) fn compound_statements(
                     }
                 }
 
-                // Reset.
                 colon = None;
                 semi = None;
                 case = None;
@@ -211,7 +205,6 @@ pub(crate) fn compound_statements(
                 {
                     colon = Some(token.range());
 
-                    // Allow `class C: ...`-style definitions.
                     allow_ellipsis = true;
                 }
             }
@@ -228,7 +221,6 @@ pub(crate) fn compound_statements(
                     context
                         .report_diagnostic_if_enabled(MultipleStatementsOnOneLineSemicolon, range);
 
-                    // Reset.
                     semi = None;
                     allow_ellipsis = false;
                 }
@@ -236,7 +228,6 @@ pub(crate) fn compound_statements(
                 if let Some(range) = colon {
                     context.report_diagnostic_if_enabled(MultipleStatementsOnOneLineColon, range);
 
-                    // Reset.
                     colon = None;
                     case = None;
                     class = None;
@@ -257,7 +248,6 @@ pub(crate) fn compound_statements(
 
         match token.kind() {
             TokenKind::Lambda => {
-                // Reset.
                 colon = None;
                 case = None;
                 class = None;

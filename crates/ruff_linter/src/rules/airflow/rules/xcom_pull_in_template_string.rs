@@ -78,7 +78,6 @@ pub(crate) fn xcom_pull_in_template_string(checker: &Checker, call: &ast::ExprCa
         return;
     }
 
-    // Check if this is a call to an Airflow operator or sensor.
     if !checker
         .semantic()
         .resolve_qualified_name(&call.func)
@@ -90,10 +89,6 @@ pub(crate) fn xcom_pull_in_template_string(checker: &Checker, call: &ast::ExprCa
         return;
     }
 
-    // Check all arguments for xcom_pull template strings. Any operator
-    // argument can be a Jinja template field (determined by the operator's
-    // `template_fields` attribute), so we check both positional and keyword
-    // arguments.
     for arg_value in call
         .arguments
         .iter_source_order()
@@ -113,8 +108,6 @@ pub(crate) fn xcom_pull_in_template_string(checker: &Checker, call: &ast::ExprCa
                 arg_value.range(),
             );
 
-            // If the task_id matches a variable in scope, provide an unsafe fix
-            // replacing the template string with `<variable>.output`.
             if checker
                 .semantic()
                 .lookup_symbol(&task_id)
@@ -166,10 +159,6 @@ fn parse_xcom_pull_template(s: &str) -> Option<String> {
     }
     eat_whitespace(&mut cursor);
 
-    // Parse xcom_pull arguments. We accept:
-    //   xcom_pull('task_1')
-    //   xcom_pull(task_ids='task_1', key='return_value')
-    //   xcom_pull(key='return_value', task_ids='task_1')
     let mut task_id = None;
     let mut saw_keyword = false;
     let mut saw_key = false;
@@ -204,7 +193,6 @@ fn parse_xcom_pull_template(s: &str) -> Option<String> {
                 _ => return None,
             }
         } else {
-            // Positional arguments must come before any keyword arguments.
             if saw_keyword || task_id.is_some() {
                 return None;
             }
@@ -270,7 +258,6 @@ fn parse_quoted_string<'a>(cursor: &mut Cursor<'a>) -> Option<&'a str> {
     let end = remaining.find(quote_char)?;
     let value = &remaining[..end];
 
-    // Bail if the string contains escape sequences.
     if value.contains('\\') {
         return None;
     }
@@ -296,7 +283,6 @@ fn parse_task_id_value<'a>(cursor: &mut Cursor<'a>) -> Option<&'a str> {
     eat_whitespace(cursor);
 
     if let Some(bracket) = closing_bracket {
-        // Allow optional trailing comma for tuples: `('task',)`.
         if cursor.eat_char(',') {
             eat_whitespace(cursor);
         }

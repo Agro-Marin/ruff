@@ -68,22 +68,12 @@ ExitCode = NewType("ExitCode", int)
 TY_TARGET_PLATFORM: Final = "linux"
 CHECK_TIMEOUT_SECONDS: Final = 5
 
-# Reserve time within the budget for CI job setup before the first step,
-# the final summary and any issue report, and steps after fuzzing.
 REPORTING_RESERVE_SECONDS: Final = 90
 
-# Before accounting for elapsed setup time, leave at least one minute for
-# checking seeds and minimizing failures in addition to the reserve.
 MINIMUM_BUDGET_MINUTES: Final = REPORTING_RESERVE_SECONDS / 60 + 1
 
-# GitHub issue descriptions are reportedly limited to 65,536 Unicode code points:
-# https://github.com/dead-claudia/github-limits#issue-description
-# Each UTF-8-encoded code point takes at least one byte, so this lower byte
-# limit leaves headroom.
 MAX_GITHUB_ISSUE_BODY_BYTES: Final = 60_000
 
-# ty supports `--python-version=3.8`, but typeshed only supports 3.10+,
-# so that's probably the oldest version we can usefully test with.
 OLDEST_SUPPORTED_PYTHON: Final = "3.10"
 
 
@@ -141,23 +131,11 @@ def run_executable(
             process.communicate(input=input, timeout=CHECK_TIMEOUT_SECONDS)
         except BaseException as error:
             timed_out = isinstance(error, subprocess.TimeoutExpired)
-            # Ctrl+C can interrupt communicate() while the checker is still running;
-            # on POSIX, the checker is in a separate session and doesn't receive the signal.
-            # `poll()` returns `None` when the checker is still running, so we can kill it
-            # before re-raising the interruption.
-            # On POSIX, a timeout may leave children in the checker's process group
-            # even after the checker exits, so we try to kill the group regardless.
             if timed_out or process.poll() is None:
                 if os.name == "posix":
-                    # The process group may have disappeared
-                    # if its members exited, leaving nothing in the group to kill.
-                    # That would result in a `ProcessLookupError` that can be safely ignored.
                     with contextlib.suppress(ProcessLookupError):
                         os.killpg(process.pid, signal.SIGKILL)
                 else:
-                    # On Windows, `Popen.kill()` handles the race where the process has
-                    # already exited, so the suppression above is unnecessary.
-                    # https://github.com/python/cpython/blob/v3.12.0/Lib/subprocess.py#L1518-L1532
                     process.kill()
                 process.wait()
             if timed_out:
@@ -193,7 +171,6 @@ def check_ruff(code: str, *, ruff_executable: Path) -> Success | Failure:
     command: list[str | Path] = [
         ruff_executable,
         "check",
-        # Keep project settings out of parser checks, including for older Ruff versions.
         "--isolated",
         "--config",
         "lint.select=[]",
@@ -265,8 +242,6 @@ class DetectedFailure:
         if self.kind is Failure.TIMEOUT:
             tool_name = "Ruff" if executable is Executable.RUFF else "ty"
             description = f"{tool_name} **timed out** on this seed ({CHECK_TIMEOUT_SECONDS} s cutoff)."
-            # Runs that check a single build, such as the daily Ruff job,
-            # have no baseline duration to report.
             if self.baseline_seconds is not None:
                 description += (
                     f" The baseline build completed in {self.baseline_seconds:.3f} s."
@@ -291,12 +266,8 @@ class Bug:
 
 @dataclass(slots=True, frozen=True)
 class FuzzResult:
-    # The seed used to generate the random Python file.
-    # The same seed always generates the same file.
     seed: Seed
-    # If we found a bug, this contains a reproducer. If not, it is `None`.
     maybe_bug: Bug | None
-    # The executable we're testing
     executable: Executable
     _: KW_ONLY
     only_new_bugs: bool
@@ -385,8 +356,6 @@ def fuzz_code(
     bug = None
     if not args.minimize_failures:
         failure = find_reportable_failure(code, args)
-    # Saved inputs already failed during detection. Keep the original source in
-    # the report if an intermittent failure stops reproducing during minimization.
     if args.minimize_failures or failure is not None:
         if args.output_format is OutputFormat.GITHUB and not args.minimize_failures:
             print(
@@ -440,9 +409,6 @@ def minimize_failure(
     try:
         minimized = minimize_repro(bug.source, bounded_callback)
     except CouldNotMinimize as e:
-        # This is to double-check that there isn't a bug in
-        # `pysource-minimize`/`pysource-codegen`.
-        # `pysource-minimize` *should* never produce code that's invalid syntax.
         try:
             ast.parse(bug.source)
         except SyntaxError:
@@ -451,13 +417,6 @@ def minimize_failure(
             print(f"Could not minimize seed {seed}: {e}", file=sys.stderr, flush=True)
     except MinimizationTimedOut:
         minimization_timed_out = True
-    # An input whose execution time is close to the timeout may time out during
-    # the minimizer's initial check but finish when the same source is rechecked.
-    # `pysource-minimize` currently raises a plain `ValueError` in this case, so
-    # catch it to preserve the original finding. This also catches unrelated
-    # `ValueError`s. Remove this handler once a release containing the fix in
-    # https://github.com/15r10nk/pysource-minimize/pull/50 is the minimum
-    # supported `pysource-minimize` version.
     except ValueError as e:
         if not args.quiet:
             print(f"Could not minimize seed {seed}: {e}", file=sys.stderr, flush=True)
@@ -635,9 +594,6 @@ def render_github_report(
     reproducers: list[RenderableReproducer] = []
     omitted = False
 
-    # Keep the report simple by listing each seed separately, even when several
-    # have the same reproducer. The workflow logs list all failing seeds if the
-    # issue body fills up.
     for result in sorted(bugs, key=operator.attrgetter("seed")):
         assert result.maybe_bug is not None
         failure = result.maybe_bug.failure
@@ -718,7 +674,6 @@ def write_github_issue_body(
 
 def run_fuzzer(args: ResolvedCliArgs) -> ExitCode:
     if args.save_failures is not None:
-        # An earlier run's failures must not be passed to the minimizer.
         args.save_failures.mkdir()
     deadline = None
     if args.budget_minutes is not None and args.job_started_at is not None:
@@ -729,8 +684,6 @@ def run_fuzzer(args: ResolvedCliArgs) -> ExitCode:
         )
         deadline = time.monotonic() + remaining
 
-    # Starting a process pool costs more than checking a few seeds, but each
-    # known failure can take minutes to minimize.
     sequential_limit = 1 if args.minimize_failures else 5
     if len(args.seeds) <= sequential_limit:
         run_result = run_fuzzer_sequentially(args, deadline=deadline)

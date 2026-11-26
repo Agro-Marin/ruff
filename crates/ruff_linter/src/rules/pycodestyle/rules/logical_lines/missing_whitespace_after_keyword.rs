@@ -63,7 +63,6 @@ pub(crate) fn missing_whitespace_after_keyword(line: &LogicalLine, context: &Lin
                         | TokenKind::Semi
                         | TokenKind::Newline
                         | TokenKind::NonLogicalNewline
-                        // In the event of a syntax error, do not attempt to add a whitespace.
                         | TokenKind::Rpar
                         | TokenKind::Rsqb
                         | TokenKind::Rbrace

@@ -80,8 +80,6 @@ fn format_internal(
                         Ok(FormatResult::Formatted(formatted))
                     }
                 }
-                // Special case - syntax/parse errors are handled here instead of
-                // being propagated as visible server errors.
                 Err(FormatModuleError::ParseError(error)) => {
                     tracing::warn!("Unable to format document: {error}");
                     Ok(FormatResult::Unchanged)
@@ -175,8 +173,6 @@ fn format_range_internal(
                 Ok(Some(formatted))
             }
         }
-        // Special case - syntax/parse errors are handled here instead of
-        // being propagated as visible server errors.
         Err(FormatModuleError::ParseError(error)) => {
             tracing::warn!("Unable to format document range: {error}");
             Ok(None)
@@ -197,7 +193,6 @@ fn format_range_external(
         formatter_settings.to_format_options(source_type, document.contents(), Some(path));
     let uv_command = UvFormatCommand::from(format_options);
 
-    // Format the range using uv and convert the result to `PrintedRange`
     Ok(uv_command
         .format_range(document.contents(), range, path, document.index())?
         .into_formatted()
@@ -233,7 +228,6 @@ impl UvFormatCommand {
             self.options.target_version().minor
         );
 
-        // Add only the formatting options that the CLI supports
         command.arg("--target-version");
         command.arg(&target_version);
 
@@ -244,7 +238,6 @@ impl UvFormatCommand {
             command.arg("--preview");
         }
 
-        // Pass other formatting options via --config
         command.arg("--config");
         command.arg(format!(
             "format.indent-style = '{}'",
@@ -276,7 +269,6 @@ impl UvFormatCommand {
         ));
 
         if let Some((range, line_index, source)) = range_with_index {
-            // The CLI expects line:column format
             let start_pos = line_index.line_column(range.start(), source);
             let end_pos = line_index.line_column(range.end(), source);
             let range_str = format!(
@@ -332,12 +324,10 @@ impl UvFormatCommand {
 
         if !result.status.success() {
             let stderr = String::from_utf8_lossy(&result.stderr);
-            // We don't propagate format errors due to invalid syntax
             if stderr.contains("Failed to parse") {
                 tracing::warn!("Unable to format document: {}", stderr);
                 return Ok(FormatResult::Unchanged);
             }
-            // Special-case for when `uv format` is not available
             if stderr.contains("unrecognized subcommand 'format'") {
                 anyhow::bail!(
                     "The installed version of uv does not support `uv format`; upgrade to a newer version"
@@ -429,7 +419,6 @@ with open("a_really_long_foo") as foo, open("a_really_long_bar") as bar, open("a
             pass
         "#);
 
-        // same as above but without the per_file_target_version override
         let result = format(
             &document,
             SourceType::Python(PySourceType::Python),
@@ -454,8 +443,6 @@ with open("a_really_long_foo") as foo, open("a_really_long_bar") as bar, open("a
 
     #[test]
     fn format_per_file_version_range() -> anyhow::Result<()> {
-        // prepare a document with formatting changes before and after the intended range (the
-        // context manager)
         let document = TextDocument::new(r#"
 def fn(x: str) -> Foo | Bar: return foobar(x)
 
@@ -502,7 +489,6 @@ sys.exit(
             pass
         "#);
 
-        // same as above but without the per_file_target_version override
         let result = format_range(
             &document,
             SourceType::Python(PySourceType::Python),
@@ -557,7 +543,6 @@ def world(  ):
 
             let result = expect_formatted(result);
 
-            // uv should format this to a consistent style
             assert_snapshot!(result, @r#"
             def hello(x, y, z):
                 return x + y + z
@@ -583,7 +568,6 @@ def another_function(x,y,z):
                 0,
             );
 
-            // Find the range of the second function
             let start = document.contents().find("def another_function").unwrap();
             let end = document.contents().find("return result").unwrap() + "return result".len();
             let range = TextRange::new(TextSize::try_from(start)?, TextSize::try_from(end)?);
@@ -624,7 +608,6 @@ def hello(very_long_parameter_name_1, very_long_parameter_name_2, very_long_para
                 0,
             );
 
-            // Test with shorter line length
             let formatter_settings = FormatterSettings {
                 line_width: LineWidth::try_from(60).unwrap(),
                 ..Default::default()
@@ -641,7 +624,6 @@ def hello(very_long_parameter_name_1, very_long_parameter_name_2, very_long_para
 
             let result = expect_formatted(result);
 
-            // With line length 60, the function should be wrapped
             assert_snapshot!(result, @r#"
             def hello(
                 very_long_parameter_name_1,
@@ -672,7 +654,6 @@ def hello():
                 0,
             );
 
-            // Test with tabs instead of spaces
             let formatter_settings = FormatterSettings {
                 indent_style: IndentStyle::Tab,
                 ..Default::default()
@@ -689,7 +670,6 @@ def hello():
 
             let result = expect_formatted(result);
 
-            // Should have formatting changes (spaces to tabs)
             assert_snapshot!(result, @r#"
             def hello():
             	if True:
@@ -741,7 +721,6 @@ line'''
                 0,
             );
 
-            // Test with single quotes
             let formatter_settings = FormatterSettings {
                 quote_style: QuoteStyle::Single,
                 ..Default::default()
@@ -784,7 +763,6 @@ bar = [1, 2, 3,]
                 0,
             );
 
-            // Test with ignore magic trailing comma
             let formatter_settings = FormatterSettings {
                 magic_trailing_comma: MagicTrailingComma::Ignore,
                 ..Default::default()

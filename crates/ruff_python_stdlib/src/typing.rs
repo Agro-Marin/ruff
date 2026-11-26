@@ -148,8 +148,6 @@ pub fn is_standard_library_literal(qualified_name: &[&str]) -> bool {
 ///
 /// See: <https://docs.python.org/3/library/typing.html>
 pub fn is_standard_library_generic_member(member: &str) -> bool {
-    // Constructed by taking every pattern from `is_standard_library_generic`, removing all but
-    // the last element in each pattern, and de-duplicating the values.
     matches!(
         member,
         "dict"
@@ -227,8 +225,6 @@ pub fn is_standard_library_generic_member(member: &str) -> bool {
 ///
 /// [PEP 593]: https://peps.python.org/pep-0593/
 pub fn is_pep_593_generic_member(member: &str) -> bool {
-    // Constructed by taking every pattern from `is_pep_593_generic`, removing all but
-    // the last element in each pattern, and de-duplicating the values.
     matches!(member, "Annotated")
 }
 
@@ -236,8 +232,6 @@ pub fn is_pep_593_generic_member(member: &str) -> bool {
 ///
 /// See: <https://docs.python.org/3/library/typing.html>
 pub fn is_typed_dict_member(member: &str) -> bool {
-    // Constructed by taking every pattern from `is_pep_593_generic`, removing all but
-    // the last element in each pattern, and de-duplicating the values.
     matches!(member, "TypedDict")
 }
 

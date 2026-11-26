@@ -61,7 +61,6 @@ impl Violation for TypeParamNameMismatch {
 
 /// PLC0132
 pub(crate) fn type_param_name_mismatch(checker: &Checker, value: &Expr, targets: &[Expr]) {
-    // If the typing modules were never imported, we'll never match below.
     if !checker.semantic().seen_typing() {
         return;
     }

@@ -284,7 +284,6 @@ pub fn test_contents<'a>(
 
     let source_has_errors = parsed.has_invalid_syntax();
 
-    // Detect fixes that don't converge after multiple iterations.
     let mut iterations = 0;
 
     let mut transformed = Cow::Borrowed(source_kind);
@@ -350,7 +349,6 @@ pub fn test_contents<'a>(
             );
 
             if parsed.has_invalid_syntax() && !source_has_errors {
-                // Previous fix introduced a syntax error, abort
                 let fixes = print_diagnostics(messages, path, source_kind);
                 let syntax_errors = print_syntax_errors(parsed.errors(), path, &transformed);
 
@@ -393,7 +391,6 @@ Source with applied fixes:
             match (fixable, rule.fixable()) {
                 (true, FixAvailability::Sometimes | FixAvailability::Always)
                 | (false, FixAvailability::None | FixAvailability::Sometimes) => {
-                    // Ok
                 }
                 (true, FixAvailability::None) => {
                     panic!(
@@ -403,7 +400,6 @@ Change the `Violation::FIX_AVAILABILITY` to either \
                     );
                 }
                 (false, FixAvailability::Always) if source_has_errors => {
-                    // Ok
                 }
                 (false, FixAvailability::Always) => {
                     panic!(
@@ -421,12 +417,10 @@ Either ensure you always emit a fix or change `Violation::FIX_AVAILABILITY` to e
                 `Violation::fix_title` returns `None`"
             );
 
-            // Not strictly necessary but adds some coverage for this code path by overriding the
             // noqa offset and the source file
             if let Some(range) = diagnostic.range() {
                 diagnostic.set_noqa_offset(directives.noqa_line_for.resolve(range.start()));
             }
-            // This part actually is necessary to avoid long relative paths in snapshots.
             for annotation in diagnostic.annotations_mut() {
                 if let Some(range) = annotation.get_span().range() {
                     annotation.set_span(Span::from(source_code.clone()).with_range(range));

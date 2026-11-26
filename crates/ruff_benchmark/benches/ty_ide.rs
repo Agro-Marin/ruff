@@ -151,7 +151,6 @@ BENCHMARK_CONSTANT_{index:03} = {index}
         cursor: TextSize,
         target: String,
         target_directory: SystemPathBuf,
-        // Keep files alive through the database's lifetime, then remove this input completely.
         _directory: tempfile::TempDir,
     }
 
@@ -314,7 +313,6 @@ BENCHMARK_CONSTANT_{index:03} = {index}
             let fixture = Fixture::new(layout);
             let system = TestSystem::new(OsSystem::new(&fixture.project_root));
             system.clear_env_vars();
-            // Synthetic cases must not inherit configuration from the temporary directory's ancestors.
             let mut metadata =
                 ProjectMetadata::new("auto-import-benchmark", fixture.project_root.clone());
             metadata.set_override_options(Options {
@@ -335,7 +333,6 @@ BENCHMARK_CONSTANT_{index:03} = {index}
                 ProjectDatabase::fallible(metadata, system).expect("Create benchmark database");
             let client = system_path_to_file(&db, fixture.project_root.join("app/main.py"))
                 .expect("Find client file");
-            // Initialize the resolver environment without warming completion queries.
             let _ = db.program_file(client).resolver_environment(&db);
             Self {
                 db,
@@ -463,8 +460,6 @@ BENCHMARK_CONSTANT_{index:03} = {index}
             case
         };
 
-        // Validate names and origins on a separate input so these checks neither warm the
-        // measured database nor add work to the timed completion request.
         let validation = make_case();
         validation.validate();
         drop(validation);
@@ -500,7 +495,6 @@ BENCHMARK_CONSTANT_{index:03} = {index}
 }
 
 fn main() {
-    // Run symbol discovery on the current thread to reduce benchmark noise.
     rayon::ThreadPoolBuilder::new()
         .num_threads(1)
         .use_current_thread()

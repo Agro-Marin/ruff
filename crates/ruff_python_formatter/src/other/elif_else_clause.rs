@@ -17,8 +17,6 @@ impl FormatNodeRule<ElifElseClause> for FormatElifElseClause {
             f,
             None,
             SuiteKind::Other {
-                // For stability, we can't insert an empty line if we don't know if the outer suite
-                // also does.
                 last_suite_in_statement: true,
             },
         )

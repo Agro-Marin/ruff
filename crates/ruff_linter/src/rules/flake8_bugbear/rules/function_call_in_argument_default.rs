@@ -111,8 +111,6 @@ impl Visitor<'_> for ArgumentDefaultVisitor<'_, '_> {
                     && !func.as_name_expr().is_some_and(|name| {
                         is_immutable_newtype_call(name, semantic, self.extend_immutable_calls)
                     })
-                    // Default values are evaluated in the scope enclosing the function, so resolve
-                    // the class from there rather than from the function's own scope.
                     && !semantic
                         .first_non_type_parent_scope_id(semantic.scope_id)
                         .is_some_and(|scope_id| {
@@ -129,7 +127,6 @@ impl Visitor<'_> for ArgumentDefaultVisitor<'_, '_> {
                 visitor::walk_expr(self, expr);
             }
             Expr::Lambda(_) => {
-                // Don't recurse.
             }
             _ => visitor::walk_expr(self, expr),
         }
@@ -138,7 +135,6 @@ impl Visitor<'_> for ArgumentDefaultVisitor<'_, '_> {
 
 /// B008
 pub(crate) fn function_call_in_argument_default(checker: &Checker, parameters: &Parameters) {
-    // Map immutable calls to (module, member) format.
     let extend_immutable_calls: Vec<QualifiedName> = checker
         .settings()
         .flake8_bugbear

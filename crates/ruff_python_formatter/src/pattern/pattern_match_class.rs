@@ -38,14 +38,6 @@ impl NeedsParentheses for PatternMatchClass {
         _parent: AnyNodeRef,
         context: &PyFormatContext,
     ) -> OptionalParentheses {
-        // If there are any comments outside of the class parentheses, break:
-        // ```python
-        // case (
-        //     Pattern
-        //     # dangling
-        //     (...)
-        // ): ...
-        // ```
         if context.comments().has_dangling(self) {
             OptionalParentheses::Always
         } else {

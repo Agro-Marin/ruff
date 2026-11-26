@@ -90,18 +90,10 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let mut in_eager_comprehension = false;
 
         for (scope_id, scope) in self.index.ancestor_scopes(expression_scope) {
-            // The first iterable of a comprehension stays in the annotation's enclosing scope.
-            // Eager comprehensions also inherit the restriction, but a generator body can allow
-            // `await` before we reach the scope enclosing its annotation.
-            // Conservatively reject annotations on every Python version, even though some allow
-            // `await` before Python 3.14 without `from __future__ import annotations`. Avoiding
-            // invalid syntax matters more than offering every possible fix in this rare context.
             if Some(scope_id) == annotation_parent_scope {
                 return false;
             }
 
-            // Before Python 3.11, awaiting in a nested list, set, or dict comprehension cannot
-            // implicitly make its containing comprehension or generator expression asynchronous.
             if in_eager_comprehension
                 && scope.kind() == ScopeKind::Comprehension
                 && self.program_environment().python_version(db) < PythonVersion::PY311

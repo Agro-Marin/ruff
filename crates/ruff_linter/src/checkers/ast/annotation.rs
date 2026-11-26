@@ -41,9 +41,6 @@ impl AnnotationContext {
         settings: &LinterSettings,
         version: PythonVersion,
     ) -> Self {
-        // If the annotation is in a class scope (e.g., an annotated assignment for a
-        // class field), and that class is marked as runtime-required, treat the
-        // annotation as runtime-required.
         if let ScopeKind::Class(class_def) = semantic.current_scope().kind {
             match flake8_type_checking::helpers::class_annotation_runtime_semantics(
                 class_def, semantic, settings,
@@ -58,16 +55,10 @@ impl AnnotationContext {
             }
         }
 
-        // If `__future__` annotations are enabled or it's a stub file,
-        // then annotations are never evaluated at runtime,
-        // so we can treat them as typing-only.
         if semantic.future_annotations_or_stub() || version.defers_annotations() {
             return Self::TypingOnly;
         }
 
-        // Otherwise, if we're in a class or module scope, then the annotation needs to
-        // be available at runtime.
-        // See: https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements
         if matches!(
             semantic.current_scope().kind,
             ScopeKind::Class(_) | ScopeKind::Module

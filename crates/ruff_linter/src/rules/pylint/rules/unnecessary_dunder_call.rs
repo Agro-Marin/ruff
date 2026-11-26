@@ -100,28 +100,22 @@ pub(crate) fn unnecessary_dunder_call(checker: &Checker, call: &ast::ExprCall) {
         return;
     };
 
-    // If this isn't a known dunder method, abort.
     if !is_known_dunder_method(attr) {
         return;
     }
 
-    // If this is an allowed dunder method, abort.
     if allowed_dunder_constants(attr, checker.target_version()) {
         return;
     }
 
-    // Ignore certain dunder method calls in lambda expressions. These methods would require
-    // rewriting as a statement, which is not possible in a lambda expression.
     if allow_nested_expression(attr, checker.semantic()) {
         return;
     }
 
-    // Ignore dunder method calls within dunder methods definitions.
     if in_dunder_method_definition(checker.semantic()) {
         return;
     }
 
-    // Ignore dunder methods used on `super`.
     if let Expr::Call(ast::ExprCall { func, .. }) = value.as_ref() {
         if checker.semantic().has_builtin_binding("super") {
             if let Expr::Name(ast::ExprName { id, .. }) = func.as_ref() {
@@ -132,13 +126,10 @@ pub(crate) fn unnecessary_dunder_call(checker: &Checker, call: &ast::ExprCall) {
         }
     }
 
-    // If the call has keywords, abort.
     if !call.arguments.keywords.is_empty() {
         return;
     }
 
-    // If a fix is available, we'll store the text of the fixed expression here
-    // along with the precedence of the resulting expression.
     let mut fixed: Option<(String, OperatorPrecedence)> = None;
     let mut title: Option<String> = None;
 
@@ -163,8 +154,6 @@ pub(crate) fn unnecessary_dunder_call(checker: &Checker, call: &ast::ExprCall) {
                 let arg_slice = checker.locator().slice(arg);
 
                 if OperatorPrecedence::from_expr(arg) > precedence {
-                    // if it's something that can reasonably be removed from parentheses,
-                    // we'll do that.
                     fixed = Some((
                         format!("{value_slice} {replacement} {arg_slice}"),
                         precedence,
@@ -183,8 +172,6 @@ pub(crate) fn unnecessary_dunder_call(checker: &Checker, call: &ast::ExprCall) {
                 let arg_slice = checker.locator().slice(arg);
 
                 if OperatorPrecedence::from_expr(arg) > precedence {
-                    // if it's something that can reasonably be removed from parentheses,
-                    // we'll do that.
                     fixed = Some((
                         format!("{arg_slice} {replacement} {value_slice}"),
                         precedence,
@@ -215,16 +202,6 @@ pub(crate) fn unnecessary_dunder_call(checker: &Checker, call: &ast::ExprCall) {
     if let Some((mut fixed, precedence)) = fixed {
         let dunder = DunderReplacement::from_method(attr);
 
-        // If the parent expression has higher precedence then the new replacement,
-        // it would associate with either the left operand (e.g. naive change from `a * b.__add__(c)`
-        // becomes `a * b + c` which is incorrect) or the right operand (e.g. naive change from
-        // `a.__add__(b).attr` becomes `a + b.attr` which is also incorrect).
-        // This rule doesn't apply to function calls despite them having higher
-        // precedence than any of our replacement, since they already wrap around
-        // our expression e.g. `print(a.__add__(3))` -> `print(a + 3)`.
-        //
-        // Note that we never need to wrap *builtin* functions in extra parens
-        // since function calls have high precedence
         let wrap_in_paren = (!matches!(dunder, Some(DunderReplacement::Builtin(_, _))))
             && checker
                 .semantic()

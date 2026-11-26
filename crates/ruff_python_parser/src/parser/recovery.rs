@@ -45,7 +45,6 @@ pub(super) fn pattern_to_expr(pattern: Pattern) -> Expr {
             ast::Singleton::None => Expr::NoneLiteral(ast::ExprNoneLiteral { range, node_index }),
         },
         Pattern::MatchValue(ast::PatternMatchValue { value, .. }) => *value,
-        // We don't know which kind of sequence this is: `case [1, 2]:` or `case (1, 2):`.
         Pattern::MatchSequence(ast::PatternMatchSequence {
             range,
             node_index,

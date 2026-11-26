@@ -217,7 +217,5 @@ impl<I: Idx, T> Default for &mut IndexSlice<I, T> {
     }
 }
 
-// Whether `IndexSlice` is `Send` depends only on the data,
-// not the phantom data.
 #[expect(unsafe_code)]
 unsafe impl<I: Idx, T> Send for IndexSlice<I, T> where T: Send {}

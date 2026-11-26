@@ -32,14 +32,12 @@ pub fn code_actions(
 
     let mut actions = Vec::new();
 
-    // Suggest imports/qualifications for unresolved references (often ideal)
     if lint_id == LintId::of(&UNRESOLVED_REFERENCE)
         && let Some(import_quick_fix) = unresolved_fixes(db, file, diagnostic_range)
     {
         actions.extend(import_quick_fix);
     }
 
-    // Suggest just suppressing the lint (always a valid option, but never ideal)
     actions.push(QuickFix {
         title: format!("Ignore '{}' for this line", lint_id.name()),
         edits: suppress_single(db, file.python_file(db), lint_id, diagnostic_range).into_edits(),
@@ -131,7 +129,6 @@ mod tests {
     fn add_ignore_trailing_whitespace() {
         let test = CodeActionTest::with_source(r#"b = <START>a<END> / 10  "#);
 
-        // Not an inline snapshot because of trailing whitespace.
         assert_snapshot!(test.code_actions(&UNRESOLVED_REFERENCE));
     }
 
@@ -206,8 +203,6 @@ mod tests {
 
     #[test]
     fn add_ignore_matches_existing_suppression_against_diagnostic_range() {
-        // The first suppression is intentional: `not-a-rule` has no indexed suppression, and
-        // repeatedly extending the final suppression can't suppress a diagnostic before it.
         let test = CodeActionTest::with_source(
             r#"
             seen_code = True
@@ -771,7 +766,6 @@ mod tests {
         "#);
     }
 
-    // using `importlib.abc.ExecutionLoader` when no imports are in scope
     #[test]
     fn unresolved_loader() {
         let test = CodeActionTest::with_source(
@@ -805,10 +799,6 @@ mod tests {
         ");
     }
 
-    // using `importlib.abc.ExecutionLoader` when `import importlib` is in scope
-    //
-    // TODO: `importlib.abc` is available whenever `importlib` is, so qualifying
-    // `importlib.abc.ExecutionLoader` without adding imports is actually legal here!
     #[test]
     fn unresolved_loader_importlib_imported() {
         let test = CodeActionTest::with_source(
@@ -843,7 +833,6 @@ mod tests {
         ");
     }
 
-    // Using `importlib.abc.ExecutionLoader` when `import importlib.abc` is in scope
     #[test]
     fn unresolved_loader_abc_imported() {
         let test = CodeActionTest::with_source(

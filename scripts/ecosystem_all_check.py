@@ -40,7 +40,6 @@ def main() -> None:
     checkouts = Path("checkouts")
     out_dir = Path("ecosystem_all_results")
     github_search_json = Path("github_search.jsonl")
-    # Somehow it doesn't like plain ruff
     ruff = Path.cwd().joinpath("ruff")
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -48,7 +47,6 @@ def main() -> None:
     repositories = []
     for line in github_search_json.read_text().splitlines():
         item = json.loads(line)
-        # Pick only the easier case for now.
         if item["path"] != "pyproject.toml":
             continue
         repositories.append(

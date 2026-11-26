@@ -102,7 +102,6 @@ pub(crate) fn definitions(checker: &mut Checker) {
         return;
     }
 
-    // Compute visibility of all definitions.
     let exports: Option<Vec<DunderAllName>> = {
         checker
             .semantic
@@ -130,13 +129,7 @@ pub(crate) fn definitions(checker: &mut Checker) {
     {
         let docstring = docstrings::extraction::extract_docstring(definition);
 
-        // flake8-annotations
         if enforce_annotations {
-            // TODO(charlie): This should be even stricter, in that an overload
-            // implementation should come immediately after the overloaded
-            // interfaces, without any AST nodes in between. Right now, we
-            // only error when traversing definition boundaries (functions,
-            // classes, etc.).
             if !overloaded_name.is_some_and(|overloaded_name| {
                 flake8_annotations::helpers::is_overload_impl(
                     definition,
@@ -150,12 +143,10 @@ pub(crate) fn definitions(checker: &mut Checker) {
                 flake8_annotations::helpers::overloaded_name(definition, &checker.semantic);
         }
 
-        // flake8-pyi
         if enforce_stubs_and_runtime {
             flake8_pyi::rules::iter_method_return_iterable(checker, definition);
         }
 
-        // pylint
         if enforce_dunder_method {
             if let Definition::Member(Member {
                 kind: MemberKind::Method(method),
@@ -166,7 +157,6 @@ pub(crate) fn definitions(checker: &mut Checker) {
             }
         }
 
-        // pydocstyle, pydoclint
         if enforce_docstrings || enforce_pydoclint {
             if pydocstyle::helpers::should_ignore_definition(
                 definition,
@@ -176,13 +166,11 @@ pub(crate) fn definitions(checker: &mut Checker) {
                 continue;
             }
 
-            // Extract a `Docstring` from a `Definition`.
             let Some(string_literal) = docstring else {
                 pydocstyle::rules::not_missing(checker, definition, *visibility);
                 continue;
             };
 
-            // We don't recognise implicitly concatenated strings as valid docstrings in our model currently.
             let Some(sole_string_part) = string_literal.as_single_part_string() else {
                 #[expect(deprecated)]
                 let location = checker

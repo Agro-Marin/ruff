@@ -112,13 +112,10 @@ fn check_dict_items_usage(checker: &Checker, target: &Expr, iter: &Expr) {
         checker.semantic().is_unused(value),
     ) {
         (true, true) => {
-            // Both the key and the value are unused.
         }
         (false, false) => {
-            // Neither the key nor the value are unused.
         }
         (true, false) => {
-            // The key is unused, so replace with `dict.values()`.
             let mut diagnostic = checker.report_diagnostic(
                 IncorrectDictIterator {
                     subset: DictSubset::Values,
@@ -137,7 +134,6 @@ fn check_dict_items_usage(checker: &Checker, target: &Expr, iter: &Expr) {
             diagnostic.set_fix(Fix::unsafe_edits(replace_attribute, [replace_target]));
         }
         (false, true) => {
-            // The value is unused, so replace with `dict.keys()`.
             let mut diagnostic = checker.report_diagnostic(
                 IncorrectDictIterator {
                     subset: DictSubset::Keys,

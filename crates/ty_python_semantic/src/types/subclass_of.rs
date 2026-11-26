@@ -18,7 +18,6 @@ use ty_python_core::definition::Definition;
 /// A type that represents `type[C]`, i.e. the class object `C` and class objects that are subclasses of `C`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, get_size2::GetSize, salsa::SalsaValue)]
 pub struct SubclassOfType<'db> {
-    // Keep this field private, so that the only way of constructing the struct is through the `from` method.
     subclass_of: SubclassOfInner<'db>,
 }
 
@@ -100,9 +99,6 @@ impl<'db> SubclassOfType<'db> {
         env: &ProgramEnvironment<'db>,
         ty: Type<'db>,
     ) -> Result<Type<'db>, Type<'db>> {
-        // Handle unions and intersections by distributing `type[]` over each element:
-        // `type[A | B]` -> `type[A] | type[B]`
-        // `type[A & B]` -> `type[A] & type[B]`
         match ty {
             Type::Never | Type::Divergent(_) => Ok(ty),
             Type::Union(union) => union
@@ -144,7 +140,6 @@ impl<'db> SubclassOfType<'db> {
 
     /// Return a [`Type`] instance representing the type `type[object]`.
     fn subclass_of_object(db: &'db dyn Db, env: &ProgramEnvironment<'db>) -> Type<'db> {
-        // See the documentation of `SubclassOfType::from` for details.
         KnownClass::Type.to_instance(db, env)
     }
 
@@ -167,14 +162,12 @@ impl<'db> SubclassOfType<'db> {
             .interface(db)
             .meta_write_requirement(db, env, Type::ProtocolInstance(protocol), name)
             .map(|(write_ty, mut qualifiers)| {
-                // `ClassVar` prohibits instance writes, not writes through the class object.
                 qualifiers.remove(TypeQualifiers::CLASS_VAR);
                 (write_ty, qualifiers)
             })
     }
 
     pub(crate) const fn is_dynamic(self) -> bool {
-        // Unpack `self` so that we're forced to update this method if any more fields are added in the future.
         let Self { subclass_of } = self;
         subclass_of.is_dynamic()
     }
@@ -330,11 +323,6 @@ impl<'db> SubclassOfType<'db> {
         db: &'db dyn Db,
         env: &ProgramEnvironment<'db>,
     ) -> Type<'db> {
-        // This kind of looks like a no-op, but it's not. For `type[C]` with guaranteed metaclass
-        // `M`, `to_meta_type` produces `type[M]`, and then `to_instance` makes it just `M`.
-        // And `to_meta_type` will transpose `type[T: C]` into `T: type[C]`, collapse to
-        // the upper bound `type[C]`, and transform that to the meta-type `type[M]`, which
-        // `to_instance` then resolves to `M`.
         metaclass_instance_type(db, env, self.to_meta_type(db, env))
     }
 
@@ -361,25 +349,15 @@ impl<'db> SubclassOfType<'db> {
             SubclassOfInner::Dynamic(dynamic) => {
                 SubclassOfType::from(db, env, SubclassOfInner::Dynamic(dynamic))
             }
-            // A metaclass selected at runtime can already have a type such as `type[M]`,
-            // rather than being a class literal. Projecting to instances preserves this
-            // constraint when computing its possible subclasses.
             SubclassOfInner::Class(class) => class
                 .inferred_metaclass(db)
                 .for_inheritance(db, env)
                 .to_instance_approximation(db, env)
                 .map(|instance| instance.to_meta_type_with_recursion(db, env, context))
                 .unwrap_or(SubclassOfType::subclass_of_unknown()),
-            // Structural implementations of a protocol can have arbitrary metaclasses. The only
-            // guaranteed upper bound is therefore `type`, not the protocol origin's metaclass.
             SubclassOfInner::Protocol(_) => KnownClass::Type.to_subclass_of(db, env),
-            // For `type[T]` where `T` is a TypeVar, `with_transposed_type_var` transforms
-            // the bounds from instance types to `type[]` types. For example, `type[T]` where
-            // `T: A | B` becomes a TypeVar with bound `type[A] | type[B]`. The metatype is
-            // then the metatype of that bound.
             SubclassOfInner::TypeVar(bound_typevar) => {
                 match bound_typevar.typevar(db).bound_or_constraints(db, env) {
-                    // `with_transposed_type_var` always adds a bound for unbounded TypeVars
                     None => unreachable!(),
                     Some(TypeVarBoundOrConstraints::UpperBound(bound)) => {
                         bound.to_meta_type_with_recursion(db, env, context)
@@ -452,9 +430,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 ConstraintSet::from_bool(self.constraints, self.relation.is_assignability())
             }
 
-            // For example, `type[bool]` describes all possible runtime subclasses of the class `bool`,
-            // and `type[int]` describes all possible runtime subclasses of the class `int`.
-            // The first set is a subset of the second set, because `bool` is itself a subclass of `int`.
             (SubclassOfInner::Class(source), SubclassOfInner::Class(target)) => {
                 self.check_class_pair(db, source, target)
             }
@@ -482,8 +457,6 @@ impl<'c, 'db> DisjointnessChecker<'_, 'c, 'db> {
         if matches!(left.subclass_of, SubclassOfInner::Protocol(_))
             || matches!(right.subclass_of, SubclassOfInner::Protocol(_))
         {
-            // Protocols are open structural types, so their meta-types can generally overlap with
-            // concrete class-object types and with other protocol meta-types.
             return ConstraintSet::from_bool(self.constraints, false);
         }
 
@@ -558,7 +531,6 @@ impl<'db> SubclassOfInner<'db> {
                         Self::try_from_instance(db, env, bound)
                             .and_then(|subclass_of| subclass_of.into_class(db, env))
                     }
-                    // TODO this is quite imprecise
                     TypeVarBoundOrConstraints::Constraints(_) => Some(ClassType::object(db, env)),
                 }
             }

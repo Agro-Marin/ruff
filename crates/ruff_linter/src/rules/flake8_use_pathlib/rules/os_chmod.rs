@@ -74,12 +74,6 @@ pub(crate) fn os_chmod(checker: &Checker, call: &ExprCall, segments: &[&str]) {
         return;
     }
 
-    // `dir_fd` is not supported by pathlib, so check if it's set to non-default values.
-    // Signature as of Python 3.13 (https://docs.python.org/3/library/os.html#os.chmod)
-    // ```text
-    //           0     1          2               3
-    // os.chmod(path, mode, *, dir_fd=None, follow_symlinks=True)
-    // ```
     let path_arg = call.arguments.find_argument_value("path", 0);
 
     if path_arg.is_some_and(|expr| is_file_descriptor(expr, checker.semantic()))

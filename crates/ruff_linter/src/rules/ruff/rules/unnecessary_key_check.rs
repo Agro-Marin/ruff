@@ -68,7 +68,6 @@ pub(crate) fn unnecessary_key_check(checker: &Checker, expr: &Expr) {
         return;
     };
 
-    // Left should be, e.g., `key in dct`.
     let Expr::Compare(compare) = left else {
         return;
     };
@@ -77,7 +76,6 @@ pub(crate) fn unnecessary_key_check(checker: &Checker, expr: &Expr) {
         return;
     };
 
-    // Right should be, e.g., `dct[key]`.
     let Expr::Subscript(ast::ExprSubscript {
         value: obj_right,
         slice: key_right,

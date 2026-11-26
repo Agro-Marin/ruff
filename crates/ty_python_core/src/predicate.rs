@@ -22,7 +22,6 @@ use crate::reachability_constraints::ScopedReachabilityConstraintId;
 use crate::scope::{FileScopeId, ScopeId};
 use crate::symbol::ScopedSymbolId;
 
-// A scoped identifier for each `Predicate` in a scope.
 #[derive(Clone, Debug, Copy, PartialOrd, Ord, PartialEq, Eq, Hash, get_size2::GetSize)]
 pub struct ScopedPredicateId(u32);
 
@@ -55,7 +54,6 @@ impl Idx for ScopedPredicateId {
     }
 }
 
-// A collection of predicates for a given scope.
 pub type Predicates<'db> = FrozenIndexVec<ScopedPredicateId, Predicate<'db>>;
 
 #[derive(Debug, Default)]
@@ -117,7 +115,6 @@ pub struct CallableAndCallExpr<'db> {
     pub is_await: bool,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for CallableAndCallExpr<'_> {}
 
 /// A call whose completion determines whether an expression statement can continue.
@@ -322,7 +319,6 @@ pub struct PatternPredicate<'db> {
     pub previous_predicate: Option<Box<PatternPredicate<'db>>>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for PatternPredicate<'_> {}
 
 impl<'db> PatternPredicate<'db> {
@@ -404,12 +400,10 @@ pub struct StarImportPlaceholderPredicate<'db> {
     pub referenced_file: ProgramFile<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for StarImportPlaceholderPredicate<'_> {}
 
 impl<'db> StarImportPlaceholderPredicate<'db> {
     pub fn scope(self, db: &'db dyn Db) -> ScopeId<'db> {
-        // See doc-comment above [`StarImportPlaceholderPredicate::symbol_id`]:
         // valid `*`-import definitions can only take place in the global scope.
         global_scope(db, self.importing_file(db))
     }

@@ -525,7 +525,6 @@ impl CommentNodeFilter {
     }
 
     fn position(&self, node: AnyNodeRef<'_>) -> (usize, u64) {
-        // Drop the low bits because AST node addresses are typically aligned.
         let index = node.as_ptr().as_ptr().addr() >> 3;
         ((index / 64) % self.0.len(), 1 << (index % 64))
     }
@@ -585,7 +584,6 @@ mod tests {
         let test_case = CommentsTestCase::from_code("pass");
         let node = test_case.parsed.syntax();
 
-        // Force a collision independently of where the allocator put the node.
         let mut bloom_filter = CommentNodeFilter::default();
         bloom_filter.0.fill(u64::MAX);
         let comments = Comments {
@@ -841,7 +839,6 @@ print("Next statement");
         assert_debug_snapshot!(comments.debug(test_case.source_code));
     }
 
-    // Issue: Match cases
     #[test]
     fn match_cases() {
         let source = r#"def make_point_3d(pt):
@@ -889,7 +886,6 @@ x
         assert_debug_snapshot!(comments.debug(test_case.source_code));
     }
 
-    // Comment should be attached to the statement
     #[test]
     fn trailing_most_outer() {
         let source = r"

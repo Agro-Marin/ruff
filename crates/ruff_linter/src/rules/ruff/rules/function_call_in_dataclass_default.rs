@@ -136,8 +136,6 @@ pub(crate) fn function_call_in_dataclass_default(
 
         let is_field = is_dataclass_field(func, checker.semantic(), dataclass_kind);
 
-        // Non-explicit fields in an `attrs` dataclass
-        // with `auto_attribs=False` are class variables.
         if matches!(attrs_auto_attribs, Some(AttrsAutoAttribs::False)) && !is_field {
             continue;
         }

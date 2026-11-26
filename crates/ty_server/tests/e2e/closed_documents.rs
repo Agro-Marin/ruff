@@ -20,7 +20,6 @@ def answer() -> int:
 
 answer()
 ";
-    // No workspace folders: the server uses its current directory.
     let paths = [
         "main.py",
         "stub.pyi",
@@ -39,7 +38,6 @@ exclude = ["excluded"]
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Test that we support requests against every type of file on disk.
     for path in paths {
         let uri = server.file_uri(path);
         assert_eq!(symbols(&mut server, uri), ["answer"]);
@@ -47,8 +45,6 @@ exclude = ["excluded"]
 
     let uri = server.file_uri("main.py");
 
-    // Test a variety of request types that exercise different aspects of the language server
-    // (but, for efficiency, only do this part on a single file).
     assert!(
         server
             .hover_request("main.py", Position::new(3, 2))
@@ -79,12 +75,6 @@ exclude = ["excluded"]
 
 #[test]
 fn opening_extensionless_script_enables_inline_settings() -> Result<()> {
-    // The workspace and this extensionless script configure different import search paths, each
-    // containing a `dependency` module. While closed, the script isn't indexed as a project file,
-    // so its inline settings are ignored and hovering over `value` shows `Literal["workspace"]`.
-    // Opening the same contents as Python enables the inline settings, changing the hover to
-    // `Literal["script"]`. We accept different results for identical contents before and after
-    // opening because requests for closed files are best-effort.
 
     let path = SystemPath::new("src/script");
     let source = r#"# /// script
@@ -135,7 +125,6 @@ value
         .wait_until_workspaces_are_initialized();
     assert_hover(&mut server, path, Position::new(1, 0), "Literal[\"disk\"]");
 
-    // Opening the file must replace the cached disk contents with unsaved editor contents.
     let unsaved = "\
 value = 'unsaved'
 value
@@ -147,11 +136,9 @@ value
         Position::new(1, 0),
         "Literal[\"unsaved\"]",
     );
-    // Closing without saving must restore the disk contents.
     server.close_text_document(path);
     assert_hover(&mut server, path, Position::new(1, 0), "Literal[\"disk\"]");
 
-    // While the file is closed, filesystem notifications must refresh the cached contents.
     let edited = "\
 value = 'edited'
 value
@@ -192,7 +179,6 @@ value
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Neither project contains the file; the first workspace by path supplies its environment.
     assert_hover(&mut server, path, Position::new(1, 0), "Literal[\"a\"]");
 
     Ok(())
@@ -236,7 +222,6 @@ fn server_returns_no_closed_file_diagnostics_when_disabled() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Disabling diagnostics also suppresses results for explicitly requested closed files.
     assert_eq!(document_diagnostics(&mut server, "src/main.py"), []);
 
     Ok(())
@@ -253,7 +238,6 @@ fn server_returns_no_closed_file_diagnostics_in_open_files_mode() -> Result<()> 
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // An explicit request must not make a closed file count as open.
     assert_eq!(document_diagnostics(&mut server, "src/main.py"), []);
 
     Ok(())
@@ -286,19 +270,15 @@ extra-paths = ["../deps"]
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Workspace mode checks included files even if the client has never opened them.
     assert_snapshot!(
         condensed_document_diagnostic_snapshot(server.document_diagnostic_request("src/main.py", None)),
         @"1:0..1:14[ERROR]: Name `undefined_name` used when not defined"
     );
 
-    // Explicit requests still respect exclusions from type checking.
     assert_eq!(document_diagnostics(&mut server, "src/excluded.py"), []);
 
-    // Import search paths allow analysis of external files without enabling their diagnostics.
     assert_eq!(document_diagnostics(&mut server, "deps/library.py"), []);
 
-    // Missing files produce empty reports rather than request errors.
     assert_eq!(document_diagnostics(&mut server, "src/missing.py"), []);
 
     Ok(())
@@ -315,7 +295,6 @@ fn server_rejects_unsupported_targets() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Closed notebooks lack the cell URIs and position mappings supplied by the client.
     let uri = server.file_uri("src/notebook.ipynb");
     let id = server.send_request::<DocumentSymbolRequest>(symbol_params(uri.clone()));
     let response = server.try_await_response::<DocumentSymbolRequest>(&id, None);
@@ -328,7 +307,6 @@ fn server_rejects_unsupported_targets() -> Result<()> {
         format!("Document {uri} is neither open nor a supported closed file")
     );
 
-    // An unopened virtual document has neither disk contents nor client-provided contents.
     let uri = Uri::parse("untitled:unknown")?;
     let id = server.send_request::<DocumentSymbolRequest>(symbol_params(uri.clone()));
     let response = server.try_await_response::<DocumentSymbolRequest>(&id, None);

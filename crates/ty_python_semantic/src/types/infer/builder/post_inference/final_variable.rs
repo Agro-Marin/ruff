@@ -12,13 +12,10 @@ pub(crate) fn check_final_without_value<'db>(
     context: &InferContext<'db, '_>,
     index: &SemanticIndex<'db>,
 ) {
-    // In stub files, bare declarations without values are normal.
     if context.in_stub() {
         return;
     }
 
-    // Class body scopes are handled separately in check_class_final_without_value,
-    // which has access to the class literal to handle special cases (e.g. dataclasses).
     let db = context.db();
     let file_scope_id = context.scope().file_scope_id(db);
     if index.scope(file_scope_id).kind().is_class() {
@@ -38,7 +35,6 @@ pub(crate) fn check_final_without_value<'db>(
             continue;
         }
 
-        // Check if the symbol has any bindings in the current scope.
         let bindings = use_def.end_of_scope_symbol_bindings(symbol_id);
         let binding_place = place_from_bindings(db, env, bindings);
 

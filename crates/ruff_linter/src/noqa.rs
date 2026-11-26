@@ -305,7 +305,6 @@ impl<'a> FileNoqaDirectives<'a> {
                                 .iter()
                                 .filter_map(|code| {
                                     let code = code.as_str();
-                                    // Ignore externally-defined rules.
                                     if external.iter().any(|external| code.starts_with(external)) {
                                         return None;
                                     }
@@ -439,11 +438,8 @@ impl<'a> NoqaLexer<'a> {
 
     fn lex_inline_noqa(mut self) -> Result<Option<NoqaLexerOutput<'a>>, LexicalError> {
         while !self.cursor.is_eof() {
-            // Skip over any leading content.
             self.cursor.eat_while(|c| c != '#');
 
-            // This updates the offset and line length in the case of
-            // multiple comments in a range, e.g.
             // `# First # Second # noqa`
             self.offset += self.cursor.token_len();
             self.line_length -= self.cursor.token_len();
@@ -469,30 +465,20 @@ impl<'a> NoqaLexer<'a> {
 
     fn lex_file_exemption(mut self) -> Result<Option<NoqaLexerOutput<'a>>, LexicalError> {
         while !self.cursor.is_eof() {
-            // Skip over any leading content
             self.cursor.eat_while(|c| c != '#');
 
-            // This updates the offset and line length in the case of
-            // multiple comments in a range, e.g.
             // # First # Second # noqa
             self.offset += self.cursor.token_len();
             self.line_length -= self.cursor.token_len();
             self.cursor.start_token();
 
-            // The remaining logic implements a simple regex
 
-            // `#\s*(?:ruff|flake8)\s*:\s*(?i)noqa`
-            //  ^
             if !self.cursor.eat_char('#') {
                 continue;
             }
 
-            // `#\s*(?:ruff|flake8)\s*:\s*(?i)noqa`
-            //   ^^^
             self.eat_whitespace();
 
-            // `#\s*(?:ruff|flake8)\s*:\s*(?i)noqa`
-            //       ^^^^^^^^^^^^^
             if self.cursor.as_str().starts_with("ruff") {
                 self.cursor.skip_bytes("ruff".len());
             } else if self.cursor.as_str().starts_with("flake8") {
@@ -501,22 +487,14 @@ impl<'a> NoqaLexer<'a> {
                 continue;
             }
 
-            // `#\s*(?:ruff|flake8)\s*:\s*(?i)noqa`
-            //                     ^^^
             self.eat_whitespace();
 
-            // `#\s*(?:ruff|flake8)\s*:\s*(?i)noqa`
-            //                        ^
             if !self.cursor.eat_char(':') {
                 continue;
             }
 
-            // `#\s*(?:ruff|flake8)\s*:\s*(?i)noqa`
-            //                         ^^^
             self.eat_whitespace();
 
-            // `#\s*(?:ruff|flake8)\s*:\s*(?i)noqa`
-            //                             ^^^^^^^
             if !is_noqa_uncased(self.cursor.as_str()) {
                 continue;
             }
@@ -532,7 +510,6 @@ impl<'a> NoqaLexer<'a> {
         let range = TextRange::at(self.offset, self.position());
 
         match self.cursor.bump() {
-            // End of comment
             // Ex) # noqa# A comment
             None | Some('#') => {
                 return Ok(NoqaLexerOutput {
@@ -556,8 +533,6 @@ impl<'a> NoqaLexer<'a> {
                     }
                 }
             }
-            // Ex) #noqaA comment
-            // Ex) #noqaF401
             _ => {
                 return Err(LexicalError::InvalidSuffix);
             }
@@ -589,7 +564,6 @@ impl<'a> NoqaLexer<'a> {
         self.eat_whitespace();
 
         // Ex) # noqa: F401,    ,F841
-        //                  ^^^^
         if self.cursor.first() == ',' {
             self.warnings.push(LexicalWarning::MissingItem(
                 self.token_range().add(self.offset),
@@ -599,23 +573,16 @@ impl<'a> NoqaLexer<'a> {
         }
 
         let before_code = self.cursor.as_str();
-        // Reset start of token so it does not include whitespace
         self.cursor.start_token();
         match self.cursor.bump() {
             // Ex) # noqa: F401
-            //             ^
             Some(c) if c.is_ascii_uppercase() => {
                 self.cursor.eat_while(|chr| chr.is_ascii_uppercase());
                 if !self.cursor.eat_if(|c| c.is_ascii_digit()) {
-                    // Fail hard if we're already attempting
-                    // to lex squashed codes, e.g. `F401Fabc`
                     if self.missing_delimiter {
                         return Err(LexicalError::InvalidCodeSuffix);
                     }
-                    // Otherwise we've reached the first invalid code,
-                    // so it could be a comment and we just stop parsing.
                     // Ex) #noqa: F401 A comment
-                    //       we're here^
                     self.cursor.skip_bytes(self.cursor.as_str().len());
                     return Ok(());
                 }
@@ -635,14 +602,9 @@ impl<'a> NoqaLexer<'a> {
                         false
                     }
 
-                    // Whitespace is an allowed delimiter or the end of the `noqa`.
                     c if c.is_whitespace() => false,
 
                     // e.g. #noqa:F401F842
-                    //                ^
-                    // Push a warning and update the `missing_delimiter`
-                    // state but don't consume the character since it's
-                    // part of the next code.
                     c if c.is_ascii_uppercase() => {
                         self.warnings
                             .push(LexicalWarning::MissingDelimiter(TextRange::empty(
@@ -650,20 +612,13 @@ impl<'a> NoqaLexer<'a> {
                             )));
                         true
                     }
-                    // Start of a new comment
                     // e.g. #noqa: F401#A comment
-                    //                 ^
                     '#' => false,
                     _ => return Err(LexicalError::InvalidCodeSuffix),
                 };
             }
             Some(_) => {
-                // The first time we hit an evidently invalid code,
-                // it's probably a trailing comment. So stop lexing,
-                // but don't push an error.
-                // Ex)
                 // # noqa: F401 we import this for a reason
-                //              ^----- stop lexing but no error
                 self.cursor.skip_bytes(self.cursor.as_str().len());
             }
             None => {}
@@ -828,7 +783,6 @@ fn add_suppression_inner(
 ) -> (usize, String) {
     let mut count = 0;
 
-    // Whether the file is exempted from all checks.
     let directives = FileNoqaDirectives::extract(locator, comment_ranges, external, path);
     let exemption = FileExemption::from(&directives);
 
@@ -965,10 +919,8 @@ fn find_suppression_comments<'a>(
     suppression_kind: SuppressionKind,
     preview: PreviewMode,
 ) -> Vec<Option<SuppressionComment<'a>>> {
-    // List of suppression comments, ordered to match up with `messages`
     let mut comments_by_line: Vec<Option<SuppressionComment<'a>>> = vec![];
 
-    // Mark any non-ignored diagnostics.
     for message in diagnostics {
         let Some(name) = message.id().as_lint() else {
             comments_by_line.push(None);
@@ -980,13 +932,11 @@ fn find_suppression_comments<'a>(
             continue;
         }
 
-        // Apply ranged suppressions next
         if suppressions.check_diagnostic(message) {
             comments_by_line.push(None);
             continue;
         }
 
-        // Is the violation ignored by a `noqa` directive on the parent line?
         if let Some(parent) = message.parent() {
             if let Some(directive_line) =
                 directives.find_line_with_directive(noqa_line_for.resolve(parent))
@@ -1013,7 +963,6 @@ fn find_suppression_comments<'a>(
             .range()
             .map_or_default(|range| noqa_line_for.resolve(range.start()));
 
-        // Or ignored by a `noqa` directive on the diagnostic's line itself?
         let existing_noqa =
             if let Some(directive_line) = directives.find_line_with_directive(noqa_offset) {
                 match &directive_line.directive {
@@ -1036,7 +985,6 @@ fn find_suppression_comments<'a>(
                 None
             };
 
-        // Reuse an existing directive that matches the requested suppression style.
         let directive = match suppression_kind {
             SuppressionKind::Noqa => existing_noqa,
             SuppressionKind::Ignore => suppressions
@@ -1135,18 +1083,14 @@ fn generate_suppression_edit<'a>(
     let blank_line;
 
     match (directive, suppression_kind) {
-        // Add additional rule codes to an existing `noqa` comment.
         (Some(ExistingDirective::Noqa(codes)), SuppressionKind::Noqa) => {
             (edit_range, blank_line) = suppression_edit_range(locator, line_range, codes.start());
             existing_codes.extend(codes.iter().map(Code::as_str));
         }
-        // Add additional rule names to an existing `ruff: ignore` comment.
         (Some(ExistingDirective::Ignore(comment)), SuppressionKind::Ignore) => {
             (edit_range, blank_line) = suppression_edit_range(locator, line_range, comment.start());
             existing_codes.extend(comment.codes_as_str(locator.contents()));
         }
-        // Add a new comment when one doesn't exist, or the "wrong" kind is present. In either case,
-        // append a new comment.
         (None | Some(_), _) => {
             let trimmed_line = locator.slice(line_range).trim_end();
             blank_line = trimmed_line.trim_whitespace_start().is_empty();
@@ -1288,7 +1232,6 @@ impl<'a> NoqaDirectives<'a> {
                 } else if directive.range.start() > offset {
                     std::cmp::Ordering::Greater
                 }
-                // At this point, end >= offset, start <= offset
                 else if !directive.includes_end && directive.range.end() == offset {
                     std::cmp::Ordering::Less
                 } else {
@@ -1342,16 +1285,10 @@ impl NoqaMapping {
 
     pub(crate) fn push_mapping(&mut self, range: TextRange) {
         if let Some(last_range) = self.ranges.last_mut() {
-            // Strictly sorted insertion
             if last_range.end() < range.start() {
-                // OK
             } else if range.end() < last_range.start() {
-                // Incoming range is strictly before the last range which violates
-                // the function's contract.
                 panic!("Ranges must be inserted in sorted order")
             } else {
-                // Here, it's guaranteed that `last_range` and `range` overlap
-                // in some way. We want to merge them into a single range.
                 *last_range = last_range.cover(range);
                 return;
             }
@@ -2640,7 +2577,6 @@ mod tests {
 
     #[test]
     fn flake8_exemption_codes() {
-        // Note: Flake8 doesn't support this; it's treated as a blanket exemption.
         let source = "# flake8: noqa: F401, F841";
         let exemption = lex_file_exemption(TextRange::up_to(source.text_len()), source);
         assert_debug_snapshot!(exemption, @r#"

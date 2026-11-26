@@ -134,7 +134,6 @@ impl Violation for InvalidFirstArgumentNameForMethod {
 #[violation_metadata(stable_since = "v0.0.77", category = Category::Pedantic)]
 pub(crate) struct InvalidFirstArgumentNameForClassMethod {
     argument_name: String,
-    // Whether the method is `__new__`
     is_new: bool,
 }
 
@@ -142,8 +141,6 @@ impl Violation for InvalidFirstArgumentNameForClassMethod {
     const FIX_AVAILABILITY: crate::FixAvailability = crate::FixAvailability::Sometimes;
 
     #[derive_message_formats]
-    // The first string below is what shows up in the documentation
-    // in the rule table, and it is the more common case.
     fn message(&self) -> String {
         if !self.is_new {
             "First argument of a class method should be named `cls`".to_string()
@@ -240,7 +237,6 @@ pub(crate) fn invalid_first_argument_name(checker: &Checker, scope: &Scope) {
             IsMetaclass::Maybe => return,
         },
         function_type::FunctionType::ClassMethod => FunctionType::ClassMethod,
-        // This violation is caught by `PLW0211` instead
         function_type::FunctionType::NewMethod => {
             return;
         }
@@ -295,7 +291,6 @@ fn rename_parameter(
     function_type: FunctionType,
     stylist: &Stylist,
 ) -> Result<Option<Fix>> {
-    // Don't fix if another parameter has the valid name.
     if parameters
         .iter()
         .skip(1)
@@ -308,7 +303,6 @@ fn rename_parameter(
         .map(|binding_id| semantic.binding(binding_id))
         .unwrap();
 
-    // Don't provide autofix if `self` or `cls` is already defined in the scope.
     if ShadowedKind::new(binding, function_type.valid_first_argument_name(), checker).shadows_any()
     {
         return Ok(None);

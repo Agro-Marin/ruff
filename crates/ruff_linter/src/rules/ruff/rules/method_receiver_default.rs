@@ -90,12 +90,7 @@ pub(crate) fn method_receiver_default(checker: &Checker, scope: &Scope) {
         return;
     };
 
-    // A function with no decorators is always a method (this also covers an implicit
-    // classmethod like `__init_subclass__`), so its first parameter is always a receiver. A
-    // function with exactly one decorator has a receiver only if that decorator is the one that
     // makes it a `@classmethod`; any other single decorator (e.g. `@staticmethod`, `@override`,
-    // a custom wrapper) or more than one decorator could change how the first parameter is
-    // bound, so we bail out rather than risk a false positive.
     let has_receiver = match decorator_list.as_slice() {
         [] => true,
         [decorator] => is_class_method(
@@ -110,7 +105,6 @@ pub(crate) fn method_receiver_default(checker: &Checker, scope: &Scope) {
         return;
     }
 
-    // Get the first parameter (the receiver)
     let Some(first_param) = parameters
         .posonlyargs
         .first()
@@ -119,13 +113,10 @@ pub(crate) fn method_receiver_default(checker: &Checker, scope: &Scope) {
         return;
     };
 
-    // Check if the receiver parameter has a default value
     let Some(default_expr) = &first_param.default else {
         return;
     };
 
-    // Account for a parenthesized default (e.g. `self=(None)`) so the fix removes the
-    // parentheses along with the default value.
     let default_range = parenthesized_range(
         default_expr.as_ref().into(),
         first_param.into(),

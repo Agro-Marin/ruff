@@ -499,15 +499,11 @@ pub(crate) fn infer_complete_scope_types<'db>(
     db: &'db dyn Db,
     scope: ScopeId<'db>,
 ) -> &'db ScopeInference<'db> {
-    // Scopes that may require type context are inferred during the inference of
-    // their outer scope.
     if scope.accepts_type_context(db) {
         let program_file = scope.program_file(db);
         let index = semantic_index(db, program_file);
 
         if let Some(parent_scope) = index.parent_scope_id(scope.file_scope_id(db)) {
-            // Note that nested lambdas or comprehensions may require recursing until we reach
-            // an outer scope that is independent of any type context.
             return infer_complete_scope_types(db, parent_scope.to_scope_id(db, program_file));
         }
     }
@@ -553,8 +549,6 @@ pub(crate) fn infer_scope_types_impl<'db>(
 
     let module = parsed_module(db, python_file).load(db);
 
-    // Using the index here is fine because the code below depends on the AST anyway.
-    // The isolation of the query is by the return inferred types.
     let index = semantic_index(db, program_file);
 
     let env = ProgramEnvironment::from_file(program_file);
@@ -604,8 +598,6 @@ pub(crate) fn infer_predicate_truthiness<'db>(
     returns(copy),
     cycle_initial = |_, _, _| Truthiness::Ambiguous,
     cycle_fn = |_, cycle: &salsa::Cycle, previous: &Truthiness, current: Truthiness, _| {
-        // A predicate can guard one of its own inputs. Keep both outcomes when iterations
-        // disagree, but give the initial ambiguous result a chance to resolve first.
         if cycle.iteration() > crate::TAINTED_CYCLES {
             previous.union(current)
         } else {
@@ -731,7 +723,6 @@ pub(crate) fn infer_expression_type<'db>(
 fn infer_expression_type_impl<'db>(db: &'db dyn Db, input: InferExpression<'db>) -> Type<'db> {
     let (expression, _) = input.into_inner(db);
 
-    // It's okay to call the "same file" version here because we're inside a salsa query.
     let inference = infer_expression_types_impl(db, input);
 
     inference.expression_type(expression.node_ref(db))
@@ -981,7 +972,6 @@ pub(crate) fn nearest_enclosing_function<'db>(
 /// A region within which we can infer types.
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum InferenceRegion<'db> {
-    // infer types for a [`Statement`].
     Statement(StatementInner<'db>),
     /// infer types for a standalone [`Expression`]
     Expression(Expression<'db>, TypeContext<'db>),
@@ -1610,8 +1600,6 @@ impl<'db> DefinitionInference<'db> {
         let env = ProgramEnvironment::from_definition(definition);
         let mut types = DefinitionTypes::Empty;
 
-        // Eagerly store more precise types for collection literals to avoid an extra
-        // cycle iteration, i.e., by inferring `list[Divergent]` instead of `Divergent`.
         if let DefinitionKind::Assignment(assignment) = definition.kind(db) {
             let program_file = definition.program_file(db);
             let python_file = program_file.python_file(db);
@@ -1650,8 +1638,6 @@ impl<'db> DefinitionInference<'db> {
                             .is_defined_and(|binding| binding.kind(db).is_loop_header())
                     })
             {
-                // Loop-carried assignments need this annotation as context before validating
-                // the declaration can infer their binding types.
                 return TypeInferenceBuilder::new(
                     db,
                     &env,

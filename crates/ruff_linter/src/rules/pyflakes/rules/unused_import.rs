@@ -326,7 +326,6 @@ fn find_dunder_all_exprs<'a>(semantic: &'a SemanticModel) -> Vec<&'a ast::Expr> 
 /// ¬__init__.py ∧ 3rdpty → safe,   remove
 ///
 pub(crate) fn unused_import(checker: &Checker, scope: &Scope) {
-    // Collect all unused imports by statement.
     let mut unused: BTreeMap<(NodeId, Exceptions), Vec<ImportBinding>> = BTreeMap::default();
     let mut ignored: BTreeMap<(NodeId, Exceptions), Vec<ImportBinding>> = BTreeMap::default();
 
@@ -341,8 +340,6 @@ pub(crate) fn unused_import(checker: &Checker, scope: &Scope) {
 
         let name = binding.name(checker.source());
 
-        // If an import is marked as required, avoid treating it as unused, regardless of whether
-        // it was _actually_ used.
         if checker
             .settings()
             .isort
@@ -353,7 +350,6 @@ pub(crate) fn unused_import(checker: &Checker, scope: &Scope) {
             continue;
         }
 
-        // If an import was marked as allowed, avoid treating it as unused.
         if checker
             .settings()
             .pyflakes
@@ -397,14 +393,11 @@ pub(crate) fn unused_import(checker: &Checker, scope: &Scope) {
     let preview_mode = is_dunder_init_fix_unused_import_enabled(checker.settings());
     let dunder_all_exprs = find_dunder_all_exprs(checker.semantic());
 
-    // Generate a diagnostic for every import, but share fixes across all imports within the same
-    // statement (excluding those that are ignored).
     for ((import_statement, exceptions), bindings) in unused {
         let in_except_handler =
             exceptions.intersects(Exceptions::MODULE_NOT_FOUND_ERROR | Exceptions::IMPORT_ERROR);
         let multiple = bindings.len() > 1;
 
-        // pair each binding with context; divide them by how we want to fix them
         let (to_reexport, to_remove): (Vec<_>, Vec<_>) = bindings
             .into_iter()
             .map(|binding| {
@@ -414,18 +407,6 @@ pub(crate) fn unused_import(checker: &Checker, scope: &Scope) {
                     && binding.scope.is_global()
                     && is_first_party(&binding.import, checker)
                     && (
-                        // In the situation where we have
-                        // ```
-                        // import a.b # <-- at this binding
-                        // import a.c
-                        //
-                        // __all__ = ["a"]
-                        // ```
-                        // we should not recommend that we re-export the
-                        // symbol `a` or add it to `__all__`.
-                        //
-                        // So we look up the name `a` and see if it has
-                        // a reference in `__all__`.
                         !is_refined_submodule_import_match_enabled(checker.settings())
                             || !symbol_used_in_dunder_all(checker.semantic(), &binding)
                     )
@@ -441,7 +422,6 @@ pub(crate) fn unused_import(checker: &Checker, scope: &Scope) {
             })
             .partition(|(_, context)| context.is_dunder_init_first_party() && preview_mode);
 
-        // generate fixes that are shared across bindings in the statement
         let (fix_remove, fix_reexport) =
             if (!in_init || fix_init || preview_mode) && !in_except_handler {
                 (
@@ -492,8 +472,6 @@ pub(crate) fn unused_import(checker: &Checker, scope: &Scope) {
         }
     }
 
-    // Separately, generate a diagnostic for every _ignored_ import, to ensure that the
-    // suppression comments aren't marked as unused.
     for binding in ignored.into_values().flatten() {
         let mut diagnostic = checker.report_diagnostic(
             UnusedImport {
@@ -587,7 +565,6 @@ fn fix_by_removing_imports<'a>(
         checker.indexer(),
     )?;
 
-    // It's unsafe to remove things from `__init__.py` because it can break public interfaces.
     let applicability = if in_init {
         Applicability::Unsafe
     } else {
@@ -631,7 +608,6 @@ fn fix_by_reexporting<'a>(
         _ => bail!("Cannot offer a fix when there are multiple __all__ definitions"),
     };
 
-    // Only emit a fix if there are edits.
     let mut tail = edits.into_iter();
     let head = tail.next().ok_or(anyhow!("No edits to make"))?;
 
@@ -675,13 +651,9 @@ fn unused_imports_in_scope<'a, 'b>(
         .flat_map(|(id, bdg)| {
             if is_refined_submodule_import_match_enabled(settings)
                 && (
-                    // No need to apply refined logic if there is only a single binding
                     scope.shadowed_bindings(id).nth(1).is_some()
                 )
                 && (
-                    // Only apply the new logic in certain situations to avoid
-                    // complexity, false positives, and intersection with
-                    // `redefined-while-unused` (`F811`).
                     has_simple_shadowed_bindings(scope, id, semantic)
                 )
             {
@@ -748,7 +720,6 @@ fn unused_imports_from_binding<'a, 'b>(
 
     let binding = semantic.binding(id);
 
-    // ensure we only do this once
     let mut marked_dunder_all = false;
 
     for ref_id in binding.references() {
@@ -767,8 +738,6 @@ fn unused_imports_from_binding<'a, 'b>(
             continue;
         }
         let Some(expr_id) = resolved_reference.expression_id() else {
-            // If there is some other kind of reference, abandon
-            // the refined approach for the usual one
             return vec![binding];
         };
         let Some(prototype) = expand_to_qualified_name_attribute(semantic, expr_id) else {
@@ -857,19 +826,6 @@ fn mark_uses_of_qualified_name(marked: &mut MarkedBindings, prototype: &Qualifie
 
     let best_name = best_import.qualified_name();
 
-    // We loop through all bindings in case there are repeated instances
-    // of the `best_name`. For example, if we have
-    //
-    // ```python
-    // import a
-    // import a
-    //
-    // a.foo()
-    // ```
-    //
-    // then we want to mark both import statements as used. It
-    // is the job of `redefined-while-unused` (`F811`) to catch
-    // the repeated binding in this case.
     for (binding, is_used) in marked.iter_mut() {
         if *is_used {
             continue;
@@ -930,40 +886,9 @@ fn has_simple_shadowed_bindings(scope: &Scope, id: BindingId, semantic: &Semanti
 
     scope.shadowed_bindings(id).enumerate().all(|(i, shadow)| {
         let shadowed_binding = semantic.binding(shadow);
-        // Bail if one of the shadowed bindings is
-        // used before the last live binding. This is
-        // to avoid situations like this:
-        //
-        // ```
-        // import a
-        // a.b
-        // import a.b
-        // ```
         if i > 0 && shadowed_binding.is_used() {
             return false;
         }
-        // We want to allow a situation like this:
-        //
-        // ```python
-        // import a.b
-        // if TYPE_CHECKING:
-        //     import a.b.c
-        // ```
-        // but bail in a situation like this:
-        //
-        // ```python
-        // try:
-        //     import a.b
-        // except ImportError:
-        //     import argparse
-        //     import a
-        //     a.b = argparse.Namespace()
-        // ```
-        //
-        // So we require that all the shadowed bindings dominate the
-        // last live binding for the import. That is: if the last live
-        // binding is executed it should imply that all the shadowed
-        // bindings were executed as well.
         if shadowed_binding
             .source
             .is_none_or(|node_id| !semantic.dominates(node_id, binding_node))

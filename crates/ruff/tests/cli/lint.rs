@@ -221,7 +221,6 @@ if __name__ == "__main__":
 "#,
     )?;
 
-    // Excluded file but passed to the CLI directly, should be linted
     case.write_file(
         "test.py",
         r#"def say_hy(name: str):
@@ -243,9 +242,7 @@ OTHER = "OTHER"
     assert_cmd_snapshot!(
         case.check_command()
             .args(["--config", "ruff.toml"])
-            // Explicitly pass test.py, should be linted regardless of it being excluded by lint.exclude
             .arg("test.py")
-            // Lint all other files in the directory, should respect the `exclude` and `lint.exclude` options
             .arg("."), @"
     success: false
     exit_code: 1
@@ -283,7 +280,6 @@ exclude = ["main.py"]
         case.check_command()
             .args(["--config", "ruff.toml"])
             .arg(".")
-            // Explicitly pass main.py, should be linted regardless of it being excluded by lint.exclude
             .arg("main.py"),
         @"
     success: false
@@ -721,7 +717,6 @@ fn extend_banned_api_inherited() -> Result<()> {
     ----- stderr -----
     ");
 
-    // Clear inherited extensions while preserving the inherited base bans.
     fixture.write_file(
         "child/grandchild/ruff.toml",
         r#"
@@ -741,7 +736,6 @@ fn extend_banned_api_inherited() -> Result<()> {
     ----- stderr -----
     ");
 
-    // Clear inherited base bans while preserving the inherited extensions.
     fixture.write_file(
         "child/grandchild/ruff.toml",
         r#"
@@ -1491,7 +1485,7 @@ fn rule_name_selector_config_preview_enabled() -> Result<()> {
 fn valid_toml_but_nonexistent_option_provided_via_config_argument() {
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
-        .args([".", "--config", "extend-selection=['F401']"]),  // No such option as extend-selection!
+        .args([".", "--config", "extend-selection=['F401']"]),
         @"
     success: false
     exit_code: 2
@@ -1516,8 +1510,6 @@ fn valid_toml_but_nonexistent_option_provided_via_config_argument() {
 fn each_toml_option_requires_a_new_flag_1() {
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
-        // commas can't be used to delimit different config overrides;
-        // you need a new --config flag for each override
         .args([".", "--config", "extend-select=['F841'], line-length=90"]),
         @"
     success: false
@@ -1547,8 +1539,6 @@ fn each_toml_option_requires_a_new_flag_1() {
 fn each_toml_option_requires_a_new_flag_2() {
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
-        // spaces *also* can't be used to delimit different config overrides;
-        // you need a new --config flag for each override
         .args([".", "--config", "extend-select=['F841'] line-length=90"]),
         @"
     success: false
@@ -1576,7 +1566,6 @@ fn each_toml_option_requires_a_new_flag_2() {
 
 #[test]
 fn value_given_to_table_key_is_not_inline_table_1() {
-    // https://github.com/astral-sh/ruff/issues/13995
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
         .args([".", "--config", r#"lint.flake8-pytest-style="csv""#]),
@@ -1613,7 +1602,6 @@ fn value_given_to_table_key_is_not_inline_table_1() {
 
 #[test]
 fn value_given_to_table_key_is_not_inline_table_2() {
-    // https://github.com/astral-sh/ruff/issues/13995
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
         .args([".", "--config", r#"lint=123"#]),
@@ -1676,9 +1664,6 @@ select=["E501"]
     let test_code = "x = 'longer_than_90_charactersssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss'";
     assert_cmd_snapshot!(fixture
         .check_command()
-        // The --line-length flag takes priority over both the config file
-        // and the `--config="line-length=110"` flag,
-        // despite them both being specified after this flag on the command line:
         .args(["--line-length", "90"])
         .arg("--config")
         .arg("ruff.toml")
@@ -1916,8 +1901,6 @@ import os
 #[test]
 fn required_version_bound_mismatch() -> Result<()> {
     let version = env!("CARGO_PKG_VERSION");
-    // A local version (such as `0.17.4+marin.1`) cannot follow `>` (PEP 440): bound the
-    // release it was built from, which the running version does not exceed.
     let release = version
         .split_once('+')
         .map_or(version, |(release, _)| release);
@@ -1960,8 +1943,6 @@ import os
 #[test]
 fn required_version_precedes_rule_validation() -> Result<()> {
     let version = env!("CARGO_PKG_VERSION");
-    // A local version (such as `0.17.4+marin.1`) cannot follow `>` (PEP 440): bound the
-    // release it was built from, which the running version does not exceed.
     let release = version
         .split_once('+')
         .map_or(version, |(release, _)| release);
@@ -3743,7 +3724,6 @@ fn flake8_import_convention_unused_aliased_import_no_conflict() {
     );
 }
 
-// https://github.com/astral-sh/ruff/issues/20891
 #[test]
 fn required_import_set_conflicts_with_pyi025() {
     assert_cmd_snapshot!(
@@ -3757,7 +3737,6 @@ fn required_import_set_conflicts_with_pyi025() {
     );
 }
 
-// https://github.com/astral-sh/ruff/issues/20891
 #[test]
 fn required_import_set_aliased_as_abstract_set_no_conflict() -> Result<()> {
     let test = CliTest::new()?;
@@ -3774,7 +3753,6 @@ fn required_import_set_aliased_as_abstract_set_no_conflict() -> Result<()> {
     Ok(())
 }
 
-// https://github.com/astral-sh/ruff/issues/20891
 #[test]
 fn required_import_set_without_pyi025_no_conflict() -> Result<()> {
     let test = CliTest::new()?;
@@ -3791,7 +3769,6 @@ fn required_import_set_without_pyi025_no_conflict() -> Result<()> {
     Ok(())
 }
 
-// https://github.com/astral-sh/ruff/issues/19842
 #[test]
 fn pyupgrade_up026_respects_isort_required_import_fix() {
     assert_cmd_snapshot!(
@@ -3818,7 +3795,6 @@ fn pyupgrade_up026_respects_isort_required_import_fix() {
     );
 }
 
-// https://github.com/astral-sh/ruff/issues/19842
 #[test]
 fn pyupgrade_up026_respects_isort_required_import_from_fix() {
     assert_cmd_snapshot!(
@@ -3844,7 +3820,6 @@ fn pyupgrade_up026_respects_isort_required_import_from_fix() {
     );
 }
 
-// See: https://github.com/astral-sh/ruff/issues/16177
 #[test]
 fn flake8_pyi_redundant_none_literal() {
     let snippet = r#"
@@ -4041,7 +4016,6 @@ class Foo[_T, __T]:
 /// └── urlparse
 ///     └── __init__.py
 fn create_a005_module_structure(fixture: &CliTest) -> Result<()> {
-    // Create module structure
     fixture.write_file("abc/__init__.py", "")?;
     fixture.write_file("collections/__init__.py", "")?;
     fixture.write_file("collections/abc/__init__.py", "")?;
@@ -4051,7 +4025,6 @@ fn create_a005_module_structure(fixture: &CliTest) -> Result<()> {
     fixture.write_file("foobar/collections/__init__.py", "")?;
     fixture.write_file("foobar/collections/abc/__init__.py", "")?;
     fixture.write_file("urlparse/__init__.py", "")?;
-    // also create a ruff.toml to mark the project root
     fixture.write_file("ruff.toml", "")?;
 
     Ok(())
@@ -4137,11 +4110,10 @@ fn a005_module_shadowing_strict_default() -> Result<()> {
 /// Test that the linter respects per-file-target-version.
 #[test]
 fn per_file_target_version_linter() {
-    // without per-file-target-version, there should be one UP046 error
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
         .args(["--target-version", "py312"])
-        .args(["--select", "UP046"]) // only triggers on 3.12+
+        .args(["--select", "UP046"])
         .args(["--stdin-filename", "test.py"])
         .arg("--preview")
         .arg("-")
@@ -4165,13 +4137,11 @@ class A(Generic[T]):
     "
     );
 
-    // with per-file-target-version, there should be no errors because the new generic syntax is
-    // unavailable
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
         .args(["--target-version", "py312"])
         .args(["--config", r#"per-file-target-version = {"test.py" = "py311"}"#])
-        .args(["--select", "UP046"]) // only triggers on 3.12+
+        .args(["--select", "UP046"])
         .args(["--stdin-filename", "test.py"])
         .arg("--preview")
         .arg("-")
@@ -4196,7 +4166,6 @@ class A(Generic[T]):
 
 #[test]
 fn walrus_before_py38() {
-    // ok
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
         .args(["--stdin-filename", "test.py"])
@@ -4213,7 +4182,6 @@ fn walrus_before_py38() {
     "
     );
 
-    // not ok on 3.7 with preview
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
         .args(["--stdin-filename", "test.py"])
@@ -4234,7 +4202,6 @@ fn walrus_before_py38() {
 
 #[test]
 fn match_before_py310() {
-    // ok on 3.10
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
         .args(["--stdin-filename", "test.py"])
@@ -4257,7 +4224,6 @@ match 2:
     "
     );
 
-    // ok on 3.9 without preview
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
         .args(["--stdin-filename", "test.py"])
@@ -4281,7 +4247,6 @@ match 2:
     "
     );
 
-    // syntax error on 3.9 with preview
     assert_cmd_snapshot!(Command::new(get_cargo_bin(BIN_NAME))
         .args(STDIN_BASE_OPTIONS)
         .args(["--stdin-filename", "test.py"])
@@ -4313,11 +4278,10 @@ fn cache_syntax_errors() -> Result<()> {
     let fixture = CliTest::with_file("main.py", "match 2:\n    case 1: ...")?;
 
     let mut cmd = fixture.command();
-    // inline STDIN_BASE_OPTIONS to remove --no-cache
     cmd.args(["check", "--output-format", "concise"])
         .arg("--target-version=py39")
         .arg("--preview")
-        .arg("--quiet"); // suppress `debug build without --no-cache` warnings
+        .arg("--quiet");
 
     assert_cmd_snapshot!(
         cmd,
@@ -4331,7 +4295,6 @@ fn cache_syntax_errors() -> Result<()> {
     "
     );
 
-    // this should *not* be cached, like normal parse errors
     assert_cmd_snapshot!(
         cmd,
         @"
@@ -4351,10 +4314,6 @@ fn cache_syntax_errors() -> Result<()> {
 /// reproduction repo here: <https://github.com/lucasfijen/example_ruff_glob_bug>
 #[test]
 fn cookiecutter_globbing() -> Result<()> {
-    // This is a simplified directory structure from the repo linked above. The essence of the
-    // problem is this `{{cookiecutter.repo_name}}` directory containing a config file with a glob.
-    // The absolute path of the glob contains the glob metacharacters `{{` and `}}` even though the
-    // user's glob does not.
     let fixture = CliTest::new()?;
 
     fixture.write_file(
@@ -4362,7 +4321,6 @@ fn cookiecutter_globbing() -> Result<()> {
         r#"tool.ruff.lint.per-file-ignores = { "tests/*" = ["F811"] }"#,
     )?;
 
-    // F811 example from the docs to ensure the glob still works
     fixture.write_file(
         "{{cookiecutter.repo_name}}/tests/maintest.py",
         "import foo\nimport bar\nimport foo",
@@ -4379,7 +4337,6 @@ fn cookiecutter_globbing() -> Result<()> {
     ----- stderr -----
     ");
 
-    // after removing the config file with the ignore, F811 applies, so the glob worked above
     fs::remove_file(
         fixture
             .root()
@@ -4407,7 +4364,6 @@ fn cookiecutter_globbing() -> Result<()> {
 fn cookiecutter_globbing_no_project_root() -> Result<()> {
     let fixture = CliTest::new()?;
 
-    // Create the nested directory structure
     fs::create_dir(fixture.root().join("{{cookiecutter.repo_name}}"))?;
 
     assert_cmd_snapshot!(fixture
@@ -4435,10 +4391,9 @@ fn semantic_syntax_errors() -> Result<()> {
     let contents = "[(x := 1) for x in foo]";
 
     let mut cmd = fixture.command();
-    // inline STDIN_BASE_OPTIONS to remove --no-cache
     cmd.args(["check", "--output-format", "concise"])
         .arg("--preview")
-        .arg("--quiet"); // suppress `debug build without --no-cache` warnings
+        .arg("--quiet");
 
     assert_cmd_snapshot!(
         cmd,
@@ -4453,7 +4408,6 @@ fn semantic_syntax_errors() -> Result<()> {
     "
     );
 
-    // this should *not* be cached, like normal parse errors
     assert_cmd_snapshot!(
         cmd,
         @"
@@ -4467,7 +4421,6 @@ fn semantic_syntax_errors() -> Result<()> {
     "
     );
 
-    // ensure semantic errors are caught even without AST-based rules selected
     assert_cmd_snapshot!(
         fixture.check_command()
             .args(["--config", "lint.select = []"])
@@ -4565,7 +4518,6 @@ match 42:  # invalid-syntax
 ";
 
     let fixture = CliTest::with_settings(|_project_dir, mut settings| {
-        // JSON double escapes backslashes
         settings.add_filter(r#""[^"]+\\?/?input.py"#, r#""[TMP]/input.py"#);
 
         settings
@@ -4614,7 +4566,6 @@ match 42:  # invalid-syntax
 ";
 
     let fixture = CliTest::with_settings(|_project_dir, mut settings| {
-        // JSON double escapes backslashes
         settings.add_filter(r#""[^"]+\\?/?input.py"#, r#""[TMP]/input.py"#);
 
         settings
@@ -4673,10 +4624,6 @@ fn output_format_show_fixes(output_format: &str) -> Result<()> {
 #[test]
 fn statistics_hyperlinks() -> Result<()> {
     let fixture = CliTest::with_settings(|_project_dir, mut settings| {
-        // Spell out the hyperlink escapes to keep the snapshot readable, filtering them before
-        // the fixture rewrites the backslash in their `ESC \` terminators. The colors are absent
-        // because test builds enable `colored`'s `no-color` feature; the last filter only keeps
-        // stray escapes out of the snapshot if that ever changes.
         settings.add_filter(r"\x1b\]8;;(.+?)\x1b\\", "<link ${1}>");
         settings.add_filter(r"\x1b\]8;;\x1b\\", "</link>");
         settings.add_filter(r"\x1b", "<ESC>");
@@ -4697,8 +4644,6 @@ fn statistics_hyperlinks() -> Result<()> {
                 "always",
                 "input.py",
             ])
-            // Hyperlink support is otherwise detected from the terminal, which varies between
-            // local runs and CI.
             .env("FORCE_HYPERLINK", "1"),
         @"
     success: false
@@ -4913,21 +4858,14 @@ fn rule_panic_mixed_results_full() -> Result<()> {
 fn supported_file_extensions() -> Result<()> {
     let fixture = CliTest::new()?;
 
-    // Create files of various types
-    // text file
     fixture.write_file("src/thing.txt", "hello world\n")?;
-    // regular python
     fixture.write_file("src/thing.py", "import os\nprint('hello world')\n")?;
-    // python typestub
     fixture.write_file("src/thing.pyi", "import os\nclass foo:\n  ...\n")?;
-    // windows gui
     fixture.write_file("src/thing.pyw", "import os\nprint('hello world')\n")?;
-    // cython
     fixture.write_file(
         "src/thing.pyx",
         "import os\ncdef int add(int a, int b):\n  return a + b\n",
     )?;
-    // notebook
     fixture.write_file(
         "src/thing.ipynb",
         r#"
@@ -4993,21 +4931,14 @@ fn supported_file_extensions() -> Result<()> {
 fn supported_file_extensions_preview_enabled() -> Result<()> {
     let fixture = CliTest::new()?;
 
-    // Create files of various types
-    // text file
     fixture.write_file("src/thing.txt", "hello world\n")?;
-    // regular python
     fixture.write_file("src/thing.py", "import os\nprint('hello world')\n")?;
-    // python typestub
     fixture.write_file("src/thing.pyi", "import os\nclass foo:\n  ...\n")?;
-    // windows gui
     fixture.write_file("src/thing.pyw", "import os\nprint('hello world')\n")?;
-    // cython
     fixture.write_file(
         "src/thing.pyx",
         "import os\ncdef int add(int a, int b):\n  return a + b\n",
     )?;
-    // notebook
     fixture.write_file(
         "src/thing.ipynb",
         r#"

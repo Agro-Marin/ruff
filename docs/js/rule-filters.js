@@ -191,7 +191,6 @@
     );
 
     function updateFragmentLinks() {
-      // Material resolves fragment links before filters can change the query.
       for (const link of fragmentLinks) {
         link.search = location.search;
       }
@@ -217,7 +216,6 @@
         }
 
         const selected = formData.getAll(filter.name);
-        // An omitted parameter means All; preserve an explicit empty selection.
         if (!selected.length) {
           url.searchParams.set(filter.name, "none");
         }

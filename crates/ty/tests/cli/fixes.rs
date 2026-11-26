@@ -34,7 +34,6 @@ fn add_ignore() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // There should be no diagnostics when running ty again
     assert_cmd_snapshot!(case.command(), @"
     success: true
     exit_code: 0
@@ -243,8 +242,6 @@ fn fix_unused_ignore_after_line_continuation() -> anyhow::Result<()> {
 
 #[test]
 fn fix_unfixable() -> anyhow::Result<()> {
-    // Only the Python file with a syntax error should trigger a warning about skipped fixes.
-    // The renamed rule in `pyproject.toml` should still be reported.
     let case = CliTest::with_files([
         (
             "has_syntax_error.py",

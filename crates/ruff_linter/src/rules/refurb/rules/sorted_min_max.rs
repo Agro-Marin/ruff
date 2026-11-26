@@ -93,12 +93,10 @@ pub(crate) fn sorted_min_max(checker: &Checker, subscript: &ast::ExprSubscript) 
 
     let ast::ExprSubscript { slice, value, .. } = &subscript;
 
-    // Early return if index is not unary or a number literal.
     if !(slice.is_number_literal_expr() || slice.is_unary_op_expr()) {
         return;
     }
 
-    // Early return if the value is not a call expression.
     let Expr::Call(ast::ExprCall {
         func, arguments, ..
     }) = value.as_ref()
@@ -106,22 +104,18 @@ pub(crate) fn sorted_min_max(checker: &Checker, subscript: &ast::ExprSubscript) 
         return;
     };
 
-    // Check if the index is either 0 or -1.
     let index = match slice.as_ref() {
-        // [0]
         Expr::NumberLiteral(ast::ExprNumberLiteral {
             value: Number::Int(index),
             ..
         }) if *index == 0 => Index::First,
 
-        // [-1]
         Expr::UnaryOp(ast::ExprUnaryOp {
             op: ast::UnaryOp::USub,
             operand,
             ..
         }) => {
             match operand.as_ref() {
-                // [-1]
                 Expr::NumberLiteral(ast::ExprNumberLiteral {
                     value: Number::Int(index),
                     ..
@@ -132,12 +126,10 @@ pub(crate) fn sorted_min_max(checker: &Checker, subscript: &ast::ExprSubscript) 
         _ => return,
     };
 
-    // Check if the value is a call to `sorted()`.
     if !checker.semantic().match_builtin_expr(func, "sorted") {
         return;
     }
 
-    // Check if the call to `sorted()` has a single argument.
     let [list_expr] = arguments.args.as_ref() else {
         return;
     };
@@ -145,9 +137,7 @@ pub(crate) fn sorted_min_max(checker: &Checker, subscript: &ast::ExprSubscript) 
     let mut reverse_keyword = None;
     let mut key_keyword_expr = None;
 
-    // Check if the call to `sorted()` has the `reverse` and `key` keywords.
     for keyword in &*arguments.keywords {
-        // If the call contains `**kwargs`, return.
         let Some(arg) = keyword.arg.as_ref() else {
             return;
         };
@@ -160,7 +150,6 @@ pub(crate) fn sorted_min_max(checker: &Checker, subscript: &ast::ExprSubscript) 
                 key_keyword_expr = Some(keyword);
             }
             _ => {
-                // If unexpected keyword is found, return.
                 return;
             }
         }
@@ -169,15 +158,12 @@ pub(crate) fn sorted_min_max(checker: &Checker, subscript: &ast::ExprSubscript) 
     let is_reversed = if let Some(reverse_keyword) = reverse_keyword {
         match reverse_keyword.value.as_boolean_literal_expr() {
             Some(ast::ExprBooleanLiteral { value, .. }) => *value,
-            // If the value is not a boolean literal, we can't determine if it is reversed.
             _ => return,
         }
     } else {
-        // No reverse keyword, so it is not reversed.
         false
     };
 
-    // Determine whether the operation is computing a minimum or maximum value.
     let min_max = match (index, is_reversed) {
         (Index::First, false) => MinMax::Min,
         (Index::First, true) => MinMax::Max,
@@ -189,9 +175,6 @@ pub(crate) fn sorted_min_max(checker: &Checker, subscript: &ast::ExprSubscript) 
 
     if checker.semantic().has_builtin_binding(min_max.as_str()) {
         diagnostic.set_fix({
-            // Preserve any parentheses around the argument. Some expressions are
-            // only valid as a call argument when parenthesized (e.g., `yield`),
-            // so slicing the bare node would produce invalid syntax.
             let list_expr = checker.locator().slice(
                 parenthesized_range(list_expr.into(), arguments.into(), checker.tokens())
                     .unwrap_or(list_expr.range()),

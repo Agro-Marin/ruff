@@ -44,17 +44,14 @@ impl AlwaysFixableViolation for UnnecessaryRangeStart {
 
 /// PIE808
 pub(crate) fn unnecessary_range_start(checker: &Checker, call: &ast::ExprCall) {
-    // `range` doesn't accept keyword arguments.
     if !call.arguments.keywords.is_empty() {
         return;
     }
 
-    // Verify that the call has exactly two arguments (no `step`).
     let [start, _] = &*call.arguments.args else {
         return;
     };
 
-    // Verify that the `start` argument is the literal `0`.
     let Expr::NumberLiteral(ast::ExprNumberLiteral {
         value: ast::Number::Int(value),
         ..
@@ -66,7 +63,6 @@ pub(crate) fn unnecessary_range_start(checker: &Checker, call: &ast::ExprCall) {
         return;
     }
 
-    // Verify that the call is to the `range` builtin.
     if !checker.semantic().match_builtin_expr(&call.func, "range") {
         return;
     }

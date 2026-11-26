@@ -78,7 +78,6 @@ fn match_slice_info(expr: &Expr) -> Option<SliceInfo> {
         return None;
     };
 
-    // Avoid false positives for slices with a step.
     if let Some(step) = step {
         if !matches!(
             step.as_ref(),
@@ -91,7 +90,6 @@ fn match_slice_info(expr: &Expr) -> Option<SliceInfo> {
         }
     }
 
-    // If the slice start is a non-constant, we can't be sure that it's successive.
     let slice_start = if let Some(lower) = lower.as_ref() {
         let Expr::NumberLiteral(ast::ExprNumberLiteral {
             value: ast::Number::Int(int),
@@ -120,22 +118,18 @@ pub(crate) fn zip_instead_of_pairwise(checker: &Checker, call: &ast::ExprCall) {
         ..
     } = call;
 
-    // Require exactly two positional arguments.
     let [first, second] = args.as_ref() else {
         return;
     };
 
-    // Require second argument to be a `Subscript`.
     if !second.is_subscript_expr() {
         return;
     }
 
-    // Require the function to be the builtin `zip`.
     if !checker.semantic().match_builtin_expr(func, "zip") {
         return;
     }
 
-    // Allow the first argument to be a `Name` or `Subscript`.
     let Some(first_arg_info) = ({
         if let Expr::Name(ast::ExprName { id, .. }) = first {
             Some(SliceInfo {
@@ -153,12 +147,10 @@ pub(crate) fn zip_instead_of_pairwise(checker: &Checker, call: &ast::ExprCall) {
         return;
     };
 
-    // Verify that the arguments match the same name.
     if first_arg_info.id != second_arg_info.id {
         return;
     }
 
-    // Verify that the arguments are successive.
     if second_arg_info.slice_start.unwrap_or(0) - first_arg_info.slice_start.unwrap_or(0) != 1 {
         return;
     }

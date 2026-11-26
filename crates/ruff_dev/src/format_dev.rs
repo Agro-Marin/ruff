@@ -52,7 +52,6 @@ fn root_settings_for_formatting(
     config_arguments: &ConfigArguments,
 ) -> anyhow::Result<RootSettings> {
     let mut root_settings = resolve(config_arguments, cli.stdin_filename.as_deref())?;
-    // We don't want to format pyproject.toml
     root_settings.resolved.settings.file_resolver.include = FilePatternSet::try_from_iter([
         FilePattern::Builtin("*.py"),
         FilePattern::Builtin("*.pyi"),
@@ -116,7 +115,6 @@ impl Statistics {
                 files_with_differences: 0,
             }
         } else {
-            // `similar` was too slow (for some files >90% diffing instead of formatting)
             let input = InternedInput::new(black, ruff);
             let changes = Diff::compute(Algorithm::Histogram, &input);
             let removals = changes.count_removals();
@@ -279,21 +277,18 @@ pub(crate) fn main(args: &Args) -> anyhow::Result<ExitCode> {
 }
 
 fn setup_logging(log_level_args: &LogLevelArgs, log_file: Option<&Path>) -> io::Result<()> {
-    // Custom translation since we need the tracing type for `EnvFilter`
     let log_level = match LogLevel::from(log_level_args) {
         LogLevel::Default => tracing::Level::INFO,
         LogLevel::Verbose => tracing::Level::DEBUG,
         LogLevel::Quiet => tracing::Level::WARN,
         LogLevel::Silent => tracing::Level::ERROR,
     };
-    // 1. `RUST_LOG=`, 2. explicit CLI log level, 3. info, the ruff default
     let filter_layer = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         EnvFilter::builder()
             .with_default_directive(log_level.into())
             .parse_lossy("")
     });
     let indicatif_layer = IndicatifLayer::new().with_progress_style(
-        // Default without the spinner
         ProgressStyle::with_template("{span_child_prefix} {span_name}{{{span_fields}}}").unwrap(),
     );
     let indicatif_compatible_writer_layer = tracing_subscriber::fmt::layer()
@@ -455,8 +450,6 @@ fn format_dev_project(
 ) -> anyhow::Result<CheckRepoResult> {
     let start = Instant::now();
 
-    // TODO(konstin): The assumptions between this script (one repo) and ruff (pass in a bunch of
-    // files) mismatch.
     let black_options = BlackOptions::from_file(&files[0])?;
     debug!(
         parent: None,
@@ -464,10 +457,7 @@ fn format_dev_project(
         files[0].display()
     );
 
-    // TODO(konstin): Respect black's excludes.
 
-    // Find files to check (or in this case, format twice). Adapted from ruff
-    // First argument is ignored
     let (cli, overrides) = parse_cli(files)?;
     let root_settings = root_settings_for_formatting(&cli, &overrides)?;
     let (paths, resolver) = ruff_check_paths(&root_settings, &cli, &overrides)?;
@@ -512,7 +502,6 @@ fn format_dev_project(
             Err(error) => {
                 match error {
                     CheckFileError::SyntaxErrorInInput(error) => {
-                        // This is not our error
                         debug!(
                             parent: None,
                             "Syntax error in {}: {}",
@@ -554,7 +543,6 @@ fn format_dir_entry(
     resolver: &Resolver,
 ) -> anyhow::Result<(Result<Statistics, CheckFileError>, PathBuf), Error> {
     let resolved_file = resolved_file.context("Iterating the files in the repository failed")?;
-    // For some reason it does not filter in the beginning
     if ["pyproject.toml", "ruff.toml", ".ruff.toml"]
         .iter()
         .any(|&path| resolved_file.file_name() == path)
@@ -570,12 +558,10 @@ fn format_dir_entry(
     }
 
     let settings = resolver.resolve(&path);
-    // That's a bad way of doing this but it's not worth doing something better for format_dev
     if settings.formatter.line_width != LineWidth::default() {
         options = options.with_line_width(settings.formatter.line_width);
     }
 
-    // Handle panics (mostly in `debug_assert!`)
     let result = catch_unwind(|| format_dev_file(&path, stability_check, write, options))
         .unwrap_or_else(|panic| {
             if let Some(message) = panic.downcast_ref::<String>() {
@@ -588,7 +574,6 @@ fn format_dir_entry(
                 })
             } else {
                 Err(CheckFileError::Panic {
-                    // This should not happen, but it can
                     message: "(Panic didn't set a string message)".to_string(),
                 })
             }
@@ -836,12 +821,8 @@ fn format_dev_file(
     let format_duration = Instant::now() - start;
 
     if write && content != formatted {
-        // Simple atomic write.
-        // The file is in a directory so it must have a parent. Surprisingly `DirEntry` doesn't
-        // give us access without unwrap
         let mut file = NamedTempFile::new_in(input_path.parent().unwrap())?;
         file.write_all(formatted.as_bytes())?;
-        // "If a file exists at the target path, persist will atomically replace it."
         file.persist(input_path).map_err(|error| error.error)?;
     }
 
@@ -891,7 +872,6 @@ struct PyprojectTomlTool {
 #[derive(Deserialize, Debug)]
 #[serde(default)]
 struct BlackOptions {
-    // Black actually allows both snake case and kebab case
     #[serde(alias = "line-length")]
     line_length: NonZeroU16,
     #[serde(alias = "skip-magic-trailing-comma")]

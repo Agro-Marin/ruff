@@ -269,22 +269,14 @@ pub trait WritableSystem: System {
 
         let cache_path = cache_dir.join(path);
 
-        // The file has already been cached.
         if self.is_file(&cache_path) {
             return Ok(Some(cache_path));
         }
 
-        // Read the file contents.
         let contents = read_contents()?;
 
-        // Create the parent directory.
         self.create_directory_all(cache_path.parent().unwrap())?;
 
-        // Create and write to the file on the system.
-        //
-        // Note that `create_new_file` will fail if the file has already been created. This
-        // ensures that only one thread/process ever attempts to write to it to avoid corrupting
-        // the cache.
         self.create_new_file(&cache_path)?;
         self.write_file(&cache_path, &contents)?;
 
@@ -375,7 +367,6 @@ pub fn file_time_now() -> FileTime {
 
 #[cfg(target_arch = "wasm32")]
 pub fn file_time_now() -> FileTime {
-    // Copied from FileTime::from_system_time()
     let time = web_time::SystemTime::now();
 
     time.duration_since(web_time::UNIX_EPOCH)

@@ -1,13 +1,6 @@
-// +------------------------------------------------------------+
-// | Code adopted from:                                         |
-// | Repository: https://github.com/rust-lang/rust-analyzer.git |
-// | File: `crates/stdx/src/thread/intent.rs`                   |
-// | Commit: 03b3cb6be9f21c082f4206b35c7fe7f291c94eaa           |
-// +------------------------------------------------------------+
 //! An opaque façade around platform-specific QoS APIs.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-// Please maintain order from least to most priority for the derived `Ord` impl.
 pub(crate) enum ThreadPriority {
     /// Any thread which does work that isn't in a critical path.
     Worker,
@@ -18,9 +11,6 @@ pub(crate) enum ThreadPriority {
 }
 
 impl ThreadPriority {
-    // These APIs must remain private;
-    // we only want consumers to set thread priority
-    // during thread creation.
 
     pub(crate) fn apply_to_current_thread(self) {
         let class = thread_priority_to_qos_class(self);
@@ -51,17 +41,12 @@ fn thread_priority_to_qos_class(priority: ThreadPriority) -> QoSClass {
     imp::thread_priority_to_qos_class(priority)
 }
 
-// All Apple platforms use XNU as their kernel
-// and thus have the concept of QoS.
 #[cfg(target_vendor = "apple")]
 mod imp {
     use super::ThreadPriority;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    // Please maintain order from least to most priority for the derived `Ord` impl.
     pub(super) enum QoSClass {
-        // Documentation adapted from https://github.com/apple-oss-distributions/libpthread/blob/67e155c94093be9a204b69637d198eceff2c7c46/include/sys/qos.h#L55
-        //
         /// TLDR: invisible maintenance tasks
         ///
         /// Contract:
@@ -195,28 +180,16 @@ mod imp {
 
         match errno {
             libc::EPERM => {
-                // This thread has been excluded from the QoS system
-                // due to a previous call to a function such as `pthread_setschedparam`
-                // which is incompatible with QoS.
-                //
-                // Panic instead of returning an error
-                // to maintain the invariant that we only use QoS APIs.
                 panic!("tried to set QoS of thread which has opted out of QoS (os error {errno})")
             }
 
             libc::EINVAL => {
-                // This is returned if we pass something other than a qos_class_t
-                // to `pthread_set_qos_class_self_np`.
-                //
-                // This is impossible, so again panic.
                 unreachable!(
                     "invalid qos_class_t value was passed to pthread_set_qos_class_self_np"
                 )
             }
 
             _ => {
-                // `pthread_set_qos_class_self_np`’s documentation
-                // does not mention any other errors.
                 unreachable!("`pthread_set_qos_class_self_np` returned unexpected error {errno}")
             }
         }
@@ -236,15 +209,6 @@ mod imp {
         };
 
         if code != 0 {
-            // `pthread_get_qos_class_np`’s documentation states that
-            // an error value is placed into errno if the return code is not zero.
-            // However, it never states what errors are possible.
-            // Inspecting the source[0] shows that, as of this writing, it always returns zero.
-            //
-            // Whatever errors the function could report in future are likely to be
-            // ones which we cannot handle anyway
-            //
-            // 0: https://github.com/apple-oss-distributions/libpthread/blob/67e155c94093be9a204b69637d198eceff2c7c46/src/qos.c#L171-L177
             #[expect(unsafe_code)]
             let errno = unsafe { *libc::__error() };
             unreachable!("`pthread_get_qos_class_np` failed unexpectedly (os error {errno})");
@@ -253,17 +217,11 @@ mod imp {
         match qos_class_raw {
             libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE => Some(QoSClass::UserInteractive),
             libc::qos_class_t::QOS_CLASS_USER_INITIATED => Some(QoSClass::UserInitiated),
-            libc::qos_class_t::QOS_CLASS_DEFAULT => None, // QoS has never been set
+            libc::qos_class_t::QOS_CLASS_DEFAULT => None,
             libc::qos_class_t::QOS_CLASS_UTILITY => Some(QoSClass::Utility),
             libc::qos_class_t::QOS_CLASS_BACKGROUND => Some(QoSClass::Background),
 
             libc::qos_class_t::QOS_CLASS_UNSPECIFIED => {
-                // Using manual scheduling APIs causes threads to “opt out” of QoS.
-                // At this point they become incompatible with QoS,
-                // and as such have the “unspecified” QoS class.
-                //
-                // Panic instead of returning an error
-                // to maintain the invariant that we only use QoS APIs.
                 panic!("tried to get QoS of thread which has opted out of QoS")
             }
         }
@@ -277,7 +235,6 @@ mod imp {
     }
 }
 
-// FIXME: Windows has QoS APIs, we should use them!
 #[cfg(not(target_vendor = "apple"))]
 mod imp {
     use super::ThreadPriority;

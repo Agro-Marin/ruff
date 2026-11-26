@@ -64,9 +64,6 @@ impl<'a> Docstring<'a> {
 
     /// The docstring's prefixes as they exist in the original source code.
     pub(crate) fn prefix_str(&self) -> &'a str {
-        // N.B. This will normally be exactly the same as what you might get from
-        // `self.flags().prefix().as_str()`, but doing it this way has a few small advantages.
-        // For example, the casing of the `u` prefix will be preserved if it's a u-string.
         &self.source[TextRange::new(
             self.start(),
             self.start() + self.flags().prefix().text_len(),

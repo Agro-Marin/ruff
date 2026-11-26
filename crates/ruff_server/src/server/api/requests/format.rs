@@ -102,7 +102,6 @@ fn format_text_document(
     let file_path = query.virtual_file_path();
     let source_type = query.source_type_for_format();
 
-    // If the document is excluded, return early.
     if is_document_excluded_for_formatting(
         &file_path,
         &settings.file_resolver,
@@ -126,7 +125,6 @@ fn format_text_document(
         FormatResult::Unchanged => return Ok(None),
     };
 
-    // special case - avoid adding a newline to a notebook cell if it didn't already exist
     if is_notebook {
         let mut trimmed = formatted.as_str();
         if !source.ends_with("\r\n") {

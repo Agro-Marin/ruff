@@ -116,15 +116,12 @@ pub(crate) fn unrecognized_platform(checker: &Checker, test: &Expr) {
         return;
     }
 
-    // "in" might also make sense but we don't currently have one.
     if !matches!(op, CmpOp::Eq | CmpOp::NotEq) {
         checker.report_diagnostic_if_enabled(UnrecognizedPlatformCheck, test.range());
         return;
     }
 
     if let Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) = right {
-        // Other values are possible but we don't need them right now.
-        // This protects against typos.
         if checker.is_rule_enabled(Rule::UnrecognizedPlatformName) {
             if !matches!(value.to_str(), "linux" | "win32" | "cygwin" | "darwin") {
                 checker.report_diagnostic(

@@ -90,7 +90,6 @@ impl Violation for UnnecessaryEnumerate {
 
 /// FURB148
 pub(crate) fn unnecessary_enumerate(checker: &Checker, stmt_for: &ast::StmtFor) {
-    // Check the for statement is of the form `for x, y in func(...)`.
     let Expr::Tuple(ast::ExprTuple { elts, .. }) = stmt_for.target.as_ref() else {
         return;
     };
@@ -104,26 +103,21 @@ pub(crate) fn unnecessary_enumerate(checker: &Checker, stmt_for: &ast::StmtFor) 
         return;
     };
 
-    // Get the first argument, which is the sequence to iterate over.
     let Some(Expr::Name(sequence)) = arguments.args.first() else {
         return;
     };
 
-    // Check that the function is the `enumerate` builtin.
     if !checker.semantic().match_builtin_expr(func, "enumerate") {
         return;
     }
 
-    // Check if the index and value are used.
     match (
         checker.semantic().is_unused(index),
         checker.semantic().is_unused(value),
     ) {
         (true, true) => {
-            // Both the index and the value are unused.
         }
         (false, false) => {
-            // Both the index and the value are used.
         }
         (true, false) => {
             let mut diagnostic = checker.report_diagnostic(
@@ -133,7 +127,6 @@ pub(crate) fn unnecessary_enumerate(checker: &Checker, stmt_for: &ast::StmtFor) 
                 func.range(),
             );
 
-            // The index is unused, so replace with `for value in sequence`.
             let replace_iter =
                 Edit::range_replacement(sequence.id.to_string(), stmt_for.iter.range());
             let replace_target = Edit::range_replacement(
@@ -147,8 +140,6 @@ pub(crate) fn unnecessary_enumerate(checker: &Checker, stmt_for: &ast::StmtFor) 
             diagnostic.set_fix(Fix::unsafe_edits(replace_iter, [replace_target]));
         }
         (false, true) => {
-            // Ensure the sequence object works with `len`. If it doesn't, the
-            // fix is unclear.
             let Some(binding) = checker
                 .semantic()
                 .only_binding(sequence)
@@ -156,8 +147,6 @@ pub(crate) fn unnecessary_enumerate(checker: &Checker, stmt_for: &ast::StmtFor) 
             else {
                 return;
             };
-            // This will lead to a lot of false negatives, but it is the best
-            // we can do with the current type inference.
             if !is_list(binding, checker.semantic())
                 && !is_dict(binding, checker.semantic())
                 && !is_set(binding, checker.semantic())
@@ -166,7 +155,6 @@ pub(crate) fn unnecessary_enumerate(checker: &Checker, stmt_for: &ast::StmtFor) 
                 return;
             }
 
-            // The value is unused, so replace with `for index in range(len(sequence))`.
             let mut diagnostic = checker.report_diagnostic(
                 UnnecessaryEnumerate {
                     subset: EnumerateSubset::Indices,
@@ -176,8 +164,6 @@ pub(crate) fn unnecessary_enumerate(checker: &Checker, stmt_for: &ast::StmtFor) 
             if checker.semantic().has_builtin_binding("range")
                 && checker.semantic().has_builtin_binding("len")
             {
-                // If the `start` argument is set to something other than the `range` default,
-                // there's no clear fix.
                 let start = arguments.find_argument_value("start", 1);
                 if start.is_none_or(|start| {
                     matches!(
@@ -229,14 +215,12 @@ impl fmt::Display for EnumerateSubset {
 /// Format a code snippet to call `range(len(name))`, where `name` is the given
 /// sequence name.
 fn generate_range_len_call(name: Name, generator: Generator) -> String {
-    // Construct `name`.
     let var = ast::ExprName {
         id: name,
         ctx: ast::ExprContext::Load,
         range: TextRange::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
     };
-    // Construct `len(name)`.
     let len = ast::ExprCall {
         func: Box::new(
             ast::ExprName {
@@ -256,7 +240,6 @@ fn generate_range_len_call(name: Name, generator: Generator) -> String {
         range_start: ruff_text_size::TextSize::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
     };
-    // Construct `range(len(name))`.
     let range = ast::ExprCall {
         func: Box::new(
             ast::ExprName {
@@ -276,7 +259,6 @@ fn generate_range_len_call(name: Name, generator: Generator) -> String {
         range_start: ruff_text_size::TextSize::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
     };
-    // And finally, turn it into a statement.
     let stmt = ast::StmtExpr {
         value: Box::new(range.into()),
         range: TextRange::default(),

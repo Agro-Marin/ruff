@@ -47,14 +47,12 @@ impl From<VersionInfo> for clap::builder::Str {
 
 /// Returns information about ty's version.
 pub(crate) fn version() -> VersionInfo {
-    // Environment variables are only read at compile-time
     macro_rules! option_env_str {
         ($name:expr) => {
             option_env!($name).map(|s| s.to_string())
         };
     }
 
-    // Commit info is pulled from git and set by `build.rs`
     let commit_info = option_env_str!("TY_COMMIT_HASH").map(|commit_hash| CommitInfo {
         short_commit_hash: option_env_str!("TY_COMMIT_SHORT_HASH").unwrap(),
         commit_hash,
@@ -65,9 +63,7 @@ pub(crate) fn version() -> VersionInfo {
             .map_or(0, |value| value.parse::<u32>().unwrap_or(0)),
     });
 
-    // The version is pulled from `dist-workspace.toml` and set by `build.rs`
     let version = option_env_str!("TY_VERSION").unwrap_or_else(|| {
-        // If missing, using the last tag
         commit_info
             .as_ref()
             .and_then(|info| {

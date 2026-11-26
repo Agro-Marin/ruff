@@ -176,7 +176,6 @@ impl DependencyMetadata {
         let project = self.project_for_file(db, importing_file)?;
         let id = self.import_owner(db, importing_file, imported_module)?;
 
-        // Runtime and optional declarations take precedence when a dependency is also in a group.
         if project.distribution.as_deref() == Some(id) || project.dependencies.contains(id) {
             return None;
         }
@@ -232,11 +231,8 @@ impl DependencyMetadata {
     }
 
     fn owner<'db>(&self, db: &'db dyn Db, module: Module<'db>) -> Option<&str> {
-        // A namespace can also contain local modules that the package manager doesn't know about.
-        // Only attribute concrete modules; inference checks the children of `from ns import x`.
         let search_path = module.search_path(db)?;
         if search_path.is_standard_library() {
-            // ty bundles typing_extensions stubs, but the runtime module is third-party.
             if module.name(db).first_component() != "typing_extensions" {
                 return None;
             }
@@ -249,8 +245,6 @@ impl DependencyMetadata {
                 return Some(owner);
             }
 
-            // A local module can shadow an installed distribution with the same import name.
-            // Its name alone is not evidence that the import uses that distribution.
             if !search_path.is_editable() {
                 return None;
             }
@@ -264,8 +258,6 @@ impl DependencyMetadata {
             .ancestors()
             .find_map(|name| self.module_owners.get(&name))?;
 
-        // In particular, importing a namespace shared by several distributions doesn't establish
-        // which of them is required. A more specific submodule may have an unambiguous owner.
         match owners.as_ref() {
             [owner] => Some(owner.as_str()),
             _ => None,
@@ -313,10 +305,6 @@ impl DependencyMetadata {
             return true;
         }
 
-        // Editable installs may only record a .pth file, not their Python modules. Use the
-        // resolver's editable roots before deduplication against first-party search paths. A root
-        // narrower than the project directory separates package code from sibling tests/scripts.
-        // A flat install exposing the whole project does not establish that distinction.
         let Some(root) = self
             .distributions
             .get(id)

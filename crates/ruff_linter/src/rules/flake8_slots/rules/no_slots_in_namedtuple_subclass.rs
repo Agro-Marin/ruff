@@ -80,7 +80,6 @@ pub(crate) fn no_slots_in_namedtuple_subclass(
     stmt: &Stmt,
     class: &StmtClassDef,
 ) {
-    // https://github.com/astral-sh/ruff/issues/14535
     if checker.source_type.is_stub() {
         return;
     }
@@ -104,16 +103,13 @@ fn namedtuple_base(bases: &[Expr], semantic: &SemanticModel) -> Option<NamedTupl
     let mut kind = None;
     for base in bases {
         if let Expr::Call(ast::ExprCall { func, .. }) = base {
-            // Ex) `collections.namedtuple()`
             let qualified_name = semantic.resolve_qualified_name(func)?;
             match qualified_name.segments() {
                 ["collections", "namedtuple"] => kind = kind.or(Some(NamedTupleKind::Collections)),
                 ["typing", "NamedTuple"] => kind = kind.or(Some(NamedTupleKind::Typing)),
-                // Ex) `enum.Enum`
                 _ => return None,
             }
         } else if !semantic.match_builtin_expr(base, "object") {
-            // Allow inheriting from `object`.
 
             return None;
         }

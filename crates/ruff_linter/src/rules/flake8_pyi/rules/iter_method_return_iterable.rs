@@ -107,7 +107,6 @@ pub(crate) fn iter_method_return_iterable(checker: &Checker, definition: &Defini
         _ => return,
     };
 
-    // Support both `Iterable` and `Iterable[T]`.
     let annotation = map_subscript(returns);
 
     if checker

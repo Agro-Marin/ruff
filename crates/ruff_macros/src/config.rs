@@ -42,8 +42,6 @@ pub(crate) fn derive_impl(input: DeriveInput) -> syn::Result<TokenStream> {
                     .iter()
                     .find(|attr| attr.path().is_ident("serde"))
                 {
-                    // If a field has the `serde(flatten)` attribute, flatten the options into the parent
-                    // by calling `Type::record` instead of `visitor.visit_set`
                     if let (Type::Path(ty), Meta::List(list)) = (&field.ty, &serde.meta) {
                         for token in list.tokens.clone() {
                             if let TokenTree::Ident(ident) = token {
@@ -64,7 +62,6 @@ pub(crate) fn derive_impl(input: DeriveInput) -> syn::Result<TokenStream> {
                 .iter()
                 .filter(|attr| attr.path().is_ident("doc"));
 
-            // Convert the list of `doc` attributes into a single string.
             let doc = dedent(
                 &docs
                     .map(parse_doc)
@@ -168,7 +165,6 @@ fn handle_option(field: &Field, attr: &Attribute) -> syn::Result<proc_macro2::To
         ));
     }
 
-    // Convert the list of `doc` attributes into a single string.
     let doc = dedent(
         &docs
             .into_iter()

@@ -82,7 +82,6 @@ pub(crate) fn except_with_non_exception_classes(checker: &Checker, except_handle
 /// This should leave any unstarred iterables alone (subsequently raising a
 /// warning for B029).
 fn flatten_iterables(expr: &Expr) -> Vec<&Expr> {
-    // Unpack the top-level Tuple into queue, otherwise add as-is.
     let mut exprs_to_process: VecDeque<&Expr> = match expr {
         Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().collect(),
         _ => vec![expr].into(),
@@ -110,7 +109,6 @@ fn flatten_iterables(expr: &Expr) -> Vec<&Expr> {
                 ..
             }) => {
                 for expr in [left, right] {
-                    // If left or right are tuples, starred, or binary operators, flatten them.
                     match expr.as_ref() {
                         Expr::Tuple(ast::ExprTuple { elts, .. }) => {
                             exprs_to_process.append(&mut elts.iter().collect());

@@ -270,7 +270,6 @@ impl<'db> VariadicArgument<'db> {
             };
         };
 
-        // Iterating `P.args` would discard its identity and yield its `object` upper bound.
         if let Some(paramspec) = ty.as_paramspec_typevar(db) {
             return VariadicArgumentMatch {
                 types: Vec::new(),
@@ -279,9 +278,6 @@ impl<'db> VariadicArgument<'db> {
             };
         }
 
-        // Iterating a union as a whole can introduce arities absent from every member. Iterating
-        // members separately allows matching to use their minimum length and per-position types,
-        // but loses correlations between members.
         if preserve_union_alternatives && let Type::Union(union) = ty {
             let sequences: Vec<_> = union
                 .elements(db)
@@ -470,8 +466,6 @@ impl<'db> CallArgumentTypes<'db> {
 
     /// Returns the most appropriate type of this argument when there is no specific declared type.
     pub(crate) fn get_default(&self) -> Option<Type<'db>> {
-        // If this type was inferred against exactly one declared type, or was inferred against
-        // multiple, but resulted in a single inferred type, we have an exact type to return.
         if let Ok(exact_ty) = self
             .types
             .values()
@@ -618,8 +612,6 @@ impl<'a, 'db> CallArguments<'a, 'db> {
                     CallArgument::Variadic(argument),
                     ast::ArgOrKeyword::Arg(ast::Expr::Starred(ast::ExprStarred { value, .. })),
                 ) => {
-                    // Set literals keep ordinary type-based unpacking. Handling duplicate elements
-                    // and unspecified iteration order is not worth the extra complexity for now.
                     let ast::Expr::List(ast::ExprList { elts, .. }) = value.as_ref() else {
                         continue;
                     };
@@ -661,7 +653,6 @@ impl<'a, 'db> CallArguments<'a, 'db> {
                         let Some(value_ty) = expression_type(value) else {
                             return false;
                         };
-                        // Replacing a duplicate key preserves its first position in the dictionary.
                         keywords.insert(
                             Name::new(key.value.to_str()),
                             UnpackedTypedDictKey {
@@ -835,9 +826,6 @@ impl<'a, 'db> CallArguments<'a, 'db> {
                     }
                 }
                 CallArgument::Keywords(argument) => {
-                    // Known `TypedDict` items can still be checked against their target
-                    // parameters, even though possible hidden items prevent us from synthesizing
-                    // a precise partial signature.
                     argument.unpack(db, env)?;
                     can_synthesize_signature &= argument.is_complete();
                 }
@@ -937,15 +925,7 @@ pub(super) struct CallArgumentExpansions<'s, 'a, 'db> {
 impl<'a, 'db> CallArgumentExpansions<'_, 'a, 'db> {
     /// Returns the expanded alternatives of an argument, computing them at most once.
     pub(super) fn argument_alternatives(&self, index: usize) -> Option<&[CallArgument<'a, 'db>]> {
-        // TODO: For types inferred multiple times with distinct type context, we currently only
-        // expand the default inference. Note that direct expansion of a type inferred against a
-        // given declared type would not likely be assignable to other declared types without
-        // re-inference, and so a more complete implementation would likely have to re-infer the
-        // argument type against the union a given subset of type contexts before expansion. However,
-        // this only shows up in very convoluted instances of generic call inference across multiple
-        // overloads, and is unlikely to happen in practice.
         let argument = self.arguments.get(index)?;
-        // Most calls need no expansion; allocate the cache only when a check asks for it.
         let types = self.types.get_or_init(|| {
             std::iter::repeat_with(OnceCell::new)
                 .take(self.arguments.len())
@@ -1012,7 +992,6 @@ impl<'a, 'db> CallArgumentExpansions<'_, 'a, 'db> {
                     State::Expanding(expanding_state) => expanding_state,
                 };
 
-                // Find the next type that can be expanded.
                 let expanded_types = loop {
                     self.arguments.get(index)?;
                     if let Some(expanded_types) = self.argument_alternatives(index) {
@@ -1040,7 +1019,6 @@ impl<'a, 'db> CallArgumentExpansions<'_, 'a, 'db> {
                     }
                 }
 
-                // Increment the index to move to the next argument type for the next iteration.
                 index += 1;
 
                 Some(State::Expanding(ExpandingState::Expanded(
@@ -1048,7 +1026,7 @@ impl<'a, 'db> CallArgumentExpansions<'_, 'a, 'db> {
                 )))
             },
         )
-        .skip(1) // Skip the initial state, which has no expanded types.
+        .skip(1)
         .map(|state| match state {
             State::LimitReached(index) => Expansion::LimitReached(index),
             State::Expanding(ExpandingState::Initial) => {

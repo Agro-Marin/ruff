@@ -120,8 +120,6 @@ impl Display for DisplayTypeVar<'_> {
                 TypeVarRestriction::AnyStr => f.write_str("(bytes, str)")?,
                 TypeVarRestriction::Constraint(vec) => {
                     match vec.as_slice() {
-                        // A single starred expression needs a comma to form a constraint tuple:
-                        // `TypeVar("T", *constraints)` becomes `T: (*constraints,)`.
                         [element] => {
                             write!(f, "({element},)", element = &self.source[element.range()])?;
                         }
@@ -253,19 +251,6 @@ struct TypeVarReferenceVisitor<'a> {
 /// Recursively collects the names of type variable references present in an expression.
 impl<'a> Visitor<'a> for TypeVarReferenceVisitor<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
-        // special case for typing.AnyStr, which is a commonly-imported type variable in the
-        // standard library with the definition:
-        //
-        // ```python
-        // AnyStr = TypeVar('AnyStr', bytes, str)
-        // ```
-        //
-        // As of 01/2025, this line hasn't been modified in 8 years, so hopefully there won't be
-        // much to keep updated here. See
-        // https://github.com/python/cpython/blob/383af395af828f40d9543ee0a8fdc5cc011d43db/Lib/typing.py#L2806
-        //
-        // to replace AnyStr with an annotation like [AnyStr: (bytes, str)], we also have to make
-        // sure that `bytes` and `str` have their builtin values and have not been shadowed
         if self.semantic.match_typing_expr(expr, "AnyStr")
             && self.semantic.has_builtin_binding("bytes")
             && self.semantic.has_builtin_binding("str")
@@ -333,19 +318,6 @@ pub(crate) fn expr_name_to_type_var<'a>(
                 .first()
                 .is_some_and(Expr::is_string_literal_expr)
             {
-                // `default` was added in PEP 696 and Python 3.13. We now support converting
-                // TypeVars with defaults to PEP 695 type parameters.
-                //
-                // ```python
-                // T = TypeVar("T", default=Any, bound=str)
-                // class slice(Generic[T]): ...
-                // ```
-                //
-                // becomes
-                //
-                // ```python
-                // class slice[T: str = Any]: ...
-                // ```
                 let default = arguments
                     .find_keyword("default")
                     .map(|default| &default.value);
@@ -377,7 +349,7 @@ fn in_nested_context(checker: &Checker) -> bool {
     checker
         .semantic()
         .current_statements()
-        .skip(1) // skip the immediate parent, we only call this within a class or function
+        .skip(1)
         .any(|stmt| matches!(stmt, Stmt::ClassDef(_) | Stmt::FunctionDef(_)))
 }
 
@@ -408,8 +380,6 @@ fn check_type_vars<'a>(vars: Vec<TypeVar<'a>>, checker: &Checker) -> Option<Vec<
         return None;
     }
 
-    // If any type variables have defaults, skip the rule unless
-    // running with preview mode enabled and targeting Python 3.13+.
     if vars.iter().any(|tv| tv.default.is_some())
         && (checker.target_version() < PythonVersion::PY313
             || !is_type_var_default_enabled(checker.settings()))
@@ -421,8 +391,6 @@ fn check_type_vars<'a>(vars: Vec<TypeVar<'a>>, checker: &Checker) -> Option<Vec<
         return None;
     }
 
-    // If any type variables were not unique, just bail out here. this is a runtime error and we
-    // can't predict what the user wanted.
     (vars.iter().unique_by(|tvar| tvar.name).count() == vars.len()).then_some(vars)
 }
 

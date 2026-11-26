@@ -136,9 +136,6 @@ impl LSPSystem {
                         .and_then(PySourceType::try_from_extension)
                         .unwrap_or(PySourceType::Python);
 
-                    // JupyterLab presents notebook virtual documents to language servers as
-                    // simple text files rather than serialized `.ipynb` contents. See:
-                    // https://github.com/jupyterlab/jupyterlab/blob/f51404192bf6d0ff79187c884f21e1f91b928146/packages/lsp/src/virtual/document.ts#L308-L314
                     Some(match source_type {
                         PySourceType::Ipynb => PySourceType::Python,
                         source_type => source_type,
@@ -318,7 +315,6 @@ impl<'de> Deserialize<'de> for WorkspaceTrust {
     where
         D: Deserializer<'de>,
     {
-        // The LSP option is `untrustedWorkspace`, so `true` means untrusted.
         Ok(match Option::<bool>::deserialize(deserializer)? {
             Some(true) => Self::Untrusted,
             Some(false) | None => Self::Trusted,
@@ -358,19 +354,10 @@ fn virtual_path_not_found(path: impl Display) -> std::io::Error {
 
 /// Helper function to get the [`FileRevision`] of the given document.
 fn document_revision(document: &Document, index: &Index) -> FileRevision {
-    // The file revision is just an opaque number which doesn't have any significant meaning other
-    // than that the file has changed if the revisions are different.
     #[expect(clippy::cast_sign_loss)]
     match document {
         Document::Text(text) => FileRevision::new(text.version() as u128),
         Document::Notebook(notebook) => {
-            // VS Code doesn't always bump the notebook version when the cell content changes.
-            // Specifically, I noticed that VS Code re-uses the same version when:
-            // 1. Adding a new cell
-            // 2. Pasting some code that has an error
-            //
-            // The notification updating the cell content on paste re-used the same version as when the cell was added.
-            // Because of that, hash all cell versions and the notebook versions together.
             let mut hasher = DefaultHasher::new();
             for cell_uri in notebook.cell_uris() {
                 if let Ok(cell) = index.document(&DocumentKey::from_uri(cell_uri)) {
@@ -378,7 +365,6 @@ fn document_revision(document: &Document, index: &Index) -> FileRevision {
                 }
             }
 
-            // Use higher 64 bits for notebook version and lower 64 bits for cell revisions
             let notebook_version_high = (notebook.version() as u128) << 64;
             let cell_versions_low = u128::from(hasher.finish()) & 0xFFFF_FFFF_FFFF_FFFF;
             let combined_revision = notebook_version_high | cell_versions_low;

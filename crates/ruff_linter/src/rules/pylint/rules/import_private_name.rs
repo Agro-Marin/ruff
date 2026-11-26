@@ -90,21 +90,14 @@ pub(crate) fn import_private_name(checker: &Checker, scope: &Scope) {
             continue;
         };
 
-        // Relative imports are not a public API.
-        // Ex) `from . import foo`
         if import_info.module_name.starts_with(&["."]) {
             continue;
         }
 
-        // We can also ignore dunder names.
-        // Ex) `from __future__ import annotations`
-        // Ex) `from foo import __version__`
         if is_dunder(root_module) || is_dunder(&import_info.member_name) {
             continue;
         }
 
-        // Ignore private imports from the same module.
-        // Ex) `from foo import _bar` within `foo/baz.py`
         if checker
             .package()
             .map(PackageRoot::path)
@@ -113,8 +106,6 @@ pub(crate) fn import_private_name(checker: &Checker, scope: &Scope) {
             continue;
         }
 
-        // Ignore public imports; require at least one private name.
-        // Ex) `from foo import bar`
         let Some((index, private_name)) = import_info
             .qualified_name
             .segments()
@@ -128,7 +119,6 @@ pub(crate) fn import_private_name(checker: &Checker, scope: &Scope) {
             continue;
         }
 
-        // Ignore private imports used exclusively for typing.
         if !binding.references.is_empty()
             && binding
                 .references()

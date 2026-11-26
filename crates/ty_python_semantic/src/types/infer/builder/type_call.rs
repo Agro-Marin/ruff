@@ -115,7 +115,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
         let namespace_type = self.infer_expression(namespace_arg, TypeContext::default());
 
-        // TODO: validate other keywords against `__init_subclass__` methods of superclasses
         if keywords
             .iter()
             .any(|keyword| keyword.arg.as_deref() == Some("metaclass"))
@@ -128,17 +127,12 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             }
         }
 
-        // If any argument is a starred expression, we can't know how many positional arguments
-        // we're receiving, so fall back to `type[Unknown]` to avoid false-positive errors.
         if args.iter().any(ast::Expr::is_starred_expr) {
             return SubclassOfType::subclass_of_unknown();
         }
 
-        // Extract members from the namespace dict (third argument).
         let (members, has_dynamic_namespace): (Box<[(ast::name::Name, Type<'db>)]>, bool) =
             if let ast::Expr::Dict(dict) = namespace_arg {
-                // Check if all keys are string literal types. If any key is not a string literal
-                // type or is missing (spread), the namespace is considered dynamic.
                 let all_keys_are_string_literals = dict.items.iter().all(|item| {
                     item.key
                         .as_ref()
@@ -148,20 +142,15 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     .items
                     .iter()
                     .filter_map(|item| {
-                        // Only extract items with string literal keys.
                         let key_expr = item.key.as_ref()?;
                         let key_name = self.expression_type(key_expr).as_string_literal()?;
                         let key_name = ast::name::Name::new(key_name.value(db));
-                        // Get the already-inferred type from when we inferred the dict above.
                         let value_ty = self.expression_type(&item.value);
                         Some((key_name, value_ty))
                     })
                     .collect();
                 (members, !all_keys_are_string_literals)
             } else if let Type::TypedDict(typed_dict) = namespace_type {
-                // `namespace` is a TypedDict instance. Extract known keys as members.
-                // TypedDicts are "open" (can have additional string keys), so this
-                // is still a dynamic namespace for unknown attributes.
                 let members: Box<[(ast::name::Name, Type<'db>)]> = typed_dict
                     .items(db)
                     .iter()
@@ -169,7 +158,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     .collect();
                 (members, true)
             } else {
-                // `namespace` is not a dict literal, so it's dynamic.
                 (Box::new([]), true)
             };
 
@@ -197,7 +185,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             ));
         }
 
-        // Extract name and base classes.
         let name = if let Some(literal) = name_type.as_string_literal() {
             literal.value(db)
         } else {
@@ -216,11 +203,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
         let scope = self.scope();
 
-        // For assigned `type()` calls, bases inference is deferred to handle forward references
-        // and recursive references (e.g., `X = type("X", (tuple["X | None"],), {})`).
-        // This avoids expensive Salsa fixpoint iteration by deferring inference until the
-        // class type is already bound. For dangling calls, infer and extract bases eagerly
-        // (they'll be stored in the anchor and used for validation).
         let explicit_bases = if definition.is_none() {
             let bases_type = self.infer_expression(bases_arg, TypeContext::default());
             self.extract_explicit_bases(bases_arg, bases_type, DynamicClassKind::TypeCall)
@@ -228,17 +210,10 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             None
         };
 
-        // Create the anchor for identifying this dynamic class.
-        // - For assigned `type()` calls, the Definition uniquely identifies the class,
-        //   and bases inference is deferred.
-        // - For dangling calls, locate the call relative to the enclosing scope,
-        //   and store the explicit bases directly (since they were inferred eagerly).
         let anchor = if let Some(def) = definition {
-            // Register for deferred inference to infer bases and validate later.
             self.deferred.insert(def);
             DynamicClassAnchor::Definition(def)
         } else {
-            // Use [Unknown] as fallback if bases extraction failed (e.g., not a tuple).
             let anchor_bases = explicit_bases
                 .clone()
                 .unwrap_or_else(|| Box::from([Type::unknown()]));
@@ -253,10 +228,7 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let dynamic_class =
             DynamicClassLiteral::new(db, name, anchor, members, has_dynamic_namespace, None);
 
-        // For dangling calls, validate bases eagerly. For assigned calls, validation is
-        // deferred along with bases inference.
         if let Some(explicit_bases) = &explicit_bases {
-            // Validate bases and collect disjoint bases for diagnostics.
             let mut disjoint_bases = self.validate_dynamic_type_bases(
                 bases_arg,
                 explicit_bases,
@@ -264,11 +236,9 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 DynamicClassKind::TypeCall,
             );
 
-            // Check for MRO errors.
             if report_dynamic_mro_errors(&self.context, dynamic_class, call_expr, bases_arg) {
                 report_inconsistent_dynamic_generic_bases(&self.context, dynamic_class, bases_arg);
 
-                // MRO succeeded, check for instance-layout-conflict.
                 disjoint_bases.remove_redundant_entries(db);
                 if disjoint_bases.len() > 1 {
                     report_instance_layout_conflict(
@@ -280,7 +250,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 }
             }
 
-            // Check for metaclass conflicts.
             if let Err(DynamicMetaclassConflict {
                 metaclass1,
                 base1,
@@ -318,7 +287,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return;
         };
 
-        // Get the already-inferred class type from the initial pass.
         let inferred_type = definition_expression_type(self.db(), definition, call_expr);
         let Type::ClassLiteral(ClassLiteral::Dynamic(dynamic_class)) = inferred_type else {
             return;
@@ -328,24 +296,18 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return;
         };
 
-        // Set the typevar binding context to allow legacy typevar binding in expressions
-        // like `Generic[T]`. This matches the context used during initial inference.
         let previous_context = self.typevar_binding_context.replace(definition);
 
-        // Infer the bases argument (this was skipped during initial inference).
         let bases_type = self.infer_expression(bases_arg, TypeContext::default());
 
-        // Restore the previous context.
         self.typevar_binding_context = previous_context;
 
-        // Extract and validate bases.
         let Some(bases) =
             self.extract_explicit_bases(bases_arg, bases_type, DynamicClassKind::TypeCall)
         else {
             return;
         };
 
-        // Validate individual bases for special types that aren't allowed in dynamic classes.
         let name = dynamic_class.name(db);
         self.validate_dynamic_type_bases(bases_arg, &bases, name, DynamicClassKind::TypeCall);
     }

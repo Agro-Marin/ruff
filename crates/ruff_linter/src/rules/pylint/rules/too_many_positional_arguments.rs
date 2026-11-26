@@ -75,13 +75,11 @@ pub(crate) fn too_many_positional_arguments(
     checker: &Checker,
     function_def: &ast::StmtFunctionDef,
 ) {
-    // https://github.com/astral-sh/ruff/issues/14535
     if checker.source_type.is_stub() {
         return;
     }
     let semantic = checker.semantic();
 
-    // Count the number of positional arguments.
     let num_positional_args = function_def
         .parameters
         .posonlyargs
@@ -95,14 +93,12 @@ pub(crate) fn too_many_positional_arguments(
     }
 
     // Allow excessive arguments in `@override` or `@overload` methods, since they're required
-    // to adhere to the parent signature.
     if visibility::is_override(&function_def.decorator_list, semantic)
         || visibility::is_overload(&function_def.decorator_list, semantic)
     {
         return;
     }
 
-    // Check if the function is a method or class method.
     let num_positional_args = if matches!(
         function_type::classify(
             &function_def.name,
@@ -116,8 +112,6 @@ pub(crate) fn too_many_positional_arguments(
             | function_type::FunctionType::ClassMethod
             | function_type::FunctionType::NewMethod
     ) {
-        // If so, we need to subtract one from the number of positional arguments, since the first
-        // argument is always `self` or `cls`.
         num_positional_args.saturating_sub(1)
     } else {
         num_positional_args

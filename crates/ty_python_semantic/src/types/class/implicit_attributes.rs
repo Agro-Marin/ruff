@@ -123,9 +123,6 @@ impl<'db> StaticClassLiteral<'db> {
         let python_file = program_file.python_file(db);
         let env = &ProgramEnvironment::from_file(program_file);
 
-        // If we do not see any declarations of an attribute, neither in the class body nor in
-        // any method, we build a union of the raw types inferred from all bindings of that
-        // attribute, then apply public-type promotion to the final union.
         let mut union_of_inferred_types = UnionBuilder::new(db, env);
         let mut qualifiers = TypeQualifiers::IMPLICIT_INSTANCE_ATTRIBUTE;
 
@@ -137,8 +134,6 @@ impl<'db> StaticClassLiteral<'db> {
         let index = semantic_index(db, program_file);
         let class_map = use_def_map(db, class_body_scope);
         let class_table = place_table(db, class_body_scope);
-        // Receiver assignments can also occur in eager scopes inside the method, such as
-        // comprehensions. A nested function or lambda is a separate execution scope.
         let enclosing_method = |scope_id| {
             index
                 .ancestor_scopes(scope_id)
@@ -156,8 +151,6 @@ impl<'db> StaticClassLiteral<'db> {
                 return true;
             };
 
-            // Check the decorators directly on the AST node to determine if this method
-            // is a classmethod or staticmethod. This is more reliable than checking the
             // final evaluated type, which may be wrapped by other decorators like @cache.
             let function_node = method_def.node(&module);
             if initializer_only && !is_final_attribute_initializer(db, index, function_node) {
@@ -180,7 +173,6 @@ impl<'db> StaticClassLiteral<'db> {
                 }
             }
 
-            // Also check for implicit classmethods/staticmethods based on method name
             let method_name = function_node.name.as_str();
             if is_implicit_classmethod(method_name) {
                 is_classmethod = true;
@@ -196,7 +188,6 @@ impl<'db> StaticClassLiteral<'db> {
             }
         };
 
-        // First check declarations
         for (attribute_declarations, method_scope_id) in
             attribute_declarations(db, class_body_scope, name)
         {
@@ -214,11 +205,6 @@ impl<'db> StaticClassLiteral<'db> {
                     continue;
                 };
 
-                // We found an annotated assignment of one of the following forms (using 'self' in these
-                // examples, but we support arbitrary names for the first parameters of methods):
-                //
-                //     self.name: <annotation>
-                //     self.name: <annotation> = …
 
                 let Some(annotation) = inferred_declaration(db, declaration).declared() else {
                     continue;
@@ -228,11 +214,9 @@ impl<'db> StaticClassLiteral<'db> {
 
                 let place = if annotation.is_bare_final() {
                     let Some(value) = assignment.value(&module) else {
-                        // A separate assignment supplies the type for this final attribute.
                         qualifiers |= all_qualifiers;
                         continue;
                     };
-                    // In `self.SOME_CONSTANT: Final = 1`, infer the type from the right-hand side.
                     Place::bound(infer_expression_type(
                         db,
                         index.expression(value),
@@ -260,7 +244,6 @@ impl<'db> StaticClassLiteral<'db> {
                 continue;
             }
 
-            // The attribute assignment inherits the reachability of the method which contains it
             let Some(method_def) = enclosing_method(attribute_binding_scope_id) else {
                 continue;
             };
@@ -343,7 +326,6 @@ pub(super) struct AugmentedBindings<'db> {
     pub(super) definitions: Box<[Definition<'db>]>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for AugmentedBindings<'_> {}
 
 #[salsa::interned(debug, heap_size=ruff_memory_usage::heap_size)]
@@ -358,7 +340,6 @@ struct ImplicitAttributeName<'db> {
     initializer_only: bool,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for ImplicitAttributeName<'_> {}
 
 /// Infer the value written by an attribute definition, including unpacked and iteration targets.
@@ -373,17 +354,14 @@ fn implicit_attribute_binding_type<'db>(
 
     match definition.kind(db) {
         DefinitionKind::AnnotatedAssignment(_) => {
-            // Annotated assignments are handled before inferring ordinary attribute bindings.
             None
         }
         DefinitionKind::Assignment(assignment) => match assignment.unpack() {
             Some(unpack) => {
-                // (..., self.name, ...) = <value>
                 let unpacked = infer_unpack_types(db, unpack);
                 Some(unpacked.expression_type(assignment.target(&module)))
             }
             None => {
-                // self.name = <value>
                 Some(infer_expression_type(
                     db,
                     index.expression(assignment.value(&module)),
@@ -393,18 +371,15 @@ fn implicit_attribute_binding_type<'db>(
         },
         DefinitionKind::For(for_stmt) => match for_stmt.target_kind() {
             TargetKind::Sequence(_, unpack) => {
-                // for ..., self.name, ... in <iterable>:
                 let unpacked = infer_unpack_types(db, unpack);
                 Some(unpacked.expression_type(for_stmt.target(&module)))
             }
             TargetKind::Single => {
-                // for self.name in <iterable>:
                 let iterable_ty = infer_expression_type(
                     db,
                     index.expression(for_stmt.iterable(&module)),
                     TypeContext::default(),
                 );
-                // TODO: Potential diagnostics resulting from the iterable are not reported.
                 Some(
                     iterable_ty
                         .iterate(db, &env)
@@ -414,12 +389,10 @@ fn implicit_attribute_binding_type<'db>(
         },
         DefinitionKind::WithItem(with_item) => match with_item.target_kind() {
             TargetKind::Sequence(_, unpack) => {
-                // with <context_manager> as ..., self.name, ...:
                 let unpacked = infer_unpack_types(db, unpack);
                 Some(unpacked.expression_type(with_item.target(&module)))
             }
             TargetKind::Single => {
-                // with <context_manager> as self.name:
                 let context_ty = infer_expression_type(
                     db,
                     index.expression(with_item.context_expr(&module)),
@@ -434,18 +407,15 @@ fn implicit_attribute_binding_type<'db>(
         },
         DefinitionKind::Comprehension(comprehension) => match comprehension.target_kind() {
             TargetKind::Sequence(_, unpack) => {
-                // [... for ..., self.name, ... in <iterable>]
                 let unpacked = infer_unpack_types(db, unpack);
                 Some(unpacked.expression_type(comprehension.target(&module)))
             }
             TargetKind::Single => {
-                // [... for self.name in <iterable>]
                 let iterable_ty = infer_expression_type(
                     db,
                     index.expression(comprehension.iterable(&module)),
                     TypeContext::default(),
                 );
-                // TODO: Potential diagnostics resulting from the iterable are not reported.
                 Some(
                     iterable_ty
                         .iterate(db, &env)
@@ -453,7 +423,6 @@ fn implicit_attribute_binding_type<'db>(
                 )
             }
         },
-        // Named expressions cannot target attributes, and other definitions do not write one.
         _ => None,
     }
 }

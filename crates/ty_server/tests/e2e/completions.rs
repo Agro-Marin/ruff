@@ -84,8 +84,6 @@ fn external_file_uses_fallback_workspace_auto_import_setting() {
     for auto_import in [false, true] {
         let path = SystemPath::new("scratch.py");
         let source = "walktr";
-        // Register tools before app/src to check that path order determines the fallback.
-        // Leave initialization options unset so the workspaces retain distinct settings.
         let mut server = TestServerBuilder::new()
             .expect("create test server builder")
             .with_workspace(

@@ -176,8 +176,6 @@ impl RuleSelector {
 
 impl Ord for RuleSelector {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // TODO(zanieb): We ought to put "ALL" and "Linter" selectors
-        // above those that are rule specific but it's not critical for now
         self.prefix_and_code().cmp(&other.prefix_and_code())
     }
 }
@@ -202,13 +200,11 @@ impl RuleCodePrefix {
     pub(crate) fn as_rule(&self) -> Option<Rule> {
         let mut rules = self.rules();
 
-        // The selector must match a single rule.
         let rule = rules.next()?;
         if rules.next().is_some() {
             return None;
         }
 
-        // The rule must match the selector exactly.
         rule.noqa_code()
             .is_some_and(|code| code.suffix() == self.short_code())
             .then_some(rule)
@@ -218,8 +214,6 @@ impl RuleCodePrefix {
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     #[error("Unknown rule selector: `{0}`")]
-    // TODO(martin): tell the user how to discover rule codes via the CLI once such a command is
-    // implemented (but that should of course be done only in ruff and not here)
     Unknown(String),
 }
 
@@ -273,15 +267,11 @@ impl RuleSelector {
 
         self.all_rules().filter(move |rule| {
             match rule.status() {
-                // Always include stable rules
                 RuleStatus::Stable { .. } => true,
-                // Enabling preview includes all preview rules unless explicit selection is turned on
                 RuleStatus::Preview { .. } => {
                     preview_enabled && (self.is_exact() || !preview_require_explicit)
                 }
-                // Deprecated rules are excluded by default unless explicitly selected
                 RuleStatus::Deprecated { .. } => !preview_enabled && self.is_exact(),
-                // Removed rules are included if explicitly selected but will error downstream
                 RuleStatus::Removed { .. } => self.is_exact(),
             }
         })
@@ -342,12 +332,9 @@ mod schema {
 
         fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
             let enum_values: Vec<String> = [
-                // Include the non-standard "ALL" selectors.
                 "ALL".to_string(),
-                // Include the legacy "C" and "T" selectors.
                 "C".to_string(),
                 "T".to_string(),
-                // Include some common redirect targets for those legacy selectors.
                 "C9".to_string(),
                 "T1".to_string(),
                 "T2".to_string(),
@@ -372,7 +359,6 @@ mod schema {
                     .map(|rule| rule.name().to_string()),
             )
             .filter(|p| {
-                // Exclude removed rules and prefixes where all of the rules are removed
                 match RuleSelector::parse_no_redirect(p) {
                     Ok(RuleSelector::Rule { rule }) => !rule.is_removed(),
                     Ok(RuleSelector::Prefix { prefix }) => {
@@ -382,7 +368,6 @@ mod schema {
                 }
             })
             .filter(|_rule| {
-                // Filter out all test-only rules
                 cfg_select! {
                     any(feature = "test-rules", test) => {
                         #[expect(clippy::used_underscore_binding)]
@@ -529,14 +514,12 @@ pub mod clap_completion {
                             (!prefix.is_empty()).then(|| PossibleValue::new(prefix).help(l.name()))
                         })
                         .chain(RuleCodePrefix::iter().filter_map(|prefix| {
-                            // Ex) `UP`
                             if prefix.short_code().is_empty() {
                                 let code = prefix.linter().common_prefix();
                                 let name = prefix.linter().name();
                                 return Some(PossibleValue::new(code).help(name));
                             }
 
-                            // Ex) `UP004`
                             if let Some(rule) = prefix.as_rule() {
                                 let code = format!(
                                     "{}{}",

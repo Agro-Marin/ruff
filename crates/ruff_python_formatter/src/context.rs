@@ -344,9 +344,6 @@ impl IndentLevel {
     /// characters based on the given indent width.
     pub(crate) fn to_ascii_spaces(self, width: IndentWidth) -> u16 {
         let width = u16::try_from(width.value()).unwrap_or(u16::MAX);
-        // Why the subtraction? IndentLevel starts at 0 and asks for the "next"
-        // indent level before seeing the first top-level statement. So it's
-        // always 1 more than what we expect it to be.
         let level = self.level.saturating_sub(1);
         width.saturating_mul(level)
     }

@@ -100,33 +100,22 @@ pub(crate) fn access_annotations_from_class_dict_with_get(checker: &Checker, cal
     let python_version = checker.target_version();
     let typing_extensions = checker.settings().typing_extensions;
 
-    // Only apply this rule for Python 3.10 and newer unless `typing-extensions` is enabled.
     if python_version < PythonVersion::PY310 && !typing_extensions {
         return;
     }
 
-    // Expected pattern: foo.__dict__.get("__annotations__" [, <default>])
-    // Here, `call` is the `.get(...)` part.
 
-    // 1. Check that the `call.func` is `get`
     let get_attribute = match call.func.as_ref() {
         Expr::Attribute(attr) if attr.attr.as_str() == "get" => attr,
         _ => return,
     };
 
-    // 2. Check that the `get_attribute.value` is `__dict__`
     match get_attribute.value.as_ref() {
         Expr::Attribute(attr) if attr.attr.as_str() == "__dict__" => {}
         _ => return,
     }
 
-    // At this point, we have `foo.__dict__.get`.
 
-    // 3. Check arguments to `.get()`:
-    //    - No keyword arguments.
-    //    - One or two positional arguments.
-    //    - First positional argument must be the string literal "__annotations__".
-    //    - The value of the second positional argument (if present) does not affect the match.
     if !call.arguments.keywords.is_empty() || call.arguments.len() > 2 {
         return;
     }
@@ -155,14 +144,11 @@ pub(crate) fn access_annotations_from_class_dict_by_key(
     let python_version = checker.target_version();
     let typing_extensions = checker.settings().typing_extensions;
 
-    // Only apply this rule for Python 3.10 and newer unless `typing-extensions` is enabled.
     if python_version < PythonVersion::PY310 && !typing_extensions {
         return;
     }
 
-    // Expected pattern: foo.__dict__["__annotations__"]
 
-    // 1. Check that the slice is a string literal "__annotations__"
     if subscript
         .slice
         .as_string_literal_expr()
@@ -171,7 +157,6 @@ pub(crate) fn access_annotations_from_class_dict_by_key(
         return;
     }
 
-    // 2. Check that the `subscript.value` is `__dict__`
     let is_value_correct = subscript
         .value
         .as_attribute_expr()

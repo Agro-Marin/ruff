@@ -244,7 +244,6 @@ pub(crate) fn non_pep695_type_alias(checker: &Checker, stmt: &StmtAnnAssign) {
         visitor.vars
     };
 
-    // Type variables must be unique; filter while preserving order.
     let vars = vars
         .into_iter()
         .unique_by(|tvar| tvar.name)
@@ -276,8 +275,6 @@ fn create_diagnostic(
         return;
     }
 
-    // If any type variables have defaults, skip the rule unless
-    // running with preview mode enabled and targeting Python 3.13+.
     if (checker.target_version() < PythonVersion::PY313
         || !is_type_var_default_enabled(checker.settings()))
         && type_vars.iter().any(|type_var| type_var.default.is_some())

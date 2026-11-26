@@ -72,7 +72,6 @@ pub(super) fn legacy_type_alias_definition<'db>(
         DefinitionKind::Assignment(assignment) if assignment.unpack().is_none() => {
             module = parsed_module(db, definition.python_file(db)).load(db);
             let value = assignment.value(&module);
-            // The parser represents a missing right-hand side as an invalid name.
             if value.is_string_literal_expr()
                 || value.as_name_expr().is_some_and(ast::ExprName::is_invalid)
             {
@@ -108,11 +107,6 @@ pub(super) fn legacy_type_alias_definition<'db>(
             });
     }
     if matches!(value, ast::Expr::Name(_) | ast::Expr::Attribute(_)) {
-        // For `Items = list[T]; Forwarded = Items`, reuse Items's definition, including
-        // its parameters and recursive identity. Do this before inspecting its value:
-        // `A: TypeAlias = list; B = A` must retain A's default specialization even though
-        // A's runtime value is the generic `list` class. PEP 613 declarations interpret
-        // their own right-hand side as a normal type expression.
         let resolve_alias = |target| {
             if target == definition {
                 return None;
@@ -120,10 +114,6 @@ pub(super) fn legacy_type_alias_definition<'db>(
             legacy_type_alias_definition(db, target)
         };
 
-        // Resolve straightforward forwarding without inferring the runtime value, which
-        // could re-enter a recursive alias. If this does not identify an alias, normal
-        // reference inference accounts for possibly-unbound sources, fallback scopes,
-        // and assignments that narrow an attribute's declared type.
         if let Some(alias) =
             forwarding_alias_definition(db, definition, value).and_then(resolve_alias)
         {
@@ -137,11 +127,6 @@ pub(super) fn legacy_type_alias_definition<'db>(
             return Some(alias);
         }
 
-        // For `List = list`, `UnionAlias = Union`, or `Renamed = T`, the value already
-        // carries the identity and generic information needed by ordinary type-expression
-        // handling. The same is true of PEP 695 `TypeAliasType` values. Return `None` to
-        // use that handling; this does not mean the reference is invalid. Module aliases
-        // also remain ordinary values so parameter discovery can resolve their attributes.
         if matches!(
             value_ty,
             Type::ClassLiteral(_)
@@ -190,8 +175,6 @@ pub(super) fn non_alias_assignment<'db>(
     if value.is_none_literal_expr() {
         return None;
     }
-    // These forms can describe an alias even when one of its type arguments is invalid.
-    // Type-expression inference diagnoses those arguments and preserves the outer type.
     if let ast::Expr::Subscript(subscript) = value
         && is_dotted_name(&subscript.value)
     {
@@ -219,8 +202,6 @@ pub(super) fn non_alias_assignment<'db>(
                 })
                 .find_map(|element| non_alias_assignment(db, definition, *element));
         }
-        // Shared and nested factory calls are anchored to their expression rather than
-        // a single assignment target, as in `A = B = TypedDict(...)`.
         Type::ClassLiteral(class) if class.definition(db).is_none() => {
             return (class.program_file(db) != definition.program_file(db)
                 || !value.range().contains_range(class.header_range(db)))
@@ -360,7 +341,6 @@ fn referenced_name_definition<'db>(
         };
         let declarations = declarations
             .unwrap_or_else(|| use_def_map(db, target.scope(db)).declarations_at_binding(target));
-        // A separate annotation can determine the loaded type instead of the assignment value.
         return declarations
             .filter_map(|declaration| declaration.declaration.definition())
             .all(|declaration| declaration == target)
@@ -455,9 +435,6 @@ impl<'db> LegacyTypeVarCollector<'db> {
             ast::Expr::Name(name) if name.ctx.is_load() => {
                 let definition =
                     referenced_name_definition(db, file, name, self.string_annotation_scope)?;
-                // Another alias's parameters are not free parameters of this alias. Inferring
-                // its runtime value here can also re-enter parameter discovery before recursive
-                // aliases have stable generic contexts.
                 (definition != self.alias_definition
                     && legacy_type_alias_definition(db, definition).is_none())
                 .then(|| binding_type(db, definition))
@@ -476,7 +453,6 @@ impl<'db> LegacyTypeVarCollector<'db> {
         else {
             return;
         };
-        // References to aliases do not declare new type parameters.
         if matches!(
             typevar.kind(self.db),
             TypeVarKind::LegacyTypeVar
@@ -509,7 +485,6 @@ impl<'ast> Visitor<'ast> for LegacyTypeVarCollector<'_> {
 
         match expr {
             ast::Expr::Subscript(subscript) => match self.expression_type(&subscript.value) {
-                // Literal values and Annotated metadata do not bind type parameters.
                 Some(Type::SpecialForm(SpecialFormType::Literal)) => return,
                 Some(Type::SpecialForm(SpecialFormType::Annotated)) => {
                     if let ast::Expr::Tuple(arguments) = subscript.slice.as_ref()

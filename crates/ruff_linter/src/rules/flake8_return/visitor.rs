@@ -83,7 +83,6 @@ impl<'a> Visitor<'a> for ReturnVisitor<'_, 'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::ClassDef(ast::StmtClassDef { decorator_list, .. }) => {
-                // Visit the decorators, etc.
                 self.sibling = Some(stmt);
                 self.parents.push(stmt);
                 for decorator in decorator_list {
@@ -91,7 +90,6 @@ impl<'a> Visitor<'a> for ReturnVisitor<'_, 'a> {
                 }
                 self.parents.pop();
 
-                // But don't recurse into the body.
                 return;
             }
             Stmt::FunctionDef(ast::StmtFunctionDef {
@@ -100,7 +98,6 @@ impl<'a> Visitor<'a> for ReturnVisitor<'_, 'a> {
                 returns,
                 ..
             }) => {
-                // Visit the decorators, etc.
                 self.sibling = Some(stmt);
                 self.parents.push(stmt);
                 for decorator in decorator_list {
@@ -112,7 +109,6 @@ impl<'a> Visitor<'a> for ReturnVisitor<'_, 'a> {
                 visitor::walk_parameters(self, parameters);
                 self.parents.pop();
 
-                // But don't recurse into the body.
                 return;
             }
             Stmt::Global(ast::StmtGlobal {
@@ -129,23 +125,14 @@ impl<'a> Visitor<'a> for ReturnVisitor<'_, 'a> {
                     .non_locals
                     .extend(names.iter().map(Identifier::as_str));
             }
-            // Ex) `x: int`
             Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) if value.is_none() => {
                 if let Expr::Name(name) = target.as_ref() {
                     self.stack.annotations.insert(name.id.as_str());
                 }
             }
             Stmt::Return(stmt_return) => {
-                // If the `return` statement is preceded by an `assignment` statement, then the
-                // `assignment` statement may be redundant.
                 if let Some(sibling) = self.sibling {
                     match sibling {
-                        // Example:
-                        // ```python
-                        // def foo():
-                        //     x = 1
-                        //     return x
-                        // ```
                         Stmt::Assign(stmt_assign) => {
                             let enclosing_finally = self.enclosing_finally(stmt_return);
                             self.stack.assignment_return.push((
@@ -155,13 +142,6 @@ impl<'a> Visitor<'a> for ReturnVisitor<'_, 'a> {
                                 enclosing_finally,
                             ));
                         }
-                        // Example:
-                        // ```python
-                        // def foo():
-                        //     with open("foo.txt", "r") as f:
-                        //         x = f.read()
-                        //     return x
-                        // ```
                         Stmt::With(with) => {
                             if let Some(stmt_assign) =
                                 with.body.last().and_then(Stmt::as_assign_stmt)

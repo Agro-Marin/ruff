@@ -59,7 +59,6 @@ impl<'db> ResolvedDefinition<'db> {
                 let parsed = parsed_module(db, definition.python_file(db)).load(db);
                 definition.focus_range(db, &parsed)
             }
-            // For modules, navigate to the start of the file
             ResolvedDefinition::Module(module) => {
                 FileRange::new(module.file(db), TextRange::default())
             }
@@ -112,14 +111,6 @@ impl<'db> ResolvedDefinition<'db> {
     }
 }
 
-// Overload declarations often omit docstrings, while the runtime
-// implementation appears as the last sibling binding for the same symbol.
-// Fall back to that binding's docstring when the resolved overload has none.
-//
-// Uses type-aware matching: resolves each end-of-scope binding's type to a
-// function literal, then checks whether that function's overloads contain the
-// current definition. This correctly handles version-conditional branches and
-// avoids picking up unrelated reassignments of the same name.
 fn implementation_docstring<'db>(db: &'db dyn Db, definition: Definition<'db>) -> Option<String> {
     let DefinitionKind::Function(_) = definition.kind(db) else {
         return None;
@@ -135,7 +126,6 @@ fn implementation_docstring<'db>(db: &'db dyn Db, definition: Definition<'db>) -
         .literal(db)
         .last_definition;
 
-    // Find the last end-of-scope binding whose function type contains this overload.
     let implementation = use_def
         .end_of_scope_symbol_bindings(symbol_id)
         .filter_map(|binding| {
@@ -192,13 +182,11 @@ pub(crate) fn scoped_definitions_for_name<'db>(
 
     let mut all_definitions = FxIndexSet::default();
 
-    // Search through the scope hierarchy: start from the current scope and
-    // traverse up through parent scopes to find definitions
     for (scope_id, _scope) in index.visible_ancestor_scopes(file_scope) {
         let place_table = index.place_table(scope_id);
 
         let Some(symbol_id) = place_table.symbol_id(name_str) else {
-            continue; // Name not found in this scope, try parent scope
+            continue;
         };
 
         let use_def_map = index.use_def_map(scope_id);
@@ -209,7 +197,6 @@ pub(crate) fn scoped_definitions_for_name<'db>(
         let is_nonlocal = place_expr.is_nonlocal();
 
         if is_global || is_nonlocal {
-            // Assignments in a forwarding scope remain valid navigation targets, including eager
             // walrus bindings exported from comprehensions.
             all_definitions.extend(user_visible_definitions(
                 db,
@@ -226,11 +213,7 @@ pub(crate) fn scoped_definitions_for_name<'db>(
             ));
         }
 
-        // TODO: The current algorithm doesn't return definitions or bindings
-        // for other scopes that are outside of this scope hierarchy that target
         // this name using a nonlocal or global binding. The semantic analyzer
-        // doesn't appear to track these in a way that we can easily access
-        // them from here without walking all scopes in the module.
 
         // If marked as global, skip to global scope
         if is_global {
@@ -254,13 +237,10 @@ pub(crate) fn scoped_definitions_for_name<'db>(
             break;
         }
 
-        // If marked as nonlocal, skip current scope and search in ancestor scopes
         if is_nonlocal {
-            // Continue searching in parent scopes, but skip the current scope
             continue;
         }
 
-        // Get all definitions (both bindings and declarations) for this place
         all_definitions.extend(user_visible_definitions(
             db,
             use_def_map
@@ -273,13 +253,11 @@ pub(crate) fn scoped_definitions_for_name<'db>(
                 ),
         ));
 
-        // If we found definitions in this scope, we can stop searching
         if !all_definitions.is_empty() {
             break;
         }
     }
 
-    // Resolve import definitions to their targets
     let mut resolved_definitions = Vec::new();
 
     for definition in &all_definitions {
@@ -337,8 +315,6 @@ pub(crate) fn definitions_for_attribute<'db>(
 ) -> Vec<ResolvedDefinition<'db>> {
     let mut resolved = Vec::new();
 
-    // A structural protocol meta-type still uses its nominal protocol declaration as the source
-    // location for go-to-definition, even though the origin is not a nominal upper bound.
     let subclass_origin = |subclass_of: SubclassOfInner<'db>| {
         let class = match subclass_of {
             SubclassOfInner::Protocol(protocol) => protocol.class_origin(db).map(|origin| *origin),
@@ -354,7 +330,6 @@ pub(crate) fn definitions_for_attribute<'db>(
         _ => std::slice::from_ref(&lhs_ty),
     };
 
-    // Expand intersections for each subtype into their components
     let expanded_tys = tys
         .iter()
         .flat_map(|ty| match ty {
@@ -364,7 +339,6 @@ pub(crate) fn definitions_for_attribute<'db>(
         .copied();
 
     for ty in expanded_tys {
-        // Handle modules
         if let Type::ModuleLiteral(module_literal) = ty {
             if let Some(module_file) = module_literal
                 .module(db)
@@ -385,14 +359,12 @@ pub(crate) fn definitions_for_attribute<'db>(
             continue;
         }
 
-        // Prevent lookup on BoundSuper proxy object
         if matches!(ty, Type::BoundSuper(_)) {
             continue;
         }
 
         let meta_type = ty.to_meta_type(db, env);
 
-        // Look up the attribute first on the meta-type, unless it's already a class-like type.
         let lookup_type = match ty {
             Type::ClassLiteral(_) | Type::SubclassOf(_) | Type::GenericAlias(_) => ty,
             _ => meta_type,
@@ -416,11 +388,6 @@ pub(crate) fn definitions_for_attribute<'db>(
             name_str,
         ));
 
-        // The metaclass of a derived class must be a subclass of the metaclasses of all of
-        // its base classes. This is why we only have to look at the metaclass of the
-        // class_literal.
-        // Only look up definitions on the metaclass if the type is a class object to begin with in
-        // order to prevent looking up instance members on the class metaclass
         if resolved.is_empty() && meta_type != lookup_type {
             let class_literal = match meta_type {
                 Type::ClassLiteral(class_literal) => class_literal,
@@ -460,7 +427,6 @@ fn definitions_for_attribute_in_class_hierarchy<'db>(
         let class_scope = ancestor.body_scope(db);
         let class_place_table = ty_python_core::place_table(db, class_scope);
 
-        // Look for class-level declarations and bindings
         if let Some(place_id) = class_place_table.symbol_id(attribute_name) {
             let use_def = use_def_map(db, class_scope);
             let resolved_in_scope = resolve_reachable_definitions(
@@ -482,7 +448,6 @@ fn definitions_for_attribute_in_class_hierarchy<'db>(
             }
         }
 
-        // Look for instance attributes in method scopes (e.g., self.x = 1)
         let index = semantic_index(db, class_scope.program_file(db));
 
         for function_scope_id in attribute_scopes(db, class_scope) {
@@ -548,8 +513,6 @@ pub(super) fn user_visible_definitions<'db>(
                     .visible_binding_sources(index, definition.file_scope(db))
                     .flatten()
                     .filter_map(|binding| binding.binding.definition());
-                // A lazy function proxy can lead to an eager comprehension proxy. Follow that
-                // proxy-only chain without exposing ordinary lazy nested assignments.
                 pending.extend(sources.filter(|source| {
                     nested.execution == NestedBindingExecution::Eager
                         || matches!(source.kind(db), DefinitionKind::NestedBindings(_))
@@ -606,7 +569,6 @@ pub(crate) fn resolve_definition<'db>(
         alias_resolution,
     );
 
-    // If resolution failed, return the original definition as fallback
     if resolved.is_empty() {
         vec![ResolvedDefinition::Definition(definition)]
     } else {
@@ -623,9 +585,8 @@ fn resolve_definition_recursive<'db>(
     symbol_name: Option<&str>,
     alias_resolution: ImportAliasResolution,
 ) -> Vec<ResolvedDefinition<'db>> {
-    // Prevent infinite recursion if there are circular imports
     if visited.contains(&definition) {
-        return Vec::new(); // Return empty list for circular imports
+        return Vec::new();
     }
     visited.insert(definition);
 
@@ -642,24 +603,20 @@ fn resolve_definition_recursive<'db>(
                 return vec![ResolvedDefinition::Definition(definition)];
             }
 
-            // Get the full module name being imported
             let Some(module_name) = ModuleName::new(&alias.name) else {
-                return Vec::new(); // Invalid module name, return empty list
+                return Vec::new();
             };
 
-            // Resolve the module to its file
             let importing_file = ImportingFile::File(file.file(db), env.resolver_environment(db));
             let Some(resolved_module) = resolve_module(db, importing_file, &module_name) else {
-                return Vec::new(); // Module not found, return empty list
+                return Vec::new();
             };
 
             let Some(module_file) = resolved_module.file(db) else {
-                return Vec::new(); // No file for module, return empty list
+                return Vec::new();
             };
             let module_file = ProgramFile::new(db, module_file, env.program(db));
 
-            // For simple imports like "import os", we want to navigate to the module itself.
-            // Return the module file directly instead of trying to find definitions within it.
             vec![ResolvedDefinition::Module(module_file)]
         }
 
@@ -674,8 +631,6 @@ fn resolve_definition_recursive<'db>(
                 return vec![ResolvedDefinition::Definition(definition)];
             }
 
-            // For `ImportFrom`, we need to resolve the original imported symbol name
-            // (alias.name), not the local alias (symbol_name)
             resolve_from_import_definitions(
                 db,
                 env,
@@ -687,13 +642,11 @@ fn resolve_definition_recursive<'db>(
             )
         }
 
-        // For star imports, try to resolve to the specific symbol being accessed
         DefinitionKind::StarImport(star_import_def) => {
             let file = definition.program_file(db);
             let module = parsed_module(db, file.python_file(db)).load(db);
             let import_node = star_import_def.import(&module);
 
-            // If we have a symbol name, use the helper to resolve it in the target module
             if let Some(symbol_name) = symbol_name {
                 resolve_from_import_definitions(
                     db,
@@ -705,12 +658,10 @@ fn resolve_definition_recursive<'db>(
                     alias_resolution,
                 )
             } else {
-                // No symbol context provided, can't resolve star import
                 Vec::new()
             }
         }
 
-        // For non-import definitions, return the definition as is
         _ => vec![ResolvedDefinition::Definition(definition)],
     }
 }
@@ -743,13 +694,11 @@ pub(crate) fn resolve_from_import_definitions<'db>(
         return Vec::new();
     };
 
-    // Resolve the target module file
     let module_file = resolved_module
         .file(db)
         .map(|file| ProgramFile::new(db, file, env.program(db)));
 
     let Some(module_file) = module_file else {
-        // No file means this is a namespace package, try to import the submodule
         return Vec::from_iter(resolve_from_import_submodule_definitions(
             db,
             env,
@@ -763,7 +712,6 @@ pub(crate) fn resolve_from_import_definitions<'db>(
     let global_scope = global_scope(db, module_file);
     let definitions_in_module = find_symbol_in_scope(db, global_scope, symbol_name);
 
-    // Recursively resolve any import definitions found in the target module
     let mut resolved_definitions = Vec::new();
     for def in definitions_in_module {
         let resolved = resolve_definition_recursive(
@@ -778,12 +726,6 @@ pub(crate) fn resolve_from_import_definitions<'db>(
     }
 
     if resolved_definitions.is_empty() {
-        // In `pkg/__init__.py`, `from . import child` resolves `.` to
-        // `pkg/__init__.py`. Looking up `child` there can find an import definition
-        // that recursively resolves back here (possibly through `from . import *`),
-        // so recursive resolution bottoms out before reaching the `pkg.child`
-        // submodule target. Fall back to the same submodule candidate we use when
-        // `child` has no binding in `pkg/__init__.py`.
         Vec::from_iter(resolve_from_import_submodule_definitions(
             db,
             env,
@@ -796,7 +738,6 @@ pub(crate) fn resolve_from_import_definitions<'db>(
     }
 }
 
-// Helper to resolve `from x.y import z` assuming `x.y.z` is a module.
 fn resolve_from_import_submodule_definitions<'db>(
     db: &'db dyn Db,
     env: &ProgramEnvironment<'db>,
@@ -827,7 +768,6 @@ pub(crate) fn find_symbol_in_scope<'db>(
     let use_def_map = use_def_map(db, scope);
     let mut definitions = IndexSet::new();
 
-    // Get all definitions (both bindings and declarations) for this place
     let bindings = use_def_map.reachable_symbol_bindings(symbol_id);
     let declarations = use_def_map.reachable_symbol_declarations(symbol_id);
 

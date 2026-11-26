@@ -111,10 +111,6 @@ fn is_debugger_call(qualified_name: &QualifiedName) -> bool {
 }
 
 fn is_debugger_import(qualified_name: &QualifiedName) -> bool {
-    // Constructed by taking every pattern in `is_debugger_call`, removing the last element in
-    // each pattern, and de-duplicating the values.
-    // As special-cases, we omit `builtins` and `sys` to allow `import builtins` and `import sys`
-    // which are far more general than (e.g.) `import celery.contrib.rdb`.
     matches!(
         qualified_name.segments(),
         ["pdb" | "pudb" | "ipdb" | "debugpy" | "ptvsd"]

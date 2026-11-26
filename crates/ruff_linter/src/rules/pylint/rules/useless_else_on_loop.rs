@@ -153,18 +153,15 @@ fn remove_else(
 
     let start_indentation = indentation(locator.contents(), start);
     if start_indentation.is_none() {
-        // Inline `else` block (e.g., `else: x = 1`).
         Ok(Fix::safe_edit(Edit::deletion(
             else_range.start(),
             start.start(),
         )))
     } else {
-        // Identify the indentation of the loop itself (e.g., the `while` or `for`).
         let Some(desired_indentation) = indentation(locator.contents(), stmt) else {
             return Err(anyhow::anyhow!("Compound statement cannot be inlined"));
         };
 
-        // Dedent the content from the end of the `else` to the end of the loop.
         let indented = adjust_indentation(
             TextRange::new(
                 locator.full_line_end(else_range.start()),
@@ -176,15 +173,12 @@ fn remove_else(
             stylist,
         )?;
 
-        // The `else` line is replaced, so a trailing comment on it (e.g., `else:  # comment`) is
-        // deleted.
         let applicability = if comment_ranges.intersects(locator.line_range(else_range.start())) {
             Applicability::Unsafe
         } else {
             Applicability::Safe
         };
 
-        // Replace the content from the start of the `else` to the end of the loop.
         Ok(Fix::applicable_edit(
             Edit::replacement(
                 indented,

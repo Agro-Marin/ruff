@@ -59,8 +59,6 @@ impl BackgroundDocumentRequestHandler for DocumentDiagnosticRequestHandler {
                 related_documents: None,
                 full_document_diagnostic_report: FullDocumentDiagnosticReport {
                     result_id: new_id,
-                    // A notebook is checked as a whole, but a pull response only includes
-                    // diagnostics for the requested cell.
                     items: diagnostics
                         .to_lsp_diagnostics(db, snapshot.resolved_client_capabilities())
                         .into_document_diagnostics(snapshot.document().uri()),

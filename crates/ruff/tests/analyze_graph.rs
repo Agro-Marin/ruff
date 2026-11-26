@@ -22,7 +22,6 @@ fn command() -> Command {
 }
 
 const INSTA_FILTERS: &[(&str, &str)] = &[
-    // Rewrite Windows output to Unix output
     (r"\\", "/"),
 ];
 
@@ -267,7 +266,6 @@ fn string_detection_attribute() -> Result<()> {
     "#})?;
     root.child("ruff").child("c.py").write_str("")?;
 
-    // Without string detection, no edge from b.py to c.py.
     insta::with_settings!({
         filters => INSTA_FILTERS.to_vec(),
     }, {
@@ -288,8 +286,6 @@ fn string_detection_attribute() -> Result<()> {
         "#);
     });
 
-    // With string detection and min-dots=1, "ruff.c.MyClass" should resolve to ruff/c.py
-    // by falling back from the unresolvable full name to the parent module.
     insta::with_settings!({
         filters => INSTA_FILTERS.to_vec(),
     }, {
@@ -312,8 +308,6 @@ fn string_detection_attribute() -> Result<()> {
         "#);
     });
 
-    // With the default min-dots=2, the fallback from "ruff.c.MyClass" (2 dots)
-    // would land on "ruff.c" (1 dot), which is below the threshold — so no edge.
     insta::with_settings!({
         filters => INSTA_FILTERS.to_vec(),
     }, {
@@ -441,7 +435,6 @@ fn string_detection_min_dots_deep_fallback() -> Result<()> {
         cls = "a.b.c.d.MyClass"
     "#})?;
 
-    // Default min_dots=2: "a.b.c.d" has 3 dots (≥ 2), so fallback succeeds.
     insta::with_settings!({
         filters => INSTA_FILTERS.to_vec(),
     }, {
@@ -557,7 +550,6 @@ fn string_detection_from_config() -> Result<()> {
 
     let root = ChildPath::new(tempdir.path());
 
-    // Configure string import detection with a lower min-dots via ruff.toml
     root.child("ruff.toml").write_str(indoc::indoc! {r#"
         [analyze]
         detect-string-imports = true
@@ -820,19 +812,6 @@ fn venv() -> Result<()> {
     let tempdir = TempDir::new()?;
     let root = ChildPath::new(tempdir.path());
 
-    // packages
-    // ├── albatross
-    // │   ├── check_installed_albatross.py
-    // │   ├── pyproject.toml
-    // │   └── src
-    // │       └── albatross
-    // │           └── __init__.py
-    // └── bird-feeder
-    //     ├── check_installed_bird_feeder.py
-    //     ├── pyproject.toml
-    //     └── src
-    //         └── bird_feeder
-    //             └── __init__.py
 
     let packages = root.child("packages");
 
@@ -891,8 +870,6 @@ fn venv() -> Result<()> {
         .write_str(&bird_feeder.join("src").to_string_lossy())?;
     site_packages.child("tqdm").child("__init__.py").touch()?;
 
-    // without `--python .venv`, the result should only include dependencies within the albatross
-    // package
     insta::with_settings!({
         filters => INSTA_FILTERS.to_vec(),
     }, {
@@ -913,7 +890,6 @@ fn venv() -> Result<()> {
         "#);
     });
 
-    // with `--python .venv` both workspace and third-party dependencies are included
     insta::with_settings!({
         filters => INSTA_FILTERS.to_vec(),
     }, {
@@ -937,8 +913,6 @@ fn venv() -> Result<()> {
         "#);
     });
 
-    // test the error message for a non-existent venv. it's important that the `ruff analyze graph`
-    // flag matches the ty flag used to generate the error message (`--python`)
     insta::with_settings!({
         filters => INSTA_FILTERS.to_vec(),
     }, {
@@ -972,7 +946,6 @@ fn notebook_basic() -> Result<()> {
             pass
     "#})?;
 
-    // Create a basic notebook with a simple import
     root.child("notebook.ipynb").write_str(indoc::indoc! {r#"
         {
           "cells": [
@@ -1028,19 +1001,16 @@ fn src_option() -> Result<()> {
     let tempdir = TempDir::new()?;
     let root = ChildPath::new(tempdir.path());
 
-    // Create a lib directory with a package.
     root.child("lib")
         .child("mylib")
         .child("__init__.py")
         .write_str("def helper(): pass")?;
 
-    // Create an app directory with a file that imports from mylib.
     root.child("app").child("__init__.py").write_str("")?;
     root.child("app")
         .child("main.py")
         .write_str("from mylib import helper")?;
 
-    // Without src configured, the import from mylib won't resolve.
     insta::with_settings!({
         filters => INSTA_FILTERS.to_vec(),
     }, {
@@ -1057,7 +1027,6 @@ fn src_option() -> Result<()> {
         "#);
     });
 
-    // With src = ["lib"], the import should resolve.
     root.child("ruff.toml").write_str(indoc::indoc! {r#"
         src = ["lib"]
     "#})?;
@@ -1089,7 +1058,6 @@ fn src_glob_expansion() -> Result<()> {
     let tempdir = TempDir::new()?;
     let root = ChildPath::new(tempdir.path());
 
-    // Create multiple lib directories with packages.
     root.child("libs")
         .child("lib_a")
         .child("pkg_a")
@@ -1101,13 +1069,11 @@ fn src_glob_expansion() -> Result<()> {
         .child("__init__.py")
         .write_str("def func_b(): pass")?;
 
-    // Create an app that imports from both packages.
     root.child("app").child("__init__.py").write_str("")?;
     root.child("app")
         .child("main.py")
         .write_str("from pkg_a import func_a\nfrom pkg_b import func_b")?;
 
-    // Use a glob pattern to include all lib directories.
     root.child("ruff.toml").write_str(indoc::indoc! {r#"
         src = ["libs/*"]
     "#})?;
@@ -1147,7 +1113,6 @@ fn notebook_with_magic() -> Result<()> {
             pass
     "#})?;
 
-    // Create a notebook with IPython magic commands and imports
     root.child("notebook.ipynb").write_str(indoc::indoc! {r#"
         {
           "cells": [

@@ -83,18 +83,17 @@ select = [
     "RUF",
 ]
 ignore = [
-    # only relevant if you run a script with `python -0`,
     "assert-false",
     # These are enforced by, or incompatible with, the ruff formatter:
     "whitespace-before-punctuation",
     "line-too-long",
 ]
 unfixable = [
-    "unused-variable",                    # ruff keeps the call, but mostly it's best to get rid of it all
-    "multi-value-repeated-key-literal",   # automatic fix might obscure issue
-    "multi-value-repeated-key-variable",  # automatic fix might obscure issue
-    "useless-expression",                 # automatic fix might obscure issue
-    "quadratic-list-summation",           # Ruff's fix is faster, but I prefer using itertools.chain_from_iterable
+    "unused-variable",
+    "multi-value-repeated-key-literal",
+    "multi-value-repeated-key-variable",
+    "useless-expression",
+    "quadratic-list-summation",
 ]
 
 [tool.ruff.lint.isort]
@@ -105,7 +104,6 @@ split-on-trailing-comma = false
 no-build = true
 require-build-hashes = true
 no-binary-package = ["py-fuzzer"]
-# Pin the isolated build environment for source-build exceptions.
 build-constraint-dependencies = [
     { requirement = "flit-core==3.12.0", hashes = [
         "sha256:18f63100d6f94385c6ed57a72073443e1a71a4acb4339491615d0f16d6ff01b2",

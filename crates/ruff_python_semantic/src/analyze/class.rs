@@ -44,14 +44,10 @@ where
         seen: &mut FxHashSet<BindingId>,
     ) -> bool {
         class_def.bases().iter().any(|expr| {
-            // If the base class itself matches the pattern, then this does too.
-            // Ex) `class Foo(BaseModel): ...`
             if func(expr) {
                 return true;
             }
 
-            // If the base class extends a class that matches the pattern, then this does too.
-            // Ex) `class Bar(BaseModel): ...; class Foo(Bar): ...`
             if let Some(id) = semantic.lookup_attribute(map_subscript(expr)) {
                 if seen.insert(id) {
                     let binding = semantic.binding(id);
@@ -99,7 +95,6 @@ pub fn iter_super_class<'stmt>(
         fn next(&mut self) -> Option<Self::Item> {
             let current = self.to_visit.pop_front()?;
 
-            // Add all base classes to the to_visit list
             for expr in current.bases() {
                 if let Some(id) = self.semantic.lookup_attribute(map_subscript(expr)) {
                     if self.seen.insert(id) {
@@ -241,19 +236,6 @@ where
 
                     None
                 }
-                // Technically, a method can be defined using a few more methods:
-                //
-                // ```python
-                // class C1:
-                //     # Import
-                //     import __eq__  # Callable module
-                //     # ImportFrom
-                //     from module import __eq__  # Top level callable
-                //     # ExprNamed
-                //     (__eq__ := lambda self, other: True)
-                // ```
-                //
-                // Those cases are not yet supported because they're rare.
                 Stmt::ClassDef(_)
                 | Stmt::Return(_)
                 | Stmt::Delete(_)
@@ -329,7 +311,6 @@ impl IsMetaclass {
 ///         ...
 /// ```
 fn has_metaclass_new_signature(class_def: &ast::StmtClassDef, semantic: &SemanticModel) -> bool {
-    // Look for a __new__ method in the class body
     for stmt in &class_def.body {
         let ast::Stmt::FunctionDef(ast::StmtFunctionDef {
             name, parameters, ..
@@ -342,25 +323,20 @@ fn has_metaclass_new_signature(class_def: &ast::StmtClassDef, semantic: &Semanti
             continue;
         }
 
-        // Check if we have exactly 5 parameters (cls + 4 others)
         if parameters.len() != 5 {
             continue;
         }
 
-        // Check that there is no variadic parameter
         if parameters.vararg.is_some() {
             continue;
         }
 
-        // Check that the last parameter is keyword-variadic (**kwargs)
         if parameters.kwarg.is_none() {
             continue;
         }
 
-        // Check parameter annotations, skipping the first parameter (cls)
         let mut param_iter = parameters.iter().skip(1);
 
-        // Check second parameter (name: str)
         let Some(second_param) = param_iter.next() else {
             continue;
         };
@@ -371,7 +347,6 @@ fn has_metaclass_new_signature(class_def: &ast::StmtClassDef, semantic: &Semanti
             continue;
         }
 
-        // Check third parameter (bases: tuple[...])
         let Some(third_param) = param_iter.next() else {
             continue;
         };
@@ -381,7 +356,6 @@ fn has_metaclass_new_signature(class_def: &ast::StmtClassDef, semantic: &Semanti
             continue;
         }
 
-        // Check fourth parameter (attrs: dict[...])
         let Some(fourth_param) = param_iter.next() else {
             continue;
         };
@@ -407,11 +381,9 @@ pub fn is_metaclass(class_def: &ast::StmtClassDef, semantic: &SemanticModel) -> 
             func, arguments, ..
         }) => {
             maybe = true;
-            // Ex) `class Foo(type(Protocol)): ...`
             arguments.len() == 1 && semantic.match_builtin_expr(func.as_ref(), "type")
         }
         Expr::Subscript(ast::ExprSubscript { value, .. }) => {
-            // Ex) `class Foo(type[int]): ...`
             semantic.match_builtin_expr(value.as_ref(), "type")
         }
         _ => semantic
@@ -430,8 +402,6 @@ pub fn is_metaclass(class_def: &ast::StmtClassDef, semantic: &SemanticModel) -> 
         (true, true) => IsMetaclass::Maybe,
         (true, false) => IsMetaclass::Yes,
         (false, _) => {
-            // If it has >1 base class and a metaclass-like signature for `__new__`,
-            // then it might be a metaclass.
             if class_def.bases().is_empty() {
                 IsMetaclass::No
             } else if has_metaclass_new_signature(class_def, semantic) {

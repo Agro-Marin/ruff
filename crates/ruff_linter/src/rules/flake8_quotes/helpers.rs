@@ -10,7 +10,6 @@ pub(super) fn raw_contents(contents: &str, flags: AnyStringFlags) -> &str {
 /// Return `true` if the haystack contains an escaped quote.
 pub(super) fn contains_escaped_quote(haystack: &str, quote: char) -> bool {
     for index in memchr::memchr_iter(quote as u8, haystack.as_bytes()) {
-        // If the quote is preceded by an even number of backslashes, it's not escaped.
         if haystack.as_bytes()[..index]
             .iter()
             .rev()
@@ -37,12 +36,10 @@ pub(super) fn unescape_string(haystack: &str, quote: char) -> String {
             backslashes = 0;
             continue;
         }
-        // If we're at the end of the line
         let Some(next_char) = chars.peek() else {
             fixed_contents.push(char);
             continue;
         };
-        // Remove quote escape
         if *next_char == quote && backslashes % 2 == 0 {
             backslashes = 0;
             continue;

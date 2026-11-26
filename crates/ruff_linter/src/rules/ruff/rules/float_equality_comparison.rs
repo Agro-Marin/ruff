@@ -170,12 +170,10 @@ fn should_skip_comparison(expr: &Expr, semantic: &SemanticModel) -> bool {
         Expr::Call(ast::ExprCall {
             func, arguments, ..
         }) => {
-            // Skip `pytest.approx`
             if semantic.matches_qualified_name(func, &["pytest", "approx"]) {
                 return true;
             }
 
-            // Skip `float("inf" / "-inf" / etc.)` / `complex("inf" / "-inf" / etc.)`
             if ["float", "complex"]
                 .iter()
                 .any(|s| semantic.match_builtin_expr(func, s))
@@ -188,8 +186,6 @@ fn should_skip_comparison(expr: &Expr, semantic: &SemanticModel) -> bool {
             false
         }
 
-        // Skip `inf` when imported from `math`, `cmath`, `numpy` or `torch`
-        // and `infj` from `cmath`
         _ => semantic
             .resolve_qualified_name(expr)
             .is_some_and(|qualified_name| {

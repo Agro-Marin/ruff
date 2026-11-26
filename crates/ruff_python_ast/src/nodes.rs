@@ -455,7 +455,7 @@ impl Deref for InterpolatedStringLiteralElement {
 #[expect(clippy::cast_possible_wrap)]
 pub enum ConversionFlag {
     /// No conversion
-    None = -1, // CPython uses -1
+    None = -1,
     /// Converts by calling `str(<value>)`.
     Str = b's' as i8,
     /// Converts by calling `ascii(<value>)`.
@@ -1200,11 +1200,6 @@ impl FStringFlags {
     }
 }
 
-// TODO(dylan): the documentation about using
-// `Checker::default_tstring_flags` is not yet
-// correct. This method does not yet exist because
-// introducing it would emit a dead code warning
-// until we call it in lint rules.
 /// Flags that can be queried to obtain information
 /// regarding the prefixes and quotes used for an f-string.
 ///
@@ -1684,7 +1679,6 @@ impl PartialEq<str> for StringLiteralValue {
         if self.len() != other.len() {
             return false;
         }
-        // The `zip` here is safe because we have checked the length of both parts.
         self.chars().zip(other.chars()).all(|(c1, c2)| c1 == c2)
     }
 }
@@ -1985,7 +1979,6 @@ impl PartialEq for ConcatenatedStringLiteral {
         if self.strings.len() != other.strings.len() {
             return false;
         }
-        // The `zip` here is safe because we have checked the length of both parts.
         self.strings
             .iter()
             .zip(&other.strings)
@@ -2119,7 +2112,6 @@ impl PartialEq<[u8]> for BytesLiteralValue {
         if self.len() != other.len() {
             return false;
         }
-        // The `zip` here is safe because we have checked the length of both parts.
         self.bytes()
             .zip(other.iter().copied())
             .all(|(b1, b2)| b1 == b2)
@@ -2442,7 +2434,6 @@ impl AnyStringFlags {
     #[must_use]
     pub fn with_prefix(mut self, prefix: AnyStringPrefix) -> Self {
         self.0 |= match prefix {
-            // regular strings
             AnyStringPrefix::Regular(StringLiteralPrefix::Empty) => AnyStringFlagsInner::empty(),
             AnyStringPrefix::Regular(StringLiteralPrefix::Unicode) => AnyStringFlagsInner::U_PREFIX,
             AnyStringPrefix::Regular(StringLiteralPrefix::Raw { uppercase: false }) => {
@@ -2452,7 +2443,6 @@ impl AnyStringFlags {
                 AnyStringFlagsInner::R_PREFIX_UPPER
             }
 
-            // bytestrings
             AnyStringPrefix::Bytes(ByteStringPrefix::Regular) => AnyStringFlagsInner::B_PREFIX,
             AnyStringPrefix::Bytes(ByteStringPrefix::Raw { uppercase_r: false }) => {
                 AnyStringFlagsInner::B_PREFIX.union(AnyStringFlagsInner::R_PREFIX_LOWER)
@@ -2461,7 +2451,6 @@ impl AnyStringFlags {
                 AnyStringFlagsInner::B_PREFIX.union(AnyStringFlagsInner::R_PREFIX_UPPER)
             }
 
-            // f-strings
             AnyStringPrefix::Format(FStringPrefix::Regular) => AnyStringFlagsInner::F_PREFIX,
             AnyStringPrefix::Format(FStringPrefix::Raw { uppercase_r: false }) => {
                 AnyStringFlagsInner::F_PREFIX.union(AnyStringFlagsInner::R_PREFIX_LOWER)
@@ -2470,7 +2459,6 @@ impl AnyStringFlags {
                 AnyStringFlagsInner::F_PREFIX.union(AnyStringFlagsInner::R_PREFIX_UPPER)
             }
 
-            // t-strings
             AnyStringPrefix::Template(TStringPrefix::Regular) => AnyStringFlagsInner::T_PREFIX,
             AnyStringPrefix::Template(TStringPrefix::Raw { uppercase_r: false }) => {
                 AnyStringFlagsInner::T_PREFIX.union(AnyStringFlagsInner::R_PREFIX_LOWER)
@@ -2556,7 +2544,6 @@ impl StringFlags for AnyStringFlags {
     fn prefix(self) -> AnyStringPrefix {
         let AnyStringFlags(flags) = self;
 
-        // f-strings
         if flags.contains(AnyStringFlagsInner::F_PREFIX) {
             if flags.contains(AnyStringFlagsInner::R_PREFIX_LOWER) {
                 return AnyStringPrefix::Format(FStringPrefix::Raw { uppercase_r: false });
@@ -2567,7 +2554,6 @@ impl StringFlags for AnyStringFlags {
             return AnyStringPrefix::Format(FStringPrefix::Regular);
         }
 
-        // t-strings
         if flags.contains(AnyStringFlagsInner::T_PREFIX) {
             if flags.contains(AnyStringFlagsInner::R_PREFIX_LOWER) {
                 return AnyStringPrefix::Template(TStringPrefix::Raw { uppercase_r: false });
@@ -2578,7 +2564,6 @@ impl StringFlags for AnyStringFlags {
             return AnyStringPrefix::Template(TStringPrefix::Regular);
         }
 
-        // bytestrings
         if flags.contains(AnyStringFlagsInner::B_PREFIX) {
             if flags.contains(AnyStringFlagsInner::R_PREFIX_LOWER) {
                 return AnyStringPrefix::Bytes(ByteStringPrefix::Raw { uppercase_r: false });
@@ -2589,7 +2574,6 @@ impl StringFlags for AnyStringFlags {
             return AnyStringPrefix::Bytes(ByteStringPrefix::Regular);
         }
 
-        // all other strings
         if flags.contains(AnyStringFlagsInner::R_PREFIX_LOWER) {
             return AnyStringPrefix::Regular(StringLiteralPrefix::Raw { uppercase: false });
         }
@@ -3373,11 +3357,7 @@ impl Parameters {
             kwarg,
         } = self;
         // Safety: a Python function can have an arbitrary number of parameters,
-        // so theoretically this could be a number that wouldn't fit into a usize,
-        // which would lead to a panic. A Python function with that many parameters
         // is extremely unlikely outside of generated code, however, and it's even
-        // more unlikely that we'd find a function with that many parameters in a
-        // source-code file <=4GB large (Ruff's maximum).
         posonlyargs
             .len()
             .checked_add(args.len())
@@ -3603,8 +3583,6 @@ impl<'a> Iterator for ParametersSourceOrderIterator<'a> {
     type Item = AnyParameterRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // If there's a variadic parameter that comes before the next
-        // non-variadic parameter, emit it first.
         let next_non_variadic_start = self
             .peek_next_non_variadic()
             .map_or(TextSize::new(u32::MAX), Ranged::start);
@@ -3617,7 +3595,6 @@ impl<'a> Iterator for ParametersSourceOrderIterator<'a> {
             return Some(AnyParameterRef::NonVariadic(non_variadic));
         }
 
-        // Drain remaining variadics.
         self.next_variadic_before(TextSize::new(u32::MAX))
             .map(AnyParameterRef::Variadic)
     }

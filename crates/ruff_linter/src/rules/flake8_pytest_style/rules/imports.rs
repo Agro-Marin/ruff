@@ -51,7 +51,6 @@ pub(crate) fn import(checker: &Checker, import_from: &Stmt, name: &str, asname: 
 
 /// PT013
 pub(crate) fn import_from(checker: &Checker, import_from: &Stmt, module: Option<&str>, level: u32) {
-    // If level is not zero or module is none, return
     if level != 0 {
         return;
     }

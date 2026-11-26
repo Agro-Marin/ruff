@@ -120,7 +120,6 @@ fn is_relevant_module(module: &str) -> bool {
     )
 }
 
-// Members of `collections` that were moved to `collections.abc`.
 const COLLECTIONS_TO_ABC: &[&str] = &[
     "AsyncGenerator",
     "AsyncIterable",
@@ -149,10 +148,8 @@ const COLLECTIONS_TO_ABC: &[&str] = &[
     "ValuesView",
 ];
 
-// Members of `pipes` that were moved to `shlex`.
 const PIPES_TO_SHLEX: &[&str] = &["quote"];
 
-// Members of `typing_extensions` that were moved to `typing`.
 const TYPING_EXTENSIONS_TO_TYPING: &[&str] = &[
     "AbstractSet",
     "AnyStr",
@@ -197,61 +194,32 @@ const TYPING_EXTENSIONS_TO_TYPING: &[&str] = &[
     "ValuesView",
     "cast",
     "no_type_check",
-    // Introduced in Python 3.5.2, but `typing_extensions` contains backported bugfixes and
-    // optimizations,
-    // "NewType",
-    // "Generator",
-    // "ContextManager",
 ];
 
-// Python 3.7+
 
-// Members of `mypy_extensions` that were moved to `typing`.
 const MYPY_EXTENSIONS_TO_TYPING_37: &[&str] = &["NoReturn"];
 
-// Members of `typing_extensions` that were moved to `typing`.
 const TYPING_EXTENSIONS_TO_TYPING_37: &[&str] = &[
     "ChainMap",
     "Counter",
     "Deque",
     "ForwardRef",
     "NoReturn",
-    // Introduced in Python <=3.7, but `typing_extensions` backports some features
-    // from Python 3.12/3.13
-    // "AsyncContextManager",
-    // "AsyncGenerator",
-    // "NamedTuple",
 ];
 
-// Members of `typing.io` that were moved to `typing`.
-// Note that the `typing.io` namespace has pretty much always been unnecessary.
 const TYPING_IO_TO_TYPING_37: &[&str] = &["BinaryIO", "IO", "TextIO"];
 
-// Members of `typing.re` that were moved to `typing`.
-// Note that the `typing.re` namespace has pretty much always been unnecessary.
 const TYPING_RE_TO_TYPING_37: &[&str] = &["Match", "Pattern"];
 
-// Python 3.8+
 
-// Members of `mypy_extensions` that were moved to `typing`.
 const MYPY_EXTENSIONS_TO_TYPING_38: &[&str] = &["TypedDict"];
 
-// Members of `typing_extensions` that were moved to `typing`.
 const TYPING_EXTENSIONS_TO_TYPING_38: &[&str] = &[
     "Final",
     "OrderedDict",
-    // Introduced in Python 3.8, but `typing_extensions` contains backported bugfixes and
-    // optimizations.
-    // "Literal",
-    // "Protocol",
-    // "SupportsIndex",
-    // "runtime_checkable",
-    // "TypedDict",
 ];
 
-// Python 3.9+
 
-// Members of `typing` that were moved to `collections.abc`.
 const TYPING_TO_COLLECTIONS_ABC_39: &[&str] = &[
     "AsyncGenerator",
     "AsyncIterable",
@@ -277,20 +245,14 @@ const TYPING_TO_COLLECTIONS_ABC_39: &[&str] = &[
     "ValuesView",
 ];
 
-// Members of `typing` that were moved to `collections`.
 const TYPING_TO_COLLECTIONS_39: &[&str] = &["ChainMap", "Counter", "OrderedDict"];
 
-// Members of `typing` that were moved to `re`.
 const TYPING_TO_RE_39: &[&str] = &["Match", "Pattern"];
 
-// Members of `typing.re` that were moved to `re`.
 const TYPING_RE_TO_RE_39: &[&str] = &["Match", "Pattern"];
 
-// Members of `typing_extensions` that were moved to `typing`.
 const TYPING_EXTENSIONS_TO_TYPING_39: &[&str] = &["Annotated"];
 
-// Members of `typing` that were moved _and_ renamed (and thus cannot be
-// automatically fixed).
 const TYPING_TO_RENAME_PY39: &[(&str, &str)] = &[
     (
         "AsyncContextManager",
@@ -308,12 +270,9 @@ const TYPING_TO_RENAME_PY39: &[(&str, &str)] = &[
     ("DefaultDict", "collections.defaultdict"),
 ];
 
-// Python 3.10+
 
-// Members of `typing` that were moved to `collections.abc`.
 const TYPING_TO_COLLECTIONS_ABC_310: &[&str] = &["Callable"];
 
-// Members of `typing_extensions` that were moved to `typing`.
 const TYPING_EXTENSIONS_TO_TYPING_310: &[&str] = &[
     "Concatenate",
     "Literal",
@@ -324,14 +283,9 @@ const TYPING_EXTENSIONS_TO_TYPING_310: &[&str] = &[
     "TypeGuard",
     "get_args",
     "get_origin",
-    // Introduced in Python 3.10, but `typing_extensions` equivalent
-    // also checks for `typing_extensions.TypedDict` in addition to `typing.TypedDict`.
-    // "is_typeddict",
 ];
 
-// Python 3.11+
 
-// Members of `typing_extensions` that were moved to `typing`.
 const TYPING_EXTENSIONS_TO_TYPING_311: &[&str] = &[
     "Any",
     "LiteralString",
@@ -350,12 +304,8 @@ const TYPING_EXTENSIONS_TO_TYPING_311: &[&str] = &[
 
 const BACKPORTS_STR_ENUM_TO_ENUM_311: &[&str] = &["StrEnum"];
 
-// Python 3.12+
 
-// Members of `typing_extensions` that were moved to `typing`.
 const TYPING_EXTENSIONS_TO_TYPING_312: &[&str] = &[
-    // Introduced in Python 3.8, but `typing_extensions` backports a ton of optimizations that were
-    // added in Python 3.12.
     "Protocol",
     "SupportsAbs",
     "SupportsBytes",
@@ -366,62 +316,39 @@ const TYPING_EXTENSIONS_TO_TYPING_312: &[&str] = &[
     "SupportsRound",
     "TypeAliasType",
     "Unpack",
-    // Introduced in Python 3.6, but `typing_extensions` backports bugfixes and features
     "NamedTuple",
-    // Introduced in Python 3.11, but `typing_extensions` backports the `frozen_default` argument,
-    // which was introduced in Python 3.12.
     "dataclass_transform",
     "override",
 ];
 
-// Members of `typing_extensions` that were moved to `collections.abc`.
 const TYPING_EXTENSIONS_TO_COLLECTIONS_ABC_312: &[&str] = &["Buffer"];
 
-// Members of `typing_extensions` that were moved to `types`.
 const TYPING_EXTENSIONS_TO_TYPES_312: &[&str] = &["get_original_bases"];
 
-// Python 3.13+
 
-// Members of `typing_extensions` that were moved to `typing`.
 const TYPING_EXTENSIONS_TO_TYPING_313: &[&str] = &[
     "get_protocol_members",
     "is_protocol",
     "NoDefault",
     "ReadOnly",
     "TypeIs",
-    // Introduced in Python 3.5,
-    // but typing_extensions backports features from py313:
     "get_type_hints",
-    // Introduced in Python 3.6,
-    // but typing_extensions backports features from py313:
     "ContextManager",
     "Generator",
-    // Introduced in Python 3.7,
-    // but typing_extensions backports features from py313:
     "AsyncContextManager",
     "AsyncGenerator",
-    // Introduced in Python 3.8, but typing_extensions
-    // backports features and bugfixes from py313:
     "Protocol",
     "runtime_checkable",
-    // Introduced in earlier Python versions,
-    // but typing_extensions backports PEP-696:
     "ParamSpec",
     "TypeVar",
     "TypeVarTuple",
-    // `typing_extensions` backports PEP 728 (TypedDict with Typed Extra Items)
-    // "TypedDict",
 ];
 
-// Members of `typing_extensions` that were moved to `types`.
 const TYPING_EXTENSIONS_TO_TYPES_313: &[&str] = &["CapsuleType"];
 
-// Members of typing_extensions that were moved to `warnings`
 const TYPING_EXTENSIONS_TO_WARNINGS_313: &[&str] = &["deprecated"];
 
-// Python 3.15+
 
-// Members of `typing_extensions` that were moved to `typing`.
 const TYPING_EXTENSIONS_TO_TYPING_315: &[&str] = &["TypeForm"];
 
 struct ImportReplacer<'a> {
@@ -502,7 +429,6 @@ impl<'a> ImportReplacer<'a> {
                 }
             }
             "typing_extensions" => {
-                // `typing_extensions` to `collections.abc`
                 let mut typing_extensions_to_collections_abc = vec![];
                 if self.version >= PythonVersion::PY312 {
                     typing_extensions_to_collections_abc
@@ -514,7 +440,6 @@ impl<'a> ImportReplacer<'a> {
                     operations.push(operation);
                 }
 
-                // `typing_extensions` to `warnings`
                 let mut typing_extensions_to_warnings = vec![];
                 if self.version >= PythonVersion::PY313 {
                     typing_extensions_to_warnings.extend(TYPING_EXTENSIONS_TO_WARNINGS_313);
@@ -525,7 +450,6 @@ impl<'a> ImportReplacer<'a> {
                     operations.push(operation);
                 }
 
-                // `typing_extensions` to `types`
                 let mut typing_extensions_to_types = vec![];
                 if self.version >= PythonVersion::PY312 {
                     typing_extensions_to_types.extend(TYPING_EXTENSIONS_TO_TYPES_312);
@@ -537,7 +461,6 @@ impl<'a> ImportReplacer<'a> {
                     operations.push(operation);
                 }
 
-                // `typing_extensions` to `typing`
                 let mut typing_extensions_to_typing = TYPING_EXTENSIONS_TO_TYPING.to_vec();
                 if self.version >= PythonVersion::PY37 {
                     typing_extensions_to_typing.extend(TYPING_EXTENSIONS_TO_TYPING_37);
@@ -580,7 +503,6 @@ impl<'a> ImportReplacer<'a> {
                 }
             }
             "typing" => {
-                // `typing` to `collections.abc`
                 let mut typing_to_collections_abc = vec![];
                 if self.version >= PythonVersion::PY39 {
                     typing_to_collections_abc.extend(TYPING_TO_COLLECTIONS_ABC_39);
@@ -594,7 +516,6 @@ impl<'a> ImportReplacer<'a> {
                     operations.push(operation);
                 }
 
-                // `typing` to `collections`
                 let mut typing_to_collections = vec![];
                 if self.version >= PythonVersion::PY39 {
                     typing_to_collections.extend(TYPING_TO_COLLECTIONS_39);
@@ -603,7 +524,6 @@ impl<'a> ImportReplacer<'a> {
                     operations.push(operation);
                 }
 
-                // `typing` to `re`
                 let mut typing_to_re = vec![];
                 if self.version >= PythonVersion::PY39 {
                     typing_to_re.extend(TYPING_TO_RE_39);
@@ -649,7 +569,6 @@ impl<'a> ImportReplacer<'a> {
 
         let (matched_names, unmatched_names) = self.partition_imports(candidates);
 
-        // If we have no matched names, we don't need to do anything.
         if matched_names.is_empty() {
             return None;
         }
@@ -669,9 +588,6 @@ impl<'a> ImportReplacer<'a> {
         } else {
             let indentation = indentation(self.locator.contents(), self.import_from_stmt);
 
-            // If we have matched _and_ unmatched names, but the import is not on its own
-            // line, we can't add a statement after it. For example, if we have
-            // `if True: import foo`, we can't add a statement to the next line.
             let Some(indentation) = indentation else {
                 let operation = WithoutRename {
                     target: target.to_string(),
@@ -736,8 +652,6 @@ impl<'a> ImportReplacer<'a> {
     /// Converts a list of names and a module into an `import from`-style
     /// import.
     fn format_import_from(&self, names: &[&Alias], module: &str) -> String {
-        // Construct the whitespace strings.
-        // Generate the formatted names.
         let qualified_names: String = names
             .iter()
             .map(|name| match &name.asname {
@@ -756,7 +670,6 @@ impl<'a> ImportReplacer<'a> {
 
 /// UP035
 pub(crate) fn deprecated_import(checker: &Checker, import_from_stmt: &StmtImportFrom) {
-    // Avoid relative and star imports.
     if import_from_stmt.level > 0 {
         return;
     }

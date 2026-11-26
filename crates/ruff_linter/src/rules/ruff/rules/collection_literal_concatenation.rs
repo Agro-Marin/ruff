@@ -126,7 +126,6 @@ fn concatenate_expressions(expr: &Expr) -> Option<(Expr, Type)> {
         _ => *right.clone(),
     };
 
-    // Figure out which way the splat is, and the type of the collection.
     let (type_, splat_element, other_elements, splat_at_left) = match (&new_left, &new_right) {
         (Expr::List(ast::ExprList { elts: l_elts, .. }), _) => {
             (Type::List, &new_right, l_elts, false)
@@ -144,16 +143,12 @@ fn concatenate_expressions(expr: &Expr) -> Option<(Expr, Type)> {
     };
 
     let new_elts = match splat_element {
-        // We'll be a bit conservative here; only calls, names and attribute accesses
-        // will be considered as splat elements.
         Expr::Call(_) | Expr::Attribute(_) | Expr::Name(_) => {
             make_splat_elts(splat_element, other_elements, splat_at_left)
         }
-        // Subscripts are also considered safe-ish to splat if the indexer is a slice.
         Expr::Subscript(ast::ExprSubscript { slice, .. }) if matches!(&**slice, Expr::Slice(_)) => {
             make_splat_elts(splat_element, other_elements, splat_at_left)
         }
-        // If the splat element is itself a list/tuple, insert them in the other list/tuple.
         Expr::List(ast::ExprList { elts, .. }) if matches!(type_, Type::List) => {
             other_elements.iter().chain(elts).cloned().collect()
         }
@@ -186,7 +181,6 @@ fn concatenate_expressions(expr: &Expr) -> Option<(Expr, Type)> {
 
 /// RUF005
 pub(crate) fn collection_literal_concatenation(checker: &Checker, expr: &Expr) {
-    // If the expression is already a child of an addition, we'll have analyzed it already.
     if matches!(
         checker.semantic().current_expression_parent(),
         Some(Expr::BinOp(ast::ExprBinOp {
@@ -202,7 +196,6 @@ pub(crate) fn collection_literal_concatenation(checker: &Checker, expr: &Expr) {
     };
 
     let contents = match type_ {
-        // Wrap the new expression in parentheses if it was a tuple.
         Type::Tuple => format!("({})", checker.generator().expr(&new_expr)),
         Type::List => checker.generator().expr(&new_expr),
     };
@@ -216,8 +209,6 @@ pub(crate) fn collection_literal_concatenation(checker: &Checker, expr: &Expr) {
         .comment_ranges()
         .has_comments(expr, checker.source())
     {
-        // This suggestion could be unsafe if the non-literal expression in the
-        // expression has overridden the `__add__` (or `__radd__`) magic methods.
         diagnostic.set_fix(Fix::unsafe_edit(Edit::range_replacement(
             contents,
             expr.range(),

@@ -267,7 +267,6 @@ impl Format<IrFormatContext<'_>> for &[FormatElement] {
 
         while let Some(element) = iter.next() {
             if !first_element && !in_text && !element.is_end_tag() {
-                // Write a separator between every two elements
                 write!(f, [token(","), soft_line_break_or_space()])?;
             }
 
@@ -406,11 +405,9 @@ impl Format<IrFormatContext<'_>> for &[FormatElement] {
                         first_element = true;
                         tag_stack.push(tag.kind());
                     }
-                    // Handle documents with mismatching start/end or superfluous end tags
                     else {
                         match tag_stack.pop() {
                             None => {
-                                // Only write the end tag without any indent to ensure the output document is valid.
                                 write!(
                                     f,
                                     [
@@ -440,7 +437,6 @@ impl Format<IrFormatContext<'_>> for &[FormatElement] {
                                 continue;
                             }
                             _ => {
-                                // all ok
                             }
                         }
                     }
@@ -611,7 +607,6 @@ impl Format<IrFormatContext<'_>> for &[FormatElement] {
                         }
 
                         StartEntry | StartBestFittingEntry => {
-                            // handled after the match for all start tags
                         }
                         EndEntry | EndBestFittingEntry => write!(f, [ContentArrayEnd])?,
 
@@ -694,8 +689,6 @@ impl FormatElements for [FormatElement] {
 
         for element in self {
             match element {
-                // Line suffix
-                // Ignore if any of its content breaks
                 FormatElement::Tag(
                     Tag::StartLineSuffix { reserved_width: _ } | Tag::StartFitsExpanded(_),
                 ) => {
@@ -738,7 +731,6 @@ impl FormatElements for [FormatElement] {
                     FormatElement::Tag(tag) if tag.kind() == kind => {
                         if tag.is_start() {
                             if *depth == 0 {
-                                // Invalid document
                                 return None;
                             } else if *depth == 1 {
                                 return Some(tag);
@@ -753,12 +745,10 @@ impl FormatElements for [FormatElement] {
                             Some(start) => {
                                 return Some(start);
                             }
-                            // Reached end or invalid document
                             None if *depth == 0 => {
                                 return None;
                             }
                             _ => {
-                                // continue with other elements
                             }
                         }
                     }
@@ -768,7 +758,6 @@ impl FormatElements for [FormatElement] {
 
             None
         }
-        // Assert that the document ends at a tag with the specified kind;
         let _ = self.end_tag(kind)?;
 
         let mut depth = 0usize;
@@ -915,14 +904,11 @@ mod tests {
             FormatElement::Tag(StartIndent),
             FormatElement::Line(LineMode::Soft),
             FormatElement::Token { text: "a" },
-            // Close group instead of indent
             FormatElement::Tag(EndGroup),
             FormatElement::Line(LineMode::Soft),
             FormatElement::Tag(EndIndent),
             FormatElement::Token { text: "]" },
-            // End tag without start
             FormatElement::Tag(EndIndent),
-            // Start tag without an end
             FormatElement::Tag(StartIndent),
         ]);
 

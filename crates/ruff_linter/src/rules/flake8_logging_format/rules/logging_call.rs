@@ -22,21 +22,16 @@ fn logging_f_string(
     arguments: &Arguments,
     msg_pos: usize,
 ) {
-    // Report the diagnostic up-front so we can attach a fix later only when preview is enabled.
     let mut diagnostic = checker.report_diagnostic(LoggingFString, msg.range());
 
-    // Preview gate for the automatic fix.
     if !is_fix_f_string_logging_enabled(checker.settings()) {
         return;
     }
 
-    // If there are existing positional arguments after the message, bail out.
-    // This could indicate a mistake or complex usage we shouldn't try to fix.
     if arguments.args.len() > msg_pos + 1 {
         return;
     }
 
-    // The new positional arguments cannot follow a keyword argument.
     if arguments.find_keyword("msg").is_some() {
         return;
     }
@@ -57,9 +52,6 @@ fn logging_f_string(
                 for element in &f.elements {
                     match element {
                         InterpolatedStringElement::Literal(lit) => {
-                            // If the literal text contains a '%' placeholder, bail out: mixing
-                            // f-string interpolation with '%' placeholders is ambiguous for our
-                            // automatic conversion, so don't offer a fix for this case.
                             if lit.value.as_ref().contains('%') {
                                 return;
                             }
@@ -106,7 +98,6 @@ fn logging_f_string(
             node_index: AtomicNodeIndex::NONE,
         }));
 
-    // Leaving the parentheses around the replacement would turn the message into a tuple.
     let target =
         parenthesized_range(msg.into(), arguments.into(), checker.tokens()).unwrap_or(msg.range());
 
@@ -151,7 +142,6 @@ fn is_reserved_attr(attr: &str) -> bool {
 /// Check logging messages for violations.
 fn check_msg(checker: &Checker, msg: &Expr, arguments: &Arguments, msg_pos: usize) {
     match msg {
-        // Check for string concatenation and percent format.
         Expr::BinOp(ast::ExprBinOp { op, .. }) => match op {
             Operator::Add => {
                 checker.report_diagnostic_if_enabled(LoggingStringConcat, msg.range());
@@ -161,11 +151,9 @@ fn check_msg(checker: &Checker, msg: &Expr, arguments: &Arguments, msg_pos: usiz
             }
             _ => {}
         },
-        // Check for f-strings.
         Expr::FString(f_string) if checker.is_rule_enabled(Rule::LoggingFString) => {
             logging_f_string(checker, msg, f_string, arguments, msg_pos);
         }
-        // Check for .format() calls.
         Expr::Call(ast::ExprCall { func, .. })
             if checker.is_rule_enabled(Rule::LoggingStringFormat) =>
         {
@@ -239,7 +227,6 @@ pub(crate) fn find_logging_call(
     checker: &Checker,
     call: &ast::ExprCall,
 ) -> Option<(LoggingCallType, TextRange)> {
-    // Determine the call type (e.g., `info` vs. `exception`) and the range of the attribute.
     match call.func.as_ref() {
         Expr::Attribute(ast::ExprAttribute { value: _, attr, .. }) => {
             let call_type = LoggingCallType::from_attribute(attr.as_str())?;
@@ -272,13 +259,11 @@ pub(crate) fn logging_call(checker: &Checker, call: &ast::ExprCall) {
         return;
     };
 
-    // G001, G002, G003, G004
     let msg_pos = usize::from(matches!(logging_call_type, LoggingCallType::LogCall));
     if let Some(format_arg) = call.arguments.find_argument_value("msg", msg_pos) {
         check_msg(checker, format_arg, &call.arguments, msg_pos);
     }
 
-    // G010
     if checker.is_rule_enabled(Rule::LoggingWarn) {
         if matches!(
             logging_call_type,
@@ -292,14 +277,12 @@ pub(crate) fn logging_call(checker: &Checker, call: &ast::ExprCall) {
         }
     }
 
-    // G101
     if checker.is_rule_enabled(Rule::LoggingExtraAttrClash) {
         if let Some(extra) = call.arguments.find_keyword("extra") {
             check_log_record_attr_clash(checker, extra);
         }
     }
 
-    // G201, G202
     if checker.any_rule_enabled(&[Rule::LoggingExcInfo, Rule::LoggingRedundantExcInfo]) {
         if !checker.semantic().in_exception_handler() {
             return;

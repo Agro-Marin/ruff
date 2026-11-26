@@ -37,17 +37,13 @@ pub(crate) enum Ty {
     StringLiteral(&'static str),
     LiteralString,
     BytesLiteral(&'static str),
-    // An enum literal variant, using `uuid.SafeUUID` as base
     EnumLiteral(&'static str),
-    // A single-member enum literal, using `dataclasses.MISSING`
     SingleMemberEnumLiteral,
-    // BuiltinInstance("str") corresponds to an instance of the builtin `str` class
     BuiltinInstance(&'static str),
     /// Members of the `abc` stdlib module
     AbcInstance(&'static str),
     AbcClassLiteral(&'static str),
     TypingLiteral,
-    // BuiltinClassLiteral("str") corresponds to the builtin `str` class object itself
     BuiltinClassLiteral(&'static str),
     KnownClassInstance(KnownClass),
     Union(Vec<Ty>),
@@ -126,12 +122,8 @@ impl CallableParams {
 
     fn shrink(self) -> impl Iterator<Item = Self> {
         match self {
-            // If the failure does not depend on accepting arbitrary arguments, replace `...`
-            // with the simplest concrete signature: one that accepts no arguments.
             Self::GradualForm => Either::Left(std::iter::once(Self::List(Vec::new()))),
             Self::List(params) => {
-                // Removing one parameter at a time preserves the ordering and names of all
-                // remaining parameters, so each candidate is still a valid signature.
                 let removed_parameters = (0..params.len()).map({
                     let params = params.clone();
                     move |index| {
@@ -141,8 +133,6 @@ impl CallableParams {
                     }
                 });
 
-                // If a parameter cannot be removed without losing the failure, try simplifying its
-                // name, default, or annotation while preserving the rest of the signature.
                 let shrunk_parameters = (0..params.len()).flat_map(move |index| {
                     let params = params.clone();
                     params[index].clone().shrink().map(move |parameter| {
@@ -431,8 +421,6 @@ impl FullyStaticTy {
     }
 }
 
-// A single draw across both groups keeps unrestricted candidates equally likely without
-// allocating a combined list or maintaining a positional boundary between the groups.
 macro_rules! choose_core_type {
     (
         $generator:expr,
@@ -452,8 +440,6 @@ macro_rules! choose_core_type {
 }
 
 fn arbitrary_core_type(g: &mut Gen, fully_static: bool) -> Ty {
-    // We could select a random integer here, but this would make it much less
-    // likely to explore interesting edge cases:
     let int_lit = Ty::IntLiteral(*g.choose(&[-2, -1, 0, 1, 2]).unwrap());
     let bool_lit = Ty::BooleanLiteral(bool::arbitrary(g));
 
@@ -566,22 +552,8 @@ fn arbitrary_type(g: &mut Gen, size: u32, fully_static: bool) -> Ty {
                 },
                 returns: Box::new(arbitrary_type(g, size - 1, fully_static)),
             },
-            // TODO: Re-enable tuple types once they are fixed, and change the modulus back to 6.
-            // See https://github.com/astral-sh/ty/issues/4263.
             // 4 => Ty::FixedLengthTuple(
-            //     (0..*g.choose(&[0, 1, 2]).unwrap())
-            //         .map(|_| arbitrary_type(g, size - 1, fully_static))
-            //         .collect(),
-            // ),
             // 5 => Ty::VariableLengthTuple(
-            //     (0..*g.choose(&[0, 1, 2]).unwrap())
-            //         .map(|_| arbitrary_type(g, size - 1, fully_static))
-            //         .collect(),
-            //     Box::new(arbitrary_type(g, size - 1, fully_static)),
-            //     (0..*g.choose(&[0, 1, 2]).unwrap())
-            //         .map(|_| arbitrary_type(g, size - 1, fully_static))
-            //         .collect(),
-            // ),
             _ => unreachable!(),
         }
     }
@@ -591,7 +563,6 @@ fn arbitrary_parameter_list(g: &mut Gen, size: u32, fully_static: bool) -> Vec<P
     let mut params: Vec<Param> = vec![];
     let mut used_names = FxHashSet::default();
 
-    // First, choose the number of parameters to generate.
     for _ in 0..*g.choose(&[0, 1, 2, 3, 4, 5]).unwrap() {
         // Next, choose the kind of parameters that can be generated based on the last parameter.
         let next_kind = match params.last().map(|p| p.kind) {
@@ -616,7 +587,6 @@ fn arbitrary_parameter_list(g: &mut Gen, size: u32, fully_static: bool) -> Vec<P
                 .choose(&[ParamKind::KeywordOnly, ParamKind::KeywordVariadic])
                 .unwrap(),
             Some(ParamKind::KeywordVariadic) => {
-                // There can't be any other parameter kind after a keyword variadic parameter.
                 break;
             }
         };
@@ -684,7 +654,6 @@ impl Arbitrary for Ty {
                 }))
             }
             Ty::VariableLengthTuple(prefix, variable, suffix) => {
-                // We shrink the suffix first, then the prefix, then the variable-length type.
                 let suffix_shrunk = suffix.shrink().map({
                     let prefix = prefix.clone();
                     let variable = variable.clone();
@@ -705,23 +674,9 @@ impl Arbitrary for Ty {
                 Box::new(suffix_shrunk.chain(prefix_shrunk).chain(variable_shrunk))
             }
             Ty::Intersection { pos, neg } => {
-                // Shrinking on intersections is not exhaustive!
-                //
-                // We try to shrink the positive side or the negative side,
-                // but we aren't shrinking both at the same time.
-                //
-                // This should remove positive or negative constraints but
-                // won't shrink (A & B & ~C & ~D) to (A & ~C) in one shrink
-                // iteration.
-                //
-                // Instead, it hopes that (A & B & ~C) or (A & ~C & ~D) fails
-                // so that shrinking can happen there.
                 let pos_orig = pos.clone();
                 let neg_orig = neg.clone();
                 Box::new(
-                    // we shrink negative constraints first, as
-                    // intersections with only negative constraints are
-                    // more confusing
                     neg.shrink()
                         .map(move |shrunk_neg| Ty::Intersection {
                             pos: pos_orig.clone(),
@@ -734,11 +689,7 @@ impl Arbitrary for Ty {
                         .filter_map(|ty| {
                             if let Ty::Intersection { pos, neg } = &ty {
                                 match (pos.len(), neg.len()) {
-                                    // an empty intersection does not mean
-                                    // anything
                                     (0, 0) => None,
-                                    // a single positive element should be
-                                    // unwrapped
                                     (1, 0) => Some(pos[0].clone()),
                                     _ => Some(ty),
                                 }
@@ -810,8 +761,6 @@ mod tests {
         ReturnType,
     }
 
-    // Test each independently removable signature detail separately so a failure identifies the
-    // exact shrink candidate that is missing.
     #[test_case(CallableShrink::Parameter; "removes a parameter")]
     #[test_case(CallableShrink::ParameterName; "removes a positional only parameter name")]
     #[test_case(CallableShrink::ParameterDefault; "removes a parameter default")]
@@ -850,8 +799,6 @@ mod tests {
         assert!(callable.shrink().any(|candidate| candidate == expected));
     }
 
-    // A gradual `...` parameter list can become an empty concrete signature when accepting
-    // arbitrary arguments is not essential to the failing property.
     #[test]
     fn gradual_callable_shrinks_to_empty_parameter_list() {
         let callable = Ty::Callable {

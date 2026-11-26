@@ -56,7 +56,6 @@ pub(crate) fn is_pytest_hookimpl_wrapper(decorator: &Decorator, semantic: &Seman
         return false;
     };
 
-    // Check if it's pytest.hookimpl
     let is_hookimpl = semantic.matches_qualified_name(&call.func, &["pytest", "hookimpl"]);
 
     if !is_hookimpl {
@@ -149,8 +148,6 @@ fn is_empty_or_null_interpolated_string_element(element: &ast::InterpolatedStrin
 }
 
 pub(super) fn split_names(names: &str) -> Vec<&str> {
-    // Match the following pytest code:
-    //    [x.strip() for x in argnames.split(",") if x.strip()]
     names
         .split(',')
         .filter_map(|s| {

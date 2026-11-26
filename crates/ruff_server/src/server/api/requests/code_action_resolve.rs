@@ -60,7 +60,6 @@ impl super::BackgroundRequestHandler for CodeActionResolve {
         )
         .collect::<Vec<_>>();
 
-        // Ensure that the code action maps to _exactly one_ supported code action
         let [action_kind] = code_actions.as_slice() else {
             return Err(anyhow::anyhow!(
                 "Code action resolver did not expect code action kind {:?}",
@@ -73,8 +72,6 @@ impl super::BackgroundRequestHandler for CodeActionResolve {
             SupportedCodeAction::SourceFixAll | SupportedCodeAction::SourceOrganizeImports
                 if snapshot.is_notebook_cell() =>
             {
-                // This should never occur because we ignore generating these code actions for a
-                // notebook cell in the `textDocument/codeAction` request handler.
                 return Err(anyhow::anyhow!(
                     "Code action resolver cannot resolve {:?} for a notebook cell",
                     action_kind.to_kind().as_str()
@@ -103,8 +100,6 @@ impl super::BackgroundRequestHandler for CodeActionResolve {
                 .with_failure_code(ErrorCode::InternalError)?,
             ),
             SupportedCodeAction::QuickFix => {
-                // The client may ask us to resolve a code action, as it has no way of knowing
-                // whether e.g. `command` field will be filled out by the resolution callback.
                 return Ok(action);
             }
         };
@@ -146,15 +141,9 @@ pub(super) fn organize_imports_edit(
 ) -> crate::Result<Fixes> {
     let mut linter_settings = query.settings().linter.clone();
     linter_settings.rules = [
-        Rule::UnsortedImports,       // I001
-        Rule::MissingRequiredImport, // I002
-        // Note: ModuleImportNotAtTopOfFile's fixes are unsafe. We include them
-        // here in order to match isort's behaviour and what we believe
-        // developers want. Since the fixes are unsafe, we're relying on this
-        // edit action not performing them unless the user has opted-in to these
-        // fixes in their settings (i.e: `extend-safe-fixes` in the
-        // `pyproject.toml` or similar).
-        Rule::ModuleImportNotAtTopOfFile, // E402
+        Rule::UnsortedImports,
+        Rule::MissingRequiredImport,
+        Rule::ModuleImportNotAtTopOfFile,
     ]
     .into_iter()
     .collect();

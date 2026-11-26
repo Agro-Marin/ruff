@@ -87,21 +87,14 @@ pub(crate) fn cancel_scope_no_checkpoint(
         return;
     };
 
-    // If this is an `async with` and the timeout has items after it, then the
-    // further items are checkpoints.
     if with_stmt.is_async && with_item_pos < with_items.len() - 1 {
         return;
     }
 
-    // Treat yields as checkpoints, since checkpoints can happen
-    // in the caller yielded to.
-    // See: https://flake8-async.readthedocs.io/en/latest/rules.html#async100
-    // See: https://github.com/astral-sh/ruff/issues/12873
     if any_over_body(&with_stmt.body, &Expr::is_yield_expr) {
         return;
     }
 
-    // If the body contains an `await` statement, the context manager is used correctly.
     let mut visitor = AwaitVisitor::default();
     visitor.visit_body(&with_stmt.body);
     if visitor.seen_await {

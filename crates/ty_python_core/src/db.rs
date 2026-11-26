@@ -16,7 +16,6 @@ pub trait Db: ModuleResolverDb {
 pub trait TestProgramDb: Db {
     fn program_settings(&self) -> &ProgramSettings;
 
-    // Salsa-cached because interning a program requires hashing all search paths.
     fn program(&self) -> Program<'_>
     where
         Self: Sized,

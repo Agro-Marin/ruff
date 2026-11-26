@@ -123,8 +123,6 @@ fn classify_decorator(checker: &Checker, decorator: &Decorator) -> Option<KnownD
     }
 
     let qualified_name = checker.semantic().resolve_qualified_name(callable)?;
-    // `abc.abstractproperty` / `abstractclassmethod` / `abstractstaticmethod`
-    // are intentionally omitted: they are themselves abstract, so wrapping
     // with `@abstractmethod` is redundant but not an error.
     match qualified_name.segments() {
         ["abc", "abstractmethod"] => Some(KnownDecorator::AbstractMethod),
@@ -149,12 +147,10 @@ fn is_incorrect_order(outer: KnownDecorator, inner: KnownDecorator, checker: &Ch
             KnownDecorator::Property | KnownDecorator::ClassMethod | KnownDecorator::StaticMethod,
         ) => true,
         // @contextmanager / @asynccontextmanager must wrap the raw function,
-        // not a classmethod descriptor
         (
             KnownDecorator::ContextManager | KnownDecorator::AsyncContextManager,
             KnownDecorator::ClassMethod,
         ) => true,
-        // Caching decorators must not wrap descriptors
         (
             KnownDecorator::FunctoolsCache | KnownDecorator::FunctoolsLruCache,
             KnownDecorator::Property
@@ -164,7 +160,6 @@ fn is_incorrect_order(outer: KnownDecorator, inner: KnownDecorator, checker: &Ch
         // @cached_property outside @abstractmethod silently empties `__abstractmethods__`
         (KnownDecorator::FunctoolsCachedProperty, KnownDecorator::AbstractMethod) => true,
         // CPython 3.13 fixed `@classmethod` outside `@cached_property`; earlier
-        // versions raise `TypeError` on attribute access.
         (KnownDecorator::ClassMethod, KnownDecorator::FunctoolsCachedProperty)
             if checker.target_version() < PythonVersion::PY313 =>
         {

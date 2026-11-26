@@ -116,7 +116,6 @@ pub(crate) fn fastapi_unused_path_parameter(
         return;
     }
 
-    // Get the route path from the decorator.
     let route_decorator = function_def
         .decorator_list
         .iter()
@@ -131,16 +130,13 @@ pub(crate) fn fastapi_unused_path_parameter(
     };
     let diagnostic_range = path_arg.range();
 
-    // We can't really handle anything other than string literals.
     let path = match path_arg.as_string_literal_expr() {
         Some(path_arg) => &path_arg.value,
         None => return,
     };
 
-    // Extract the path parameters from the route path.
     let path_params = PathParamIterator::new(path.to_str());
 
-    // Extract the arguments from the function signature
     let mut named_args = vec![];
 
     for parameter_with_default in non_posonly_non_variadic_parameters(function_def) {
@@ -161,22 +157,15 @@ pub(crate) fn fastapi_unused_path_parameter(
         if let Some(parameter_names) = dependency.parameter_names() {
             named_args.extend_from_slice(parameter_names);
         } else {
-            // If we can't determine the dependency, we can't really do anything.
             return;
         }
     }
 
-    // Check if any of the path parameters are not in the function signature.
     for (path_param, range) in path_params {
-        // If the path parameter is already in the function or the dependency signature,
-        // we don't need to do anything.
         if named_args.contains(&path_param) {
             continue;
         }
 
-        // Determine whether the path parameter is used as a positional-only argument. In this case,
-        // the path parameter injection won't work, but we also can't fix it (yet), since we'd need
-        // to make the parameter non-positional-only.
         let is_positional = function_def
             .parameters
             .posonlyargs
@@ -282,9 +271,6 @@ impl<'a> Dependency<'a> {
         let mut dependencies = tuple.elts.iter().skip(1).filter_map(|metadata_element| {
             let arguments = depends_arguments(metadata_element, semantic)?;
 
-            // Arguments to `Depends` can be empty if the dependency is a class
-            // that FastAPI will call to create an instance of the class itself.
-            // https://fastapi.tiangolo.com/tutorial/dependencies/classes-as-dependencies/#shortcut
             if arguments.is_empty() {
                 Self::from_dependency_name(tuple.elts.first()?.as_name_expr()?, semantic)
             } else {
@@ -311,10 +297,7 @@ impl<'a> Dependency<'a> {
         let dep_arg = arguments.find_argument_value("dependency", 0)?;
 
         match dep_arg {
-            // `Depends(some_callable)` — a name reference (function or class).
             Expr::Name(name) => Self::from_dependency_name(name, semantic),
-            // `Depends(SomeClass(...))` — a call expression. If the callee is a
-            // class, FastAPI will invoke `__call__` on the resulting instance.
             Expr::Call(call) => {
                 let Expr::Name(name) = call.func.as_ref() else {
                     return None;
@@ -406,7 +389,6 @@ impl<'a> Dependency<'a> {
                 .iter()
                 .filter_map(|stmt| stmt.as_function_def_stmt())
                 .find(|func_def| func_def.name.as_str() == method_name)?;
-            // Skip `self` parameter
             non_posonly_non_variadic_parameters(method_def)
                 .skip(1)
                 .map(|param| param.name().as_str())
@@ -459,23 +441,19 @@ fn parameter_alias<'a>(parameter: &'a Parameter, semantic: &SemanticModel) -> Op
         return None;
     };
 
-    // Find the `alias` keyword argument.
     let alias = path
         .arguments
         .find_keyword("alias")
         .map(|alias| &alias.value)?;
 
-    // Ensure that it's a literal string.
     let Expr::StringLiteral(alias) = alias else {
         return None;
     };
 
-    // Verify that the subscript was a `typing.Annotated`.
     if !semantic.match_typing_expr(&subscript.value, "Annotated") {
         return None;
     }
 
-    // Verify that the call was a `fastapi.Path`.
     if !semantic.matches_qualified_name(&path.func, &["fastapi", "Path"]) {
         return None;
     }
@@ -515,8 +493,6 @@ impl<'a> Iterator for PathParamIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.inner
             .next()
-            // Extract the first capture group (the path parameter), but return the range of the
-            // whole match (everything in braces and including the braces themselves).
             .and_then(|capture| Some((capture.get(1)?.as_str(), capture.get(0)?.range())))
     }
 }

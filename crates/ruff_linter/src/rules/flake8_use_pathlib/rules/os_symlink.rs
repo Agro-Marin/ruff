@@ -71,12 +71,6 @@ pub(crate) fn os_symlink(checker: &Checker, call: &ExprCall, segments: &[&str]) 
         return;
     }
 
-    // `dir_fd` is not supported by pathlib, so check if there are non-default values.
-    // Signature as of Python 3.13 (https://docs.python.org/3/library/os.html#os.symlink)
-    // ```text
-    //            0    1    2                             3
-    // os.symlink(src, dst, target_is_directory=False, *, dir_fd=None)
-    // ```
     if is_keyword_only_argument_non_default(&call.arguments, "dir_fd") {
         return;
     }

@@ -78,7 +78,6 @@ pub(crate) fn pytest_fixture_autouse(checker: &Checker, decorators: &[Decorator]
             continue;
         }
 
-        // Check if decorator has argument autouse=True
         let Expr::Call(call) = &decorator.expression else {
             continue;
         };

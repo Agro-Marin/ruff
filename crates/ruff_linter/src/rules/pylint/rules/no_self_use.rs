@@ -119,7 +119,6 @@ pub(crate) fn no_self_use(checker: &Checker, scope_id: ScopeId, scope: &Scope) {
         return;
     }
 
-    // Identify the `self` parameter.
     let Some(parameter) = parameters.posonlyargs.iter().chain(&parameters.args).next() else {
         return;
     };
@@ -128,8 +127,6 @@ pub(crate) fn no_self_use(checker: &Checker, scope_id: ScopeId, scope: &Scope) {
         return;
     }
 
-    // If the method contains a `super` reference, then it should be considered to use self
-    // implicitly.
     if let Some(binding_id) = semantic.global_scope().get("super") {
         let binding = semantic.binding(binding_id);
         if binding.kind.is_builtin() {

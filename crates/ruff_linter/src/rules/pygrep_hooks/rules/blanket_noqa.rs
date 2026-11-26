@@ -55,8 +55,6 @@ impl Violation for BlanketNOQA {
             missing_colon,
             file_exemption,
         } = self;
-        // This awkward branching is necessary to ensure that the generic message is picked up by
-        // `derive_message_formats`.
         if !missing_colon && !file_exemption {
             "Use specific rule codes when using `noqa`".to_string()
         } else if *file_exemption {
@@ -104,7 +102,6 @@ pub(crate) fn blanket_noqa(
             cursor.eat_while(char::is_whitespace);
 
             if noqa::lex_codes(cursor.chars().as_str()).is_ok_and(|codes| !codes.is_empty()) {
-                // Check for a missing colon.
                 // Ex) `# noqa F401`
                 let start = all.end();
                 let end = start + cursor.token_len();
@@ -117,7 +114,6 @@ pub(crate) fn blanket_noqa(
                 );
                 diagnostic.set_fix(Fix::unsafe_edit(Edit::insertion(':'.to_string(), start)));
             } else {
-                // Otherwise, it looks like an intentional blanket `noqa` annotation.
                 context.report_diagnostic(
                     BlanketNOQA {
                         missing_colon: false,

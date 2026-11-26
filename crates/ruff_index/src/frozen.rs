@@ -69,8 +69,6 @@ impl<I: Idx, T> FromIterator<T> for FrozenIndexVec<I, T> {
     }
 }
 
-// Whether `FrozenIndexVec` is `Send` depends only on the data,
-// not the phantom data.
 #[expect(unsafe_code)]
 unsafe impl<I: Idx, T> Send for FrozenIndexVec<I, T> where T: Send {}
 

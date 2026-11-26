@@ -11,9 +11,6 @@ use smallvec::SmallVec;
 use std::hash::{Hash, Hasher as _};
 use std::ops::{Deref, DerefMut};
 
-// Selected using performance and memory profiling across the 162-project ecosystem corpus.
-// Member-expression equality is relatively expensive, and raising the cutoff to 16 regressed
-// performance for comparatively little additional memory savings.
 const LINEAR_SEARCH_THRESHOLD: usize = 8;
 
 /// A member access, e.g. `x.y` or `x[1]` or `x["foo"]`.
@@ -311,7 +308,6 @@ impl MemberExprBuilder {
 
     fn subscript_part(subscript_slice: &ast::Expr) -> Option<(SegmentKind, MemberPathPart<'_>)> {
         match subscript_slice {
-            // Handle integer subscripts, like `x[0]`.
             ast::Expr::NumberLiteral(ast::ExprNumberLiteral {
                 value: ast::Number::Int(index),
                 ..
@@ -319,7 +315,6 @@ impl MemberExprBuilder {
                 SegmentKind::IntSubscript,
                 MemberPathPart::Owned(format_char!("{index}")),
             )),
-            // Handle negative integer subscripts, like `x[-1]`.
             ast::Expr::UnaryOp(ast::ExprUnaryOp {
                 op: ast::UnaryOp::USub,
                 operand,
@@ -334,7 +329,6 @@ impl MemberExprBuilder {
                 )),
                 _ => None,
             },
-            // Handle positive integer subscripts with explicit plus, like `x[+1]`.
             ast::Expr::UnaryOp(ast::ExprUnaryOp {
                 op: ast::UnaryOp::UAdd,
                 operand,
@@ -349,8 +343,6 @@ impl MemberExprBuilder {
                 )),
                 _ => None,
             },
-            // Handle boolean subscripts, like `x[True]` or `x[False]`.
-            // In Python, `True` and `False` are equivalent to `1` and `0` for indexing.
             ast::Expr::BooleanLiteral(ast::ExprBooleanLiteral { value, .. }) => Some((
                 SegmentKind::IntSubscript,
                 MemberPathPart::Borrowed(if *value { "1" } else { "0" }),
@@ -359,7 +351,6 @@ impl MemberExprBuilder {
                 SegmentKind::StringSubscript,
                 MemberPathPart::Borrowed(string.value.to_str()),
             )),
-            // Handle bytes literal subscripts, like `x[b"key"]`.
             ast::Expr::BytesLiteral(bytes) => {
                 let escaped = bytes
                     .value
@@ -462,7 +453,6 @@ impl<'a> MemberExprRef<'a> {
     pub(super) fn parent(&self) -> Option<MemberExprRef<'a>> {
         let parent_segments = self.segments.parent()?;
 
-        // The removed segment is always the last one. Find its start offset.
         let last_segment = self.segments.iter().last()?;
         let path_end = last_segment.offset();
 
@@ -481,8 +471,6 @@ impl<'a> From<&'a MemberExpr> for MemberExprRef<'a> {
 
 impl Hash for MemberExprRef<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // Path on its own isn't 100% unique, but it should avoid
-        // most collisions and avoids iterating all segments.
         self.path.hash(state);
     }
 }
@@ -589,7 +577,6 @@ impl MemberTable {
 
 impl PartialEq for MemberTable {
     fn eq(&self, other: &Self) -> bool {
-        // It's sufficient to compare the members as the map is only a reverse lookup.
         self.members == other.members
     }
 }
@@ -725,7 +712,7 @@ struct SegmentInfo(u32);
 
 const KIND_MASK: u32 = 0b11;
 const OFFSET_SHIFT: u32 = 2;
-const MAX_OFFSET: u32 = (1 << 30) - 1; // 2^30 - 1
+const MAX_OFFSET: u32 = (1 << 30) - 1;
 
 impl SegmentInfo {
     const fn new(kind: SegmentKind, offset: TextSize) -> Self {
@@ -830,7 +817,7 @@ const INLINE_KIND_MASK: u64 = (1 << INLINE_KIND_BITS) - 1;
 const INLINE_PREV_LEN_BITS: u32 = 6;
 const INLINE_PREV_LEN_MASK: u64 = (1 << INLINE_PREV_LEN_BITS) - 1;
 const INLINE_MAX_SEGMENTS: usize = 7;
-const INLINE_MAX_RELATIVE_OFFSET: u32 = (1 << INLINE_PREV_LEN_BITS) - 1; // 63
+const INLINE_MAX_RELATIVE_OFFSET: u32 = (1 << INLINE_PREV_LEN_BITS) - 1;
 
 /// Compact representation that can store up to 7 segments inline in a u64.
 ///
@@ -860,13 +847,10 @@ impl SmallSegments {
             return None;
         }
 
-        // Pack into inline representation
-        // Store count minus 1 (since segments are never empty, range 0-6 represents 1-7 segments)
         let mut packed = (segments.len() - 1) as u64;
         let mut prev_offset = TextSize::new(0);
 
         for (i, segment) in segments.iter().enumerate() {
-            // Compute relative offset on-the-fly
             let relative_offset = segment.offset() - prev_offset;
             if relative_offset > TextSize::from(INLINE_MAX_RELATIVE_OFFSET) {
                 return None;
@@ -891,7 +875,6 @@ impl SmallSegments {
         reason = "INLINE_COUNT_MASK ensures value is at most 7"
     )]
     const fn len(self) -> usize {
-        // Add 1 because we store count minus 1
         ((self.0 & INLINE_COUNT_MASK) + 1) as usize
     }
 
@@ -911,10 +894,8 @@ impl SmallSegments {
             return None;
         }
 
-        // Simply copy the packed value but update the count
         let mut new_packed = self.0;
 
-        // Clear the count bits and set the new count (len - 2, since we store count - 1)
         new_packed &= !INLINE_COUNT_MASK;
         new_packed |= (len - 2) as u64;
 
@@ -943,7 +924,6 @@ impl Iterator for SmallSegmentsInfoIterator {
             return None;
         }
 
-        // Extract the relative offset and kind for the current segment
         let shift = INLINE_COUNT_BITS
             + (u32::try_from(self.index).expect("index is bounded by INLINE_MAX_SEGMENTS")
                 * INLINE_SEGMENT_BITS);
@@ -951,7 +931,6 @@ impl Iterator for SmallSegmentsInfoIterator {
         let kind = (segment_data & INLINE_KIND_MASK) as u8;
         let relative_offset = ((segment_data >> INLINE_KIND_BITS) & INLINE_PREV_LEN_MASK) as u32;
 
-        // Update the running absolute offset
         self.next_offset += TextSize::new(relative_offset);
 
         let kind = match kind {
@@ -1041,60 +1020,49 @@ mod tests {
 
     #[test]
     fn test_member_expr_ref_hash_and_eq_small_heap() {
-        // For expression: foo.bar[0]["baz"]
-        // The path would be: "foobar0baz" (no dots or brackets in the path)
         let path = "foobar0baz";
 
         let segments = vec![
-            SegmentInfo::new(SegmentKind::Attribute, TextSize::new(3)), // .bar at offset 3
-            SegmentInfo::new(SegmentKind::IntSubscript, TextSize::new(6)), // [0] at offset 6
-            SegmentInfo::new(SegmentKind::StringSubscript, TextSize::new(7)), // ["baz"] at offset 7
+            SegmentInfo::new(SegmentKind::Attribute, TextSize::new(3)),
+            SegmentInfo::new(SegmentKind::IntSubscript, TextSize::new(6)),
+            SegmentInfo::new(SegmentKind::StringSubscript, TextSize::new(7)),
         ];
 
-        // Create Small version.
         let small_segments = SmallSegments::try_from_slice(&segments).unwrap();
         let member_ref_small = MemberExprRef {
             path,
             segments: SegmentsRef::Small(small_segments),
         };
 
-        // Create Heap version with the same data.
         let heap_segments: Box<[SegmentInfo]> = segments.into_boxed_slice();
         let member_ref_heap = MemberExprRef {
             path,
             segments: SegmentsRef::Heap(&heap_segments),
         };
 
-        // Test hash equality (MemberExprRef only hashes the path).
         assert_eq!(
             hash_single(&member_ref_small),
             hash_single(&member_ref_heap)
         );
 
-        // Test equality in both directions.
         assert_eq!(member_ref_small, member_ref_heap);
         assert_eq!(member_ref_heap, member_ref_small);
     }
 
     #[test]
     fn test_member_expr_ref_different_segments() {
-        // For expressions: foo.bar[0] vs foo.bar["0"]
-        // Both have the same path "foobar0" but different segment types
         let path = "foobar0";
 
-        // First expression: foo.bar[0]
         let segments1 = vec![
-            SegmentInfo::new(SegmentKind::Attribute, TextSize::new(3)), // .bar at offset 3
-            SegmentInfo::new(SegmentKind::IntSubscript, TextSize::new(6)), // [0] at offset 6
+            SegmentInfo::new(SegmentKind::Attribute, TextSize::new(3)),
+            SegmentInfo::new(SegmentKind::IntSubscript, TextSize::new(6)),
         ];
 
-        // Second expression: foo.bar["0"]
         let segments2 = vec![
-            SegmentInfo::new(SegmentKind::Attribute, TextSize::new(3)), // .bar at offset 3
-            SegmentInfo::new(SegmentKind::StringSubscript, TextSize::new(6)), // ["0"] at offset 6
+            SegmentInfo::new(SegmentKind::Attribute, TextSize::new(3)),
+            SegmentInfo::new(SegmentKind::StringSubscript, TextSize::new(6)),
         ];
 
-        // Create MemberExprRef instances
         let small1 = SmallSegments::try_from_slice(&segments1).unwrap();
         let member_ref1 = MemberExprRef {
             path,
@@ -1107,11 +1075,9 @@ mod tests {
             segments: SegmentsRef::Small(small2),
         };
 
-        // Test inequality
         assert_ne!(member_ref1, member_ref2);
         assert_ne!(member_ref2, member_ref1);
 
-        // Test hash equality (MemberExprRef only hashes the path, not segments)
         assert_eq!(hash_single(&member_ref1), hash_single(&member_ref2));
     }
 
@@ -1119,15 +1085,12 @@ mod tests {
     fn test_member_expr_ref_parent() {
         use ruff_python_parser::parse_expression;
 
-        // Parse a real Python expression
         let parsed = parse_expression(r#"foo.bar[0]["baz"]"#).unwrap();
         let expr = parsed.expr();
 
-        // Convert to MemberExpr
         let member_expr = MemberExpr::try_from_expr(ast::ExprRef::from(expr)).unwrap();
         let member_ref = member_expr.as_ref();
 
-        // Verify the initial state: foo.bar[0]["baz"]
         assert_eq!(member_ref.symbol_name(), "foo");
         let segments: Vec<_> = member_ref.segments().map(|s| (s.kind, s.text)).collect();
         assert_eq!(
@@ -1139,7 +1102,6 @@ mod tests {
             ]
         );
 
-        // Test parent() removes the last segment ["baz"] -> foo.bar[0]
         let parent1 = member_ref.parent().unwrap();
         assert_eq!(parent1.symbol_name(), "foo");
         let parent1_segments: Vec<_> = parent1.segments().map(|s| (s.kind, s.text)).collect();
@@ -1151,13 +1113,11 @@ mod tests {
             ]
         );
 
-        // Test parent of parent removes [0] -> foo.bar
         let parent2 = parent1.parent().unwrap();
         assert_eq!(parent2.symbol_name(), "foo");
         let parent2_segments: Vec<_> = parent2.segments().map(|s| (s.kind, s.text)).collect();
         assert_eq!(parent2_segments, vec![(SegmentKind::Attribute, "bar")]);
 
-        // Test parent of single segment is a symbol and not a member.
         let parent3 = parent2.parent();
         assert!(parent3.is_none());
     }
@@ -1166,54 +1126,38 @@ mod tests {
     fn test_member_expr_small_vs_heap_allocation() {
         use ruff_python_parser::parse_expression;
 
-        // Test Small allocation: 7 segments (maximum for inline storage)
-        // Create expression with exactly 7 segments: x.a.b.c.d.e.f.g
         let small_expr = parse_expression("x.a.b.c.d.e.f.g").unwrap();
         let small_member =
             MemberExpr::try_from_expr(ast::ExprRef::from(small_expr.expr())).unwrap();
 
-        // Should use Small allocation
         assert_matches!(small_member.segments, Segments::Small(_));
         assert_eq!(small_member.num_segments(), 7);
 
-        // Test Heap allocation: 8 segments (exceeds inline capacity)
-        // Create expression with 8 segments: x.a.b.c.d.e.f.g.h
         let heap_expr = parse_expression("x.a.b.c.d.e.f.g.h").unwrap();
         let heap_member = MemberExpr::try_from_expr(ast::ExprRef::from(heap_expr.expr())).unwrap();
 
-        // Should use Heap allocation
         assert_matches!(heap_member.segments, Segments::Heap(_));
         assert_eq!(heap_member.num_segments(), 8);
 
-        // Test Small allocation with relative offset limit
-        // Create expression where relative offsets are small enough: a.b[0]["c"]
         let small_offset_expr = parse_expression(r#"a.b[0]["c"]"#).unwrap();
         let small_offset_member =
             MemberExpr::try_from_expr(ast::ExprRef::from(small_offset_expr.expr())).unwrap();
 
-        // Should use Small allocation (3 segments, small offsets)
         assert_matches!(small_offset_member.segments, Segments::Small(_));
         assert_eq!(small_offset_member.num_segments(), 3);
 
-        // Test Small allocation with maximum 63-byte relative offset limit
-        // Create expression where one segment has exactly 63 bytes (the limit)
         let segment_63_bytes = "a".repeat(63);
         let max_offset_expr_code = format!("x.{segment_63_bytes}.y");
         let max_offset_expr = parse_expression(&max_offset_expr_code).unwrap();
         let max_offset_member =
             MemberExpr::try_from_expr(ast::ExprRef::from(max_offset_expr.expr())).unwrap();
-        // Should still use Small allocation (exactly at the limit)
         assert_matches!(max_offset_member.segments, Segments::Small(_));
         assert_eq!(max_offset_member.num_segments(), 2);
 
-        // Test that heap allocation works for segment content that would exceed relative offset limits
-        // This would require very long identifiers (>63 bytes between segments), which is uncommon
-        // but we can test by creating an expression with long attribute names
-        let long_name = "a".repeat(64); // 64 bytes (exceeds 63-byte limit)
+        let long_name = "a".repeat(64);
         let long_expr_code = format!("x.{long_name}.y");
         let long_expr = parse_expression(&long_expr_code).unwrap();
         let long_member = MemberExpr::try_from_expr(ast::ExprRef::from(long_expr.expr())).unwrap();
-        // Should use Heap allocation due to large relative offset
         assert_matches!(long_member.segments, Segments::Heap(_));
         assert_eq!(long_member.num_segments(), 2);
     }

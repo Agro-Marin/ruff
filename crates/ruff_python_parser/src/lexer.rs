@@ -106,7 +106,6 @@ impl<'src> Lexer<'src> {
         };
 
         if start_offset == TextSize::new(0) {
-            // TODO: Handle possible mismatch between BOM and explicit encoding declaration.
             lexer.cursor.eat_char(BOM);
         } else {
             lexer.cursor.skip_bytes(start_offset.to_usize());
@@ -142,10 +141,8 @@ impl<'src> Lexer<'src> {
 
     /// Lex the next token.
     pub fn next_token(&mut self) -> TokenKind {
-        // `lex_token` marks the start on the path that lexes each token.
         self.current_flags = TokenFlags::empty();
         self.current_kind = self.lex_token();
-        // For `Unknown` token, the `push_error` method updates the current range.
         if !matches!(self.current_kind, TokenKind::Unknown) {
             self.current_range = self.token_range();
         }
@@ -164,9 +161,6 @@ impl<'src> Lexer<'src> {
                 }
             }
         }
-        // Return dedent tokens until the current indentation level matches the indentation of the next token.
-        // Avoid `Option::take` here: this check runs for every token, and `take` writes `None`
-        // even when there is no pending indentation.
         else if let Some(indentation) = self.pending_indentation {
             self.pending_indentation = None;
             self.cursor.start_token();
@@ -192,7 +186,6 @@ impl<'src> Lexer<'src> {
         }
 
         if self.state.is_after_newline() {
-            // Indent and dedent tokens include leading whitespace in their ranges.
             self.cursor.start_token();
             if let Some(indentation) = self.eat_indentation() {
                 return indentation;
@@ -203,7 +196,6 @@ impl<'src> Lexer<'src> {
             }
         }
 
-        // Whitespace between tokens is not part of the next token's range.
         self.cursor.start_token();
 
         if let Some(c) = self.cursor.bump() {
@@ -221,8 +213,6 @@ impl<'src> Lexer<'src> {
                 ))
             }
         } else {
-            // Reached the end of the file. Emit a trailing newline token if not at the beginning of a logical line,
-            // empty the dedent stack, and finally, return the EndOfFile token.
             self.consume_end()
         }
     }
@@ -271,22 +261,10 @@ impl<'src> Lexer<'src> {
                     //       \
                     //     2
 
-                    // > Indentation cannot be split over multiple physical lines using backslashes;
-                    // > the whitespace up to the first backslash determines the indentation.
-                    // >
-                    // > https://docs.python.org/3/reference/lexical_analysis.html#indentation
-                    //
-                    // Skip whitespace after the continuation-line without accumulating it into
-                    // `indentation`. However, if the backslash is at column 0 (no prior
-                    // indentation), let the loop continue so the next line's whitespace is
-                    // accumulated normally.
-                    //
-                    // See also: https://github.com/python/cpython/issues/90249
                     if indentation != Indentation::root() {
                         self.cursor.eat_while(is_python_whitespace);
                     }
                 }
-                // Form feed
                 '\x0C' => {
                     self.cursor.bump();
                     indentation = Indentation::root();
@@ -295,11 +273,9 @@ impl<'src> Lexer<'src> {
             }
         }
 
-        // Handle indentation if this is a new, not all empty, logical line
         if !matches!(self.cursor.first(), '\n' | '\r' | '#' | EOF_CHAR) {
             self.state = State::NonEmptyLogicalLine;
 
-            // Set to false so that we don't handle indentation on the next call.
             return self.handle_indentation(indentation);
         }
 
@@ -308,7 +284,6 @@ impl<'src> Lexer<'src> {
 
     fn handle_indentation(&mut self, indentation: Indentation) -> Option<TokenKind> {
         match self.indentations.current().try_compare(indentation) {
-            // Dedent
             Ok(Ordering::Greater) => {
                 self.pending_indentation = Some(indentation);
 
@@ -319,19 +294,6 @@ impl<'src> Lexer<'src> {
                     )));
                 }
 
-                // The lexer might've eaten some whitespaces to calculate the `indentation`. For
-                // example:
-                //
-                // ```py
-                // if first:
-                //     if second:
-                //         pass
-                //     foo
-                // #   ^
-                // ```
-                //
-                // Here, the cursor is at `^` and the `indentation` contains the whitespaces before
-                // the `pass` token.
                 self.cursor.start_token();
 
                 Some(TokenKind::Dedent)
@@ -339,7 +301,6 @@ impl<'src> Lexer<'src> {
 
             Ok(Ordering::Equal) => None,
 
-            // Indent
             Ok(Ordering::Less) => {
                 self.indentations.indent(indentation);
                 Some(TokenKind::Indent)
@@ -383,7 +344,6 @@ impl<'src> Lexer<'src> {
                         ));
                     }
                 }
-                // Form feed
                 '\x0C' => {
                     self.cursor.bump();
                 }
@@ -394,7 +354,6 @@ impl<'src> Lexer<'src> {
         Ok(())
     }
 
-    // Dispatch based on the given character.
     fn consume_ascii_character(&mut self, c: char) -> TokenKind {
         let token = match c {
             c if is_ascii_identifier_start(c) => self.lex_identifier(c),
@@ -641,8 +600,6 @@ impl<'src> Lexer<'src> {
     fn lex_identifier(&mut self, first: char) -> TokenKind {
         debug_assert!(first.is_ascii());
 
-        // Classify the ASCII prefix without decoding each character. Any Unicode suffix still
-        // needs the full identifier-continuation check below.
         let bytes = self.cursor.rest().as_bytes();
         let ascii_len = ascii_identifier_prefix_len(bytes);
         self.cursor.skip_bytes(ascii_len);
@@ -671,7 +628,6 @@ impl<'src> Lexer<'src> {
                 }
             }
             Some(byte) if !byte.is_ascii() && self.cursor.eat_if(is_xid_continue).is_some() => {
-                // The ASCII prefix is already consumed; continue after the non-ASCII character.
                 return self.lex_unicode_identifier();
             }
             _ => {}
@@ -682,12 +638,9 @@ impl<'src> Lexer<'src> {
 
     /// Continues from the cursor after the identifier's first non-ASCII character.
     fn lex_unicode_identifier(&mut self) -> TokenKind {
-        // The remaining text can start with ASCII in both `α_suffix` and
-        // `prefix_α_suffix`. Scan that run in batches before decoding more characters.
         let ascii_len = ascii_identifier_prefix_len(self.cursor.rest().as_bytes());
         self.cursor.skip_bytes(ascii_len);
         self.cursor.eat_while(is_identifier_continuation);
-        // The parser uses this flag to apply NFKC normalization only to non-ASCII names.
         self.current_flags |= TokenFlags::NON_ASCII_IDENTIFIER;
         TokenKind::Identifier
     }
@@ -748,7 +701,6 @@ impl<'src> Lexer<'src> {
         let string_kind = interpolated_string.kind();
         let interpolated_flags = interpolated_string.flags();
 
-        // Check if we're at the end of the f-string.
         if interpolated_string.is_triple_quoted() {
             let quote_char = interpolated_string.quote_char();
             if self.cursor.eat_char3(quote_char, quote_char, quote_char) {
@@ -760,16 +712,12 @@ impl<'src> Lexer<'src> {
             return Some(string_kind.end_token());
         }
 
-        // This isn't going to change for the duration of the loop.
         let in_format_spec = interpolated_string.is_in_format_spec(self.nesting);
 
         let mut in_named_unicode = false;
 
         loop {
             match self.cursor.first() {
-                // The condition is to differentiate between the `NUL` (`\0`) character
-                // in the source code and the one returned by `self.cursor.first()` when
-                // we reach the end of the source code.
                 EOF_CHAR if self.cursor.is_eof() => {
                     let error = if interpolated_string.is_triple_quoted() {
                         InterpolatedStringErrorType::UnterminatedTripleQuotedString
@@ -788,7 +736,6 @@ impl<'src> Lexer<'src> {
                     break;
                 }
                 '\n' | '\r' if !interpolated_string.is_triple_quoted() => {
-                    // https://github.com/astral-sh/ruff/issues/18632
 
                     let error_type = if in_format_spec {
                         InterpolatedStringErrorType::NewlineInFormatSpec
@@ -808,10 +755,8 @@ impl<'src> Lexer<'src> {
                     break;
                 }
                 '\\' => {
-                    self.cursor.bump(); // '\'
+                    self.cursor.bump();
                     if matches!(self.cursor.first(), '{' | '}') {
-                        // Don't consume `{` or `}` as we want them to be emitted as tokens.
-                        // They will be handled in the next iteration.
                         continue;
                     } else if !interpolated_string.is_raw_string() {
                         if self.cursor.eat_char2('N', '{') {
@@ -819,7 +764,6 @@ impl<'src> Lexer<'src> {
                             continue;
                         }
                     }
-                    // Consume the escaped character.
                     if self.cursor.eat_char('\r') {
                         self.cursor.eat_char('\n');
                     } else {
@@ -839,7 +783,7 @@ impl<'src> Lexer<'src> {
                 '{' => {
                     if self.cursor.second() == '{' && !in_format_spec {
                         self.cursor.bump();
-                        self.cursor.bump(); // Skip the second `{`
+                        self.cursor.bump();
                     } else {
                         break;
                     }
@@ -850,7 +794,7 @@ impl<'src> Lexer<'src> {
                         self.cursor.bump();
                     } else if self.cursor.second() == '}' && !in_format_spec {
                         self.cursor.bump();
-                        self.cursor.bump(); // Skip the second `}`
+                        self.cursor.bump();
                     } else {
                         break;
                     }
@@ -878,16 +822,12 @@ impl<'src> Lexer<'src> {
             self.current_flags |= TokenFlags::DOUBLE_QUOTES;
         }
 
-        // If the next two characters are also the quote character, then we have a triple-quoted
-        // string; consume those two characters and ensure that we require a triple-quote to close
         if self.cursor.eat_char2(quote, quote) {
             self.current_flags |= TokenFlags::TRIPLE_QUOTED_STRING;
         }
 
         let quote_byte = u8::try_from(quote).expect("char that fits in u8");
         if self.current_flags.is_triple_quoted() {
-            // For triple-quoted strings, scan until we find the closing quote (ignoring escaped
-            // quotes) or the end of the file.
             loop {
                 let Some(index) = memchr::memchr(quote_byte, self.cursor.rest().as_bytes()) else {
                     self.cursor.skip_to_end();
@@ -900,30 +840,23 @@ impl<'src> Lexer<'src> {
                     break;
                 };
 
-                // Rare case: if there are an odd number of backslashes before the quote, then
-                // the quote is escaped and we should continue scanning.
                 let num_backslashes = self.cursor.rest().as_bytes()[..index]
                     .iter()
                     .rev()
                     .take_while(|&&c| c == b'\\')
                     .count();
 
-                // Advance the cursor past the quote and continue scanning.
                 self.cursor.skip_bytes(index + 1);
 
-                // If the character is escaped, continue scanning.
                 if num_backslashes % 2 == 1 {
                     continue;
                 }
 
-                // Otherwise, if it's followed by two more quotes, then we're done.
                 if self.cursor.eat_char2(quote, quote) {
                     break;
                 }
             }
         } else {
-            // For non-triple-quoted strings, scan until we find the closing quote, but end early
-            // if we encounter a newline or the end of the file.
             loop {
                 let Some(index) =
                     memchr::memchr3(quote_byte, b'\r', b'\n', self.cursor.rest().as_bytes())
@@ -939,21 +872,16 @@ impl<'src> Lexer<'src> {
                     break;
                 };
 
-                // Rare case: if there are an odd number of backslashes before the quote, then
-                // the quote is escaped and we should continue scanning.
                 let num_backslashes = self.cursor.rest().as_bytes()[..index]
                     .iter()
                     .rev()
                     .take_while(|&&c| c == b'\\')
                     .count();
 
-                // Skip up to the current character.
                 self.cursor.skip_bytes(index);
 
-                // Lookahead because we want to bump only if it's a quote or being escaped.
                 let quote_or_newline = self.cursor.first();
 
-                // If the character is escaped, continue scanning.
                 if num_backslashes % 2 == 1 {
                     self.cursor.bump();
                     if quote_or_newline == '\r' {
@@ -1044,13 +972,11 @@ impl<'src> Lexer<'src> {
             self.radix_run(Radix::Decimal);
             true
         } else {
-            // Normal number:
             false
         };
 
         let is_float = match self.cursor.rest().as_bytes() {
             [b'e' | b'E', b'0'..=b'9', ..] | [b'e' | b'E', b'-' | b'+', b'0'..=b'9', ..] => {
-                // 'e' | 'E'
                 self.cursor.bump();
 
                 self.cursor.eat_if(|c| matches!(c, '+' | '-'));
@@ -1067,7 +993,6 @@ impl<'src> Lexer<'src> {
         } else if is_float {
             TokenKind::Float
         } else if start_is_zero && integer_part.has_nonzero_digit {
-            // Leading zeros in decimal integer literals are not permitted.
             self.push_error(LexicalError::new(
                 LexicalErrorType::OtherError(
                     "Invalid decimal integer literal"
@@ -1091,9 +1016,7 @@ impl<'src> Lexer<'src> {
                 run.has_digit = true;
                 run.has_nonzero_digit |= c != '0';
             }
-            // Number that contains `_` separators.
             else if self.cursor.first() == '_' && radix.is_digit(self.cursor.second()) {
-                // Skip over `_`
                 self.cursor.bump();
             } else {
                 break;
@@ -1119,8 +1042,6 @@ impl<'src> Lexer<'src> {
         loop {
             match self.cursor.first() {
                 '\\' => {
-                    // Consume an escaped newline so it doesn't terminate the command. A normal
-                    // backslash is consumed by itself and remains part of the token range.
                     self.cursor.bump();
                     self.cursor.eat_char('\r');
                     self.cursor.eat_char('\n');
@@ -1134,9 +1055,7 @@ impl<'src> Lexer<'src> {
     }
 
     fn consume_end(&mut self) -> TokenKind {
-        // We reached end of file.
 
-        // First, finish any unterminated interpolated-strings.
         while let Some(interpolated_string) = self.interpolated_strings.pop() {
             self.nesting = interpolated_string.nesting();
             self.push_error(LexicalError::new(
@@ -1148,23 +1067,17 @@ impl<'src> Lexer<'src> {
             ));
         }
 
-        // Second, finish all nestings.
-        // For Mode::ParenthesizedExpression we start with nesting level 1.
-        // So we check if we end with that level.
         let init_nesting = u32::from(self.mode == Mode::ParenthesizedExpression);
 
         if self.nesting > init_nesting {
-            // Reset the nesting to avoid going into infinite loop.
             self.nesting = 0;
             return self.push_error(LexicalError::new(LexicalErrorType::Eof, self.token_range()));
         }
 
-        // Next, insert a trailing newline, if required.
         if !self.state.is_new_logical_line() {
             self.state = State::AfterNewline;
             TokenKind::Newline
         }
-        // Next, flush the indentation stack to zero.
         else if self.indentations.dedent().is_some() {
             TokenKind::Dedent
         } else {
@@ -1235,12 +1148,8 @@ impl<'src> Lexer<'src> {
             return false;
         }
 
-        // Reduce the nesting level because the parser recovered from an error inside list parsing
-        // i.e., it recovered from an unclosed parenthesis (`(`, `[`, or `{`).
         self.nesting -= 1;
 
-        // The lexer can't be moved back for a triple-quoted f/t-string because the newlines are
-        // part of the f/t-string itself, so there is no newline token to be emitted.
         if self.current_flags.is_triple_quoted_interpolated_string() {
             return false;
         }
@@ -1249,19 +1158,6 @@ impl<'src> Lexer<'src> {
             return false;
         };
 
-        // Earlier we reduced the nesting level unconditionally. Now that we know the lexer's
-        // position is going to be moved back, the lexer needs to be put back into a
-        // parenthesized context if the current token is a closing parenthesis.
-        //
-        // ```py
-        // (a, [b,
-        //     c
-        // )
-        // ```
-        //
-        // Here, the parser would request to re-lex the token when it's at `)` and can recover
-        // from an unclosed `[`. This method will move the lexer back to the newline character
-        // after `c` which means it goes back into parenthesized context.
         if matches!(
             self.current_kind,
             TokenKind::Rpar | TokenKind::Rsqb | TokenKind::Rbrace
@@ -1294,7 +1190,6 @@ impl<'src> Lexer<'src> {
 
         let current_string_flags = self.current_flags().as_any_string_flags();
 
-        // Only unclosed strings, that have the same quote character
         if !matches!(self.current_kind, TokenKind::String)
             || !self.current_flags.is_unclosed()
             || current_string_flags.prefix() != AnyStringPrefix::Regular(StringLiteralPrefix::Empty)
@@ -1304,8 +1199,6 @@ impl<'src> Lexer<'src> {
             return;
         }
 
-        // Only if the string's first line only contains whitespace,
-        // or ends in a comment (not `f"{"abc`)
         let first_line = &self.source
             [(self.current_range.start() + current_string_flags.quote_len()).to_usize()..];
 
@@ -1314,7 +1207,6 @@ impl<'src> Lexer<'src> {
                 break;
             }
 
-            // `f'{'ab`, we want to parse `ab` as a normal string and not the closing element of the f-string
             if !is_python_whitespace(c) {
                 return;
             }
@@ -1353,8 +1245,6 @@ impl<'src> Lexer<'src> {
     /// return a unclosed string token for `"`, which [`Self::re_lex_string_token_in_interpolation_element`]
     /// can then re-lex as the end of the f-string.
     pub(crate) fn re_lex_raw_string_in_format_spec(&mut self) {
-        // Re-lex `r"` as `NAME r` followed by an unclosed string
-        // `f"{test!r"` -> `f"{test!`, `r`, `"`
         if matches!(self.current_kind, TokenKind::String)
             && self.current_flags.is_unclosed()
             && self.current_flags.prefix()
@@ -1423,7 +1313,6 @@ impl<'src> Lexer<'src> {
         } = checkpoint;
 
         let mut cursor = Cursor::new(self.source);
-        // We preserve the previous char using this method.
         cursor.skip_bytes(cursor_offset.to_usize());
 
         self.current_kind = current_kind;
@@ -1536,8 +1425,6 @@ const fn is_ascii_identifier_start(c: char) -> bool {
     matches!(c, 'a'..='z' | 'A'..='Z' | '_')
 }
 
-// Checks if the character c is a valid starting character as described
-// in https://docs.python.org/3/reference/lexical_analysis.html#identifiers
 fn is_unicode_identifier_start(c: char) -> bool {
     is_xid_start(c)
 }
@@ -1545,8 +1432,6 @@ fn is_unicode_identifier_start(c: char) -> bool {
 /// Checks if the character c is a valid continuation character as described
 /// in <https://docs.python.org/3/reference/lexical_analysis.html#identifiers>.
 fn is_identifier_continuation(c: char) -> bool {
-    // Arrange things such that ASCII codepoints never
-    // result in the slower `is_xid_continue` getting called.
     if c.is_ascii() {
         matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')
     } else {
@@ -1615,14 +1500,6 @@ fn ascii_identifier_prefix_len(bytes: &[u8]) -> usize {
 struct KeywordTable {
     words: [u64; 64],
     kinds: [TokenKind; 64],
-    // Each entry records the possible first bytes for keywords of a given length,
-    // from two to eight bytes. `starts[len - 2]` sets bit `first_byte & 63` for
-    // each keyword of that length. An unset bit rules out a keyword before we
-    // pack or hash the identifier.
-    //
-    // Masking with 63 fits each entry in a u64, but bytes that differ by 64 share
-    // a bit. A set bit therefore only indicates a possible match; lookup still
-    // compares the full packed word to reject other identifiers.
     starts: [u64; 7],
 }
 
@@ -1651,7 +1528,6 @@ impl KeywordTable {
     /// Classifies an ASCII identifier whose first character has already been consumed.
     /// `rest` starts after `first` and may extend past the identifier; `len` includes `first`.
     fn lookup(&self, first: char, rest: &[u8], len: usize) -> TokenKind {
-        // The shortest keywords have two bytes, and the packed word holds at most eight.
         if len == 1 || len > 8 {
             return TokenKind::Identifier;
         }
@@ -1667,9 +1543,6 @@ impl KeywordTable {
             padded[..len - 1].copy_from_slice(&rest[..len - 1]);
             u64::from_le_bytes(padded)
         };
-        // Pack bytes in little-endian order, aligned to the high end of the word.
-        // For example, "if" becomes 0x6669_0000_0000_0000. Shifting also discards
-        // any bytes loaded from the source after the identifier.
         let word = ((continuation << 8) | u64::from(u32::from(first))) << ((8 - len) * 8);
 
         let index = keywords::slot(word, KEYWORD_HASH_MULTIPLIER);
@@ -1699,7 +1572,6 @@ mod tests {
             }
             let display = kind.to_string();
             let name = display.trim_matches('`');
-            // Cover both the padded EOF path and the full-word load across a token boundary.
             for suffix in ["", " continue"] {
                 let source = format!("{name}{suffix}");
                 let mut lexer = Lexer::new(&source, Mode::Module, TextSize::default());
@@ -1714,7 +1586,6 @@ mod tests {
         for name in [
             "iH", "aCd", "Fclse", "asqert", "edcept", "fknally", "glqbal", "m_tch", "noplocal",
         ] {
-            // Cover both the padded EOF path and the full-word load across a token boundary.
             for suffix in ["", " continue"] {
                 let source = format!("{name}{suffix}");
                 let mut lexer = Lexer::new(&source, Mode::Module, TextSize::default());
@@ -1825,8 +1696,6 @@ mod tests {
 
     #[test]
     fn bom_with_offset_edge() {
-        // BOM offsets the first token by 3, so make sure that lexing from offset 11 (variable z)
-        // doesn't panic. Refer https://github.com/astral-sh/ruff/issues/11731
         let source = "\u{feff}x + y + z";
         assert_snapshot!(lex_source_with_offset(source, TextSize::new(11)));
     }
@@ -2322,8 +2191,6 @@ if first:
         assert_snapshot!(line_continuation_at_eof(WINDOWS_EOL));
     }
 
-    // This test case is to just make sure that the lexer doesn't go into
-    // infinite loop on invalid input.
     #[test]
     fn test_infinite_loop() {
         let source = "[1";
@@ -2435,8 +2302,6 @@ if first:
 
     #[test]
     fn test_fstring_with_multiline_format_spec() {
-        // The last f-string is invalid syntactically but we should still lex it.
-        // Note that the `b` is an `Identifier` token and not a `FStringMiddle` token.
         let source = r"f'''__{
     x:d
 }__'''
@@ -2620,8 +2485,6 @@ f"{(lambda x:{x})}"
 
     #[test]
     fn test_tstring_with_multiline_format_spec() {
-        // The last t-string is invalid syntactically but we should still lex it.
-        // Note that the `b` is an `Identifier` token and not a `TStringMiddle` token.
         let source = r"t'''__{
     x:d
 }__'''
@@ -2912,10 +2775,6 @@ t"{(lambda x:{x})}"
 
     #[test]
     fn backslash_continuation_indentation() {
-        // The first `\` has 4 spaces before it which matches the indentation level at that point,
-        // so the whitespace before `2` is irrelevant and shouldn't produce an indentation error.
-        // Similarly, the second `\` is also at the same indentation level, so the `3` line is also
-        // valid.
         let source = r"if True:
     1
     \
@@ -2931,10 +2790,6 @@ else:
 
     #[test]
     fn backslash_continuation_at_root() {
-        // But, it's a different when the backslash character itself is at the root indentation
-        // level. Then, the whitespaces following it determines the indentation level of the next
-        // line, so `1` is indented with 4 spaces and `2` is indented with 8 spaces, and `3` is
-        // indented with 4 spaces, all of which are valid.
         let source = r"if True:
 \
     1
@@ -2950,9 +2805,6 @@ else:\
 
     #[test]
     fn multiple_backslash_continuation() {
-        // It's only the first backslash character that determines the indentation level of the next
-        // line, so all the lines after the first `\` are indented with 4 spaces, and the remaining
-        // backslashes are just ignored and don't affect the indentation level.
         let source = r"if True:
     1
     \
@@ -2967,7 +2819,6 @@ else:\
 
     #[test]
     fn backslash_continuation_mismatch_indentation() {
-        // Indentation doesn't match any previous indentation level
         let source = r"if True:
     1
   \

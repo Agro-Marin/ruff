@@ -116,11 +116,9 @@ pub(crate) fn boolean_type_hint_positional_argument(
     decorator_list: &[Decorator],
     parameters: &Parameters,
 ) {
-    // https://github.com/astral-sh/ruff/issues/14535
     if checker.source_type.is_stub() {
         return;
     }
-    // Allow Boolean type hints in explicitly-allowed functions.
     if is_allowed_func_def(name) {
         return;
     }
@@ -133,7 +131,6 @@ pub(crate) fn boolean_type_hint_positional_argument(
             continue;
         }
 
-        // Allow Boolean type hints in setters.
         if decorator_list.iter().any(|decorator| {
             UnqualifiedName::from_expr(&decorator.expression)
                 .is_some_and(|unqualified_name| unqualified_name.segments() == [name, "setter"])
@@ -142,12 +139,10 @@ pub(crate) fn boolean_type_hint_positional_argument(
         }
 
         // Allow Boolean defaults in `@override` methods, since they're required to adhere to
-        // the parent signature.
         if visibility::is_override(decorator_list, checker.semantic()) {
             return;
         }
 
-        // If `bool` isn't actually a reference to the `bool` built-in, return.
         if !checker.semantic().has_builtin_binding("bool") {
             return;
         }
@@ -163,11 +158,8 @@ pub(crate) fn boolean_type_hint_positional_argument(
 /// includes boolean as a variant (e.g., `bool | int`).
 fn match_annotation_to_complex_bool(annotation: &Expr, semantic: &SemanticModel) -> bool {
     match annotation {
-        // Ex) `bool`
         Expr::Name(name) => &name.id == "bool",
-        // Ex) `"bool"`
         Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => value == "bool",
-        // Ex) `bool | int`
         Expr::BinOp(ast::ExprBinOp {
             left,
             op: ast::Operator::BitOr,
@@ -177,9 +169,7 @@ fn match_annotation_to_complex_bool(annotation: &Expr, semantic: &SemanticModel)
             match_annotation_to_complex_bool(left, semantic)
                 || match_annotation_to_complex_bool(right, semantic)
         }
-        // Ex) `typing.Union[bool, int]`
         Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => {
-            // If the typing modules were never imported, we'll never match below.
             if !semantic.seen_typing() {
                 return false;
             }
@@ -192,7 +182,6 @@ fn match_annotation_to_complex_bool(annotation: &Expr, semantic: &SemanticModel)
                     elts.iter()
                         .any(|elt| match_annotation_to_complex_bool(elt, semantic))
                 } else {
-                    // Union with a single type is an invalid type annotation
                     false
                 }
             } else if qualified_name.as_ref().is_some_and(|qualified_name| {

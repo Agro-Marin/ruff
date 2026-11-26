@@ -201,7 +201,6 @@ def main() -> None:
         args.pull_request, args.head_sha, pools, state, dry_run=args.dry_run
     )
     if not args.dry_run:
-        # Rewriting unchanged state also renews its retention after a no-op request.
         args.output.write_text(json.dumps(state, sort_keys=True, separators=(",", ":")))
 
 

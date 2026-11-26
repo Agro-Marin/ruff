@@ -61,14 +61,11 @@ pub(crate) fn literal_membership(checker: &Checker, compare: &ast::ExprCompare) 
         _ => return,
     };
 
-    // Skip empty collections (#15729).
     if elts.is_empty() {
         return;
     }
 
-    // If `left`, or any of the elements in `right`, are known to _not_ be hashable, return.
     if std::iter::once(left).chain(elts).any(|expr| match expr {
-        // Expressions that are known _not_ to be hashable.
         Expr::List(_)
         | Expr::Set(_)
         | Expr::Dict(_)
@@ -79,7 +76,6 @@ pub(crate) fn literal_membership(checker: &Checker, compare: &ast::ExprCompare) 
         | Expr::Await(_)
         | Expr::Yield(_)
         | Expr::YieldFrom(_) => true,
-        // Expressions that can be _inferred_ not to be hashable.
         Expr::Name(name) => {
             let Some(id) = checker.semantic().resolve_name(name) else {
                 return false;

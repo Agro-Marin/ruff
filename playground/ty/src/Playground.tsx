@@ -57,9 +57,6 @@ export default function Playground() {
       return session;
     });
   }
-  // This is safe as this is only called once on startup.
-  // We need useRef to avoid duplicate initialization when
-  // running locally due to react rendering
   // oxlint-disable-next-line react/refs
   const sessionPromise = sessionPromiseRef.current;
 
@@ -113,7 +110,6 @@ export default function Playground() {
           delete downloadFiles[SETTINGS_FILE_NAME];
           downloadFiles["ty.toml"] = tomlContent;
         } catch {
-          // Keep the original JSON file if conversion fails.
         }
       }
 
@@ -162,7 +158,6 @@ export default function Playground() {
         workspace.closeFile(handle);
       }
 
-      // Invalid TOML settings would prevent clearing the JSON override after opening the file.
       if (isConfigurationFile(newName) && !session.hasConfigurationFile()) {
         updateOptions(workspace, "{}", setError);
       }
@@ -225,7 +220,6 @@ export default function Playground() {
 
     const workspace = session.workspace;
 
-    // Close all open files
     for (const file of Object.values(files.metadata)) {
       if (file.handle != null) {
         try {
@@ -351,9 +345,6 @@ const DEFAULT_WORKSPACE = {
   current: "main.py",
 };
 
-/**
- * Persists the files to local storage. This is done deferred to avoid too frequent writes.
- */
 function usePersistLocally(
   files: FilesState,
   session: PlaygroundSession | null,
@@ -382,37 +373,18 @@ export type FileMetadata = Readonly<Record<FileId, PlaygroundFile>>;
 export type ReadonlyFiles = Readonly<FilesState>;
 
 interface FilesState {
-  /**
-   * The currently selected file that is shown in the editor.
-   */
   selected: FileId | null;
 
-  /**
-   * The files in display order (ordering is sensitive)
-   */
   order: ReadonlyArray<FileId>;
 
-  /**
-   * File metadata by file id.
-   */
   metadata: FileMetadata;
 
-  /**
-   * Invalidation token for file metadata changes and document content changes.
-   */
   revision: number;
 
-  /**
-   * Revision identifying this playground. Gets incremented every time the
-   * playground is reset.
-   */
   playgroundRevision: number;
 
   nextId: FileId;
 
-  /**
-   * The currently viewed vendored/builtin file, if any.
-   */
   currentVendoredFile: FileHandle | null;
 }
 
@@ -420,7 +392,6 @@ export type FileAction =
   | {
       type: "add";
       handle: FileHandle | null;
-      /// The file name
       name: string;
       uri: Readonly<Uri>;
     }
@@ -470,7 +441,7 @@ function filesReducer(
         metadata: { ...state.metadata, [id]: { id, name, uri, handle } },
         nextId: state.nextId + 1,
         revision: state.revision + 1,
-        currentVendoredFile: null, // Clear vendored file when adding new file
+        currentVendoredFile: null,
       };
     }
 
@@ -497,7 +468,7 @@ function filesReducer(
         order: state.order.filter((fileId) => fileId !== id),
         metadata,
         revision: state.revision + 1,
-        currentVendoredFile: null, // Clear vendored file when removing file
+        currentVendoredFile: null,
       };
     }
     case "rename": {
@@ -520,7 +491,7 @@ function filesReducer(
       return {
         ...state,
         selected: id,
-        currentVendoredFile: null, // Clear vendored file when selecting regular file
+        currentVendoredFile: null,
       };
     }
 
@@ -534,7 +505,7 @@ function filesReducer(
       return {
         ...state,
         selected: selected ?? null,
-        currentVendoredFile: null, // Clear vendored file when selecting regular file
+        currentVendoredFile: null,
       };
     }
 
@@ -614,7 +585,6 @@ export interface InitializedPlayground {
   workspace: { files: { [name: string]: string }; current: string };
 }
 
-// Run once during startup. Initializes monaco, loads the wasm file, and restores the previous editor state.
 async function startPlayground(): Promise<InitializedPlayground> {
   const ty = await import("ty_wasm");
   await ty.default();
@@ -675,11 +645,6 @@ function updateFile(
   }
 }
 
-/**
- * Owns the mutable playground state: the ty workspace, Monaco models, and the
- * synchronization from Monaco document edits into the workspace. Immutable UI
- * metadata, like file names and selection, lives in `FilesState`.
- */
 export class PlaygroundSession {
   constructor(
     private monaco: Monaco,

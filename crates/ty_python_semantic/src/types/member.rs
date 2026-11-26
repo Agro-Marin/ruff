@@ -90,8 +90,6 @@ pub(super) fn class_member_with_symbol<'db>(
             && let Some(inherited) = inherited_class_body_declaration(db, scope, symbol_id)
         {
             if let Place::Defined(declared) = inherited.member.place {
-                // The annotation determines the public type, but the value is still supplied
-                // by this class. Consumers such as Pydantic inspect that value's definition.
                 *place = DefinedPlace {
                     ty: declared.ty,
                     origin: declared.origin,
@@ -103,7 +101,6 @@ pub(super) fn class_member_with_symbol<'db>(
         }
 
         if !place_and_quals.is_undefined() && !place_and_quals.is_init_var() {
-            // Trust the declared type if we see a class-level declaration
             return Member {
                 inner: place_and_quals,
             };
@@ -119,14 +116,11 @@ pub(super) fn class_member_with_symbol<'db>(
             qualifiers,
         } = place_and_quals
         {
-            // Otherwise, we need to check if the symbol has bindings
             let use_def = use_def_map(db, scope);
             let bindings = use_def.end_of_scope_symbol_bindings(symbol_id);
             let env = ProgramEnvironment::from_scope(scope);
             let inferred = place_from_bindings(db, &env, bindings).place;
 
-            // TODO: we should not need to calculate inferred type second time. This is a temporary
-            // solution until the notion of Boundness and Declaredness is split. See #16036, #16264
             Member {
                 inner: match inferred {
                     Place::Undefined => Place::Undefined.with_qualifiers(qualifiers),
@@ -182,8 +176,6 @@ pub(super) fn class_body_declaration_from_bases<'db>(
         class.identity_specialization(db).iter_mro(db).skip(1),
     )
     .class_body_declaration(name)?;
-    // Hash definitions are checked against the hash protocol, not inherited annotations.
-    // Retain qualifiers such as `ClassVar`, which still constrain instance assignments.
     if name == "__hash__" {
         inherited.member.place = Place::Undefined;
     }

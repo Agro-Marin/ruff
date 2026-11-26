@@ -25,13 +25,11 @@ pub(crate) fn add_noqa(
     reason: Option<&str>,
     suppression_kind: SuppressionKind,
 ) -> Result<usize> {
-    // Collect all the files to check.
     let start = Instant::now();
     let (mut paths, resolver) = project_files_in_path(files, root_settings, config_arguments)?;
     let duration = start.elapsed();
     debug!("Identified files to lint in: {duration:?}");
 
-    // Filter out paths for file types not supported for linting
     paths.retain(|path| {
         if let Ok(ResolvedFile::Root(path) | ResolvedFile::Nested(path)) = path {
             matches!(
@@ -48,7 +46,6 @@ pub(crate) fn add_noqa(
         return Ok(0);
     }
 
-    // Discover the package root for each Python file.
     let package_roots = resolver.package_roots(
         &paths
             .iter()

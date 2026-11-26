@@ -16,21 +16,15 @@ logger = logging.getLogger(__name__)
 def normalize_output(output: str, cwd: Path) -> str:
     """Normalize output by replacing absolute paths with relative placeholders."""
 
-    # Replace absolute paths with <CWD>/relative/path.
-    # This handles both the cwd itself and any paths within it.
     cwd_str = str(cwd.resolve())
     normalized = output.replace(cwd_str, "<CWD>")
 
-    # Replace temp directory patterns (e.g., /var/folders/.../tmp123abc/).
-    # Match common temp directory patterns across platforms.
     normalized = re.sub(
         r"/(?:var/folders|tmp)/[a-zA-Z0-9/_-]+/tmp[a-zA-Z0-9]+",
         "<TMPDIR>",
         normalized,
     )
 
-    # Normalize unordered lists in error messages (e.g., '"name", "description"' vs '"description", "name"').
-    # Sort quoted comma-separated items to make them deterministic.
     def sort_quoted_items(match):
         items = match.group(0)
         quoted_items = re.findall(r'"[^"]+"', items)
@@ -59,7 +53,6 @@ class SnapshotRunner(NamedTuple):
 
     def run(self, *, cwd: Path, env: Mapping[str, str]):
         """Run commands and snapshot their output."""
-        # Create snapshot directory if it doesn't exist.
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
 
         all_passed = True
@@ -67,7 +60,6 @@ class SnapshotRunner(NamedTuple):
         for command in self.commands:
             snapshot_file = self.snapshot_dir / f"{self.name}_{command.name}.txt"
 
-            # Run the prepare command if provided.
             if command.prepare is not None:
                 logger.info(f"Running prepare: {command.prepare}")
                 subprocess.run(
@@ -78,7 +70,6 @@ class SnapshotRunner(NamedTuple):
                     check=True,
                 )
 
-            # Run the actual command and capture output.
             logger.info(f"Running {command.command}")
             result = subprocess.run(
                 command.command,
@@ -92,10 +83,8 @@ class SnapshotRunner(NamedTuple):
             if result.returncode not in (0, 1):
                 result.check_returncode()
 
-            # Get the actual output and combine stdout and stderr for the snapshot.
             actual_output = normalize_output(result.stdout + result.stderr, cwd)
 
-            # Check if snapshot exists.
             if snapshot_file.exists():
                 expected_output = snapshot_file.read_text()
 
@@ -107,7 +96,6 @@ class SnapshotRunner(NamedTuple):
                     print("Diff:")
                     print("=" * 80)
 
-                    # Generate and display a unified diff.
                     diff = difflib.unified_diff(
                         expected_output.splitlines(keepends=True),
                         actual_output.splitlines(keepends=True),
@@ -117,7 +105,6 @@ class SnapshotRunner(NamedTuple):
                     )
 
                     for line in diff:
-                        # Color-code the diff output.
                         if line.startswith("+") and not line.startswith("+++"):
                             print(f"\033[32m{line}\033[0m", end="")
                         elif line.startswith("-") and not line.startswith("---"):
@@ -135,7 +122,6 @@ class SnapshotRunner(NamedTuple):
                 else:
                     print(f"✓ Snapshot matches for {command.name}")
             else:
-                # No existing snapshot - create it.
                 print(f"📸 Creating new snapshot for {command.name}")
                 snapshot_file.write_text(actual_output)
 

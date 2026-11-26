@@ -85,12 +85,8 @@ class Venv:
             "--python",
             self.python.as_posix(),
             "--quiet",
-            # We pass `--exclude-newer` to ensure that type-checking of one of
-            # our projects isn't unexpectedly broken by a change in the
-            # annotations of one of that project's dependencies
             "--exclude-newer",
             "2026-10-24T19:50:00Z",
-            # Project fixtures can import mypy even when only another tool is measured.
             "mypy",
         ]
 

@@ -28,9 +28,6 @@ pub fn unwrapped_call_argument(
 
     let argument_source = &source[argument.range()];
 
-    // The call can separate tokens that would otherwise join after its removal: `return(int)(1)`,
-    // `int(1)and other`, or `int(1).real`. In an f-string, adjacent opening braces would instead
-    // escape the interpolation: `f"{cast(dict[str, int], {'a': value})}"`.
     let adjacent_before = tokens
         .before(call.start())
         .last()
@@ -53,8 +50,6 @@ pub fn unwrapped_call_argument(
                 ))
     });
 
-    // These positions accept a complete expression. A callee still needs grouping:
-    // `consume(f if flag else g)` is valid, but calling the result needs `(f if flag else g)()`.
     let parent_allows_unparenthesized = parent.is_some_and(|parent| match parent {
         AnyNodeRef::Arguments(_) | AnyNodeRef::Keyword(_) => true,
         AnyNodeRef::ExprCall(parent) => parent.arguments.range().contains_range(call.range()),
@@ -67,8 +62,6 @@ pub fn unwrapped_call_argument(
         _ => false,
     });
 
-    // Newlines inside the argument's own delimiters do not need the outer call's parentheses.
-    // For example, `f(\n1)` can stand alone, but `math\n.floor(1)` cannot.
     let mut needs_line_continuation = false;
     if source.contains_line_break(argument.range()) {
         let mut argument_tokens = TokenIterWithContext::new(tokens.in_range(argument.range()));

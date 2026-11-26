@@ -77,7 +77,6 @@ pub(crate) fn if_exp_instead_of_or_operator(checker: &Checker, if_expr: &ast::Ex
 
     let has_comments = checker.comment_ranges().intersects(*range);
 
-    // Replace with `{test} or {orelse}`.
     diagnostic.set_fix(Fix::applicable_edit(
         Edit::range_replacement(
             format!(

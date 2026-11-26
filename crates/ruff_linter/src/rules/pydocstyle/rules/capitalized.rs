@@ -85,7 +85,6 @@ pub(crate) fn capitalized(checker: &Checker, docstring: &Docstring) {
         return;
     }
 
-    // Like pydocstyle, we only support ASCII for now.
     for char in first_word.chars().skip(1) {
         if !char.is_ascii_alphabetic() && char != '\'' {
             return;

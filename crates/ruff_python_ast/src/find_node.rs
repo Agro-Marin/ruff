@@ -20,8 +20,6 @@ pub fn covering_node(root: AnyNodeRef, range: TextRange) -> CoveringNode {
 
     impl<'a> SourceOrderVisitor<'a> for Visitor<'a> {
         fn enter_node(&mut self, node: AnyNodeRef<'a>) -> TraversalSignal {
-            // If the node fully contains the range, than it is a possible match but traverse into its children
-            // to see if there's a node with a narrower range.
             if !self.found && node.range().contains_range(self.range) {
                 self.ancestors.push(node);
                 TraversalSignal::Traverse

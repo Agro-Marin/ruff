@@ -111,7 +111,6 @@ fn extract_noqa_line_for(tokens: &Tokens, locator: &Locator, indexer: &Indexer) 
 
     for token in tokens {
         match token.kind() {
-            // For multi-line strings, we expect `noqa` directives on the last line of the string.
             TokenKind::String if token.is_triple_quoted_string() => {
                 if locator.contains_line_break(token.range()) {
                     string_mappings.push(TextRange::new(
@@ -127,14 +126,9 @@ fn extract_noqa_line_for(tokens: &Tokens, locator: &Locator, indexer: &Indexer) 
 
     let shebang_mapping = leading_shebang_range(locator.contents(), tokens);
 
-    // The capacity allocated here might be more than we need if there are
-    // nested interpolated strings.
     let mut interpolated_string_mappings =
         Vec::with_capacity(indexer.interpolated_string_ranges().len());
 
-    // For nested interpolated strings, we expect `noqa` directives on the last line of the
-    // outermost interpolated string. The last interpolated string range will be used to skip over
-    // the inner interpolated strings.
     let mut last_interpolated_string_range: TextRange = TextRange::default();
     for interpolated_string_range in indexer.interpolated_string_ranges().values() {
         if !locator.contains_line_break(*interpolated_string_range) {
@@ -153,8 +147,6 @@ fn extract_noqa_line_for(tokens: &Tokens, locator: &Locator, indexer: &Indexer) 
 
     let mut continuation_mappings = Vec::new();
 
-    // For continuations, we expect `noqa` directives on the last line of the
-    // continuation.
     let mut last: Option<TextRange> = None;
     for continuation_line in indexer.continuation_line_starts() {
         let line_end = locator.full_line_end(*continuation_line);
@@ -163,7 +155,6 @@ fn extract_noqa_line_for(tokens: &Tokens, locator: &Locator, indexer: &Indexer) 
                 last = Some(TextRange::new(last_range.start(), line_end));
                 continue;
             }
-            // new continuation
             continuation_mappings.push(last_range);
         }
 
@@ -174,7 +165,6 @@ fn extract_noqa_line_for(tokens: &Tokens, locator: &Locator, indexer: &Indexer) 
         continuation_mappings.push(last_range);
     }
 
-    // Merge the mappings in sorted order
     let mut mappings = NoqaMapping::with_capacity(
         continuation_mappings.len()
             + string_mappings.len()
@@ -211,8 +201,6 @@ fn extract_isort_directives(locator: &Locator, comment_ranges: &CommentRanges) -
         let comment_text = locator.slice(range);
 
         // `isort` allows for `# isort: skip` and `# isort: skip_file` to include or
-        // omit a space after the colon. The remaining action comments are
-        // required to include the space, and must appear on their own lines.
         let comment_text = comment_text.trim_end();
         if matches!(comment_text, "# isort: split" | "# ruff: isort: split") {
             splits.push(range.start());
@@ -244,7 +232,6 @@ fn extract_isort_directives(locator: &Locator, comment_ranges: &CommentRanges) -
     }
 
     if let Some(start) = off {
-        // Enforce unterminated `isort: off`.
         exclusions.push(TextRange::new(start, locator.contents().text_len()));
     }
 
@@ -298,17 +285,11 @@ impl<'a> TodoDirective<'a> {
     pub(crate) fn from_comment(comment: &'a str, comment_range: TextRange) -> Option<Self> {
         let mut subset = comment;
 
-        // Loop over `#`-delimited sections of the comment to check for directives. This will
-        // correctly handle cases like `# foo # TODO`.
         loop {
             let trimmed = subset.trim_start_matches('#').trim_start();
 
-            // Find the first word. Don't use split by whitespace because that would include the `:` character
-            // in `TODO:`
             let first_word = trimmed.split(|c: char| !c.is_alphanumeric()).next()?;
 
-            // If we detect a TodoDirectiveKind variant substring in the comment, construct and
-            // return the appropriate TodoDirective
             if let Ok(directive_kind) = first_word.parse::<TodoDirectiveKind>() {
                 let range = comment.substr_range(first_word)?;
                 let first_word_range = TextRange::new(
@@ -323,7 +304,6 @@ impl<'a> TodoDirective<'a> {
                 });
             }
 
-            // Shrink the subset to check for the next phrase starting with "#".
             subset = &trimmed[trimmed.find('#')?..];
         }
     }
@@ -551,7 +531,6 @@ y = \
             ])
         );
 
-        // https://github.com/astral-sh/ruff/issues/7530
         let contents = r"
 assert foo, \
     '''triple-quoted
@@ -693,7 +672,6 @@ z = x + 1";
             TodoDirective::from_comment(test_comment, test_comment_range).unwrap()
         );
 
-        // The Kelvin sign lowercases to `k`, but takes three bytes in the source.
         let test_comment = "# noqa # HAC\u{212A}: hack tag";
         let test_comment_range = TextRange::at(TextSize::new(0), test_comment.text_len());
         let expected = TodoDirective {

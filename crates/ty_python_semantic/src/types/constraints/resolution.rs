@@ -94,8 +94,6 @@ impl<'db> Resolver<'_, 'db> {
                     return Some(original);
                 }
 
-                // Every replacement is already closed. One simultaneous substitution therefore
-                // suffices, and never substitutes a cycle with an arbitrary representative.
                 let context = GenericContext::from_typevar_instances(
                     db,
                     self.env,
@@ -113,9 +111,6 @@ impl<'db> Resolver<'_, 'db> {
                     }),
                     TypeContext::default(),
                 );
-                // Some type forms preserve captured variables when specialized. For example, an
-                // alias changes its explicit arguments but can retain a free variable in its body.
-                // Verify closure on the actual result without performing further substitutions.
                 Dependencies::check(db, self.env, self.inferable, mapped, |_| false)
                     .then_some(mapped)
             })
@@ -175,8 +170,6 @@ impl<'db> TypeVisitor<'db> for Dependencies<'_, 'db> {
         if !self.satisfied.get() {
             return;
         }
-        // Recursive specialization can introduce dependencies in an alias's changing arguments.
-        // Inspect them even when the recursion guard skips another visit to the alias's body.
         let specialization = match ty {
             Type::TypeAlias(alias) => alias.specialization(db),
             Type::Recursive(recursive) => recursive.arguments(db),
@@ -192,15 +185,11 @@ impl<'db> TypeVisitor<'db> for Dependencies<'_, 'db> {
                 self.satisfied.set((self.query)(typevar));
             }
         } else if let TypeKind::NonAtomic(non_atomic) = TypeKind::from(ty) {
-            // Revisiting a recursive structural type adds no new dependencies. Binding cycles
-            // are handled separately by Resolver, where their fallback is unresolved.
             self.visited
                 .visit(db, ty, || walk_non_atomic_type(db, non_atomic, self));
         }
     }
 
-    // Generic declarations are not dependencies of their specialized arguments. Actual typevar
-    // occurrences enter through `visit_type`, and their bounds and defaults remain untouched.
     fn visit_bound_type_var_type(&self, _db: &'db dyn Db, _typevar: BoundTypeVarInstance<'db>) {}
 
     fn visit_type_alias_type(&self, db: &'db dyn Db, alias: TypeAliasType<'db>) {
@@ -305,7 +294,6 @@ mod tests {
             .ok_or_else(|| anyhow::anyhow!("expected C's U"))?;
         let t = create_typevar(db, "T");
         let int = KnownClass::Int.to_instance(db, &env);
-        // RecursiveAlias first exposes U in a recursive specialization's argument.
         for (name, argument) in [("Alias", Type::TypeVar(u)), ("RecursiveAlias", int)] {
             let alias = Type::instance(db, &env, class.identity_specialization(db))
                 .member(db, &env, name)
@@ -471,7 +459,6 @@ mod tests {
                 [SolutionType::Unresolved(alias)],
                 "{parameter:?}: missing captured dependency"
             );
-            // Specializing an alias's arguments cannot replace a variable captured in its body.
             assert_eq!(
                 resolve_solution(db, &env, inferable, &[binding(t, alias), binding(u, int)])
                     .as_ref(),
@@ -511,7 +498,6 @@ mod tests {
             );
             assert_eq!(resolved.as_ref(), [SolutionType::Resolved(tree)]);
 
-            // A closed recursive alias does not prevent resolving an independent tuple element.
             let pair = Type::tuple(TupleType::heterogeneous(db, &env, [tree, Type::TypeVar(u)]));
             let expected = Type::tuple(TupleType::heterogeneous(db, &env, [tree, int]));
             let resolved = resolve_solution(
@@ -566,7 +552,6 @@ mod tests {
         let t = create_typevar(db, "T");
         let int = KnownClass::Int.to_instance(db, &env);
 
-        // Binding the parameter removes U from the reduced signature, but .func still exposes it.
         for partial in [
             KnownInstanceType::FunctoolsPartial(partial),
             KnownInstanceType::FunctoolsPartialCall(partial),

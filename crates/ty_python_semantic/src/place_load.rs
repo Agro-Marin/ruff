@@ -108,7 +108,6 @@ impl<'db, 'a> PlaceLoadResolver<'db, 'a> {
                     }
                     continue;
                 }
-                // Only a failed name search can use ty's convenience `reveal_type` fallback.
                 PlaceLoadResolutionStep::Exhausted(PlaceLoadFailure::NotFound)
                     if self
                         .procedure
@@ -156,9 +155,7 @@ impl<'db, 'a> PlaceLoadResolver<'db, 'a> {
             PlaceLoadSourceKind::Bindings(bindings) => {
                 let mut place = self.resolve_bindings(bindings.clone());
 
-                // Compatibility policy: ty historically treats a possibly-bound module snapshot
                 // reached through a class-body global fallback as definitely bound. At runtime,
-                // an unbound snapshot would continue to builtins or produce a name error.
                 if source.is_class_body_global_fallback()
                     && let Place::Defined(defined) = place
                 {
@@ -474,7 +471,6 @@ impl<'db> Iterator for PlaceLoadResolutionProcedure<'db, '_> {
                         });
 
                     // Nested global assignments create synthetic module bindings even when the
-                    // module never defines the name itself. Do not let those bindings hide an
                     // implicit global or builtin when the forwarded assignment did not run.
                     self.next_node = Some(if has_explicit_global {
                         PlaceLoadResolutionNode::ExplicitGlobalSource(PlaceLoadSourceRole::Ordinary)
@@ -657,7 +653,6 @@ impl<'db, 'ast> PlaceLoadResolutionProcedure<'db, 'ast> {
             let place_expr = self.place_expr;
             let enclosing_place_id = enclosing_place_table.place_id(place_expr);
             let enclosing_place = enclosing_place_id.map(|id| enclosing_place_table.place(id));
-            // A `global` declaration forwards the place to the module instead of making this
             // enclosing scope its owner. A possibly-unbound snapshot must still fall through.
             let forwards_to_global = is_lexically_visible
                 && enclosing_place
@@ -757,7 +752,6 @@ impl<'db, 'ast> PlaceLoadResolutionProcedure<'db, 'ast> {
             if forwards_to_global {
                 return (PlaceLoadResolutionNode::ImplicitClassBodySource(None), None);
             }
-            // Keep walking across `nonlocal` declarations until reaching the owning scope.
             if forwards_to_nonlocal {
                 continue;
             }
@@ -765,8 +759,6 @@ impl<'db, 'ast> PlaceLoadResolutionProcedure<'db, 'ast> {
                 continue;
             }
 
-            // The first bound or declared place owns the load. Its public value includes nested
-            // writes represented by synthetic definitions in this scope.
             return (
                 Self::node_after_enclosing_scope(enclosing_scope.kind()),
                 (!eagerly_undefined).then(|| {
@@ -866,12 +858,8 @@ impl<'db, 'ast> PlaceLoadResolutionProcedure<'db, 'ast> {
 }
 
 pub(crate) enum PlaceLoadResolutionStep<'db> {
-    // A source that can supply the value for a load.
     Source(PlaceLoadSource<'db>),
-    // A condition that the caller must evaluate to determine whether resolution should continue
-    // for a member load.
     MemberResolutionCondition(PlaceExprPrefixLoads<'db>),
-    // A marker that declares that resolution ended in a explicit failure.
     Exhausted(PlaceLoadFailure),
 }
 

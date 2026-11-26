@@ -91,15 +91,8 @@ impl Tokens {
     /// (the left token ends at `offset` and the right token starts at `offset`).
     pub fn at_offset(&self, offset: TextSize) -> TokenAt {
         match self.binary_search_by_start(offset) {
-            // The token at `index` starts exactly at `offset.
-            // ```python
-            // object.attribute
-            //        ^ OFFSET
-            // ```
             Ok(index) => {
                 let token = self[index];
-                // `token` starts exactly at `offset`. Test if the offset is right between
-                // `token` and the previous token (if there's any)
                 if let Some(previous) = index.checked_sub(1).map(|idx| self[idx]) {
                     if previous.end() == offset {
                         return TokenAt::Between(previous, token);
@@ -109,16 +102,6 @@ impl Tokens {
                 TokenAt::Single(token)
             }
 
-            // No token found that starts exactly at the given offset. But it's possible that
-            // the token starting before `offset` fully encloses `offset` (it's end range ends after `offset`).
-            // ```python
-            // object.attribute
-            //   ^ OFFSET
-            // # or
-            // if True:
-            //     print("test")
-            //  ^ OFFSET
-            // ```
             Err(index) => {
                 if let Some(previous) = index.checked_sub(1).map(|idx| self[idx]) {
                     if previous.range().contains_inclusive(offset) {
@@ -150,9 +133,6 @@ impl Tokens {
         let before = &tokens[..partition_point];
 
         if let Some(last) = before.last() {
-            // If it's equal to the end offset, then it's at a token boundary which is
-            // valid. If it's greater than the end offset, then it's in the gap between
-            // the tokens which is valid as well.
             assert!(
                 offset >= last.end(),
                 "Offset {offset:?} is inside token `{last:?}`",
@@ -176,8 +156,6 @@ impl Tokens {
         let after = &self[partition_point..];
 
         if let Some(first) = after.first() {
-            // valid. If it's greater than the end offset, then it's in the gap between
-            // the tokens which is valid as well.
             assert!(
                 offset <= first.start(),
                 "Offset {offset:?} is inside token `{first:?}`",
@@ -391,9 +369,6 @@ impl<'a> Iterator for TokenIterWithContext<'a> {
             TokenKind::Rpar | TokenKind::Rbrace | TokenKind::Rsqb => {
                 self.nesting = self.nesting.saturating_sub(1);
             }
-            // This mimics the behavior of re-lexing which reduces the nesting level on the lexer.
-            // We don't need to reduce it by 1 because unlike the lexer we see the final token
-            // after recovering from every unclosed parenthesis.
             TokenKind::Newline if self.nesting > 0 => {
                 self.nesting = 0;
             }
@@ -426,12 +401,10 @@ mod tests {
         (TokenKind::Rpar, 8..9),
         (TokenKind::Colon, 9..10),
         (TokenKind::Newline, 10..11),
-        // Gap               ||..||
         (TokenKind::Comment, 15..24),
         (TokenKind::NonLogicalNewline, 24..25),
         (TokenKind::Indent, 25..29),
         (TokenKind::Pass, 29..33),
-        // No newline at the end to keep the token set full of unique tokens
     ];
 
     /// Helper function to create [`Tokens`] from an iterator of (kind, range).

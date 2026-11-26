@@ -47,15 +47,10 @@ impl<'a, 'src> StringNormalizer<'a, 'src> {
             .unwrap_or(self.context.options().quote_style());
         let supports_pep_701 = self.context.options().target_version().supports_pep_701();
 
-        // Preserve the existing quote style for nested interpolations more than one layer deep, if
-        // PEP 701 isn't supported.
         if !supports_pep_701 && self.context.interpolated_string_state().is_nested() {
             return QuoteStyle::Preserve;
         }
 
-        // For f-strings and t-strings prefer alternating the quotes unless the outer string is
-        // triple quoted and the inner isn't. In Python 3.12+, `nested-string-quote-style =
-        // "preferred"` uses the configured quote style instead.
         if let InterpolatedStringState::InsideInterpolatedElement(parent_context)
         | InterpolatedStringState::NestedInterpolatedElement(parent_context) =
             self.context.interpolated_string_state()
@@ -64,44 +59,29 @@ impl<'a, 'src> StringNormalizer<'a, 'src> {
             let nested_string_quote_style = self.context.options().nested_string_quote_style();
 
             if !parent_flags.is_triple_quoted() || string.flags().is_triple_quoted() {
-                // When `nested-string-quote-style = "preferred"` and we're targeting Python
-                // 3.12+, use the preferred quote style consistently.
                 if supports_pep_701
                     && nested_string_quote_style.is_preferred()
                     && !preferred_quote_style.is_preserve()
                 {
                     return preferred_quote_style;
                 }
-                // Otherwise, use alternating quotes for compatibility.
-                // This logic is even necessary when using preserve and the target python version doesn't support PEP701 because
-                // we might end up joining two f-strings that have different quote styles, in which case we need to alternate the quotes
-                // for inner strings to avoid a syntax error: `string = "this is my string with " f'"{params.get("mine")}"'`
                 else if !preferred_quote_style.is_preserve() || !supports_pep_701 {
                     return QuoteStyle::from(parent_flags.quote_style().opposite());
                 }
             }
         }
 
-        // Leave the quotes unchanged for all other strings.
         if preferred_quote_style.is_preserve() {
             return QuoteStyle::Preserve;
         }
 
-        // There are cases where it is necessary to preserve the quotes to prevent an invalid f-string or t-string.
         match string {
             StringLikePart::FString(fstring) => {
-                // There are two cases where it's necessary to preserve the quotes if the
-                // target version is pre 3.12 and the part is an f-string.
                 if !supports_pep_701 {
-                    // An f-string expression contains a debug text with a quote character
-                    // because the formatter will emit the debug expression **exactly** the
-                    // same as in the source text.
                     if is_fstring_with_quoted_debug_expression(fstring, self.context) {
                         return QuoteStyle::Preserve;
                     }
 
-                    // An f-string expression that contains a triple quoted string literal
-                    // expression that contains a quote.
                     if is_fstring_with_triple_quoted_literal_expression_containing_quotes(
                         fstring,
                         self.context,
@@ -110,8 +90,6 @@ impl<'a, 'src> StringNormalizer<'a, 'src> {
                     }
                 }
 
-                // An f-string expression element contains a debug text and the corresponding
-                // format specifier has a literal element with a quote character.
                 if is_interpolated_string_with_quoted_format_spec_and_debug(
                     &fstring.elements,
                     fstring.flags.into(),
@@ -132,53 +110,7 @@ impl<'a, 'src> StringNormalizer<'a, 'src> {
             _ => {}
         }
 
-        // Per PEP 8, always prefer double quotes for triple-quoted strings.
         if string.flags().is_triple_quoted() {
-            // ... unless we're formatting a code snippet inside a docstring,
-            // then we specifically want to invert our quote style to avoid
-            // writing out invalid Python.
-            //
-            // It's worth pointing out that we can actually wind up being
-            // somewhat out of sync with PEP8 in this case. Consider this
-            // example:
-            //
-            //     def foo():
-            //         '''
-            //         Something.
-            //
-            //         >>> """tricksy"""
-            //         '''
-            //         pass
-            //
-            // Ideally, this would be reformatted as:
-            //
-            //     def foo():
-            //         """
-            //         Something.
-            //
-            //         >>> '''tricksy'''
-            //         """
-            //         pass
-            //
-            // But the logic here results in the original quoting being
-            // preserved. This is because the quoting style of the outer
-            // docstring is determined, in part, by looking at its contents. In
-            // this case, it notices that it contains a `"""` and thus infers
-            // that using `'''` would overall read better because it avoids
-            // the need to escape the interior `"""`. Except... in this case,
-            // the `"""` is actually part of a code snippet that could get
-            // reformatted to using a different quoting style itself.
-            //
-            // Fixing this would, I believe, require some fairly seismic
-            // changes to how formatting strings works. Namely, we would need
-            // to look for code snippets before normalizing the docstring, and
-            // then figure out the quoting style more holistically by looking
-            // at the various kinds of quotes used in the code snippets and
-            // what reformatting them might look like.
-            //
-            // Overall this is a bit of a corner case and just inverting the
-            // style from what the parent ultimately decided upon works, even
-            // if it doesn't have perfect alignment with PEP8.
             if let Some(quote) = self.context.docstring() {
                 QuoteStyle::from(quote.opposite())
             } else {
@@ -202,11 +134,8 @@ impl<'a, 'src> StringNormalizer<'a, 'src> {
             Quote::try_from(preferred_style),
             first_quote_or_normalized_char_offset,
         ) {
-            // The string contains no quotes so it's safe to use the preferred quote style
             (Ok(preferred_quote), None) => string_flags.with_quote_style(preferred_quote),
 
-            // The preferred quote style is single or double quotes, and the string contains a quote or
-            // another character that may require escaping
             (Ok(preferred_quote), Some(first_quote_or_normalized_char_offset)) => {
                 let metadata = if string.is_interpolated_string() {
                     QuoteMetadata::from_part(string, self.context, preferred_quote)
@@ -223,7 +152,6 @@ impl<'a, 'src> StringNormalizer<'a, 'src> {
                 string_flags.with_quote_style(quote)
             }
 
-            // The preferred quote style is to preserve the quotes, so let's do that.
             (Err(()), _) => string_flags,
         };
 
@@ -383,7 +311,6 @@ impl QuoteMetadata {
                 double_quotes: self_double + other_double,
             },
 
-            // Can't merge quotes from raw strings (even when both strings are raw)
             (
                 QuoteMetadataKind::Raw {
                     contains_preferred: self_contains_preferred,
@@ -492,7 +419,6 @@ impl QuoteMetadataKind {
     /// a tripled of the quote character (e.g., if double quotes are preferred, double quotes will be
     /// used unless the string contains `"""`).
     fn triple_quoted(content: &str, preferred_quote: Quote) -> Self {
-        // True if the string contains a triple quote sequence of the configured quote style.
         let mut uses_triple_quotes = false;
         let mut chars = content.chars().peekable();
 
@@ -504,35 +430,27 @@ impl QuoteMetadataKind {
                         chars.next();
                     }
                 }
-                // `"` or `'`
                 c if c == preferred_quote_char => {
                     match chars.peek().copied() {
                         Some(c) if c == preferred_quote_char => {
-                            // `""` or `''`
                             chars.next();
 
                             match chars.peek().copied() {
                                 Some(c) if c == preferred_quote_char => {
-                                    // `"""` or `'''`
                                     chars.next();
                                     uses_triple_quotes = true;
                                     break;
                                 }
                                 Some(_) => {}
                                 None => {
-                                    // Handle `''' ""'''`. At this point we have consumed both
-                                    // double quotes, so on the next iteration the iterator is empty
-                                    // and we'd miss the string ending with a preferred quote
                                     uses_triple_quotes = true;
                                     break;
                                 }
                             }
                         }
                         Some(_) => {
-                            // A single quote char, this is ok
                         }
                         None => {
-                            // Trailing quote at the end of the comment
                             uses_triple_quotes = true;
                             break;
                         }
@@ -582,25 +500,18 @@ impl QuoteMetadataKind {
         let contains_unescaped_configured_quotes = loop {
             match chars.next() {
                 Some('\\') => {
-                    // Ignore escaped characters
                     chars.next();
                 }
-                // `"` or `'`
                 Some(c) if c == preferred_quote_char => {
                     if triple_quotes.is_no() {
                         break true;
                     }
 
                     match chars.peek() {
-                        // We can't turn `r'''\""'''` into `r"""\"""""`, this would confuse the parser
-                        // about where the closing triple quotes start
                         None => break true,
                         Some(next) if *next == preferred_quote_char => {
-                            // `""` or `''`
                             chars.next();
 
-                            // We can't turn `r'''""'''` into `r""""""""`, nor can we have
-                            // `"""` or `'''` respectively inside the string
                             if chars.peek().is_none() || chars.peek() == Some(&preferred_quote_char)
                             {
                                 break true;
@@ -667,11 +578,7 @@ pub(crate) fn normalize_string(
     new_flags: AnyStringFlags,
     escape_braces: bool,
 ) -> Cow<'_, str> {
-    // The normalized string if `input` is not yet normalized.
-    // `output` must remain empty if `input` is already normalized.
     let mut output = String::new();
-    // Tracks the last index of `input` that has been written to `output`.
-    // If `last_index` is `0` at the end, then the input is already normalized and can be returned as is.
     let mut last_index = 0;
 
     let quote = new_flags.quote_style();
@@ -685,7 +592,6 @@ pub(crate) fn normalize_string(
     while let Some((index, c)) = chars.next() {
         if matches!(c, '{' | '}') {
             if escape_braces {
-                // Escape `{` and `}` when converting a regular string literal to an f-string literal.
                 output.push_str(&input[last_index..=index]);
                 output.push(c);
                 last_index = index + c.len_utf8();
@@ -696,11 +602,9 @@ pub(crate) fn normalize_string(
         if c == '\r' {
             output.push_str(&input[last_index..index]);
 
-            // Skip over the '\r' character, keep the `\n`
             if chars.peek().copied().is_some_and(|(_, next)| next == '\n') {
                 chars.next();
             }
-            // Replace the `\r` with a `\n`
             else {
                 output.push('\n');
             }
@@ -710,10 +614,8 @@ pub(crate) fn normalize_string(
             if c == '\\' {
                 if let Some((_, next)) = chars.clone().next() {
                     if next == '\\' {
-                        // Skip over escaped backslashes
                         chars.next();
                     } else {
-                        // Length of the `\` plus the length of the escape sequence character (`u` | `U` | `x`)
                         let escape_start_len = '\\'.len_utf8() + next.len_utf8();
                         if let Some(normalised) =
                             UnicodeEscape::new(next, !new_flags.is_byte_string()).and_then(
@@ -727,9 +629,6 @@ pub(crate) fn normalize_string(
                                 last_index = escape_start_offset + normalised.len();
                             }
 
-                            // Move the `chars` iterator passed the escape sequence.
-                            // Simply reassigning `chars` doesn't work because the indices` would
-                            // then be off.
                             for _ in 0..next.len_utf8() + normalised.len() {
                                 chars.next();
                             }
@@ -738,18 +637,15 @@ pub(crate) fn normalize_string(
 
                     if !new_flags.is_triple_quoted() {
                         if next == opposite_quote {
-                            // Remove the escape by ending before the backslash and starting again with the quote
                             chars.next();
                             output.push_str(&input[last_index..index]);
                             last_index = index + '\\'.len_utf8();
                         } else if next == preferred_quote {
-                            // Quote is already escaped, skip over it.
                             chars.next();
                         }
                     }
                 }
             } else if !new_flags.is_triple_quoted() && c == preferred_quote {
-                // Escape the quote
                 output.push_str(&input[last_index..index]);
                 output.push('\\');
                 output.push(c);
@@ -824,8 +720,6 @@ impl UnicodeEscape {
 
         let len = match self {
             UnicodeEscape::Hex(len) => {
-                // It's not a valid escape sequence if the input string has fewer characters
-                // left than required by the escape sequence.
                 if input.len() < len {
                     return None;
                 }
@@ -847,7 +741,6 @@ impl UnicodeEscape {
                             }
                         }
                         _ => {
-                            // not a valid escape sequence
                             return None;
                         }
                     }
@@ -870,7 +763,6 @@ impl UnicodeEscape {
                                     normalised.push('}');
                                 }
 
-                                // Name must be at least two characters long.
                                 if index < 3 {
                                     return None;
                                 }
@@ -892,12 +784,10 @@ impl UnicodeEscape {
                                 }
                             }
                             _ => {
-                                // Seems like an invalid escape sequence, don't normalise it.
                                 return None;
                             }
                         }
                     } else {
-                        // Unterminated escape sequence, don't normalise it.
                         return None;
                     }
                 }
@@ -1086,12 +976,10 @@ fn contains_opposite_quote(content: &str, flags: AnyStringFlags) -> bool {
         let mut rest = content;
 
         while let Some(index) = rest.find(flags.quote_style().opposite().as_char()) {
-            // Quotes in raw strings can't be escaped
             if flags.is_raw_string() {
                 return true;
             }
 
-            // Only if the quote isn't escaped
             if rest[..index]
                 .chars()
                 .rev()

@@ -142,7 +142,6 @@ pub(crate) fn categorize<'a>(
             (default_section, Reason::NoMatch)
         }
     };
-    // If a value is not in `section_order` then map it to `default_section`.
     if !section_order.contains(import_type) {
         reason = Reason::DisabledSection(import_type);
         import_type = default_section;
@@ -198,7 +197,6 @@ pub(crate) fn categorize_imports<'a>(
     default_section: &'a ImportSection,
 ) -> BTreeMap<&'a ImportSection, ImportBlock<'a>> {
     let mut block_by_type: BTreeMap<&ImportSection, ImportBlock> = BTreeMap::default();
-    // Categorize `Stmt::Import`.
     #[expect(
         clippy::iter_over_hash_type,
         reason = "categorization only moves entries between unordered import blocks"
@@ -222,7 +220,6 @@ pub(crate) fn categorize_imports<'a>(
             .import
             .insert(alias, comments);
     }
-    // Categorize `Stmt::ImportFrom` (without re-export).
     #[expect(
         clippy::iter_over_hash_type,
         reason = "categorization only moves entries between unordered import blocks"
@@ -246,7 +243,6 @@ pub(crate) fn categorize_imports<'a>(
             .import_from
             .insert(import_from, aliases);
     }
-    // Categorize `Stmt::ImportFrom` (with re-export).
     #[expect(
         clippy::iter_over_hash_type,
         reason = "categorization only moves entries between unordered import blocks"
@@ -270,7 +266,6 @@ pub(crate) fn categorize_imports<'a>(
             .import_from_as
             .insert((import_from, alias), aliases);
     }
-    // Categorize `Stmt::ImportFrom` (with star).
     #[expect(
         clippy::iter_over_hash_type,
         reason = "categorization only moves entries between unordered import blocks"
@@ -342,7 +337,6 @@ impl KnownModules {
             )
             .collect();
 
-        // Warn in the case of duplicate modules.
         let mut seen = FxHashSet::with_capacity_and_hasher(known.len(), FxBuildHasher);
         for (module, _) in &known {
             if !seen.insert(module) {
@@ -353,7 +347,6 @@ impl KnownModules {
             }
         }
 
-        // Check if any of the known modules are submodules.
         let has_submodules = known
             .iter()
             .any(|(module, _)| module.as_str().contains('.'));
@@ -368,9 +361,6 @@ impl KnownModules {
     /// by the user.
     fn categorize(&self, module_name: &str) -> Option<(&ImportSection, Reason<'_>)> {
         if self.has_submodules {
-            // Check all module prefixes from the longest to the shortest (e.g., given
-            // `foo.bar.baz`, check `foo.bar.baz`, then `foo.bar`, then `foo`, taking the first,
-            // most precise match).
             for i in module_name
                 .match_indices('.')
                 .map(|(i, _)| i)
@@ -384,7 +374,6 @@ impl KnownModules {
             }
             None
         } else {
-            // Happy path: no submodules, so we can check the module base and be done.
             let module_base = module_name.split('.').next().unwrap();
             self.categorize_submodule(module_base)
         }
@@ -462,7 +451,6 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let project_dir = temp_dir.path().join("project");
 
-        // Create traditional layout
         create_dir(project_dir.join("mypackage"));
         create_file(project_dir.join("mypackage/__init__.py"));
         create_file(project_dir.join("mypackage/module1.py"));
@@ -497,7 +485,6 @@ mod tests {
         let project_dir = temp_dir.path().join("project");
         let src_dir = project_dir.join("src");
 
-        // Create src layout
         create_dir(src_dir.join("mypackage"));
         create_file(src_dir.join("mypackage/__init__.py"));
         create_file(src_dir.join("mypackage/module1.py"));
@@ -527,7 +514,6 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let project_dir = temp_dir.path().join("project");
 
-        // Create nested package layout
         create_dir(project_dir.join("mypackage/subpackage"));
         create_file(project_dir.join("mypackage/__init__.py"));
         create_file(project_dir.join("mypackage/module1.py"));
@@ -560,7 +546,6 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let project_dir = temp_dir.path().join("project");
 
-        // Create namespace package layout
         create_dir(project_dir.join("namespace/package1"));
         create_file(project_dir.join("namespace/package1/__init__.py"));
         create_file(project_dir.join("namespace/package1/module1.py"));
@@ -591,14 +576,12 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let project_dir = temp_dir.path().join("project");
 
-        // Create package with type stub
         create_dir(project_dir.join("mypackage"));
         create_file(project_dir.join("mypackage/__init__.py"));
-        create_file(project_dir.join("mypackage/module1.pyi")); // Only create .pyi file, not .py
+        create_file(project_dir.join("mypackage/module1.pyi"));
 
         let paths = vec![project_dir.clone()];
 
-        // Module "mypackage.module1" should match project_dir using .pyi file
         assert_eq!(
             match_sources(&paths, "mypackage.module1"),
             Some(project_dir.as_path())
@@ -620,22 +603,19 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let project_dir = temp_dir.path().join("project");
 
-        // Create package with module and directory of the same name
         create_dir(project_dir.join("mypackage/feature"));
         create_file(project_dir.join("mypackage/__init__.py"));
-        create_file(project_dir.join("mypackage/feature.py")); // Module with same name as directory
+        create_file(project_dir.join("mypackage/feature.py"));
         create_file(project_dir.join("mypackage/feature/__init__.py"));
         create_file(project_dir.join("mypackage/feature/submodule.py"));
 
         let paths = vec![project_dir.clone()];
 
-        // Module "mypackage.feature" should match project_dir
         assert_eq!(
             match_sources(&paths, "mypackage.feature"),
             Some(project_dir.as_path())
         );
 
-        // Module "mypackage.feature.submodule" should match project_dir
         assert_eq!(
             match_sources(&paths, "mypackage.feature.submodule"),
             Some(project_dir.as_path())
@@ -660,35 +640,28 @@ mod tests {
         let project1_dir = temp_dir.path().join("project1");
         let project2_dir = temp_dir.path().join("project2");
 
-        // Create files in project1
         create_dir(project1_dir.join("package1"));
         create_file(project1_dir.join("package1/__init__.py"));
         create_file(project1_dir.join("package1/module1.py"));
 
-        // Create files in project2
         create_dir(project2_dir.join("package2"));
         create_file(project2_dir.join("package2/__init__.py"));
         create_file(project2_dir.join("package2/module2.py"));
 
-        // Test with multiple paths in search order
         let paths = vec![project1_dir.clone(), project2_dir.clone()];
 
-        // Module "package1" should match project1_dir
         assert_eq!(
             match_sources(&paths, "package1"),
             Some(project1_dir.as_path())
         );
 
-        // Module "package2" should match project2_dir
         assert_eq!(
             match_sources(&paths, "package2"),
             Some(project2_dir.as_path())
         );
 
-        // Try with reversed order to check search order
         let paths_reversed = vec![project2_dir, project1_dir.clone()];
 
-        // Module "package1" should still match project1_dir
         assert_eq!(
             match_sources(&paths_reversed, "package1"),
             Some(project1_dir.as_path())

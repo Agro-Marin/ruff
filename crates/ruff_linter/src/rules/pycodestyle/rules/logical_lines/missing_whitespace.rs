@@ -69,14 +69,6 @@ pub(crate) fn missing_whitespace(line: &LogicalLine, context: &LintContext) {
                 brackets.pop();
             }
             TokenKind::Colon if interpolated_strings > 0 => {
-                // Colon in f-string, no space required. This will yield false
-                // negatives for cases like the following as it's hard to
-                // differentiate between the usage of a colon in a f-string.
-                //
-                // ```python
-                // f'{ {'x':1} }'
-                // f'{(lambda x:x)}'
-                // ```
                 continue;
             }
 
@@ -95,13 +87,13 @@ pub(crate) fn missing_whitespace(line: &LogicalLine, context: &LintContext) {
                                     && !(definition_state.in_type_params()
                                         && brackets.len() == 1) =>
                             {
-                                continue; // Slice syntax, no space required
+                                continue;
                             }
                             (TokenKind::Comma, TokenKind::Rpar | TokenKind::Rsqb) => {
-                                continue; // Allow tuple with only one element: (3,)
+                                continue;
                             }
                             (TokenKind::Colon, TokenKind::Equal) => {
-                                continue; // Allow assignment expression
+                                continue;
                             }
                             _ => {}
                         }

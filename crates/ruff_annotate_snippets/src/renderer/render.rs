@@ -1,4 +1,3 @@
-// Most of this file is adapted from https://github.com/rust-lang/rust/blob/160905b6253f42967ed4aef4b98002944c7df24c/compiler/rustc_errors/src/emitter.rs
 
 use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
@@ -168,7 +167,6 @@ pub(crate) fn render(renderer: &Renderer, groups: Report<'_>) -> String {
                             primary_path.or(og_primary_path),
                             matches_previous_suggestion,
                             is_first,
-                            //matches!(peek, Some(Element::Message(_) | Element::Padding(_))),
                             peek.is_some(),
                         );
 
@@ -299,7 +297,7 @@ fn render_short_message(renderer: &Renderer, groups: &[Group<'_>]) -> Result<Str
         renderer,
         &mut buffer,
         title,
-        0, // No line numbers in short messages
+        0,
         TitleStyle::MainHeader,
         false,
         0,
@@ -420,23 +418,6 @@ fn render_title(
     }
 
     let padding = " ".repeat(if title_style == TitleStyle::Secondary {
-        // The extra 3 ` ` is padding that's always needed to align to the
-        // label i.e. `note: `:
-        //
-        //   error: message
-        //     --> file.rs:13:20
-        //      |
-        //   13 |     <CODE>
-        //      |      ^^^^
-        //      |
-        //      = note: multiline
-        //              message
-        //   ++^^^------
-        //    |  |     |
-        //    |  |     |
-        //    |  |     width of label
-        //    |  magic `3`
-        //    `max_line_num_len`
         max_line_num_len + 3 + label_width
     } else {
         label_width
@@ -455,17 +436,6 @@ fn render_title(
                 && matches!(renderer.decor_style, DecorStyle::Unicode)
             {
                 buffer.append(buffer_msg_line_offset + i, &padding, ElementStyle::NoStyle);
-                // There's another note after this one, associated to the subwindow above.
-                // We write additional vertical lines to join them:
-                //   ╭▸ test.rs:3:3
-                //   │
-                // 3 │   code
-                //   │   ━━━━
-                //   │
-                //   ├ note: foo
-                //   │       bar
-                //   ╰ note: foo
-                //           bar
                 draw_col_separator_no_space(
                     renderer,
                     buffer,
@@ -502,26 +472,6 @@ fn render_origin(
             ElementStyle::LineNumber,
         );
     } else if !renderer.short_message {
-        // if !origin.standalone {
-        //     // Add spacing line, as shown:
-        //     //   --> $DIR/file:54:15
-        //     //    |
-        //     // LL |         code
-        //     //    |         ^^^^
-        //     //    | (<- It prints *this* line)
-        //     //   ::: $DIR/other_file.rs:15:5
-        //     //    |
-        //     // LL |     code
-        //     //    |     ----
-        //     draw_col_separator_no_space(renderer,
-        //         buffer,
-        //         buffer_msg_line_offset,
-        //         max_line_num_len + 1,
-        //     );
-        //
-        //     buffer_msg_line_offset += 1;
-        // }
-        // Then, the secondary file indicator
         buffer.append(
             buffer_msg_line_offset,
             renderer.decor_style.secondary_file_start(),
@@ -576,9 +526,6 @@ fn render_snippet_annotations(
 
     if let Some(path) = &snippet.path {
         let mut origin = Origin::path(path.as_ref()).cell_index(snippet.cell_index);
-        // print out the span location and spacer before we print the annotated source
-        // to do this, we need to know if this span will be primary
-        //let is_primary = primary_path == Some(&origin.path);
 
         if is_primary {
             if let Some(primary_line) = annotated_lines
@@ -597,16 +544,6 @@ fn render_snippet_annotations(
             }
         } else {
             let buffer_msg_line_offset = buffer.num_lines();
-            // Add spacing line, as shown:
-            //   --> $DIR/file:54:15
-            //    |
-            // LL |         code
-            //    |         ^^^^
-            //    | (<- It prints *this* line)
-            //   ::: $DIR/other_file.rs:15:5
-            //    |
-            // LL |     code
-            //    |     ----
             draw_col_separator_no_space(
                 renderer,
                 buffer,
@@ -635,7 +572,6 @@ fn render_snippet_annotations(
             !(show_snippet || is_cont),
             buffer_msg_line_offset,
         );
-        // Put in the spacer between the location and annotated source
         if show_snippet {
             draw_col_separator_no_space(
                 renderer,
@@ -663,16 +599,6 @@ fn render_snippet_annotations(
                 );
             }
         } else {
-            // Add spacing line, as shown:
-            //   --> $DIR/file:54:15
-            //    |
-            // LL |         code
-            //    |         ^^^^
-            //    | (<- It prints *this* line)
-            //   ::: $DIR/other_file.rs:15:5
-            //    |
-            // LL |     code
-            //    |     ----
             draw_col_separator_no_space(
                 renderer,
                 buffer,
@@ -693,10 +619,8 @@ fn render_snippet_annotations(
         return;
     }
 
-    // Contains the vertical lines' positions for active multiline annotations
     let mut multilines = Vec::new();
 
-    // Get the left-side margin to remove it
     let mut whitespace_margin = usize::MAX;
     for line_info in annotated_lines {
         let leading_whitespace = line_info
@@ -705,7 +629,6 @@ fn render_snippet_annotations(
             .take_while(|c| c.is_whitespace())
             .map(|c| {
                 match c {
-                    // Tabs are displayed as 4 spaces
                     '\t' => 4,
                     _ => 1,
                 }
@@ -719,7 +642,6 @@ fn render_snippet_annotations(
         whitespace_margin = 0;
     }
 
-    // Left-most column any visible span points at.
     let mut span_left_margin = usize::MAX;
     for line_info in annotated_lines {
         for ann in &line_info.annotations {
@@ -731,7 +653,6 @@ fn render_snippet_annotations(
         span_left_margin = 0;
     }
 
-    // Right-most column any visible span points at.
     let mut span_right_margin = 0;
     let mut label_right_margin = 0;
     let mut max_line_len = 0;
@@ -740,7 +661,6 @@ fn render_snippet_annotations(
         for ann in &line_info.annotations {
             span_right_margin = max(span_right_margin, ann.start.display);
             span_right_margin = max(span_right_margin, ann.end.display);
-            // FIXME: account for labels not in the same line
             let label_right = ann.label.as_ref().map_or(0, |l| str_width(l) + 1);
             label_right_margin = max(label_right_margin, ann.end.display + label_right);
         }
@@ -763,7 +683,6 @@ fn render_snippet_annotations(
         max_line_len,
     );
 
-    // Next, output the annotate source for this file
     for annotated_line_idx in 0..annotated_lines.len() {
         let previous_buffer_line = buffer.num_lines();
 
@@ -788,15 +707,11 @@ fn render_snippet_annotations(
             }
         }
 
-        // Set the multiline annotation vertical lines to the left of
-        // the code in this line.
         for (depth, style) in &multilines {
             for line in previous_buffer_line..buffer.num_lines() {
                 draw_multiline_line(renderer, buffer, line, width_offset, *depth, *style, false);
             }
         }
-        // check to see if we need to print out or elide lines that come between
-        // this annotated line and the next one.
         if annotated_line_idx < (annotated_lines.len() - 1) {
             let line_idx_delta = annotated_lines[annotated_line_idx + 1].line_index
                 - annotated_lines[annotated_line_idx].line_index;
@@ -806,7 +721,6 @@ fn render_snippet_annotations(
 
                     draw_line_separator(renderer, buffer, last_buffer_line_num, width_offset);
 
-                    // Set the multiline annotation vertical lines on `...` bridging line.
                     for (depth, style) in &multilines {
                         draw_multiline_line(
                             renderer,
@@ -821,9 +735,6 @@ fn render_snippet_annotations(
                     if let Some(line) = annotated_lines.get(annotated_line_idx) {
                         for ann in &line.annotations {
                             if let LineAnnotationType::MultilineStart(pos) = ann.annotation_type {
-                                // In the case where we have elided the entire start of the
-                                // multispan because those lines were empty, we still need
-                                // to draw the `|`s across the `...`.
                                 draw_multiline_line(
                                     renderer,
                                     buffer,
@@ -911,19 +822,6 @@ fn render_source_line(
     margin: Margin,
     close_window: bool,
 ) -> Vec<(usize, ElementStyle)> {
-    // Draw:
-    //
-    //   LL | ... code ...
-    //      |     ^^-^ span label
-    //      |       |
-    //      |       secondary span label
-    //
-    //   ^^ ^ ^^^ ^^^^ ^^^ we don't care about code too far to the right of a span, we trim it
-    //   |  | |   |
-    //   |  | |   actual code found in your source code and the spans we use to mark it
-    //   |  | when there's too much wasted space to the left, trim it
-    //   |  vertical divider between the column number and the code
-    //   column number
 
     let source_string = normalize_whitespace(line_info.line);
 
@@ -941,32 +839,13 @@ fn render_source_line(
         margin,
     );
 
-    // If there are no annotations, we are done
     if line_info.annotations.is_empty() {
-        // `close_window` normally gets handled later, but we are early
-        // returning, so it needs to be handled here
         if close_window {
             draw_col_separator_end(renderer, buffer, line_offset + 1, width_offset - 2);
         }
         return vec![];
     }
 
-    // Special case when there's only one annotation involved, it is the start of a multiline
-    // span and there's no text at the beginning of the code line. Instead of doing the whole
-    // graph:
-    //
-    // 2 |   fn foo() {
-    //   |  _^
-    // 3 | |
-    // 4 | | }
-    //   | |_^ test
-    //
-    // we simplify the output to:
-    //
-    // 2 | / fn foo() {
-    // 3 | |
-    // 4 | | }
-    //   | |_^ test
     let mut buffer_ops = vec![];
     let mut annotations = vec![];
     let mut short_start = true;
@@ -998,103 +877,11 @@ fn render_source_line(
         return annotations;
     }
 
-    // We want to display like this:
-    //
-    //      vec.push(vec.pop().unwrap());
-    //      ---      ^^^               - previous borrow ends here
-    //      |        |
-    //      |        error occurs here
-    //      previous borrow of `vec` occurs here
-    //
-    // But there are some weird edge cases to be aware of:
-    //
-    //      vec.push(vec.pop().unwrap());
-    //      --------                    - previous borrow ends here
-    //      ||
-    //      |this makes no sense
-    //      previous borrow of `vec` occurs here
-    //
-    // For this reason, we group the lines into "highlight lines"
-    // and "annotations lines", where the highlight lines have the `^`.
 
-    // Sort the annotations by (start, end col)
-    // The labels are reversed, sort and then reversed again.
-    // Consider a list of annotations (A1, A2, C1, C2, B1, B2) where
-    // the letter signifies the span. Here we are only sorting by the
-    // span and hence, the order of the elements with the same span will
-    // not change. On reversing the ordering (|a, b| but b.cmp(a)), you get
-    // (C1, C2, B1, B2, A1, A2). All the elements with the same span are
-    // still ordered first to last, but all the elements with different
-    // spans are ordered by their spans in last to first order. Last to
-    // first order is important, because the jiggly lines and | are on
-    // the left, so the rightmost span needs to be rendered first,
-    // otherwise the lines would end up needing to go over a message.
 
     let mut annotations = line_info.annotations.clone();
     annotations.sort_by_key(|a| Reverse((a.start.display, a.start.char)));
 
-    // First, figure out where each label will be positioned.
-    //
-    // In the case where you have the following annotations:
-    //
-    //      vec.push(vec.pop().unwrap());
-    //      --------                    - previous borrow ends here [C]
-    //      ||
-    //      |this makes no sense [B]
-    //      previous borrow of `vec` occurs here [A]
-    //
-    // `annotations_position` will hold [(2, A), (1, B), (0, C)].
-    //
-    // We try, when possible, to stick the rightmost annotation at the end
-    // of the highlight line:
-    //
-    //      vec.push(vec.pop().unwrap());
-    //      ---      ---               - previous borrow ends here
-    //
-    // But sometimes that's not possible because one of the other
-    // annotations overlaps it. For example, from the test
-    // `span_overlap_label`, we have the following annotations
-    // (written on distinct lines for clarity):
-    //
-    //      fn foo(x: u32) {
-    //      --------------
-    //             -
-    //
-    // In this case, we can't stick the rightmost-most label on
-    // the highlight line, or we would get:
-    //
-    //      fn foo(x: u32) {
-    //      -------- x_span
-    //      |
-    //      fn_span
-    //
-    // which is totally weird. Instead we want:
-    //
-    //      fn foo(x: u32) {
-    //      --------------
-    //      |      |
-    //      |      x_span
-    //      fn_span
-    //
-    // which is...less weird, at least. In fact, in general, if
-    // the rightmost span overlaps with any other span, we should
-    // use the "hang below" version, so we can at least make it
-    // clear where the span *starts*. There's an exception for this
-    // logic, when the labels do not have a message:
-    //
-    //      fn foo(x: u32) {
-    //      --------------
-    //             |
-    //             x_span
-    //
-    // instead of:
-    //
-    //      fn foo(x: u32) {
-    //      --------------
-    //      |      |
-    //      |      x_span
-    //      <EMPTY LINE>
-    //
     let mut overlap = vec![false; annotations.len()];
     let mut annotations_position = vec![];
     let mut line_len: usize = 0;
@@ -1105,14 +892,11 @@ fn render_source_line(
                 overlap[i] = true;
                 overlap[j] = true;
             }
-            if overlaps(next, annotation, 0)  // This label overlaps with another one and both
-                    && annotation.has_label()     // take space (they have text and are not
-                    && j > i                      // multiline lines).
+            if overlaps(next, annotation, 0)
+                    && annotation.has_label()
+                    && j > i
                     && p == 0
-            // We're currently on the first line, move the label one line down
             {
-                // If we're overlapping with an un-labelled annotation with the same span
-                // we can just merge them in the output
                 if next.start.display == annotation.start.display
                     && next.start.char == annotation.start.char
                     && next.end.display == annotation.end.display
@@ -1122,7 +906,6 @@ fn render_source_line(
                     continue;
                 }
 
-                // This annotation needs a new line in the output.
                 p += 1;
                 break;
             }
@@ -1131,31 +914,19 @@ fn render_source_line(
         for (j, next) in annotations.iter().enumerate() {
             if j > i {
                 let l = next.label.as_ref().map_or(0, |label| label.len() + 2);
-                if (overlaps(next, annotation, l) // Do not allow two labels to be in the same
-                        // line if they overlap including padding, to
-                        // avoid situations like:
-                        //
-                        //      fn foo(x: u32) {
-                        //      -------^------
-                        //      |      |
-                        //      fn_spanx_span
-                        //
-                        && annotation.has_label()    // Both labels must have some text, otherwise
-                        && next.has_label())         // they are not overlapping.
-                        // Do not add a new line if this annotation
-                        // or the next are vertical line placeholders.
-                        || (annotation.takes_space() // If either this or the next annotation is
-                        && next.has_label())     // multiline start/end, move it to a new line
-                        || (annotation.has_label()   // so as not to overlap the horizontal lines.
+                if (overlaps(next, annotation, l)
+                        && annotation.has_label()
+                        && next.has_label())
+                        || (annotation.takes_space()
+                        && next.has_label())
+                        || (annotation.has_label()
                         && next.takes_space())
                         || (annotation.takes_space() && next.takes_space())
                         || (overlaps(next, annotation, l)
                         && (next.end.display, next.end.char) <= (annotation.end.display, annotation.end.char)
                         && next.has_label()
                         && p == 0)
-                // Avoid #42595.
                 {
-                    // This annotation needs a new line in the output.
                     p += 1;
                     break;
                 }
@@ -1168,8 +939,6 @@ fn render_source_line(
         line_len += 1;
     }
 
-    // If there are no annotations or the only annotations on this line are
-    // MultilineLine, then there's only code being shown, stop processing.
     if line_info.annotations.iter().all(LineAnnotation::is_line) {
         return vec![];
     }
@@ -1179,37 +948,12 @@ fn render_source_line(
         .all(|(_, ann)| matches!(ann.annotation_type, LineAnnotationType::MultilineStart(_)))
         && let Some(max_pos) = annotations_position.iter().map(|(pos, _)| *pos).max()
     {
-        // Special case the following, so that we minimize overlapping multiline spans.
-        //
-        // 3 │       X0 Y0 Z0
-        //   │ ┏━━━━━┛  │  │     < We are writing these lines
-        //   │ ┃┌───────┘  │     < by reverting the "depth" of
-        //   │ ┃│┌─────────┘     < their multiline spans.
-        // 4 │ ┃││   X1 Y1 Z1
-        // 5 │ ┃││   X2 Y2 Z2
-        //   │ ┃│└────╿──│──┘ `Z` label
-        //   │ ┃└─────│──┤
-        //   │ ┗━━━━━━┥  `Y` is a good letter too
-        //   ╰╴       `X` is a good letter
         for (pos, _) in &mut annotations_position {
             *pos = max_pos - *pos;
         }
-        // We know then that we don't need an additional line for the span label, saving us
-        // one line of vertical space.
         line_len = line_len.saturating_sub(1);
     }
 
-    // Write the column separator.
-    //
-    // After this we will have:
-    //
-    // 2 |   fn foo() {
-    //   |
-    //   |
-    //   |
-    // 3 |
-    // 4 |   }
-    //   |
     for pos in 0..=line_len {
         draw_col_separator_no_space(renderer, buffer, line_offset + pos + 1, width_offset - 2);
     }
@@ -1221,18 +965,6 @@ fn render_source_line(
             width_offset - 2,
         );
     }
-    // Write the horizontal lines for multiline annotations
-    // (only the first and last lines need this).
-    //
-    // After this we will have:
-    //
-    // 2 |   fn foo() {
-    //   |  __________
-    //   |
-    //   |
-    // 3 |
-    // 4 |   }
-    //   |  _
     for &(pos, annotation) in &annotations_position {
         let underline = renderer.decor_style.underline(annotation.is_primary());
         let pos = pos + 1;
@@ -1260,17 +992,6 @@ fn render_source_line(
         }
     }
 
-    // Write the vertical lines for labels that are on a different line as the underline.
-    //
-    // After this we will have:
-    //
-    // 2 |   fn foo() {
-    //   |  __________
-    //   | |    |
-    //   | |
-    // 3 | |
-    // 4 | | }
-    //   | |_
     for &(pos, annotation) in &annotations_position {
         let underline = renderer.decor_style.underline(annotation.is_primary());
         let pos = pos + 1;
@@ -1345,17 +1066,6 @@ fn render_source_line(
         }
     }
 
-    // Write the labels on the annotations that actually have a label.
-    //
-    // After this we will have:
-    //
-    // 2 |   fn foo() {
-    //   |  __________
-    //   |      |
-    //   |      something about `foo`
-    // 3 |
-    // 4 |   }
-    //   |  _  test
     for &(pos, annotation) in &annotations_position {
         let style = if annotation.is_primary() {
             ElementStyle::LabelPrimary
@@ -1376,34 +1086,13 @@ fn render_source_line(
         }
     }
 
-    // Sort from biggest span to smallest span so that smaller spans are
-    // represented in the output:
-    //
-    // x | fn foo()
-    //   | ^^^---^^
-    //   | |  |
-    //   | |  something about `foo`
-    //   | something about `fn foo()`
     annotations_position.sort_by_key(|(_, ann)| {
-        // Decreasing order. When annotations share the same length, prefer `Primary`.
         (Reverse(ann.len()), ann.is_primary())
     });
 
-    // Write the underlines.
-    //
-    // After this we will have:
-    //
-    // 2 |   fn foo() {
-    //   |  ____-_____^
-    //   |      |
-    //   |      something about `foo`
-    // 3 |
-    // 4 |   }
-    //   |  _^  test
     for &(pos, annotation) in &annotations_position {
         let uline = renderer.decor_style.underline(annotation.is_primary());
         for p in annotation.start.display..annotation.end.display {
-            // The default span label underline.
             buffer.putc(
                 line_offset + 1,
                 (code_offset + p).saturating_sub(left),
@@ -1418,7 +1107,6 @@ fn render_source_line(
                 LineAnnotationType::MultilineStart(_) | LineAnnotationType::MultilineEnd(_)
             )
         {
-            // The beginning of a multiline span with its leftward moving line on the same line.
             buffer.putc(
                 line_offset + 1,
                 (code_offset + annotation.start.display).saturating_sub(left),
@@ -1435,8 +1123,6 @@ fn render_source_line(
                 LineAnnotationType::MultilineStart(_) | LineAnnotationType::MultilineEnd(_)
             )
         {
-            // The beginning of a multiline span with its leftward moving line on another line,
-            // so we start going down first.
             buffer.putc(
                 line_offset + 1,
                 (code_offset + annotation.start.display).saturating_sub(left),
@@ -1448,7 +1134,6 @@ fn render_source_line(
                 uline.style,
             );
         } else if pos != 0 && annotation.has_label() {
-            // The beginning of a span label with an actual label, we'll point down.
             buffer.putc(
                 line_offset + 1,
                 (code_offset + annotation.start.display).saturating_sub(left),
@@ -1458,11 +1143,7 @@ fn render_source_line(
         }
     }
 
-    // We look for individual *long* spans, and we trim the *middle*, so that we render
-    // LL | ...= [0, 0, 0, ..., 0, 0];
-    //    |      ^^^^^^^^^^...^^^^^^^ expected `&[u8]`, found `[{integer}; 1680]`
     for (i, (_pos, annotation)) in annotations_position.iter().enumerate() {
-        // Skip cases where multiple spans overlap eachother.
         if overlap[i] {
             continue;
         };
@@ -1477,17 +1158,13 @@ fn render_source_line(
             .unwrap_or(renderer.decor_style.margin());
         let margin_width = str_width(cut_indicator);
         if width > margin.term_width * 2 && width > (MIN_PAD * 2 + margin_width) {
-            // If the terminal is *too* small, we keep at least a tiny bit of the span for
-            // display.
             let pad = max(margin.term_width / 3, MIN_PAD);
-            // Code line
             buffer.replace(
                 line_offset,
                 code_offset + (annotation.start.display + pad).saturating_sub(left),
                 code_offset + (annotation.end.display - pad).saturating_sub(left),
                 cut_indicator,
             );
-            // Underline line
             buffer.replace(
                 line_offset + 1,
                 code_offset + (annotation.start.display + pad).saturating_sub(left),
@@ -1536,8 +1213,6 @@ fn emit_suggestion_default(
         && !matches_previous_suggestion
     {
         let (loc, _) = sm.span_to_locations(parts[0].span.clone());
-        // --> file.rs:line:col
-        //  |
         for _ in 0..max_line_num_len {
             buffer.append(row_num - 1, " ", ElementStyle::NoStyle);
         }
@@ -1578,14 +1253,12 @@ fn emit_suggestion_default(
 
     let file_lines = sm.span_to_lines(lo..hi);
     let (line_start, line_end) = if suggestion.fold {
-        // We use the original span to get original line_start
         sm.span_to_locations(parts[0].original_span.clone())
     } else {
         sm.span_to_locations(0..sm.source.len())
     };
     let mut lines = complete.lines();
     if lines.clone().next().is_none() {
-        // Account for a suggestion to completely remove a line(s) with whitespace (#94192).
         for line in line_start.line..=line_end.line {
             buffer.puts(
                 row_num - 1 + line - line_start.line,
@@ -1610,7 +1283,6 @@ fn emit_suggestion_default(
     }
     let mut unhighlighted_lines = Vec::new();
     for (line_pos, (line, highlight_parts)) in lines.by_ref().zip(highlights).enumerate() {
-        // Remember lines that are not highlighted to hide them if needed
         if highlight_parts.is_empty() && suggestion.fold {
             unhighlighted_lines.push((line_pos, line));
             continue;
@@ -1618,10 +1290,6 @@ fn emit_suggestion_default(
 
         match unhighlighted_lines.len() {
             0 => (),
-            // Since we show first line, "..." line and last line,
-            // There is no reason to hide if there are 3 or less lines
-            // (because then we just replace a line with ... which is
-            // not helpful)
             n if n <= 3 => unhighlighted_lines.drain(..).for_each(|(p, l)| {
                 draw_code_line(
                     renderer,
@@ -1637,13 +1305,6 @@ fn emit_suggestion_default(
                     is_multiline,
                 );
             }),
-            // Print first unhighlighted line, "..." and last unhighlighted line, like so:
-            //
-            // LL | this line was highlighted
-            // LL | this line is just for context
-            // ...
-            // LL | this line is just for context
-            // LL | this line was highlighted
             _ => {
                 let last_line = unhighlighted_lines.pop();
                 let first_line = unhighlighted_lines.drain(..).next();
@@ -1708,11 +1369,7 @@ fn emit_suggestion_default(
         );
     }
 
-    // This offset and the ones below need to be signed to account for replacement code
-    // that is shorter than the original code.
     let mut offsets: Vec<(usize, isize)> = Vec::new();
-    // Only show an underline in the suggestions if the suggestion is not the
-    // entirety of the code being shown and the displayed code is not multiline.
     if let DisplaySuggestion::Diff | DisplaySuggestion::Underline | DisplaySuggestion::Add =
         show_code_change
     {
@@ -1721,11 +1378,8 @@ fn emit_suggestion_default(
             let span_start_pos = span_start.display;
             let span_end_pos = span_end.display;
 
-            // If this addition is _only_ whitespace, then don't trim it,
-            // or else we're just not rendering anything.
             let is_whitespace_addition = part.replacement.trim().is_empty();
 
-            // Do not underline the leading...
             let start = if is_whitespace_addition {
                 0
             } else {
@@ -1733,8 +1387,6 @@ fn emit_suggestion_default(
                     .len()
                     .saturating_sub(part.replacement.trim_start().len())
             };
-            // ...or trailing spaces. Account for substitutions containing unicode
-            // characters.
             let sub_len: usize = str_width(if is_whitespace_addition {
                 &part.replacement
             } else {
@@ -1757,8 +1409,6 @@ fn emit_suggestion_default(
             let padding: usize = max_line_num_len + 3;
             for p in underline_start..underline_end {
                 if matches!(show_code_change, DisplaySuggestion::Underline) {
-                    // If this is a replacement, underline with `~`, if this is an addition
-                    // underline with `+`.
                     buffer.putc(
                         row_num,
                         (padding as isize + p) as usize,
@@ -1772,20 +1422,14 @@ fn emit_suggestion_default(
                 }
             }
 
-            // length of the code after substitution
             let full_sub_len = str_width(&part.replacement) as isize;
 
-            // length of the code to be substituted
             let snippet_len = span_end_pos as isize - span_start_pos as isize;
-            // For multiple substitutions, use the position *after* the previous
-            // substitutions have happened, only when further substitutions are
-            // located strictly after.
             offsets.push((span_end_pos, full_sub_len - snippet_len));
         }
         row_num += 1;
     }
 
-    // if we elided some lines, add an ellipsis
     if lines.next().is_some() {
         let cut_indicator = renderer
             .cut_indicator
@@ -1827,8 +1471,6 @@ fn draw_code_line(
     is_multiline: bool,
 ) {
     if let DisplaySuggestion::Diff = show_code_change {
-        // We need to print more than one line if the span we need to remove is multiline.
-        // For more info: https://github.com/rust-lang/rust/issues/92741
         let lines_to_remove = file_lines.iter().take(file_lines.len() - 1);
         for (index, (line_to_remove, parts)) in lines_to_remove.zip(replaced_parts).enumerate() {
             buffer.puts(
@@ -1860,17 +1502,9 @@ fn draw_code_line(
             );
             *row_num += 1;
         }
-        // If the last line is exactly equal to the line we need to add, we can skip both of
-        // them. This allows us to avoid output like the following:
-        // 2 - &
-        // 2 + if true { true } else { false }
-        // 3 - if true { true } else { false }
-        // If those lines aren't equal, we print their diff
         let last_line = &file_lines.last().unwrap();
         if last_line.line == line_to_add {
             *row_num -= 2;
-            // The last original line collapses into the previous drawn row, so
-            // fold its replaced-code highlights onto that row too.
             style_substitution_highlights(
                 replaced_parts.last().unwrap(),
                 ElementStyle::Removal,
@@ -1910,19 +1544,6 @@ fn draw_code_line(
             if line_to_add.trim().is_empty() {
                 *row_num -= 1;
             } else {
-                // Check if after the removal, the line is left with only whitespace. If so, we
-                // will not show an "addition" line, as removing the whole line is what the user
-                // would really want.
-                // For example, for the following:
-                //   |
-                // 2 -     .await
-                // 2 +     (note the left over whitespace)
-                //   |
-                // We really want
-                //   |
-                // 2 -     .await
-                //   |
-                // *row_num -= 1;
                 buffer.puts(
                     *row_num,
                     0,
@@ -1949,7 +1570,6 @@ fn draw_code_line(
                 buffer.puts(*row_num, max_line_num_len + 1, "+ ", ElementStyle::Addition);
             }
             [] | [SubstitutionHighlight { start: 0, end: 0 }] => {
-                // FIXME: needed? Doesn't get exercised in any test.
                 draw_col_separator_no_space(renderer, buffer, *row_num, max_line_num_len + 1);
             }
             _ => {
@@ -1962,11 +1582,6 @@ fn draw_code_line(
                 );
             }
         }
-        //   LL | line_to_add
-        //   ++^^^
-        //    |  |
-        //    |  magic `3`
-        //    `max_line_num_len`
         buffer.puts(
             *row_num,
             max_line_num_len + 3,
@@ -2022,10 +1637,7 @@ fn style_substitution_highlights(
     buffer: &mut StyledBuffer,
 ) {
     for &SubstitutionHighlight { start, end } in highlight_parts {
-        // This is a no-op for empty ranges
         if start != end {
-            // We calculate the extra width from tabs for both the start and end
-            // of the span, as tabs could be present in the middle of the span
             let extra_width_start: usize = extra_width_from_tabs(unnormalized_line, start);
             let extra_width_end: usize = extra_width_from_tabs(unnormalized_line, end);
             buffer.set_style_range(
@@ -2051,10 +1663,8 @@ fn draw_line(
     max_line_num_len: usize,
     margin: Margin,
 ) -> usize {
-    // Tabs are assumed to have been replaced by spaces in calling code.
     debug_assert!(!source_string.contains('\t'));
     let line_len = str_width(source_string);
-    // Create the source line we will highlight.
     let mut left = margin.left(line_len);
     let right = margin.right(line_len);
 
@@ -2064,10 +1674,6 @@ fn draw_line(
         .chars()
         .skip_while(|ch| {
             let w = char_width(*ch);
-            // If `skipped` is less than `left`, always skip the next `ch`,
-            // even if `ch` is a multi-width char that would make `skipped`
-            // exceed `left`. This ensures that we do not exceed term width on
-            // source lines.
             if skipped < left {
                 skipped += w;
                 true
@@ -2076,12 +1682,10 @@ fn draw_line(
             }
         })
         .take_while(|ch| {
-            // Make sure that the trimming on the right will fall within the terminal width.
             taken += char_width(*ch);
             taken <= (right - left)
         })
         .collect();
-    // If we skipped more than `left`, adjust `left` to account for it.
     if skipped > left {
         left += skipped - left;
     }
@@ -2090,7 +1694,6 @@ fn draw_line(
         .unwrap_or(renderer.decor_style.margin());
     let padding = str_width(cut_indicator);
     let (width_taken, bytes_taken) = if margin.was_cut_left() {
-        // We have stripped some code/whitespace from the beginning, make it clear.
         let mut bytes_taken = 0;
         let mut width_taken = 0;
         for ch in code.chars() {
@@ -2121,7 +1724,6 @@ fn draw_line(
     );
 
     if line_len > right {
-        // We have stripped some code/whitespace from the beginning, make it clear.
         let mut char_taken = 0;
         let mut width_taken_inner = 0;
         for ch in code.chars().rev() {
@@ -2366,10 +1968,6 @@ fn extra_width_from_tabs(s: &str, n: usize) -> usize {
     s.chars().take(n).filter(|&ch| ch == '\t').count() * 3
 }
 
-// instead of taking the String length or dividing by 10 while > 0, we multiply a limit by 10 until
-// we're higher. If the loop isn't exited by the `return`, the last multiplication will wrap, which
-// is OK, because while we cannot fit a higher power of 10 in a usize, the loop will end anyway.
-// This is also why we need the max number of decimal digits within a `usize`.
 fn num_decimal_digits(num: Option<usize>) -> usize {
     #[cfg(target_pointer_width = "64")]
     const MAX_DIGITS: usize = 20;
@@ -2399,13 +1997,8 @@ fn str_width(s: &str) -> usize {
 }
 
 pub(crate) fn char_width(ch: char) -> usize {
-    // FIXME: `unicode_width` sometimes disagrees with terminals on how wide a `char` is. For now,
-    // just accept that sometimes the code line will be longer than desired.
     match ch {
         '\t' => 4,
-        // Keep the following list in sync with `rustc_errors::emitter::OUTPUT_REPLACEMENTS`. These
-        // are control points that we replace before printing with a visible codepoint for the sake
-        // of being able to point at them with underlines.
         '\u{0000}' | '\u{0001}' | '\u{0002}' | '\u{0003}' | '\u{0004}' | '\u{0005}'
         | '\u{0006}' | '\u{0007}' | '\u{0008}' | '\u{000B}' | '\u{000C}' | '\u{000D}'
         | '\u{000E}' | '\u{000F}' | '\u{0010}' | '\u{0011}' | '\u{0012}' | '\u{0013}'
@@ -2443,24 +2036,11 @@ pub(crate) enum LineAnnotationType {
     /// Annotation under a single line of code
     Singleline,
 
-    // The Multiline type above is replaced with the following three in order
-    // to reuse the current label drawing code.
-    //
-    // Each of these corresponds to one part of the following diagram:
-    //
-    //     x |   foo(1 + bar(x,
-    //       |  _________^              < MultilineStart
-    //     x | |             y),        < MultilineLine
-    //       | |______________^ label   < MultilineEnd
-    //     x |       z);
     /// Annotation marking the first character of a fully shown multiline span
     MultilineStart(usize),
     /// Annotation marking the last character of a fully shown multiline span
     MultilineEnd(usize),
     /// Line at the left enclosing the lines of a fully shown multiline span
-    // Just a placeholder for the drawing algorithm, to know that it shouldn't skip the first 4
-    // and last 2 lines of code. The actual line is drawn in `emit_message_default` and not in
-    // `draw_multiline_line`.
     MultilineLine(usize),
 }
 
@@ -2501,22 +2081,11 @@ impl LineAnnotation<'_> {
 
     /// Length of this annotation as displayed in the stderr output
     pub(crate) fn len(&self) -> usize {
-        // Account for usize underflows
         self.end.display.abs_diff(self.start.display)
     }
 
     pub(crate) fn has_label(&self) -> bool {
         if let Some(label) = &self.label {
-            // Consider labels with no text as effectively not being there
-            // to avoid weird output with unnecessary vertical lines, like:
-            //
-            //     X | fn foo(x: u32) {
-            //       | -------^------
-            //       | |      |
-            //       | |
-            //       |
-            //
-            // Note that this would be the complete output users would see.
             !label.is_empty()
         } else {
             false
@@ -2524,7 +2093,6 @@ impl LineAnnotation<'_> {
     }
 
     pub(crate) fn takes_space(&self) -> bool {
-        // Multiline annotations always have to keep vertical space.
         matches!(
             self.annotation_type,
             LineAnnotationType::MultilineStart(_) | LineAnnotationType::MultilineEnd(_)
@@ -2553,7 +2121,6 @@ impl DisplaySuggestion {
                 p.replacement.ends_with('\n') && p.replacement.trim() == complete.trim()
             })
         {
-            // We are adding a line(s) of code before code that was already there.
             DisplaySuggestion::Add
         } else if (patches.len() != 1 || patches[0].replacement.trim() != complete.trim())
             && !is_multiline
@@ -2565,12 +2132,7 @@ impl DisplaySuggestion {
     }
 }
 
-// We replace some characters so the CLI output is always consistent and underlines aligned.
-// Keep the following list in sync with `rustc_span::char_width`.
 const OUTPUT_REPLACEMENTS: &[(char, &str)] = &[
-    // In terminals without Unicode support the following will be garbled, but in *all* terminals
-    // the underlying codepoint will be as well. We could gate this replacement behind a "unicode
-    // support" gate.
     ('\0', "␀"),
     ('\u{0001}', "␁"),
     ('\u{0002}', "␂"),
@@ -2580,7 +2142,7 @@ const OUTPUT_REPLACEMENTS: &[(char, &str)] = &[
     ('\u{0006}', "␆"),
     ('\u{0007}', "␇"),
     ('\u{0008}', "␈"),
-    ('\t', "    "), // We do our own tab replacement
+    ('\t', "    "),
     ('\u{000b}', "␋"),
     ('\u{000c}', "␌"),
     ('\u{000d}', "␍"),
@@ -2603,10 +2165,10 @@ const OUTPUT_REPLACEMENTS: &[(char, &str)] = &[
     ('\u{001e}', "␞"),
     ('\u{001f}', "␟"),
     ('\u{007f}', "␡"),
-    ('\u{200d}', ""), // Replace ZWJ for consistent terminal output of grapheme clusters.
-    ('\u{202a}', "�"), // The following unicode text flow control characters are inconsistently
-    ('\u{202b}', "�"), // supported across CLIs and can cause confusion due to the bytes on disk
-    ('\u{202c}', "�"), // not corresponding to the visible source code, so we replace them always.
+    ('\u{200d}', ""),
+    ('\u{202a}', "�"),
+    ('\u{202b}', "�"),
+    ('\u{202c}', "�"),
     ('\u{202d}', "�"),
     ('\u{202e}', "�"),
     ('\u{2066}', "�"),
@@ -2623,9 +2185,6 @@ pub(crate) fn normalize_whitespace(s: &str) -> Cow<'_, str> {
         return Cow::Borrowed(s);
     }
 
-    // Scan the input string for a character in the ordered table above.
-    // If it's present, replace it with its alternative string (it can be more than 1 char!).
-    // Otherwise, retain the input char.
     let normalized = s.chars().fold(String::with_capacity(s.len()), |mut s, c| {
         match OUTPUT_REPLACEMENTS.binary_search_by_key(&c, |(k, _)| *k) {
             Ok(i) => s.push_str(OUTPUT_REPLACEMENTS[i].1),
@@ -2847,8 +2406,6 @@ fn pre_process<'a>(
 fn newline_count(body: &str) -> usize {
     #[cfg(feature = "simd")]
     {
-        // Trailing newlines do not count towards the number of lines
-        // (this is based into `str::lines`)
         let trailing_newline = body.ends_with('\n');
         memchr::memchr_iter(b'\n', body.as_bytes()).count() - usize::from(trailing_newline)
     }

@@ -24,7 +24,6 @@ impl super::SyncNotificationHandler for DidChangeWatchedFiles {
                     .send_request::<types::DiagnosticRefreshRequest>(session, (), |_, ()| ())
                     .with_failure_code(lsp_server::ErrorCode::InternalError)?;
             } else {
-                // publish diagnostics for text documents
                 for uri in session.text_document_uris() {
                     let snapshot = session
                         .take_snapshot(uri.clone())
@@ -33,7 +32,6 @@ impl super::SyncNotificationHandler for DidChangeWatchedFiles {
                 }
             }
 
-            // always publish diagnostics for notebook files (since they don't use pull diagnostics)
             for uri in session.notebook_document_uris() {
                 let snapshot = session
                     .take_snapshot(uri.clone())

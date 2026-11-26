@@ -402,8 +402,6 @@ impl System for InMemorySystem {
     }
 
     fn is_same_file(&self, first: &SystemPath, second: &SystemPath) -> Result<bool> {
-        // The in-memory file system does not support hard links, so canonical paths uniquely
-        // identify files.
         Ok(self.canonicalize_path(first)? == self.canonicalize_path(second)?)
     }
 

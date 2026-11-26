@@ -69,7 +69,6 @@ unicode-normalization = { workspace = true }
 unicode-width = { workspace = true }
 
 [dev-dependencies]
-# Disable colored output in tests
 colored = { workspace = true, features = ["no-color"] }
 insta = { workspace = true, features = ["filters", "json", "redactions"] }
 tempfile = { workspace = true }
@@ -78,7 +77,6 @@ test-case = { workspace = true }
 [features]
 default = []
 schemars = ["dep:schemars", "ruff_python_ast/schemars"]
-# Enables rules for internal integration tests
 test-rules = []
 testing = []
 

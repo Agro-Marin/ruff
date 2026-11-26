@@ -112,7 +112,6 @@ fn get_undecorated_methods(checker: &Checker, class_stmt: &Stmt, method_type: &M
         MethodType::Staticmethod => "staticmethod",
     };
 
-    // gather all explicit *method calls
     for stmt in &class_def.body {
         if let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt {
             if let Expr::Call(ast::ExprCall {
@@ -160,7 +159,6 @@ fn get_undecorated_methods(checker: &Checker, class_stmt: &Stmt, method_type: &M
                 continue;
             };
 
-            // if we find the decorator we're looking for, skip
             if decorator_list.iter().any(|decorator| {
                 if let Expr::Name(ast::ExprName { id, .. }) = &decorator.expression {
                     if id == method_name && checker.semantic().has_builtin_binding(method_name) {

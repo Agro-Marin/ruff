@@ -359,7 +359,6 @@ pub(super) fn attribute_write_requirement<'db>(
         },
 
         Type::Intersection(intersection) => {
-            // TODO: Handle negative intersection elements.
             AttributeWriteRequirement::Any {
                 object_ty: receiver.unwrap_or(object_ty),
                 intersection,
@@ -384,8 +383,6 @@ pub(super) fn attribute_write_requirement<'db>(
             .unwrap_or(AttributeWriteRequirement::Unconstrained),
 
         Type::TypeVar(typevar) => {
-            // Normal member lookup combines raw member types. Resolve each receiver separately
-            // so writable instance storage is not mistaken for a descriptor alternative.
             match typevar.typevar(db).bound_or_constraints(db, env) {
                 Some(TypeVarBoundOrConstraints::UpperBound(bound)) if bound != object_ty => {
                     attribute_write_requirement(
@@ -422,16 +419,11 @@ pub(super) fn attribute_write_requirement<'db>(
             .map_or_else(
                 || member_attribute_write_requirement(db, env, object_ty, attribute, receiver),
                 |(write, qualifiers)| {
-                    // `Final` permits initialization by its owner. Retain the declaration so
-                    // normal assignment validation can distinguish that from a later write.
                     if qualifiers.contains(TypeQualifiers::FINAL) {
                         return member_attribute_write_requirement(
                             db, env, object_ty, attribute, receiver,
                         );
                     }
-                    // An attribute annotation's definition need not be the definition that owns
-                    // its `Self`. Retain the protocol's MRO when the original receiver is a type
-                    // variable with several possible bounds or constraints.
                     let bind_self =
                         |ty| bind_attribute_self_typevars(db, env, ty, object_ty, receiver);
                     AttributeWriteRequirement::ProtocolMember {
@@ -521,8 +513,6 @@ fn member_attribute_write_requirement<'db>(
     receiver: Option<Type<'db>>,
 ) -> AttributeWriteRequirement<'db> {
     let members = assignment_attribute_members(db, env, object_ty, attribute);
-    // A conditional nested class can dispatch to a descriptor setter on one branch and
-    // ordinary storage on another. Conservatively reject the write when those paths differ.
     if let Some(AssignmentAttributeMembers::TypeMember { member, .. }) = &members
         && member.qualifiers.contains(TypeQualifiers::NESTED_CLASS)
         && let Some(ty) = member.ignore_possibly_undefined()
@@ -652,8 +642,6 @@ fn instance_attribute_write_requirement<'db>(
             place: Place::Defined(DefinedPlace { ty, origin, .. }),
             qualifiers,
         } => {
-            // A receiver annotation can make an inherited nested class writable, but it cannot
-            // bypass a data descriptor's setter or provide storage omitted by `__slots__`.
             let instance_override = if qualifiers.contains(TypeQualifiers::NESTED_CLASS)
                 && !ty.is_data_descriptor(db, env)
             {
@@ -679,8 +667,6 @@ fn instance_attribute_write_requirement<'db>(
                 receiver,
             );
 
-            // Built-in classes can expose writable C-level descriptors that their stubs model as
-            // plain annotations. Only a known slot layout rules out that additional storage.
             if matches!(
                 member,
                 ExplicitAttributeWriteRequirement::AssignableTo { .. }
@@ -916,8 +902,6 @@ fn explicit_attribute_write_requirement<'db>(
     {
         ExplicitAttributeWriteRequirement::Descriptor {
             descriptor_ty: attr_ty,
-            // Keep the original receiver's identity while selecting this alternative's
-            // descriptor. A setter can constrain its receiver as well as its assigned value.
             receiver_ty: receiver.map_or(object_ty, |receiver| {
                 IntersectionType::from_two_elements(db, env, object_ty, receiver)
             }),
@@ -1018,8 +1002,6 @@ fn bind_attribute_self_typevars<'db>(
             bind_attribute_self_typevars(db, env, *ty, object_ty, Some(receiver))
         });
     }
-    // Property accessors are function literals, whose signatures are opaque to the ordinary
-    // `Self`-occurrence check. Their receiver and value annotations still need this binding.
     if !ty.is_property_instance() && !ty.supports_self_binding(db, env) {
         return ty;
     }
@@ -1198,8 +1180,6 @@ pub(super) fn assignment_attribute_members<'db>(
     object_ty: Type<'db>,
     attribute: &str,
 ) -> Option<AssignmentAttributeMembers<'db>> {
-    // Precise `functools.partial` instances synthesize a refined `__call__` member instead of
-    // using the broad signature from typeshed.
     let type_member = if attribute == "__call__"
         && matches!(
             object_ty,
@@ -1357,8 +1337,6 @@ fn single_descriptor_setter_domain<'db>(
     receiver_ty: Type<'db>,
 ) -> DescriptorSetterDomain<'db> {
     let (setter_ty, self_ty) = if let Type::PropertyInstance(property) = descriptor_ty {
-        // The synthesized `property.__set__` signature accepts `object`, but the property's
-        // setter provides the actual value type. An owner method's `Self` refers to that owner.
         let Some(setter_ty) = property.setter(db) else {
             return DescriptorSetterDomain::Missing;
         };
@@ -1531,8 +1509,6 @@ fn property_set_type<'db>(
     property: PropertyInstanceType<'db>,
     receiver_ty: Type<'db>,
 ) -> Option<Type<'db>> {
-    // A method-scoped type variable can be inferred afresh for each write. Comparing
-    // directly against that variable would incorrectly require one fixed type for all calls.
     if let DescriptorSetterDomain::Known(domain) =
         descriptor_setter_domain(db, env, Type::PropertyInstance(property), receiver_ty)
     {

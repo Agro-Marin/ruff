@@ -69,36 +69,19 @@ impl Violation for ReimplementedStarmap {
 
 /// FURB140
 pub(crate) fn reimplemented_starmap(checker: &Checker, target: &StarmapCandidate) {
-    // Generator should have exactly one comprehension.
     let [comprehension] = target.generators() else {
         return;
     };
 
-    // This comprehension should have a form:
-    // ```python
-    // (x, y, z, ...) in iter
-    // ```
-    //
-    // `x, y, z, ...` are what we call `elts` for short.
     let Some(value) = match_comprehension_target(comprehension) else {
         return;
     };
 
-    // Generator should produce one element that should look like:
-    // ```python
-    // func(a, b, c, ...)
-    // ```
-    //
-    // here we refer to `a, b, c, ...` as `args`.
-    //
-    // NOTE: `func` is not necessarily just a function name, it can be an attribute access,
-    //       or even a call itself.
     let Some((args, func)) = match_call(target.element()) else {
         return;
     };
 
     match value {
-        // Ex) `f(*x) for x in iter`
         ComprehensionTarget::Name(name) => {
             let [arg] = args else {
                 return;
@@ -112,14 +95,12 @@ pub(crate) fn reimplemented_starmap(checker: &Checker, target: &StarmapCandidate
                 return;
             }
 
-            // If the argument is used outside the function call, we can't replace it.
             if any_over_expr(func, |expr| {
                 expr.as_name_expr().is_some_and(|expr| expr.id == name.id)
             }) {
                 return;
             }
         }
-        // Ex) `f(x, y, z) for x, y, z in iter`
         ComprehensionTarget::Tuple(tuple) => {
             if tuple.len() != args.len()
                 || std::iter::zip(tuple, args)
@@ -128,7 +109,6 @@ pub(crate) fn reimplemented_starmap(checker: &Checker, target: &StarmapCandidate
                 return;
             }
 
-            // If any of the members are used outside the function call, we can't replace it.
             if any_over_expr(func, |expr| {
                 tuple
                     .iter()
@@ -141,16 +121,11 @@ pub(crate) fn reimplemented_starmap(checker: &Checker, target: &StarmapCandidate
 
     let mut diagnostic = checker.report_diagnostic(ReimplementedStarmap, target.range());
     diagnostic.try_set_fix(|| {
-        // Import `starmap` from `itertools`.
         let (import_edit, starmap_name) = checker.importer().get_or_import_symbol(
             &ImportRequest::import_from("itertools", "starmap"),
             target.start(),
             checker.semantic(),
         )?;
-        // The actual fix suggestion depends on what type of expression we were looking at:
-        // - For generator expressions, we use `starmap` call directly.
-        // - For list and set comprehensions, we'd want to wrap it with `list` and `set`
-        //   correspondingly.
         let main_edit = Edit::range_replacement(
             target.try_make_suggestion(
                 Name::from(starmap_name),
@@ -240,40 +215,13 @@ impl StarmapCandidate<'_> {
     ) -> Result<String> {
         match self {
             Self::Generator(_) => {
-                // For generator expressions, we replace:
-                // ```python
-                // (foo(...) for ... in iter)
-                // ```
-                //
-                // with:
-                // ```python
-                // itertools.starmap(foo, iter)
-                // ```
                 let call = construct_starmap_call(name, iter, func);
                 Ok(checker.generator().expr(&call.into()))
             }
             Self::ListComp(_) => {
-                // For list comprehensions, we replace:
-                // ```python
-                // [foo(...) for ... in iter]
-                // ```
-                //
-                // with:
-                // ```python
-                // list(itertools.starmap(foo, iter))
-                // ```
                 try_construct_call(name, iter, func, Name::new_static("list"), checker)
             }
             Self::SetComp(_) => {
-                // For set comprehensions, we replace:
-                // ```python
-                // {foo(...) for ... in iter}
-                // ```
-                //
-                // with:
-                // ```python
-                // set(itertools.starmap(foo, iter))
-                // ```
                 try_construct_call(name, iter, func, Name::new_static("set"), checker)
             }
         }
@@ -288,22 +236,10 @@ fn try_construct_call(
     builtin: Name,
     checker: &Checker,
 ) -> Result<String> {
-    // We can only do our fix if `builtin` identifier is still bound to
-    // the built-in type.
     if !checker.semantic().has_builtin_binding(&builtin) {
         bail!("Can't use built-in `{builtin}` constructor")
     }
 
-    // In general, we replace:
-    // ```python
-    // foo(...) for ... in iter
-    // ```
-    //
-    // with:
-    // ```python
-    // builtin(itertools.starmap(foo, iter))
-    // ```
-    // where `builtin` is a constructor for a target collection.
     let call = construct_starmap_call(name, iter, func);
     let wrapped = wrap_with_call_to(call, builtin);
     Ok(checker.generator().expr(&wrapped.into()))

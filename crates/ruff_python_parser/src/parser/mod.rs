@@ -176,7 +176,6 @@ impl<'src> Parser<'src> {
         let start = self.node_start();
         let parsed_expr = self.parse_expression_list(ExpressionContext::default());
 
-        // All remaining newlines are actually going to be non-logical newlines.
         self.eat(TokenKind::Newline);
 
         if !self.at(TokenKind::EndOfFile) {
@@ -185,7 +184,6 @@ impl<'src> Parser<'src> {
                 self.current_token_range(),
             );
 
-            // TODO(dhruvmanila): How should error recovery work here? Just truncate after the expression?
             let mut progress = ParserProgress::default();
             loop {
                 progress.assert_progressing(self);
@@ -228,13 +226,9 @@ impl<'src> Parser<'src> {
             TokenKind::EndOfFile,
             "Parser should be at the end of the file."
         );
-        // TODO consider re-integrating lexical error handling into the parser?
         let parse_errors = self.errors;
         let (tokens, lex_errors) = self.tokens.finish();
 
-        // Fast path for when there are no lex errors.
-        // There's no fast path for when there are no parse errors because a lex error
-        // always results in a parse error.
         if lex_errors.is_empty() {
             return Parsed {
                 syntax,
@@ -257,7 +251,6 @@ impl<'src> Parser<'src> {
             {
                 Ordering::Less => merged.push(parse_errors.next().unwrap()),
                 Ordering::Equal => {
-                    // Skip the parse error if we already have a lex error at the same location..
                     parse_errors.next().unwrap();
                     merged.push(lex_errors.next().unwrap().into());
                 }
@@ -282,53 +275,7 @@ impl<'src> Parser<'src> {
     }
 
     fn node_range(&self, start: TextSize) -> TextRange {
-        // It's possible during error recovery that the parsing didn't consume any tokens. In that
-        // case, `last_token_end` still points to the end of the previous token but `start` is the
-        // start of the current token. Calling `TextRange::new(start, self.last_token_end)` would
-        // panic in that case because `start > end`. This path "detects" this case and creates an
-        // empty range instead.
-        //
-        // The reason it's `<=` instead of just `==` is because there could be whitespaces between
-        // the two tokens. For example:
-        //
-        // ```python
-        // #     last token end
-        // #     | current token (newline) start
-        // #     v v
-        // def foo \n
-        // #      ^
-        // #      assume there's trailing whitespace here
-        // ```
-        //
-        // Or, there could tokens that are considered "trivia" and thus aren't emitted by the token
-        // source. These are comments and non-logical newlines. For example:
-        //
-        // ```python
-        // #     last token end
-        // #     v
-        // def foo # comment\n
-        // #                ^ current token (newline) start
-        // ```
-        //
-        // In either of the above cases, there's a "gap" between the end of the last token and start
-        // of the current token.
         if self.prev_token_end <= start {
-            // We need to create an empty range at the last token end instead of the start because
-            // otherwise this node range will fall outside the range of it's parent node. Taking
-            // the above example:
-            //
-            // ```python
-            // if True:
-            // #   function start
-            // #   |     function end
-            // #   v     v
-            //     def foo # comment
-            // #                    ^ current token start
-            // ```
-            //
-            // Here, the current token start is the start of parameter range but the function ends
-            // at `foo`. Even if there's a function body, the range of parameters would still be
-            // before the comment.
 
             // test_err node_range_with_gaps
             // def foo # comment
@@ -341,30 +288,16 @@ impl<'src> Parser<'src> {
     }
 
     fn missing_node_range(&self) -> TextRange {
-        // TODO(dhruvmanila): This range depends on whether the missing node is
-        // on the leftmost or the rightmost of the expression. It's incorrect for
-        // the leftmost missing node because the range is outside the expression
-        // range. For example,
-        //
-        // ```python
-        // value = ** y
-        // #       ^^^^ expression range
-        // #      ^ last token end
-        // ```
         TextRange::empty(self.prev_token_end)
     }
 
     /// Moves the parser to the next token.
     fn do_bump(&mut self, kind: TokenKind) {
         if match self.current_token_kind() {
-            // TODO explore including everything up to the dedent as part of the body.
             TokenKind::Dedent => false,
 
-            // Don't include newlines in the body
             TokenKind::Newline => false,
 
-            // TODO(micha): Including the semi feels more correct but it isn't compatible with lalrpop and breaks the
-            // formatters semicolon detection. Exclude it for now
             TokenKind::Semi => false,
 
             _ => true,
@@ -529,10 +462,6 @@ impl<'src> Parser<'src> {
                         question_count += 1;
                     }
 
-                    // At logical-line start, IPython treats one or two terminal `?` after a
-                    // nonempty help or magic command as the command kind. Strict `foo?` syntax
-                    // is parsed separately.
-                    // https://github.com/ipython/ipython/blob/292e3a23459ca965b8c1bfe2c3707044c510209a/IPython/core/inputtransformer2.py#L454-L462
                     if !context.is_logical_line_start()
                         || !(initial_kind.is_magic() || initial_kind.is_help())
                         || question_count > 2
@@ -549,9 +478,6 @@ impl<'src> Parser<'src> {
                         IpyEscapeKind::Help2
                     };
 
-                    // A help suffix replaces a leading help prefix, but takes precedence over a
-                    // magic prefix, which remains part of the value (`%foo?` becomes help for
-                    // `%foo`).
                     if initial_kind.is_help() {
                         value = value.trim_start_matches([' ', '?']).to_string();
                     } else {
@@ -636,7 +562,6 @@ impl<'src> Parser<'src> {
         T: Ranged,
     {
         fn inner(errors: &mut Vec<ParseError>, error: ParseErrorType, range: TextRange) {
-            // Avoid flagging multiple errors at the same location
             let is_same_location = errors
                 .last()
                 .is_some_and(|last| last.location.start() == range.start());
@@ -713,8 +638,6 @@ impl<'src> Parser<'src> {
             progress.assert_progressing(self);
 
             if 0 < unexpected_indents && self.at(TokenKind::Dedent) {
-                // Ignore this `Dedent` like we ignored the `Indent`, avoiding extra errors from
-                // being imbalanced
                 unexpected_indents -= 1;
                 self.bump(TokenKind::Dedent);
             } else if recovery_context_kind.is_list_element(self) {
@@ -722,9 +645,6 @@ impl<'src> Parser<'src> {
             } else if recovery_context_kind.is_regular_list_terminator(self) {
                 break;
             } else {
-                // Run the error recovery: If the token is recognised as an element or terminator
-                // of an enclosing list, then we try to re-lex in the context of a logical line and
-                // break out of list parsing.
                 if self.is_enclosing_list_element_or_terminator() {
                     self.tokens.re_lex_logical_token();
                     break;
@@ -740,7 +660,6 @@ impl<'src> Parser<'src> {
                     RecoveryContextKind::ModuleStatements | RecoveryContextKind::BlockStatements
                 ) && self.at(TokenKind::Indent)
                 {
-                    // For this invalid `Indent`, ensure the matching `Dedent` gets consumed as well
                     unexpected_indents += 1;
                 }
                 self.bump_any();
@@ -806,10 +725,6 @@ impl<'src> Parser<'src> {
             if recovery_context_kind.is_list_element(self) {
                 parse_element(self);
 
-                // Only unset this when we've completely parsed a single element. This is mainly to
-                // raise the correct error in case the first element isn't valid and the current
-                // token isn't a comma. Without this knowledge, the parser would later expect a
-                // comma instead of raising the context error.
                 first_element = false;
 
                 let maybe_comma_range = self.current_token_range();
@@ -836,29 +751,16 @@ impl<'src> Parser<'src> {
             // # The comma between the first two elements is expected in `parse_list_expression`.
             // [0, 1 2]
             if recovery_context_kind.is_list_element(self) {
-                // This is a special case to expect a comma between two elements and should be
-                // checked before running the error recovery. This is because the error recovery
-                // will always run as the parser is currently at a list element.
                 self.expect(TokenKind::Comma);
                 continue;
             }
 
-            // Run the error recovery: If the token is recognised as an element or terminator of an
-            // enclosing list, then we try to re-lex in the context of a logical line and break out
-            // of list parsing.
             if self.is_enclosing_list_element_or_terminator() {
                 self.tokens.re_lex_logical_token();
                 break;
             }
 
             if first_element || self.at(TokenKind::Comma) {
-                // There are two conditions when we need to add the recovery context error:
-                //
-                // 1. If the parser is at a comma which means that there's a missing element
-                //    otherwise the comma would've been consumed by the first `eat` call above.
-                //    And, the parser doesn't take the re-lexing route on a comma token.
-                // 2. If it's the first element and the current token is not a comma which means
-                //    that it's an invalid element.
 
                 // test_err comma_separated_missing_element_between_commas
                 // [0, 1, , 2]
@@ -876,8 +778,6 @@ impl<'src> Parser<'src> {
                     None
                 };
             } else {
-                // Otherwise, there should've been a comma at this position. This could be because
-                // the element isn't consumed completely by `parse_element`.
 
                 // test_err comma_separated_missing_comma
                 // call(**x := 1)
@@ -949,8 +849,6 @@ impl<'src> Parser<'src> {
 
 #[cfg(feature = "stacker")]
 impl Parser<'_> {
-    // Stack probes access thread-local state, so avoid them while recursive parser calls remain
-    // shallow. `STACK_RED_ZONE` must cover the stack used before the first deferred probe.
     const STACK_RED_ZONE: usize = 100 * 1024;
     const STACK_SIZE: usize = 1024 * 1024;
     const MAX_UNCHECKED_RECURSION_DEPTH: usize = 20;
@@ -1258,7 +1156,6 @@ impl RecoveryContextKind {
             | RecoveryContextKind::DeleteTargets
             | RecoveryContextKind::ImportFromAsNames(Parenthesized::Yes) => true,
 
-            // Only allow a trailing comma if the with item itself is parenthesized
             RecoveryContextKind::WithItems(WithItemKind::Parenthesized) => true,
 
             _ => false,
@@ -1291,13 +1188,11 @@ impl RecoveryContextKind {
     #[expect(clippy::inline_always, reason = "reduces list-parser branch misses")]
     #[inline(always)]
     fn list_terminator_kind(self, p: &Parser) -> Option<ListTerminatorKind> {
-        // The end of file marker ends all lists.
         if p.at(TokenKind::EndOfFile) {
             return Some(ListTerminatorKind::Regular);
         }
 
         match self {
-            // The parser must consume all tokens until the end
             RecoveryContextKind::ModuleStatements => None,
             RecoveryContextKind::BlockStatements => p
                 .at(TokenKind::Dedent)
@@ -1319,8 +1214,6 @@ impl RecoveryContextKind {
                     .then_some(ListTerminatorKind::Regular)
             }
 
-            // Tokens other than `]` are for better error recovery. For example, recover when we
-            // find the `:` of a clause header or the equal of a type assignment.
             RecoveryContextKind::TypeParams => {
                 if p.at(TokenKind::Rsqb) {
                     Some(ListTerminatorKind::Regular)
@@ -1332,8 +1225,6 @@ impl RecoveryContextKind {
                     .then_some(ListTerminatorKind::ErrorRecovery)
                 }
             }
-            // The names of an import statement cannot be parenthesized, so `)` is not a
-            // terminator.
             RecoveryContextKind::ImportNames => {
                 // test_ok import_stmt_terminator
                 // import a, b; import c, d
@@ -1355,8 +1246,6 @@ impl RecoveryContextKind {
                 )
                 .then_some(ListTerminatorKind::Regular)
             }
-            // The elements in a container expression cannot end with a newline
-            // as all of them are actually non-logical newlines.
             RecoveryContextKind::Slices | RecoveryContextKind::ListElements => {
                 p.at(TokenKind::Rsqb).then_some(ListTerminatorKind::Regular)
             }
@@ -1408,11 +1297,9 @@ impl RecoveryContextKind {
                     .then_some(ListTerminatorKind::Regular)
             }
             RecoveryContextKind::Parameters(function_kind) => {
-                // `lambda x, y: ...` or `def f(x, y): ...`
                 if p.at(function_kind.list_terminator()) {
                     Some(ListTerminatorKind::Regular)
                 } else {
-                    // To recover from missing closing parentheses
                     (p.at(TokenKind::Rarrow) || p.at_compound_stmt())
                         .then_some(ListTerminatorKind::ErrorRecovery)
                 }
@@ -1488,8 +1375,6 @@ impl RecoveryContextKind {
             RecoveryContextKind::DictElements => p.at(TokenKind::DoubleStar) || p.at_expr(),
             RecoveryContextKind::SequenceMatchPattern(_) => p.at_pattern_start(),
             RecoveryContextKind::MatchPatternMapping => {
-                // A star pattern is invalid as a mapping key and is here only for
-                // better error recovery.
                 p.at(TokenKind::Star) || p.at_mapping_pattern_start()
             }
             RecoveryContextKind::MatchPatternClassArguments => p.at_pattern_start(),

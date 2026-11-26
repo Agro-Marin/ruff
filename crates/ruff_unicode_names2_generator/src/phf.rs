@@ -52,75 +52,41 @@ fn try_phf_table(
     let table_len = hashes.len();
     let buckets_len = table_len.div_ceil(lambda);
 
-    // group the elements into buckets of lambda (on average, for a
-    // good hash) based on the suffix of their hash.
     let mut buckets = (0..buckets_len).map(|i| (i, vec![])).collect::<Vec<_>>();
     for &(h, cp) in hashes.iter() {
         buckets[h.g as usize % buckets_len].1.push((h, cp))
     }
 
-    // place the large buckets first.
     buckets.sort_by_key(|(_index, keys)| std::cmp::Reverse(keys.len()));
 
-    // this stores the final computed backing vector, i.e. getting the
-    // value for `foo` is "just" `map[displace(hash(foo))]`, where
-    // `displace` uses the pair of displacements that we computed
-    // (stored in `disps`).
     let mut map: Vec<_> = std::iter::repeat_n(NOVAL, table_len).collect();
     let mut disps: Vec<_> = std::iter::repeat_n((0, 0), buckets_len).collect();
 
-    // the set of index -> value mappings for the next bucket to be
-    // placed; we need it separate because it may not work, so we may
-    // have to roll back.
-    //
-    // it works by storing a map from index -> generation, so we can
-    // check if the index is taken by a previously-placed element of
-    // the current bucket cheaply (just an array lookup) without
-    // having to clear the whole the whole array each time (just
-    // compare against the generation). A u64 won't overflow.
     let mut generation = 0;
     let mut try_map: Vec<_> = std::iter::repeat_n(0u64, table_len).collect();
-    // the placed (index, codepoint) pairs of the current bucket, to
-    // be placed into the main map if the whole bucket fits.
     let mut values_to_add = vec![];
 
-    // heuristically avoiding doing everything in the same order seems
-    // good? I dunno; but anyway, we get vectors of indices and
-    // shuffle them.
     let mut d1s = (0..(table_len as u32)).collect::<Vec<_>>();
     let mut d2s = d1s.clone();
     d1s.shuffle(rng);
     d2s.shuffle(rng);
 
-    // run through each bucket and try to fit the elements into the
-    // array by choosing appropriate adjusting factors
-    // ("displacements") that allow the other two parts of the hash to
-    // be combined into an empty index.
     'next_bucket: for &(bkt_idx, ref bkt_keys) in buckets.iter() {
-        // exhaustively search for a pair of displacements that work.
         for &d1 in d1s.iter() {
             'next_disp: for &d2 in d2s.iter() {
                 generation += 1;
                 values_to_add.clear();
 
-                // run through the elements to see if they all fit
                 for &(h, cp) in bkt_keys.iter() {
-                    // adjust the index slightly using the
-                    // displacements, hoping that this will allow us
-                    // to avoid collisions.
                     let idx = (displace(h.f1, h.f2, d1, d2) % table_len as u32) as usize;
 
                     if map[idx] != NOVAL || try_map[idx] == generation {
-                        // nope, this one is taken, so this pair of
-                        // displacements doesn't work.
                         continue 'next_disp;
                     }
                     try_map[idx] = generation;
                     values_to_add.push((idx, cp));
                 }
 
-                // everything works! let's lock it in and go to the
-                // next bucket.
                 disps[bkt_idx] = (d1, d2);
                 for &(idx, cp) in values_to_add.iter() {
                     map[idx] = cp
@@ -129,9 +95,6 @@ fn try_phf_table(
             }
         }
 
-        // if we're here, we ran through all displacements for a
-        // bucket and didn't find one that worked, so we can't make
-        // the hash table.
         return None;
     }
 

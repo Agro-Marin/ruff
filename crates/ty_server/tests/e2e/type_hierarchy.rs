@@ -25,11 +25,9 @@ class Derived(Base):
 
     server.open_text_document("foo.py", content, 1);
 
-    // Prepare on `Derived`
     let items = prepare(&mut server, "foo.py", Position::new(3, 8)).unwrap();
     assert_eq!(items[0].name, "Derived");
 
-    // Get supertypes of `Derived`
     let bases = supertypes(&mut server, items[0].clone()).unwrap();
     assert_eq!(bases.len(), 1);
     assert_eq!(bases[0].name, "Base");
@@ -92,7 +90,6 @@ class Child(Parent):
 
     server.open_text_document("foo.py", content, 1);
 
-    // Start at Child, and walk up the class hierarchy.
     let items = prepare(&mut server, "foo.py", Position::new(6, 8)).unwrap();
     assert_eq!(items[0].name, "Child");
 
@@ -108,7 +105,6 @@ class Child(Parent):
     assert_eq!(top.len(), 1);
     assert_eq!(top[0].name, "object");
 
-    // `object` has no supertypes
     let beyond = supertypes(&mut server, top[0].clone());
     assert!(beyond.is_none());
 
@@ -138,17 +134,11 @@ fn vendored_supertypes() -> anyhow::Result<()> {
     let items = prepare(&mut server, "foo.py", Position::new(0, 20)).unwrap();
     assert_eq!(items[0].name, "StrEnum");
 
-    // Note that we don't actually assert anything about the
-    // URI in `items[0]`. This test matches the actual flow
-    // that failed, which is the actually important thing to
-    // test.
     let bases = supertypes(&mut server, items[0].clone()).unwrap();
     let names: Vec<_> = bases.iter().map(|b| b.name.as_str()).collect();
     assert!(names.contains(&"str"));
     assert!(names.contains(&"ReprEnum"));
 
-    // Follow `ReprEnum` to its supertypes — another vendored round-trip
-    // that exercises resolving the vendored URI back to a `File`.
     let repr_enum = bases.iter().find(|b| b.name == "ReprEnum").unwrap();
     let repr_enum_bases = supertypes(&mut server, repr_enum.clone()).unwrap();
     let names: Vec<_> = repr_enum_bases.iter().map(|b| b.name.as_str()).collect();

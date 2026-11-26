@@ -42,7 +42,6 @@ pub(crate) fn useless_if_else(checker: &Checker, if_expr: &ast::ExprIf) {
         ..
     } = if_expr;
 
-    // Skip if the `body` and `orelse` are not the same.
     if ComparableExpr::from(body) != ComparableExpr::from(orelse) {
         return;
     }

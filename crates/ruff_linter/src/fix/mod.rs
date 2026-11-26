@@ -76,17 +76,13 @@ fn apply_fixes<'a>(
             .filter(|edit| !applied.contains(edit))
             .peekable();
 
-        // If the fix contains at least one new edit, enforce isolation and positional requirements.
         if let Some(first) = edits.peek() {
-            // If this fix requires isolation, and we've already applied another fix in the
-            // same isolation group, skip it.
             if let IsolationLevel::Group(id) = fix.isolation() {
                 if !isolated.insert(id) {
                     continue;
                 }
             }
 
-            // If this fix overlaps with a fix we've already applied, skip it.
             if last_pos.is_some_and(|last_pos| last_pos >= first.start()) {
                 continue;
             }
@@ -94,20 +90,15 @@ fn apply_fixes<'a>(
 
         let mut applied_edits = Vec::with_capacity(fix.edits().len());
         for edit in edits {
-            // Add all contents from `last_pos` to `fix.location`.
             let slice = locator.slice(TextRange::new(last_pos.unwrap_or_default(), edit.start()));
             output.push_str(slice);
 
-            // Add the start source marker for the patch.
             source_map.push_start_marker(edit, output.text_len());
 
-            // Add the patch itself.
             output.push_str(edit.content().unwrap_or_default());
 
-            // Add the end source marker for the added patch.
             source_map.push_end_marker(edit, output.text_len());
 
-            // Track that the edit was applied.
             last_pos = Some(edit.end());
             applied_edits.push(edit);
         }
@@ -116,7 +107,6 @@ fn apply_fixes<'a>(
         *fixed.entry(id).or_default(code) += 1;
     }
 
-    // Add the remaining content.
     let slice = locator.after(last_pos.unwrap_or_default());
     output.push_str(slice);
 
@@ -129,10 +119,6 @@ fn apply_fixes<'a>(
 
 /// Compare two fixes.
 fn cmp_fix(name1: &str, name2: &str, fix1: &Fix, fix2: &Fix) -> std::cmp::Ordering {
-    // Always apply `RedefinedWhileUnused` before `UnusedImport`, as the latter can end up fixing
-    // the former. But we can't apply this just for `RedefinedWhileUnused` and `UnusedImport` because it violates
-    // `< is transitive: a < b and b < c implies a < c. The same must hold for both == and >.`
-    // See https://github.com/astral-sh/ruff/issues/12469#issuecomment-2244392085
     let redefined_while_unused = Rule::RedefinedWhileUnused.name().as_str();
     if (name1, name2) == (redefined_while_unused, redefined_while_unused) {
         std::cmp::Ordering::Equal
@@ -143,12 +129,9 @@ fn cmp_fix(name1: &str, name2: &str, fix1: &Fix, fix2: &Fix) -> std::cmp::Orderi
     } else {
         std::cmp::Ordering::Equal
     }
-    // Apply fixes in order of their start position.
     .then_with(|| fix1.min_start().cmp(&fix2.min_start()))
-    // Break ties in the event of overlapping rules, for some specific combinations.
     .then_with(|| {
         let rules = (name1, name2);
-        // Apply `MissingTrailingPeriod` fixes before `NewLineAfterLastParagraph` fixes.
         let missing_trailing_period = Rule::MissingTrailingPeriod.name().as_str();
         let newline_after_last_paragraph = Rule::NewLineAfterLastParagraph.name().as_str();
         let if_else_instead_of_dict_get = Rule::IfElseBlockInsteadOfDictGet.name().as_str();
@@ -158,7 +141,6 @@ fn cmp_fix(name1: &str, name2: &str, fix1: &Fix, fix2: &Fix) -> std::cmp::Orderi
         } else if rules == (newline_after_last_paragraph, missing_trailing_period) {
             std::cmp::Ordering::Greater
         }
-        // Apply `IfElseBlockInsteadOfDictGet` fixes before `IfElseBlockInsteadOfIfExp` fixes.
         else if rules == (if_else_instead_of_dict_get, if_else_instead_of_if_exp) {
             std::cmp::Ordering::Less
         } else if rules == (if_else_instead_of_if_exp, if_else_instead_of_dict_get) {
@@ -188,7 +170,6 @@ mod tests {
     ) -> Vec<Diagnostic> {
         edit.into_iter()
             .map(|edit| {
-                // The choice of rule here is arbitrary.
                 let mut diagnostic = MissingNewlineAtEndOfFile.into_diagnostic(
                     edit.range(),
                     &SourceFileBuilder::new(filename, source).finish(),

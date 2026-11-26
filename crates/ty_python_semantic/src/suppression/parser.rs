@@ -29,7 +29,6 @@ impl<'src> SuppressionParser<'src> {
         self.eat_whitespace();
 
         // type: ignore[code]
-        // ^^^^^^^^^^^^
         let Some(kind) = self.eat_kind() else {
             return Err(ParseError::new(
                 ParseErrorKind::NotASuppression,
@@ -40,11 +39,9 @@ impl<'src> SuppressionParser<'src> {
         let has_trailing_whitespace = self.eat_whitespace();
 
         // type: ignore[code1, code2]
-        //             ^^^^^^
         let codes = self.eat_codes(kind)?;
 
         if self.cursor.is_eof() || codes.is_some() || has_trailing_whitespace {
-            // Consume the comment until its end or until the next "sub-comment" starts.
             self.cursor.eat_while(|c| c != '#');
             Ok(SuppressionComment {
                 kind,
@@ -101,7 +98,6 @@ impl<'src> SuppressionParser<'src> {
 
             self.eat_whitespace();
 
-            // `ty: ignore[]` or `ty: ignore[a,]`
             if self.cursor.eat_char(']') {
                 break Ok(Some(codes));
             }
@@ -119,7 +115,6 @@ impl<'src> SuppressionParser<'src> {
                 if self.cursor.eat_char(']') {
                     break Ok(Some(codes));
                 }
-                // `ty: ignore[a b]
                 return self.syntax_error(ParseErrorKind::CodesMissingComma(kind));
             }
         }
@@ -136,7 +131,6 @@ impl<'src> SuppressionParser<'src> {
 
     fn eat_word(&mut self) -> bool {
         if self.cursor.eat_if(char::is_alphabetic) {
-            // Allow `:` for better error recovery when someone uses `lint:code` instead of just `code`.
             self.cursor
                 .eat_while(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | ':'));
             true

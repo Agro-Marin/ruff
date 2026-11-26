@@ -44,9 +44,6 @@ fn parse_toml<T: DeserializeOwned>(path: &Path, table_path: &[&str]) -> Result<T
     let contents = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
 
-    // Parse the TOML document once into a spanned representation so we can:
-    // - Inspect `required-version` without triggering strict deserialization errors.
-    // - Deserialize with precise spans (line/column and excerpt) on errors.
     let root = toml::de::DeTable::parse(&contents)
         .with_context(|| format!("Failed to parse {}", path.display()))?;
 
@@ -55,8 +52,6 @@ fn parse_toml<T: DeserializeOwned>(path: &Path, table_path: &[&str]) -> Result<T
     let deserializer = toml::de::Deserializer::from(root);
     T::deserialize(deserializer)
         .map_err(|mut err| {
-            // `Deserializer::from` doesn't have access to the original input, but we do.
-            // Attach it so TOML errors include line/column and a source excerpt.
             err.set_input(Some(&contents));
             err
         })
@@ -83,19 +78,16 @@ fn ruff_enabled<P: AsRef<Path>>(path: P) -> Result<bool> {
 /// directory.
 pub fn settings_toml<P: AsRef<Path>>(path: P) -> Result<Option<PathBuf>> {
     let path = path.as_ref();
-    // Check for `.ruff.toml`.
     let ruff_toml = path.join(".ruff.toml");
     if ruff_toml.is_file() {
         return Ok(Some(ruff_toml));
     }
 
-    // Check for `ruff.toml`.
     let ruff_toml = path.join("ruff.toml");
     if ruff_toml.is_file() {
         return Ok(Some(ruff_toml));
     }
 
-    // Check for `pyproject.toml`.
     let pyproject_toml = path.join("pyproject.toml");
     if pyproject_toml.is_file() && ruff_enabled(&pyproject_toml)? {
         return Ok(Some(pyproject_toml));
@@ -162,7 +154,6 @@ pub fn find_user_settings_toml() -> Option<PathBuf> {
     let strategy = etcetera::base_strategy::choose_base_strategy().ok()?;
     let config_dir = strategy.config_dir().join("ruff");
 
-    // Search for a user-specific `.ruff.toml`, then a `ruff.toml`, then a `pyproject.toml`.
     for filename in [".ruff.toml", "ruff.toml", "pyproject.toml"] {
         let path = config_dir.join(filename);
         if path.is_file() {
@@ -242,7 +233,6 @@ fn get_minimum_supported_version(requires_version: &VersionSpecifiers) -> Option
         Some(Version::new([major, minor]))
     }
 
-    // Extract the minimum supported version from the specifiers.
     let minimum_version = requires_version
         .iter()
         .filter(|specifier| {
@@ -261,7 +251,6 @@ fn get_minimum_supported_version(requires_version: &VersionSpecifiers) -> Option
 
     debug!("Detected minimum supported `requires-python` version: {minimum_version}");
 
-    // Find the Python version that matches the minimum supported version.
     PythonVersion::iter().find(|version| Version::from(*version) == minimum_version)
 }
 
@@ -478,7 +467,6 @@ other-attribute = 1
             .is_err()
         );
 
-        // Test value exceeding u16::MAX (65536) - should show clear error
         let invalid_line_length_65536 = toml::from_str::<Pyproject>(
             r"
 [tool.ruff]
@@ -492,7 +480,6 @@ line-length = 65536
             "line-length must be between 1 and 65535 (got 65536)"
         );
 
-        // Test value far exceeding u16::MAX (99_999) - should show clear error
         let invalid_line_length_99999 = toml::from_str::<Pyproject>(
             r"
 [tool.ruff]
@@ -506,7 +493,6 @@ line-length = 99_999
             "line-length must be between 1 and 65535 (got 99999)"
         );
 
-        // Test negative value - should show clear error
         let invalid_line_length_negative = toml::from_str::<Pyproject>(
             r"
 [tool.ruff]

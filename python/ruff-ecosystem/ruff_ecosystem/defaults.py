@@ -11,7 +11,6 @@ from ruff_ecosystem.projects import (
 
 JUPYTER_NOTEBOOK_SELECT = "A,E703,F704,B015,B018,D100"
 
-# TODO(zanieb): Consider exporting this as JSON and loading from there instead
 DEFAULT_TARGETS = [
     Project(repo=Repository(owner="DisnakeDev", name="disnake", ref="master")),
     Project(repo=Repository(owner="PostHog", name="HouseWatch", ref="main")),
@@ -75,18 +74,6 @@ DEFAULT_TARGETS = [
     Project(
         repo=Repository(owner="scikit-build", name="scikit-build-core", ref="main")
     ),
-    # TODO: Re-enable Sphinx once https://github.com/sphinx-doc/sphinx/issues/14364 is fixed.
-    # Project(
-    #     repo=Repository(
-    #         owner="sphinx-doc",
-    #         name="sphinx",
-    #         ref="master",
-    #     ),
-    #     format_options=FormatOptions(
-    #         # Does not contain valid UTF-8
-    #         exclude="tests/roots/test-pycode/cp_1251_coded.py"
-    #     ),
-    # ),
     Project(repo=Repository(owner="spruceid", name="siwe-py", ref="main")),
     Project(repo=Repository(owner="tiangolo", name="fastapi", ref="master")),
     Project(repo=Repository(owner="yandex", name="ch-backup", ref="main")),
@@ -95,9 +82,7 @@ DEFAULT_TARGETS = [
         check_options=CheckOptions(select="ALL"),
     ),
     Project(repo=Repository(owner="indico", name="indico", ref="master")),
-    # Jupyter Notebooks
     Project(
-        # fork of `huggingface` without syntax errors in notebooks
         repo=Repository(
             owner="zanieb",
             name="huggingface-notebooks",
@@ -111,8 +96,6 @@ DEFAULT_TARGETS = [
         check_options=CheckOptions(select=JUPYTER_NOTEBOOK_SELECT),
         config_overrides={
             "include": ["*.ipynb"],
-            # These notebooks contain syntax errors because certain plain text / markdown
-            # cells are marked as code cells.
             "exclude": [
                 "examples/Assistants_API_overview_python.ipynb",
                 "examples/Chat_finetuning_data_prep.ipynb",

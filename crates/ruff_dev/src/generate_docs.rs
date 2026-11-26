@@ -185,10 +185,6 @@ fn process_documentation(documentation: &str, out: &mut String, rule_name: &str)
     let mut after = String::new();
     let mut referenced_options = HashSet::new();
 
-    // HACK: This is an ugly regex hack that's necessary because mkdocs uses
-    // a non-CommonMark-compliant Markdown parser, which doesn't support code
-    // tags in link definitions
-    // (see https://github.com/Python-Markdown/markdown/issues/280).
     let documentation = Regex::new(r"\[`([^`]*?)`]($|[^\[(])").unwrap().replace_all(
         documentation,
         |caps: &Captures| {

@@ -108,14 +108,6 @@ mod tests {
             .with_src_files(&[("foo/__init__.py", ""), ("foo.pyi", "")])
             .build();
 
-        // NOTE: This matches the behavior of the "resolve this module"
-        // implementation, even though it seems inconsistent with the
-        // `stubs_over_module_source` test.
-        //
-        // TODO: Check what other type checkers do. It seems like this (and
-        // "resolve this module") should prefer the stub file, although the
-        // typing spec isn't perfectly clear on this point:
-        // https://typing.python.org/en/latest/spec/distributing.html#stub-files
         insta::assert_debug_snapshot!(
             list_snapshot(&db),
             @r#"
@@ -232,10 +224,6 @@ mod tests {
             .with_python_version(PythonVersion::PY38)
             .build();
 
-        // NOTE: This currently doesn't return `xml` since
-        // the implementation assumes that typeshed doesn't
-        // have namespace packages. But our test setup (copied
-        // from the "resolve this module" tests) does.
         insta::assert_debug_snapshot!(
             list_snapshot(&db),
             @r#"
@@ -279,13 +267,6 @@ mod tests {
             .with_python_version(PythonVersion::PY38)
             .build();
 
-        // NOTE: This currently doesn't return any of the namespace
-        // packages defined above in our mock typeshed (that is,
-        // `importlib` and `xml`) because our implementation assumes
-        // namespace packages cannot occur in typeshed.
-        //
-        // Relatedly, `collections` and `random` should not appear
-        // because they are limited to 3.9+.
         insta::assert_debug_snapshot!(
             list_snapshot(&db),
             @r#"
@@ -324,10 +305,6 @@ mod tests {
             .with_python_version(PythonVersion::PY39)
             .build();
 
-        // NOTE: This currently doesn't return any of the namespace
-        // packages defined above in our mock typeshed (that is,
-        // `importlib`) because our implementation assumes namespace
-        // packages cannot occur in typeshed.
         insta::assert_debug_snapshot!(
             list_snapshot(&db),
             @r#"
@@ -347,11 +324,6 @@ mod tests {
             xml: 3.8-3.8      # 'Regular' package on 3.8 only
         ";
 
-        // Since our implementation assumes typeshed doesn't contain
-        // any namespace packages (as an optimization), this test case
-        // is modified from the corresponding test in the "resolve a
-        // file" implementation so that both namespace packages are
-        // just regular packages. ---AG
         const STDLIB: &[FileSpec] = &[
             ("importlib/__init__.pyi", ""),
             ("importlib/abc.pyi", ""),
@@ -535,13 +507,7 @@ mod tests {
 
         db.files().try_add_root(&db, &src, FileRootKind::Project);
 
-        // From the original test in the "resolve this module"
-        // implementation, this test seems to symlink a Python module
-        // and assert that they are treated as two distinct modules.
-        // That's what we capture here when listing modules as well.
         insta::with_settings!({
-            // Temporary directory often have random chars in them, so
-            // get rid of that part for a stable snapshot.
             filters => [(r#""\S*PREFIX-SENTINEL.*?/"#, r#""/"#)],
         }, {
             insta::assert_debug_snapshot!(
@@ -558,10 +524,6 @@ mod tests {
         Ok(())
     }
 
-    // NOTE: I've omitted the
-    // `deleting_an_unrelated_file_doesnt_change_module_resolution`
-    // test here since it likely seems inapplicable to "listing"
-    // modules. ---AG
 
     #[test]
     fn adding_file_on_which_module_resolution_depends_invalidates_previously_failing_query_that_now_succeeds()
@@ -574,7 +536,6 @@ mod tests {
             @"[]",
         );
 
-        // Now write the foo file
         db.write_file(&foo_path, "x = 1")?;
 
         insta::assert_debug_snapshot!(
@@ -682,15 +643,9 @@ mod tests {
         "#,
         );
 
-        // Delete `foo/__init__.py` and the `foo` folder. `foo` should
-        // now resolve to `foo.py`
         db.memory_file_system().remove_file(&foo_path)?;
         db.memory_file_system()
             .remove_directory(foo_path.parent().unwrap())?;
-        // NOTE: This is present in the test for the "resolve this
-        // module" implementation as well. It seems like it kind of
-        // defeats the point to me. Shouldn't this be the thing we're
-        // testing? ---AG
         File::sync_path(&mut db, &foo_path);
         File::sync_path(&mut db, foo_path.parent().unwrap());
 
@@ -706,10 +661,6 @@ mod tests {
         Ok(())
     }
 
-    // Slightly changed from
-    // `adding_file_to_search_path_with_lower_priority_does_not_invalidate_query`
-    // to just check that adding a file doesn't change the results. (i.e., This is
-    // no longer a test of caching.)
     #[test]
     fn adding_file_to_search_path_with_lower_priority_does_not_change_results() {
         const TYPESHED: MockedTypeshed = MockedTypeshed {
@@ -735,8 +686,6 @@ mod tests {
         "#,
         );
 
-        // Adding a file to site-packages does not invalidate the query,
-        // since site-packages takes lower priority in the module resolution
         db.clear_salsa_events();
         let site_packages_functools_path = site_packages.join("functools.py");
         db.write_file(&site_packages_functools_path, "f: int")
@@ -773,9 +722,6 @@ mod tests {
         "#,
         );
 
-        // Adding a first-party file should do some kind of cache
-        // invalidation here, since first-party files take higher
-        // priority in module resolution:
         let src_functools_path = src.join("functools.py");
         db.write_file(&src_functools_path, "FOO: int").unwrap();
 
@@ -814,16 +760,9 @@ mod tests {
         "#,
         );
 
-        // If we now delete the first-party file,
-        // it should resolve to the stdlib:
         db.memory_file_system()
             .remove_file(&src_functools_path)
             .unwrap();
-        // NOTE: This is present in the test for the "resolve this
-        // module" implementation as well. It seems like it kind of
-        // defeats the point to me. Shouldn't this be the thing we're
-        // testing? In any case, removing it results in the cache not
-        // being invalidated. ---AG
         File::sync_path(&mut db, &src_functools_path);
 
         insta::assert_debug_snapshot!(
@@ -873,9 +812,6 @@ mod tests {
 
         db.write_files(external_files).unwrap();
 
-        // Lines with leading whitespace in `.pth` files do not parse,
-        // so this excludes `foo`. Lines with trailing whitespace in
-        // `.pth` files do parse, so this includes `bar`.
         insta::assert_debug_snapshot!(
             list_snapshot(&db),
             @r#"
@@ -942,11 +878,6 @@ not_a_directory
 
         db.write_files(root_files).unwrap();
 
-        // NOTE: The `src`, `typeshed` and `x` namespace packages here
-        // are a bit odd, but this seems to be a result of `/` in the
-        // pth file. It's also consistent with "resolve this module,"
-        // which will indeed happily resolve `src`, `typeshed` or `x`
-        // as top-level modules. ---AG
         insta::assert_debug_snapshot!(
             list_snapshot(&db),
             @r#"
@@ -1040,10 +971,6 @@ not_a_directory
         db.memory_file_system()
             .remove_file(site_packages.join("_foo.pth"))
             .unwrap();
-        // NOTE: This is present in the test for the "resolve this
-        // module" implementation as well. It seems like it kind of
-        // defeats the point to me. Shouldn't this be the thing we're
-        // testing? ---AG
         File::sync_path(&mut db, &site_packages.join("_foo.pth"));
 
         insta::assert_debug_snapshot!(
@@ -1078,10 +1005,6 @@ not_a_directory
             .remove_file(src_path.join("foo.py"))
             .unwrap();
         db.memory_file_system().remove_directory(&src_path).unwrap();
-        // NOTE: This is present in the test for the "resolve this
-        // module" implementation as well. It seems like it kind of
-        // defeats the point to me. Shouldn't this be the thing we're
-        // testing? ---AG
         File::sync_path(&mut db, &src_path.join("foo.py"));
         File::sync_path(&mut db, &src_path);
 
@@ -1171,9 +1094,6 @@ not_a_directory
                 .expect("Valid search path settings"),
         );
 
-        // The editable installs discovered from the `.pth` file in the
-        // first `site-packages` directory take precedence over the
-        // second `site-packages` directory...
         insta::assert_debug_snapshot!(
             list_snapshot_filter(&db, |m| m.name(&db).as_str() == "a"),
             @r#"
@@ -1186,16 +1106,8 @@ not_a_directory
         db.memory_file_system()
             .remove_file(&site_packages_pth)
             .unwrap();
-        // NOTE: This is present in the test for the "resolve this
-        // module" implementation as well. It seems like it kind of
-        // defeats the point to me. Shouldn't this be the thing we're
-        // testing? ---AG
         File::sync_path(&mut db, &site_packages_pth);
 
-        // ...But now that the `.pth` file in the first `site-packages`
-        // directory has been deleted, the editable install no longer
-        // exists, so the module now resolves to the file in the second
-        // `site-packages` directory
         insta::assert_debug_snapshot!(
             list_snapshot_filter(&db, |m| m.name(&db).as_str() == "a"),
             @r#"
@@ -1237,9 +1149,6 @@ not_a_directory
         db.write_file(src.join("main.py"), "print('Hy')")
             .context("Failed to write `main.py`")?;
 
-        // The symlink triggers the slow-path in the `OsSystem`'s
-        // `exists_path_case_sensitive` code because canonicalizing the path
-        // for `a/__init__.py` results in `a-package/__init__.py`
         std::os::unix::fs::symlink(a_package_target.as_std_path(), a_src.as_std_path())
             .context("Failed to symlink `src/a` to `a-package`")?;
 
@@ -1252,8 +1161,6 @@ not_a_directory
         db.set_search_paths(search_paths);
 
         insta::with_settings!({
-            // Temporary directory often have random chars in them, so
-            // get rid of that part for a stable snapshot.
             filters => [(r#""\S*PREFIX-SENTINEL.*?/"#, r#""/"#)],
         }, {
             insta::assert_debug_snapshot!(
@@ -1417,15 +1324,12 @@ not_a_directory
     fn enumeration_tracks_unresolved_name_changes() -> anyhow::Result<()> {
         let mut db = TestCaseBuilder::new()
             .with_site_packages_files(&[
-                // Complete installed stubs omit `acme.nested`.
                 ("acme-stubs/__init__.pyi", ""),
             ])
             .with_extra_path(
                 "/extra",
                 &[
-                    // A local stub override remains discoverable through those unresolved parents.
                     ("acme/nested/deep/tools.pyi", ""),
-                    // A source file on an extra path must not count as a stub override.
                     ("acme/nested/source_only.py", ""),
                 ],
             )
@@ -1438,15 +1342,12 @@ not_a_directory
         )
         .expect("installed stub package resolves");
 
-        // The unresolved `acme.nested` name is not a public child, but enumeration still
-        // reaches the local stub beneath it.
         assert!(package.all_submodules(&db).is_empty());
         assert_eq!(
             list_all_module_names(&db),
             ["acme", "acme.nested.deep.tools"]
         );
 
-        // A newly supplied initializer turns a traversal-only name into a resolved module.
         db.write_file("/extra/acme/nested/__init__.pyi", "")?;
 
         assert_eq!(
@@ -1454,8 +1355,6 @@ not_a_directory
             ["acme", "acme.nested", "acme.nested.deep.tools"]
         );
 
-        // Removing the initializer leaves the name unresolved again, but its stub descendant
-        // remains discoverable.
         db.remove_file("/extra/acme/nested/__init__.pyi")?;
 
         assert_eq!(
@@ -1463,8 +1362,6 @@ not_a_directory
             ["acme", "acme.nested.deep.tools"]
         );
 
-        // Removing the last stub descendant leaves only the installed package. The source-only
-        // file still cannot override its complete stubs.
         db.remove_file("/extra/acme/nested/deep/tools.pyi")?;
 
         assert_eq!(list_all_module_names(&db), ["acme"]);
@@ -1480,13 +1377,11 @@ not_a_directory
             .build()
             .db;
 
-        // Both search roots contribute children to the namespace package.
         assert_eq!(
             list_all_module_names(&db),
             ["acme", "acme.left", "acme.right"]
         );
 
-        // Creating a nested file also introduces its parent namespace package.
         db.write_file("/src/acme/nested/new.py", "")?;
 
         assert_eq!(
@@ -1500,7 +1395,6 @@ not_a_directory
             ]
         );
 
-        // Deleting the file leaves its directory behind, so the empty namespace package remains.
         db.remove_file("/src/acme/nested/new.py")?;
 
         assert_eq!(
@@ -1508,8 +1402,6 @@ not_a_directory
             ["acme", "acme.left", "acme.nested", "acme.right"]
         );
 
-        // An initializer makes `acme` a regular package, hiding the site-packages portion.
-        // Its own `nested` directory still supplies a namespace subpackage.
         db.write_file("/src/acme/__init__.py", "")?;
 
         assert_eq!(
@@ -1517,8 +1409,6 @@ not_a_directory
             ["acme", "acme.left", "acme.nested"]
         );
 
-        // Extending the package path makes `acme` a legacy namespace package, restoring the
-        // child from site-packages.
         db.write_file(
             "/src/acme/__init__.py",
             "__path__ = __import__(\"pkgutil\").extend_path(__path__, __name__)",
@@ -1529,7 +1419,6 @@ not_a_directory
             ["acme", "acme.left", "acme.nested", "acme.right"]
         );
 
-        // Removing the namespace declaration hides the site-packages portion again.
         db.write_file("/src/acme/__init__.py", "")?;
         assert_eq!(
             list_all_module_names(&db),
@@ -1551,21 +1440,16 @@ not_a_directory
             .build()
             .db;
 
-        // Empty markers designate complete stubs, which block fallback to the source package.
         assert_eq!(list_all_module_names(&db), ["acme"]);
 
-        // Editing the existing marker to declare partial stubs enables the source-only child.
         db.write_file(marker, "partial\n")?;
 
         assert_eq!(list_all_module_names(&db), ["acme", "acme.runtime"]);
 
-        // Without a marker, the stubs are complete again and hide the source-only child.
         db.remove_file(marker)?;
 
         assert_eq!(list_all_module_names(&db), ["acme"]);
 
-        // Recreating the partial marker enables fallback again. This changes file presence,
-        // whereas the first write changed only the contents of an existing file.
         db.write_file(marker, "partial\n")?;
 
         assert_eq!(list_all_module_names(&db), ["acme", "acme.runtime"]);
@@ -1594,7 +1478,6 @@ not_a_directory
 
         assert_eq!(list_all_module_names(&db), ["acme", "acme.leaf", "other"]);
 
-        // A file child with no descendants gains one through a new stub override.
         db.write_file("/extra/acme/leaf/child.pyi", "")?;
 
         assert_eq!(
@@ -1602,7 +1485,6 @@ not_a_directory
             ["acme", "acme.leaf", "acme.leaf.child", "other"]
         );
 
-        // Removing the stub override restores the original result.
         db.remove_file("/extra/acme/leaf/child.pyi")?;
 
         assert_eq!(list_all_module_names(&db), ["acme", "acme.leaf", "other"]);
@@ -1617,7 +1499,6 @@ not_a_directory
             .with_src_files(&[("types/__init__.py", ""), ("types/child.py", "")])
             .build();
 
-        // `types` resolves to a standard-library file, but descendants can resolve locally.
         assert!(
             list_all_module_names(&db)
                 .iter()

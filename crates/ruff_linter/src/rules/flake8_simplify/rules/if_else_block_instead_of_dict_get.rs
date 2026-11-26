@@ -160,8 +160,6 @@ pub(crate) fn if_else_block_instead_of_dict_get(checker: &Checker, stmt_if: &ast
         return;
     };
 
-    // Check that the dictionary key, target variables, and dictionary name are all
-    // equivalent.
     if ComparableExpr::from(expected_slice) != ComparableExpr::from(test_key)
         || ComparableExpr::from(expected_var) != ComparableExpr::from(default_var)
         || ComparableExpr::from(test_dict) != ComparableExpr::from(expected_subscript)
@@ -169,17 +167,14 @@ pub(crate) fn if_else_block_instead_of_dict_get(checker: &Checker, stmt_if: &ast
         return;
     }
 
-    // Avoid suggesting ternary for `if sys.version_info >= ...`-style checks.
     if is_sys_version_block(stmt_if, checker.semantic()) {
         return;
     }
 
-    // Avoid suggesting ternary for `if TYPE_CHECKING:`-style checks.
     if is_type_checking_block(stmt_if, checker.semantic()) {
         return;
     }
 
-    // Check that the default value is not "complex".
     if contains_effect(default_value, |id| {
         checker.semantic().has_builtin_binding(id)
     }) {
@@ -215,7 +210,6 @@ pub(crate) fn if_else_block_instead_of_dict_get(checker: &Checker, stmt_if: &ast
     };
     let contents = checker.generator().stmt(&node5.into());
 
-    // Don't flag if the resulting expression would exceed the maximum line length.
     if !fits(
         &contents,
         stmt_if.into(),
@@ -281,7 +275,6 @@ pub(crate) fn if_exp_instead_of_dict_get(
         return;
     }
 
-    // Check that the default value is not "complex".
     if contains_effect(default_value, |id| {
         checker.semantic().has_builtin_binding(id)
     }) {

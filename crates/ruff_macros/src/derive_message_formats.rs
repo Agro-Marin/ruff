@@ -36,10 +36,8 @@ fn parse_expr(expr: &Expr, strings: &mut TokenStream) -> Result<(), TokenStream>
                     quote_spanned!(expr.span() => compile_error!("expected `format!` to have an argument")),
                 );
             };
-            // do not throw an error if the `format!` argument contains a formatting argument
 
             if !first_token.to_string().contains('{') {
-                // comma and string
                 if tokens.next().is_none() || tokens.next().is_none() {
                     return Err(
                         quote_spanned!(expr.span() => compile_error!("prefer `String::to_string` over `format!` without arguments")),

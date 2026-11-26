@@ -91,21 +91,15 @@ pub(crate) fn unaliased_collections_abc_set_import(checker: &Checker, binding: &
 }
 
 fn determine_applicability(binding: &Binding, scope: &Scope, checker: &Checker) -> Applicability {
-    // If it's not in a module scope, the import can't be implicitly re-exported,
-    // so always mark it as safe
     if !scope.kind.is_module() {
         return Applicability::Safe;
     }
-    // If it's not a stub and it's in the module scope, always mark the fix as unsafe
     if !checker.source_type.is_stub() {
         return Applicability::Unsafe;
     }
-    // If the import was `from collections.abc import Set as Set`,
-    // it's being explicitly re-exported: mark the fix as unsafe
     if binding.is_explicit_export() {
         return Applicability::Unsafe;
     }
-    // If it's included in `__all__`, mark the fix as unsafe
     if binding.references().any(|reference| {
         checker
             .semantic()
@@ -114,6 +108,5 @@ fn determine_applicability(binding: &Binding, scope: &Scope, checker: &Checker) 
     }) {
         return Applicability::Unsafe;
     }
-    // Anything else in a stub, and it's a safe fix:
     Applicability::Safe
 }

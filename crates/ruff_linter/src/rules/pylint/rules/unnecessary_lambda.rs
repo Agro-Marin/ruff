@@ -79,7 +79,6 @@ pub(crate) fn unnecessary_lambda(checker: &Checker, lambda: &ExprLambda) {
         node_index: _,
     } = lambda;
 
-    // The lambda should consist of a single function call.
     let Expr::Call(ast::ExprCall {
         arguments, func, ..
     }) = body.as_ref()
@@ -87,16 +86,12 @@ pub(crate) fn unnecessary_lambda(checker: &Checker, lambda: &ExprLambda) {
         return;
     };
 
-    // Ignore call chains.
     if let Expr::Attribute(ast::ExprAttribute { value, .. }) = func.as_ref() {
         if value.is_call_expr() {
             return;
         }
     }
 
-    // If at least one of the lambda parameters has a default value, abort. We can't know if the
-    // defaults provided by the lambda are the same as the defaults provided by the inner
-    // function.
     if parameters.as_ref().is_some_and(|parameters| {
         parameters
             .args
@@ -113,7 +108,6 @@ pub(crate) fn unnecessary_lambda(checker: &Checker, lambda: &ExprLambda) {
             }
         }
         Some(parameters) => {
-            // Collect all starred arguments (e.g., `lambda *args: func(*args)`).
             let call_varargs: Vec<&Expr> = arguments
                 .args
                 .iter()
@@ -126,21 +120,18 @@ pub(crate) fn unnecessary_lambda(checker: &Checker, lambda: &ExprLambda) {
                 })
                 .collect::<Vec<_>>();
 
-            // Collect all keyword arguments (e.g., `lambda x, y: func(x=x, y=y)`).
             let call_kwargs: Vec<&Expr> = arguments
                 .keywords
                 .iter()
                 .map(|kw| &kw.value)
                 .collect::<Vec<_>>();
 
-            // Collect all positional arguments (e.g., `lambda x, y: func(x, y)`).
             let call_posargs: Vec<&Expr> = arguments
                 .args
                 .iter()
                 .filter(|arg| !arg.is_starred_expr())
                 .collect::<Vec<_>>();
 
-            // Ex) `lambda **kwargs: func(**kwargs)`
             match parameters.kwarg.as_ref() {
                 None => {
                     if !call_kwargs.is_empty() {
@@ -162,7 +153,6 @@ pub(crate) fn unnecessary_lambda(checker: &Checker, lambda: &ExprLambda) {
                 }
             }
 
-            // Ex) `lambda *args: func(*args)`
             match parameters.vararg.as_ref() {
                 None => {
                     if !call_varargs.is_empty() {
@@ -184,7 +174,6 @@ pub(crate) fn unnecessary_lambda(checker: &Checker, lambda: &ExprLambda) {
                 }
             }
 
-            // Ex) `lambda x, y: func(x, y)`
             let lambda_posargs: Vec<&Parameter> = parameters
                 .args
                 .iter()
@@ -204,8 +193,6 @@ pub(crate) fn unnecessary_lambda(checker: &Checker, lambda: &ExprLambda) {
         }
     }
 
-    // The lambda is necessary if it uses one of its parameters _as_ the function call.
-    // Ex) `lambda x, y: x(y)`
     let names = {
         let mut finder = NameFinder::default();
         finder.visit_expr(func);
@@ -222,8 +209,6 @@ pub(crate) fn unnecessary_lambda(checker: &Checker, lambda: &ExprLambda) {
     }
 
     let mut diagnostic = checker.report_diagnostic(UnnecessaryLambda, lambda.range());
-    // Suppress the fix if the assignment expression target shadows one of the lambda's parameters.
-    // This is necessary to avoid introducing a change in the behavior of the program.
     for name in names {
         if let Some(binding_id) = checker.semantic().lookup_symbol(name.id()).binding_id() {
             let binding = checker.semantic().binding(binding_id);

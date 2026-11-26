@@ -569,7 +569,6 @@ fn check_dynamically_typed<'a, 'b, F>(
     F: FnOnce() -> String,
 {
     if let Expr::StringLiteral(string_expr) = annotation {
-        // Quoted annotations
         if let Ok(parsed_annotation) = checker.parse_type_annotation(string_expr) {
             if type_hint_resolves_to_any(
                 parsed_annotation.expression(),
@@ -607,19 +606,15 @@ fn is_stub_function(function_def: &ast::StmtFunctionDef, checker: &Checker) -> b
         })
     }
 
-    // Ignore functions with empty bodies in...
     if is_empty_body(function_def) {
-        // Stub definitions (.pyi files)...
         if checker.source_type.is_stub() {
             return true;
         }
 
-        // Abstract methods...
         if visibility::is_abstract(&function_def.decorator_list, checker.semantic()) {
             return true;
         }
 
-        // Overload definitions...
         if visibility::is_overload(&function_def.decorator_list, checker.semantic()) {
             return true;
         }
@@ -653,21 +648,16 @@ pub(crate) fn definition(
 
     let is_method = definition.is_method();
 
-    // Keep track of whether we've seen any typed arguments or return values.
-    let mut has_any_typed_arg = false; // Any argument has been typed?
-    let mut has_typed_return = false; // Return value has been typed?
+    let mut has_any_typed_arg = false;
+    let mut has_typed_return = false;
 
-    // Temporary storage for diagnostics; we emit them at the end
-    // unless configured to suppress ANN* for declarations that are fully untyped.
     let mut diagnostics = Vec::new();
 
     let is_overridden = visibility::is_override(decorator_list, checker.semantic());
 
-    // If this is a non-static method, skip `cls` or `self`.
     for parameter in parameters.iter_non_variadic_params().skip(usize::from(
         is_method && !visibility::is_staticmethod(decorator_list, checker.semantic()),
     )) {
-        // ANN401 for dynamically typed parameters
         if let Some(annotation) = parameter.annotation() {
             has_any_typed_arg = true;
             if checker.is_rule_enabled(Rule::AnyType) && !is_overridden {
@@ -697,7 +687,6 @@ pub(crate) fn definition(
         }
     }
 
-    // ANN002, ANN401
     if let Some(arg) = &parameters.vararg {
         if let Some(expr) = &arg.annotation {
             has_any_typed_arg = true;
@@ -723,7 +712,6 @@ pub(crate) fn definition(
         }
     }
 
-    // ANN003, ANN401
     if let Some(arg) = &parameters.kwarg {
         if let Some(expr) = &arg.annotation {
             has_any_typed_arg = true;
@@ -754,22 +742,18 @@ pub(crate) fn definition(
         }
     }
 
-    // ANN201, ANN202, ANN401
     if let Some(expr) = &returns {
         has_typed_return = true;
         if checker.is_rule_enabled(Rule::AnyType) && !is_overridden {
             check_dynamically_typed(checker, expr, || name.to_string(), &mut diagnostics);
         }
     } else if !(
-        // Allow omission of return annotation if the function only returns `None`
-        // (explicitly or implicitly).
         checker
             .settings()
             .flake8_annotations
             .suppress_none_returning
             && is_none_returning(body)
     ) {
-        // ANN206
         if is_method && visibility::is_classmethod(decorator_list, checker.semantic()) {
             if checker.is_rule_enabled(Rule::MissingReturnTypeClassMethod) {
                 let return_type = if is_stub_function(function, checker) {
@@ -797,7 +781,6 @@ pub(crate) fn definition(
                 diagnostics.push(diagnostic);
             }
         } else if is_method && visibility::is_staticmethod(decorator_list, checker.semantic()) {
-            // ANN205
             if checker.is_rule_enabled(Rule::MissingReturnTypeStaticMethod) {
                 let return_type = if is_stub_function(function, checker) {
                     None
@@ -824,9 +807,6 @@ pub(crate) fn definition(
                 diagnostics.push(diagnostic);
             }
         } else if is_method && visibility::is_init(name) {
-            // ANN204
-            // Allow omission of return annotation in `__init__` functions, as long as at
-            // least one argument is typed.
             if checker.is_rule_enabled(Rule::MissingReturnTypeSpecialMethod) {
                 if !(checker.settings().flake8_annotations.mypy_init_return && has_any_typed_arg) {
                     let mut diagnostic = checker.report_diagnostic(
@@ -854,7 +834,6 @@ pub(crate) fn definition(
                     function.identifier(),
                 );
                 if let Some(return_type_str) = return_type {
-                    // Convert the simple return type to a proper expression that handles shadowed builtins
                     let python_type = match return_type_str {
                         "str" => PythonType::String,
                         "bytes" => PythonType::Bytes,
@@ -863,7 +842,7 @@ pub(crate) fn definition(
                         "complex" => PythonType::Number(NumberLike::Complex),
                         "bool" => PythonType::Number(NumberLike::Bool),
                         "None" => PythonType::None,
-                        _ => return, // Unknown type, skip
+                        _ => return,
                     };
 
                     if let Some((expr, edits)) =
@@ -957,8 +936,6 @@ pub(crate) fn definition(
         }
     }
 
-    // If settings say so, don't report any of the
-    // diagnostics gathered here if there were no type annotations at all.
     let diagnostics_enabled = !checker.settings().flake8_annotations.ignore_fully_untyped
         || has_any_typed_arg
         || has_typed_return

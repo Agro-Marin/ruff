@@ -387,7 +387,6 @@ pub struct BoundSuperType<'db> {
     pub owner: SuperOwnerKind<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for BoundSuperType<'_> {}
 
 pub(super) fn walk_bound_super_type<'db, V: visitor::TypeVisitor<'db> + ?Sized>(
@@ -432,7 +431,6 @@ impl<'db> BoundSuperType<'db> {
                     _ => superclass == special_form,
                 })
             }
-            // typing.TypedDict never stays in a runtime class' MRO
             ClassBase::TypedDict(_) => false,
         }
     }
@@ -534,7 +532,6 @@ impl<'db> BoundSuperType<'db> {
             BoundSuperType::build(db, env, pivot_class_type, type_to_delegate_to)
         };
 
-        // Delegate but rewrite errors to preserve TypeVar context.
         let delegate_with_error_mapped =
             |type_to_delegate_to, error_context: Option<TypeVarOwnerContext<'db>>| {
                 delegate_to(type_to_delegate_to).map_err(|err| match err {
@@ -565,11 +562,6 @@ impl<'db> BoundSuperType<'db> {
                 })
             };
 
-        // We don't use `ClassBase::try_from_type` here because:
-        // - There are objects that may validly be present in a class's bases list
-        //   but are not valid as pivot classes, e.g. `typing.ChainMap`
-        // - There are objects that are not valid in a class's bases list
-        //   but are valid as pivot classes, e.g. unsubscripted `typing.Generic`
         let pivot_class = match pivot_class_type {
             Type::ClassLiteral(class) => ClassBase::Class(ClassType::NonGeneric(class)),
             Type::SubclassOf(subclass_of) => match subclass_of.subclass_of() {
@@ -595,8 +587,6 @@ impl<'db> BoundSuperType<'db> {
             }
         };
 
-        // Helper to build a union of bound-super instances for constrained TypeVars.
-        // Each constraint must be a subclass of the pivot class.
         let build_constrained_union = |constraints: TypeVarConstraints<'db>,
                                        typevar: TypeVarOwnerContext<'db>|
          -> Result<Type<'db>, BoundSuperError<'db>> {
@@ -634,8 +624,6 @@ impl<'db> BoundSuperType<'db> {
                         builder = builder.add(Self::build_from_owner(db, pivot_class, owner));
                     }
                     None => {
-                        // Delegate to the constraint to get better error messages
-                        // if the constraint is incompatible with the pivot class.
                         builder = builder.add(delegate_to(*constraint)?);
                     }
                 }
@@ -680,8 +668,6 @@ impl<'db> BoundSuperType<'db> {
                         None,
                     )?)
                 }
-                // `type[Protocol]` is structural: an inhabitant need not inherit from the protocol
-                // class, so its MRO cannot be recovered from the protocol's nominal origin.
                 SubclassOfInner::Protocol(_) => SuperOwnerKind::Dynamic(DynamicType::Unknown),
                 SubclassOfInner::Dynamic(dynamic) => SuperOwnerKind::Dynamic(dynamic),
                 SubclassOfInner::TypeVar(bound_typevar) => {
@@ -864,8 +850,6 @@ impl<'db> BoundSuperType<'db> {
                 return delegate_to(KnownClass::Super.to_instance(db, env));
             }
             Type::TypedDict(td) => {
-                // In general it isn't sound to upcast a `TypedDict` to a `dict`,
-                // but here it seems like it's probably sound?
                 let mut key_builder = UnionBuilder::new(db, env);
                 let mut value_builder = UnionBuilder::new(db, env);
                 for (name, field) in td.items(db) {
@@ -950,7 +934,6 @@ impl<'db> BoundSuperType<'db> {
             instance
                 .and_then(|_| attribute.place.ignore_possibly_undefined())
                 .and_then(|ty| ty.property_deprecations(db))
-                // `super` delegates reads to the owner's descriptors, but not writes or deletions.
                 .map(|properties| properties.getters_only(db)),
         ))
     }
@@ -977,8 +960,6 @@ impl<'db> BoundSuperType<'db> {
                     .expect("Calling `find_name_in_mro` on Unknown should return `Some`");
             }
             SuperOwnerKind::Resolved(resolved_owner) => {
-                // With a bare class as the owner, e.g. `super(Child, Child).__init__`, the call
-                // can infer the class's type arguments from the explicit receiver.
                 if matches!(name, "__new__" | "__init__")
                     && resolved_owner.receiver == DescriptorReceiverKind::Class
                     && resolved_owner.owner_type.is_class_literal()
@@ -994,10 +975,6 @@ impl<'db> BoundSuperType<'db> {
         let result =
             class_literal.class_member_from_mro(db, env, name, policy, mro_after_pivot.clone());
 
-        // TODO: Here we are hard-coding that __class_getitem__ is the only member defined in
-        // typing._Generic in the typeshed, and we are hard-coding its signature. Ideally we would
-        // look that up from the typeshed class, but that would require threading through the
-        // static class literal through the SpecialForm and KnownInstance types that we create.
         if result.place.is_undefined()
             && name == "__class_getitem__"
             && mro_after_pivot
@@ -1055,7 +1032,6 @@ impl<'c, 'db> EquivalenceChecker<'_, 'c, 'db> {
 
             (ClassBase::Class(_), _) => self.never(),
 
-            // A `Divergent` type is only equivalent to itself
             (ClassBase::Divergent(l), ClassBase::Divergent(r)) => {
                 ConstraintSet::from_bool(self.constraints, l == r)
             }
@@ -1094,7 +1070,6 @@ impl<'c, 'db> EquivalenceChecker<'_, 'c, 'db> {
                 }),
             (SuperOwnerKind::Resolved(_), _) => self.never(),
 
-            // A `Divergent` type is only equivalent to itself
             (SuperOwnerKind::Divergent(l), SuperOwnerKind::Divergent(r)) => {
                 ConstraintSet::from_bool(self.constraints, l == r)
             }

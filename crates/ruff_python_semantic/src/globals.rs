@@ -84,7 +84,6 @@ impl<'a> StatementVisitor<'a> for GlobalsVisitor<'a> {
                 }
             }
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
-                // Don't recurse.
             }
             _ => walk_stmt(self, stmt),
         }

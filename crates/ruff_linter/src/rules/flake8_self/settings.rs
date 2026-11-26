@@ -5,9 +5,6 @@ use ruff_macros::CacheKey;
 use ruff_python_ast::name::Name;
 use std::fmt::{Display, Formatter};
 
-// By default, ignore the `namedtuple` methods and attributes, as well as the
-// _sunder_ names in Enum, which are underscore-prefixed to prevent conflicts
-// with field names.
 const IGNORE_NAMES: [&str; 7] = [
     "_make",
     "_asdict",

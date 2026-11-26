@@ -117,15 +117,6 @@ pub(crate) fn unnecessary_list_cast(checker: &Checker, iter: &Expr, body: &[Stmt
                 return;
             };
             if matches!(value, Expr::Tuple(_) | Expr::List(_) | Expr::Set(_)) {
-                // If the variable is being modified to, don't suggest removing the cast:
-                //
-                // ```python
-                // items = ["foo", "bar"]
-                // for item in list(items):
-                //    items.append("baz")
-                // ```
-                //
-                // Here, removing the `list()` cast would change the behavior of the code.
                 let mut visitor = MutationVisitor::new(id);
                 visitor.visit_body(body);
                 if visitor.is_mutated {
@@ -188,7 +179,6 @@ impl<'a> StatementVisitor<'a> for MutationVisitor<'a> {
 /// For example, `foo.append(bar)` would return `true` if `id` is `foo`.
 fn match_mutation(stmt: &Stmt, id: &str) -> bool {
     match stmt {
-        // Ex) `foo.append(bar)`
         Stmt::Expr(ast::StmtExpr { value, .. }) => {
             let Some(ast::ExprCall { func, .. }) = value.as_call_expr() else {
                 return false;
@@ -207,7 +197,6 @@ fn match_mutation(stmt: &Stmt, id: &str) -> bool {
             };
             target_id == id
         }
-        // Ex) `foo[0] = bar`
         Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().any(|target| {
             if let Some(ast::ExprSubscript { value: target, .. }) = target.as_subscript_expr() {
                 if let Some(ast::ExprName { id: target_id, .. }) = target.as_name_expr() {
@@ -216,7 +205,6 @@ fn match_mutation(stmt: &Stmt, id: &str) -> bool {
             }
             false
         }),
-        // Ex) `foo += bar`
         Stmt::AugAssign(ast::StmtAugAssign { target, .. }) => {
             if let Some(ast::ExprName { id: target_id, .. }) = target.as_name_expr() {
                 target_id == id
@@ -224,7 +212,6 @@ fn match_mutation(stmt: &Stmt, id: &str) -> bool {
                 false
             }
         }
-        // Ex) `foo[0]: int = bar`
         Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) => {
             if let Some(ast::ExprSubscript { value: target, .. }) = target.as_subscript_expr() {
                 if let Some(ast::ExprName { id: target_id, .. }) = target.as_name_expr() {
@@ -233,7 +220,6 @@ fn match_mutation(stmt: &Stmt, id: &str) -> bool {
             }
             false
         }
-        // Ex) `del foo[0]`
         Stmt::Delete(ast::StmtDelete { targets, .. }) => targets.iter().any(|target| {
             if let Some(ast::ExprSubscript { value: target, .. }) = target.as_subscript_expr() {
                 if let Some(ast::ExprName { id: target_id, .. }) = target.as_name_expr() {

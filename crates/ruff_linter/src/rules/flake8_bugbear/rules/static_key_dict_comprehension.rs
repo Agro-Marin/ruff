@@ -54,7 +54,6 @@ pub(crate) fn static_key_dict_comprehension(checker: &Checker, dict_comp: &ast::
         return;
     };
 
-    // Collect the bound names in the comprehension's generators.
     let names = {
         let mut visitor = StoredNameFinder::default();
         for generator in &dict_comp.generators {

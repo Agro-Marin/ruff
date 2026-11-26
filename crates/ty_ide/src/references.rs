@@ -60,28 +60,11 @@ pub enum ReferencesMode {
 impl ReferencesMode {
     pub(super) fn to_import_alias_resolution(self) -> ImportAliasResolution {
         match self {
-            // Resolve import aliases for find references:
-            // ```py
-            // from warnings import deprecated as my_deprecated
-            //
             // @my_deprecated
-            // def foo
-            // ```
-            //
-            // When finding references on `my_deprecated`, we want to find all usages of `deprecated` across the entire
-            // project.
             Self::References | Self::ReferencesSkipDeclaration => {
                 ImportAliasResolution::ResolveAliases
             }
-            // For rename, don't resolve import aliases.
-            //
-            // ```py
-            // from warnings import deprecated as my_deprecated
-            //
             // @my_deprecated
-            // def foo
-            // ```
-            // When renaming `my_deprecated`, only rename the alias, but not the original definition in `warnings`.
             Self::Rename | Self::RenameMultiFile | Self::DocumentHighlights => {
                 ImportAliasResolution::PreserveAliases
             }
@@ -104,8 +87,6 @@ pub(crate) fn references(
         .definitions(&model, mode.to_import_alias_resolution())?
         .goto_declaration(&model, goto_target)?;
     let import_alias_resolution = mode.to_import_alias_resolution();
-    // An identifier can have both ordinary Python references and pytest fixture references.
-    // Keep its Python definitions alongside any fixture roots used for the same search.
     let fixture_target = matches!(
         mode,
         ReferencesMode::References | ReferencesMode::ReferencesSkipDeclaration
@@ -167,8 +148,6 @@ fn references_for_search(
                     .iter()
                     .map(|file| file.file(db)),
             );
-            // Fixtures in plugins registered through `pytest_plugins` can request the target
-            // fixture, and those plugins can be outside the project.
             files.extend(
                 pytest_registered_plugin_files(db, file)
                     .iter()
@@ -195,8 +174,6 @@ fn references_for_search(
                 }
 
                 let other_file = ProgramFile::new(db, other_file, program);
-                // A parameter's declaration and body uses must also be searched when the
-                // request starts from a keyword argument in another file.
                 if has_fixture_target
                     || is_externally_visible_symbol
                     || search.target_definitions.iter().any(|resolved| {
@@ -207,8 +184,6 @@ fn references_for_search(
                 {
                     references_for_file(db, other_file, search, mode)
                 } else {
-                    // Outside their defining files, parameters can be referenced via keyword
-                    // argument labels (e.g. `f(param=...)`). Only consider keyword arguments here.
                     references_for_keyword_arguments_in_file(db, other_file, search, mode)
                 }
             })
@@ -251,16 +226,12 @@ fn references_for_keyword_arguments_in_file(
     search: &LocalReferenceSearch<'_>,
     mode: ReferencesMode,
 ) -> Vec<ReferenceTarget> {
-    // This path is used for cross-file parameter keyword-label references.
-    // DocumentHighlights is same-file-only and should never route through here.
     debug_assert!(
         !matches!(mode, ReferencesMode::DocumentHighlights),
         "keyword-label cross-file scan should not run in DocumentHighlights mode"
     );
 
     let parsed = parsed_module(db, file.python_file(db));
-    // Reference and rename searches can scan the whole project, so release closed files' ASTs
-    // as we go.
     let module = parsed.load_then_clear_on_drop(db);
     let model = SemanticModel::new(db, file);
     let mut references = Vec::new();
@@ -314,8 +285,6 @@ fn references_for_file(
     mode: ReferencesMode,
 ) -> Vec<ReferenceTarget> {
     let parsed = parsed_module(db, file.python_file(db));
-    // Reference and rename searches can scan the whole project, so release closed files' ASTs
-    // as we go.
     let module = parsed.load_then_clear_on_drop(db);
     let model = SemanticModel::new(db, file);
     let mut references = Vec::new();
@@ -342,7 +311,6 @@ pub(crate) fn has_any_external_visible_definitions(
 ) -> bool {
     definitions.iter().any(|definition| match definition {
         ResolvedDefinition::Definition(definition) => {
-            // A member's accessibility does not depend on the scope of its assignment.
             if definition.place(db).is_member() {
                 return true;
             }
@@ -494,7 +462,6 @@ fn fixture_reference_resolution_for_definition<'db>(
 
     match definition.kind(db) {
         DefinitionKind::Parameter(_) => {
-            // Fixture requests can use either a binding name or an explicit decorator name.
             for binding in fixture_bindings_for_parameter(db, definition) {
                 binding
                     .exposures()
@@ -503,8 +470,6 @@ fn fixture_reference_resolution_for_definition<'db>(
                     .for_each(&mut collect);
             }
         }
-        // Avoid fixture lookup for unrelated source bindings, but allow stubs to describe fixtures
-        // as variables rather than functions.
         kind if matches!(
             kind,
             DefinitionKind::Function(_)
@@ -515,16 +480,7 @@ fn fixture_reference_resolution_for_definition<'db>(
             DefinitionKind::Assignment(_) | DefinitionKind::AnnotatedAssignment(_)
         ) && definition.file(db).is_stub(db)) =>
         {
-            // These definitions refer to Python bindings. Only `Binding` name sources use
-            // that Python name as the fixture name; `Explicit` sources instead use the decorator:
-            //
             // @pytest.fixture(name="public_name")
-            // def implementation(): ...
-            // copy = implementation      # Python function reference
-            // def test_use(public_name):  # Fixture request
-            //     ...
-            //
-            // Omit the explicit fixture-name group for these Python bindings.
             fixture_exposures_for_definition(db, definition)
                 .iter()
                 .filter(|exposure| {
@@ -547,15 +503,11 @@ fn collect_fixture_reference_roots<'db>(
     path: &mut FxHashSet<FixtureExposure<'db>>,
     resolution: &mut FixtureReferenceResolution<'db>,
 ) -> bool {
-    // Stop cycles in the current import path.
     if !path.insert(exposure.clone()) {
         return false;
     }
-    // Intermediate imports must be searched too, including files outside the project.
     resolution.files.insert(exposure.local_binding().file(db));
 
-    // Re-exports share a root only while both the fixture and its exposed name stay the same.
-    // Renaming a default-named fixture (`from fixtures import resource as local`) starts a new group.
     let mut found_source_root = false;
     if let Some(source) = exposure.source_binding() {
         for source_exposure in
@@ -571,12 +523,7 @@ fn collect_fixture_reference_roots<'db>(
         }
     }
 
-    // With no root from a same-name source, this exposure starts the reference group. This
-    // includes direct declarations and renamed imports, as well as chains stopped at a stub
-    // or cycle.
     if !found_source_root {
-        // Keep references resolved through a stub separate from the explicit-name declaration in
-        // its runtime implementation, matching reference behavior for ordinary Python symbols.
         let root = if exposure.local_binding().file(db).is_stub(db) {
             FixtureNameSource::Binding(exposure.local_binding())
         } else {
@@ -585,7 +532,6 @@ fn collect_fixture_reference_roots<'db>(
         resolution.roots.insert(root);
     }
 
-    // Allow other import branches to resolve through this exposure.
     path.remove(exposure);
 
     true
@@ -608,7 +554,6 @@ impl<'a> SourceOrderVisitor<'a> for LocalReferencesFinder<'a> {
 
         match node {
             AnyNodeRef::ExprName(name_expr) => {
-                // If the name doesn't match our target text, this isn't a match
                 if name_expr.id.as_str() != self.search.target_text {
                     return TraversalSignal::Traverse;
                 }
@@ -675,12 +620,8 @@ impl<'a> SourceOrderVisitor<'a> for LocalReferencesFinder<'a> {
                 self.check_declaration_identifier(&param_var.name);
             }
             AnyNodeRef::ExprStringLiteral(string_expr) => {
-                // A string literal listed in a class's `__slots__` names an
-                // instance attribute, so renaming that attribute should rename
-                // the matching slot string too.
                 self.check_slots_string_literal(string_expr);
 
-                // Highlight the sub-AST of a string annotation
                 if let Some((sub_ast, sub_model)) = self.model.enter_string_annotation(string_expr)
                 {
                     let mut sub_finder = LocalReferencesFinder {
@@ -696,12 +637,9 @@ impl<'a> SourceOrderVisitor<'a> for LocalReferencesFinder<'a> {
                 }
             }
             AnyNodeRef::Alias(alias) => {
-                // Handle import alias declarations
                 if let Some(asname) = &alias.asname {
                     self.check_declaration_identifier(asname);
                 }
-                // Only check the original name if it matches our target text
-                // This is for cases where we're renaming the imported symbol name itself
                 if alias.name.id == self.search.target_text {
                     self.check_declaration_identifier(&alias.name);
                 }
@@ -757,7 +695,6 @@ impl<'a> LocalReferencesFinder<'a> {
     }
 
     fn check_identifier(&mut self, identifier: &ast::Identifier, kind: OccurrenceKind) {
-        // Quick text-based check first
         if identifier.id != self.search.target_text {
             return;
         }
@@ -772,9 +709,6 @@ impl<'a> LocalReferencesFinder<'a> {
         &self,
         covering_node: &CoveringNode<'node>,
     ) -> Option<GotoTarget<'node>> {
-        // Use the start of the covering node as the offset. Any offset within
-        // the node is fine here. Offsets matter only for import statements
-        // where the identifier might be a multi-part module name.
         let offset = covering_node.node().start();
         GotoTarget::from_covering_node(self.model, covering_node, offset, self.tokens)
     }
@@ -784,12 +718,10 @@ impl<'a> LocalReferencesFinder<'a> {
             return;
         };
 
-        // Fixture references match by exposure roots rather than Python definitions.
         let mut fixture_match = false;
         let mut fixture_request_match = false;
         if let Some(fixture_resolution) = &self.search.fixture_resolution
             && let Some(definitions) =
-                // Preserve import aliases so an imported fixture requested under a new name keeps its own root.
                 goto_target.definitions(self.model, ImportAliasResolution::PreserveAliases)
         {
             for definition in definitions
@@ -806,8 +738,6 @@ impl<'a> LocalReferencesFinder<'a> {
             }
         }
 
-        // Fall back to Python definitions if fixture matching did not identify this occurrence.
-        // A search starting from an explicit fixture-name literal has no Python definitions.
         let ordinary_match = !fixture_match
             && self.search.target_definitions.iter().next().is_some()
             && goto_target
@@ -821,8 +751,6 @@ impl<'a> LocalReferencesFinder<'a> {
 
         if matches!(self.mode, ReferencesMode::ReferencesSkipDeclaration) {
             let is_declaration = match kind {
-                // A parameter declares a Python local but references the fixture it requests.
-                // Keep fixture requests even when the fixture declaration is excluded.
                 OccurrenceKind::Declaration if fixture_request_match => false,
                 OccurrenceKind::Declaration => true,
                 OccurrenceKind::Reference => false,
@@ -847,14 +775,6 @@ impl<'a> LocalReferencesFinder<'a> {
         definition: Definition<'a>,
         fixture_resolution: &FixtureReferenceResolution<'a>,
     ) -> bool {
-        // A parameter and its uses share one definition:
-        //
-        // def test_use(resource):
-        //     print(resource)
-        //     print(resource)
-        //
-        // The search target is fixed for this visitor, so cache the match result instead of
-        // resolving and comparing fixture roots for each occurrence.
         *self
             .fixture_match_cache
             .entry(definition)
@@ -877,9 +797,6 @@ impl<'a> LocalReferencesFinder<'a> {
     /// declares the `__slots__`, so unrelated classes that happen to use the
     /// same slot name are left untouched.
     fn check_slots_string_literal(&mut self, string_expr: &'a ast::ExprStringLiteral) {
-        // Quick text-based check first. We only handle single-part string
-        // literals; implicitly concatenated strings ("a" "b") can't name a
-        // single attribute, so they never match an identifier here.
         if string_expr.value.is_implicit_concatenated() {
             return;
         }
@@ -890,19 +807,14 @@ impl<'a> LocalReferencesFinder<'a> {
             return;
         }
 
-        // The literal must sit directly inside a tuple/list/set container, or
-        // be a key in a dict, that is the value of a `__slots__` assignment in
-        // a class body.
         let Some(class) = self.enclosing_slots_class() else {
             return;
         };
 
-        // Only rename the slot if the target attribute belongs to this class.
         if !self.target_belongs_to_class(class) {
             return;
         }
 
-        // Rename the inner content of the string, leaving the quotes intact.
         let content_range = ast::StringLikePart::String(part).content_range();
         let target = ReferenceTarget::new(self.model.file(), content_range, ReferenceKind::Other);
         self.references.push(target);
@@ -916,11 +828,8 @@ impl<'a> LocalReferencesFinder<'a> {
     /// - `__slots__ = ("a", "b")` / `["a", "b"]` / `{"a", "b"}`
     /// - `__slots__ = {"a": ..., "b": ...}` (dict keys only)
     fn enclosing_slots_class(&self) -> Option<&'a ast::StmtClassDef> {
-        // `self.ancestors` ends with the string literal itself. Walk outward.
         let mut ancestors = self.ancestors.iter().rev();
 
-        // The string is either a direct element of a tuple/list/set, or a key
-        // of a dict. Skip the immediate container node.
         match ancestors.next()? {
             AnyNodeRef::ExprStringLiteral(_) => {}
             _ => return None,
@@ -928,9 +837,6 @@ impl<'a> LocalReferencesFinder<'a> {
         let container = *ancestors.next()?;
         match container {
             AnyNodeRef::ExprTuple(_) | AnyNodeRef::ExprList(_) | AnyNodeRef::ExprSet(_) => {}
-            // For a dict, both keys and values have the `ExprDict` as their
-            // direct parent, so `is_dict_key` checks that this string is one of
-            // the keys before we treat it as a slot name.
             AnyNodeRef::ExprDict(dict) => {
                 if !self.is_dict_key(dict) {
                     return None;
@@ -939,13 +845,11 @@ impl<'a> LocalReferencesFinder<'a> {
             _ => return None,
         }
 
-        // The container must be the value of an assignment to `__slots__`.
         let assignment = ancestors.next()?;
         if !is_slots_assignment(*assignment, container) {
             return None;
         }
 
-        // That assignment must live directly in a class body.
         match ancestors.next()? {
             AnyNodeRef::StmtClassDef(class) => Some(class),
             _ => None,
@@ -979,9 +883,6 @@ impl<'a> LocalReferencesFinder<'a> {
         let module = ruff_db::parsed::parsed_module(db, self.model.python_file()).load(db);
         let index = ty_python_core::semantic_index(db, self.model.program_file());
 
-        // The nearest class scope lexically enclosing `scope`, if any. `ancestor_scopes` skips
-        // class scopes for name resolution, so we walk the lexical parents directly to stop at the
-        // innermost enclosing class rather than an outer one.
         let nearest_enclosing_class_scope = |mut scope: FileScopeId| loop {
             let node = index.scope(scope);
             if node.kind() == ScopeKind::Class {
@@ -998,8 +899,6 @@ impl<'a> LocalReferencesFinder<'a> {
                 return false;
             }
 
-            // The target's nearest enclosing class must be the one declaring the `__slots__`, so an
-            // attribute of a nested class doesn't rename an outer class's slot.
             let definition_scope = definition.file_scope(db);
             let Some(owning_class_scope) = nearest_enclosing_class_scope(definition_scope) else {
                 return false;
@@ -1009,9 +908,6 @@ impl<'a> LocalReferencesFinder<'a> {
                 _ => return false,
             }
 
-            // Accept only a member access (`self.value = ...`) or a class-body attribute declaration
-            // (`value: int` or `value: int = ...` in a stub), so a parameter or local sharing the
-            // name is not treated as the slot.
             let place = definition.place(db);
             let is_class_attribute_declaration = definition_scope == owning_class_scope
                 && place.is_symbol()

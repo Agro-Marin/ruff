@@ -100,8 +100,6 @@ impl IgnoreNames {
         ignore_names: Option<Vec<String>>,
         extend_ignore_names: Option<Vec<String>>,
     ) -> Result<Self, SettingsError> {
-        // If the user is not customizing the set of ignored names, use the default matcher,
-        // which is hard-coded to avoid expensive regex matching.
         if ignore_names.is_none() && extend_ignore_names.as_ref().is_none_or(Vec::is_empty) {
             return Ok(IgnoreNames::Default);
         }
@@ -109,8 +107,6 @@ impl IgnoreNames {
         let mut builder = GlobSetBuilder::new();
         let mut literals = Vec::new();
 
-        // Add the ignored names from the `ignore-names` option. If omitted entirely, use the
-        // defaults
         if let Some(names) = ignore_names {
             for name in names {
                 builder.add(Glob::new(&name).map_err(SettingsError::InvalidIgnoreName)?);
@@ -123,7 +119,6 @@ impl IgnoreNames {
             }
         }
 
-        // Add the ignored names from the `extend-ignore-names` option.
         if let Some(names) = extend_ignore_names {
             for name in names {
                 builder.add(Glob::new(&name).map_err(SettingsError::InvalidIgnoreName)?);

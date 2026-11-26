@@ -12,13 +12,6 @@ pub struct FormatTypeParams;
 /// Formats a sequence of [`TypeParam`](ruff_python_ast::TypeParam) nodes.
 impl FormatNodeRule<TypeParams> for FormatTypeParams {
     fn fmt_fields(&self, item: &TypeParams, f: &mut PyFormatter) -> FormatResult<()> {
-        // A dangling comment indicates a comment on the same line as the opening bracket, e.g.:
-        // ```python
-        // type foo[  # This type parameter clause has a dangling comment.
-        //     a,
-        //     b,
-        //     c,
-        // ] = ...
         let comments = f.context().comments().clone();
         let dangling_comments = comments.dangling(item);
 

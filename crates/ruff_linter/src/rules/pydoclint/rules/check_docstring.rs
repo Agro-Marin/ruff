@@ -627,7 +627,6 @@ fn parse_parameters(
 /// ```
 fn parse_parameters_google(content: &str, content_start: TextSize) -> Vec<ParameterEntry<'_>> {
     let mut entries: Vec<ParameterEntry> = Vec::new();
-    // Find first entry to determine indentation
     let Some(first_arg) = content.lines().next() else {
         return entries;
     };
@@ -700,14 +699,11 @@ fn parse_parameters_numpy(content: &str, content_start: TextSize) -> Vec<Paramet
                 if let Some(before_colon) = entry.split(':').next() {
                     let param_line = before_colon.trim_end();
 
-                    // Split on commas to handle comma-separated parameters
                     let mut current_offset = TextSize::from(0);
                     for param_part in param_line.split(',') {
                         let param_part_trimmed = param_part.trim();
                         let param_name = param_part_trimmed.trim_start_matches('*');
                         if is_identifier(param_name) {
-                            // Calculate the position of this specific parameter part within the line
-                            // Account for leading whitespace that gets trimmed
                             let param_start_in_line = current_offset
                                 + (param_part.text_len() - param_part_trimmed.text_len());
                             let param_start =
@@ -721,7 +717,6 @@ fn parse_parameters_numpy(content: &str, content_start: TextSize) -> Vec<Paramet
                                 ),
                             });
                         }
-                        // Update offset for next iteration: add the part length plus comma length
                         current_offset = current_offset + param_part.text_len() + ','.text_len();
                     }
                 }
@@ -777,8 +772,6 @@ fn parse_raises_google(content: &str) -> Vec<QualifiedName<'_>> {
                 }
             }
         } else {
-            // If we can't strip the expected indentation, check if this is a dedented line
-            // (not blank) - if so, break early as we've reached the end of this section
             if !potential.trim().is_empty() {
                 break;
             }
@@ -806,9 +799,6 @@ fn parse_raises_numpy(content: &str) -> Vec<QualifiedName<'_>> {
     let indentation = &dashes[..dashes.len() - dashes.trim_start().len()];
     for potential in lines {
         if let Some(entry) = potential.strip_prefix(indentation) {
-            // Check for Sphinx directives (lines starting with ..) - these indicate the end of the
-            // section. In numpy-style, exceptions are dedented to the same level as sphinx
-            // directives.
             if entry.starts_with("..") {
                 break;
             }
@@ -921,9 +911,6 @@ impl<'a> BodyVisitor<'a> {
             ..
         } = self;
 
-        // Deduplicate exceptions collected:
-        // no need to complain twice about `raise TypeError` not being documented
-        // just because there are two separate `raise TypeError` statements in the function
         raised_exceptions.sort_unstable_by(|left, right| {
             left.qualified_name
                 .segments()
@@ -962,10 +949,8 @@ impl<'a> Visitor<'a> for BodyVisitor<'a> {
         let ast::ExceptHandler::ExceptHandler(handler_inner) = handler;
         self.currently_suspended_exceptions = handler_inner.type_.as_deref();
 
-        // Track exception variable bindings
         if let Some(name) = handler_inner.name.as_ref() {
             if let Some(exceptions) = self.currently_suspended_exceptions {
-                // Store the exception expression(s) for later resolution
                 self.exception_variables
                     .insert(name.id.as_str(), exceptions);
             }
@@ -973,7 +958,6 @@ impl<'a> Visitor<'a> for BodyVisitor<'a> {
 
         visitor::walk_except_handler(self, handler);
         self.currently_suspended_exceptions = None;
-        // Clear exception variables when leaving the except handler
         self.exception_variables.clear();
     }
 
@@ -981,7 +965,6 @@ impl<'a> Visitor<'a> for BodyVisitor<'a> {
         match stmt {
             Stmt::Raise(ast::StmtRaise { exc, .. }) => {
                 if let Some(exc) = exc.as_ref() {
-                    // First try to resolve the exception directly
                     if let Some(qualified_name) =
                         self.semantic.resolve_qualified_name(map_callable(exc))
                     {
@@ -990,8 +973,6 @@ impl<'a> Visitor<'a> for BodyVisitor<'a> {
                             range: exc.range(),
                         });
                     } else if let ast::Expr::Name(name) = exc.as_ref() {
-                        // If it's a variable name, check if it's bound to an exception in the
-                        // current except clause
                         if let Some(exception_expr) = self.exception_variables.get(name.id.as_str())
                         {
                             if let ast::Expr::Tuple(tuple) = exception_expr {
@@ -1180,8 +1161,6 @@ fn generator_annotation_arguments<'a>(
                 if let Expr::Tuple(tuple) = &**slice {
                     Some(GeneratorOrIteratorArguments::Several(tuple.elts.as_slice()))
                 } else {
-                    // `Generator[int]` implies `Generator[int, None, None]`
-                    // as it uses a PEP-696 TypeVar with default values
                     Some(GeneratorOrIteratorArguments::Single(slice))
                 }
             }
@@ -1235,7 +1214,6 @@ pub(crate) fn check_docstring(
     section_contexts: &SectionContexts,
     convention: Option<Convention>,
 ) {
-    // Only check function docstrings.
     let Some(function_def) = definition.as_function_def() else {
         return;
     };
@@ -1250,7 +1228,6 @@ pub(crate) fn check_docstring(
         return;
     }
 
-    // Prioritize the specified convention over the determined style.
     let docstring_sections = match convention {
         Some(Convention::Google) => {
             DocstringSections::from_sections(section_contexts, Some(SectionStyle::Google))
@@ -1269,7 +1246,6 @@ pub(crate) fn check_docstring(
 
     let signature_parameters = parameters_from_signature(docstring);
 
-    // DOC201
     if checker.is_rule_enabled(Rule::DocstringMissingReturns) {
         if should_document_returns(function_def)
             && !returns_documented(docstring, &docstring_sections, convention)
@@ -1278,9 +1254,6 @@ pub(crate) fn check_docstring(
             if !definition.is_property(extra_property_decorators, semantic) {
                 if !body_entries.returns.is_empty() {
                     match function_def.returns.as_deref() {
-                        // Ignore it if it's annotated as returning `None`
-                        // or it's a generator function annotated as returning `None`,
-                        // i.e. any of `-> None`, `-> Iterator[...]` or `-> Generator[..., ..., None]`
                         Some(returns)
                             if !returns.is_none_literal_expr()
                                 && !is_generator_function_annotated_as_returning_none(
@@ -1305,7 +1278,6 @@ pub(crate) fn check_docstring(
         }
     }
 
-    // DOC402
     if checker.is_rule_enabled(Rule::DocstringMissingYields) {
         if !yields_documented(docstring, &docstring_sections, convention) {
             if !body_entries.yields.is_empty() {
@@ -1326,7 +1298,6 @@ pub(crate) fn check_docstring(
         }
     }
 
-    // DOC501
     if checker.is_rule_enabled(Rule::DocstringMissingException) {
         for body_raise in &body_entries.raised_exceptions {
             let Some(name) = body_raise.qualified_name.segments().last() else {
@@ -1355,9 +1326,7 @@ pub(crate) fn check_docstring(
         }
     }
 
-    // DOC102
     if checker.is_rule_enabled(Rule::DocstringExtraneousParameter) {
-        // Don't report extraneous parameters if the signature defines *args or **kwargs
         if function_def.parameters.vararg.is_none() && function_def.parameters.kwarg.is_none() {
             if let Some(docstring_params) = docstring_sections.parameters {
                 for docstring_param in &docstring_params.parameters {
@@ -1374,10 +1343,7 @@ pub(crate) fn check_docstring(
         }
     }
 
-    // Avoid applying "extraneous" rules to abstract methods. An abstract method's docstring _could_
-    // document that it raises an exception without including the exception in the implementation.
     if !visibility::is_abstract(&function_def.decorator_list, semantic) {
-        // DOC202
         if checker.is_rule_enabled(Rule::DocstringExtraneousReturns) {
             if docstring_sections.returns.is_some() {
                 if body_entries.returns.is_empty()
@@ -1388,7 +1354,6 @@ pub(crate) fn check_docstring(
             }
         }
 
-        // DOC403
         if checker.is_rule_enabled(Rule::DocstringExtraneousYields) {
             if docstring_sections.yields.is_some() {
                 if body_entries.yields.is_empty() {
@@ -1397,7 +1362,6 @@ pub(crate) fn check_docstring(
             }
         }
 
-        // DOC502
         if checker.is_rule_enabled(Rule::DocstringExtraneousException) {
             if let Some(docstring_raises) = docstring_sections.raises {
                 let mut extraneous_exceptions = Vec::new();

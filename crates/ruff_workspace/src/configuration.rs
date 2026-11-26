@@ -186,7 +186,6 @@ pub struct Configuration {
     pub extension: Option<ExtensionMapping>,
     pub show_fixes: Option<bool>,
 
-    // File resolver options
     pub exclude: Option<Vec<FilePattern>>,
     pub extend_exclude: Vec<FilePattern>,
     pub extend_include: Vec<FilePattern>,
@@ -194,7 +193,6 @@ pub struct Configuration {
     pub include: Option<Vec<FilePattern>>,
     pub respect_gitignore: Option<bool>,
 
-    // Generic python options settings
     pub builtins: Option<Vec<String>>,
     pub namespace_packages: Option<Vec<PathBuf>>,
     pub src: Option<Vec<PathBuf>>,
@@ -299,7 +297,6 @@ impl Configuration {
 
         let rules = lint.as_rule_table(lint_preview)?;
 
-        // LinterSettings validation
         let isort = lint
             .isort
             .map(IsortOptions::try_into_settings)
@@ -401,7 +398,6 @@ impl Configuration {
                     .unwrap_or_else(|| TASK_TAGS.iter().map(ToString::to_string).collect()),
                 logger_objects: lint.logger_objects.unwrap_or_default(),
                 typing_modules: lint.typing_modules.unwrap_or_default(),
-                // Plugins
                 flake8_annotations: lint
                     .flake8_annotations
                     .map_or_default(Flake8AnnotationsOptions::into_settings),
@@ -670,8 +666,6 @@ impl Configuration {
             ConfigurationOrigin::Ancestor if self.target_version.is_none() => {
                 initial_config_path.parent()
             }
-            // The `requires-python` constraint from the `pyproject.toml` takes precedence
-            // over the `target-version` from the user configuration.
             ConfigurationOrigin::UserSettings { fallback_directory } => Some(fallback_directory),
             _ => None,
         };
@@ -688,13 +682,11 @@ pub struct LintConfiguration {
     pub exclude: Option<Vec<FilePattern>>,
     pub preview: Option<PreviewMode>,
 
-    // Rule selection
     pub extend_per_file_ignores: Vec<PerFileIgnore>,
     pub per_file_ignores: Option<Vec<PerFileIgnore>>,
     pub rule_selections: Vec<RuleSelection>,
     pub explicit_preview_rules: Option<bool>,
 
-    // Fix configuration
     pub extend_unsafe_fixes: Vec<UnresolvedRuleSelector>,
     pub extend_safe_fixes: Vec<UnresolvedRuleSelector>,
 
@@ -709,7 +701,6 @@ pub struct LintConfiguration {
     pub typing_extensions: Option<bool>,
     pub future_annotations: Option<bool>,
 
-    // Plugins
     pub flake8_annotations: Option<Flake8AnnotationsOptions>,
     pub flake8_bandit: Option<Flake8BanditOptions>,
     pub flake8_boolean_trap: Option<Flake8BooleanTrapOptions>,
@@ -828,7 +819,6 @@ impl LintConfiguration {
             typing_extensions: options.typing_extensions,
             future_annotations: options.future_annotations,
 
-            // Plugins
             flake8_annotations: options.common.flake8_annotations,
             flake8_bandit: options.common.flake8_bandit,
             flake8_boolean_trap: options.common.flake8_boolean_trap,
@@ -873,13 +863,11 @@ impl LintConfiguration {
             DEFAULT_SELECTORS
         };
 
-        // The select_set keeps track of which rules have been selected.
         let mut select_set: RuleSet = selectors
             .iter()
             .flat_map(|selector| selector.rules(&preview))
             .collect();
 
-        // The fixable set keeps track of which rules are fixable.
         let mut fixable_set: RuleSet = RuleSelector::All.all_rules().collect();
 
         let rule_selections = self
@@ -888,33 +876,17 @@ impl LintConfiguration {
             .map(|selection| selection.resolve(preview.mode))
             .collect::<std::result::Result<Vec<_>, RuleResolutionError>>()?;
 
-        // Ignores normally only subtract from the current set of selected
-        // rules.  By that logic the ignore in `select = [], ignore = ["E501"]`
-        // would be effectless. Instead we carry over the ignores to the next
-        // selection in that case, creating a way for ignores to be reused
-        // across config files (which otherwise wouldn't be possible since ruff
-        // only has `extended` but no `extended-by`).
         let mut carryover_ignores: Option<&[RuleSelector]> = None;
         let mut carryover_unfixables: Option<&[RuleSelector]> = None;
 
-        // Store selectors for displaying warnings
         let mut deprecated_selectors = FxHashSet::default();
         let mut removed_selectors = FxHashSet::default();
         let mut removed_ignored_rules = FxHashSet::default();
         let mut ignored_preview_selectors = FxHashSet::default();
 
-        // Track which docstring rules are specifically enabled
-        // which lets us override the docstring convention ignore-list
         let mut docstring_overrides: FxHashSet<Rule> = FxHashSet::default();
 
         for selection in &rule_selections {
-            // If a selection only specifies extend-select we cannot directly
-            // apply its rule selectors to the select_set because we firstly have
-            // to resolve the effectively selected rules within the current rule selection
-            // (taking specificity into account since more specific selectors take
-            // precedence over less specific selectors within a rule selection).
-            // We do this via the following HashMap where the bool indicates
-            // whether to enable or disable the given rule.
             let mut select_map_updates: FxHashMap<Rule, bool> = FxHashMap::default();
             let mut fixable_map_updates: FxHashMap<Rule, bool> = FxHashMap::default();
 
@@ -924,7 +896,6 @@ impl LintConfiguration {
             let carriedover_unfixables = carryover_unfixables.take();
 
             for spec in Specificity::iter() {
-                // Iterate over rule selectors in order of specificity.
                 for selector in selection
                     .select
                     .iter()
@@ -951,7 +922,6 @@ impl LintConfiguration {
                     }
                 }
 
-                // Apply the same logic to `fixable` and `unfixable`.
                 for selector in selection
                     .fixable
                     .iter()
@@ -976,8 +946,6 @@ impl LintConfiguration {
             }
 
             if let Some(select) = &selection.select {
-                // If the `select` option is given we reassign the whole select_set
-                // (overriding everything that has been defined previously).
                 select_set = select_map_updates
                     .into_iter()
                     .filter_map(|(rule, enabled)| enabled.then_some(rule))
@@ -992,7 +960,6 @@ impl LintConfiguration {
 
                 docstring_overrides = docstring_override_updates;
             } else {
-                // Otherwise we apply the updates on top of the existing select_set.
                 #[expect(
                     clippy::iter_over_hash_type,
                     reason = "each rule has one independent final enabled state"
@@ -1010,7 +977,6 @@ impl LintConfiguration {
                 }
             }
 
-            // Apply the same logic to `fixable` and `unfixable`.
             if let Some(fixable) = &selection.fixable {
                 fixable_set = fixable_map_updates
                     .into_iter()
@@ -1033,14 +999,9 @@ impl LintConfiguration {
                 }
             }
 
-            // Check for selections that require a warning
             for (kind, selector) in selection.selectors_by_kind() {
-                // Some of these checks are only for `Kind::Enable` which means only `--select` will warn
-                // and use with, e.g., `--ignore` or `--fixable` is okay
 
-                // Unstable rules
                 if preview.mode.is_disabled() && kind.is_enable() {
-                    // Check if the selector is empty because preview mode is disabled
                     if selector.rules(&preview).next().is_none()
                         && selector
                             .rules(&PreviewOptions {
@@ -1054,14 +1015,12 @@ impl LintConfiguration {
                     }
                 }
 
-                // Deprecated rules
                 if kind.is_enable() && selector.is_exact() {
                     if selector.all_rules().all(|rule| rule.is_deprecated()) {
                         deprecated_selectors.insert(selector);
                     }
                 }
 
-                // Removed rules
                 if selector.is_exact() {
                     if selector.all_rules().all(|rule| rule.is_removed()) {
                         if kind.is_disable() {
@@ -1160,8 +1119,6 @@ impl LintConfiguration {
             rules.enable(rule, fix);
         }
 
-        // If a docstring convention is specified, disable any incompatible error
-        // codes unless we are specifically overridden.
         if let Some(convention) = self
             .pydocstyle
             .as_ref()
@@ -1174,8 +1131,6 @@ impl LintConfiguration {
             }
         }
 
-        // Validate that we didn't enable any incompatible rules. Use this awkward
-        // approach to give each pair it's own `warn_user_once`.
         for (preferred, expendable, message) in INCOMPATIBLE_CODES {
             if rules.enabled(*preferred) && rules.enabled(*expendable) {
                 warn_user_once_by_id!(expendable.name().as_str(), "{}", message);
@@ -1221,7 +1176,6 @@ impl LintConfiguration {
             task_tags: self.task_tags.or(config.task_tags),
             typing_modules: self.typing_modules.or(config.typing_modules),
 
-            // Plugins
             flake8_annotations: self.flake8_annotations.combine(config.flake8_annotations),
             flake8_bandit: self.flake8_bandit.combine(config.flake8_bandit),
             flake8_boolean_trap: self.flake8_boolean_trap.combine(config.flake8_boolean_trap),
@@ -1283,8 +1237,6 @@ pub struct FormatConfiguration {
 impl FormatConfiguration {
     pub fn from_options(options: FormatOptions, project_root: &Path) -> Result<Self> {
         Ok(Self {
-            // `--extension` is a hidden command-line argument that isn't supported in configuration
-            // files at present.
             extension: None,
             exclude: options.exclude.map(|paths| {
                 paths
@@ -1695,13 +1647,6 @@ fn conflicting_import_settings(
     use std::fmt::Write;
     let mut err_body = String::new();
     for required_import in &isort.required_imports {
-        // Ex: `from foo import bar as baz` OR `import foo.bar as baz`
-        // - qualified name: `foo.bar`
-        // - bound name: `baz`
-        // - conflicts with: `{"foo.bar":"buzz"}`
-        // - does not conflict with either of
-        //   - `{"bar":"buzz"}`
-        //   - `{"foo.bar":"baz"}`
         let qualified_name = required_import.qualified_name().to_string();
         let bound_name = required_import.bound_name();
         let Some(alias) = flake8_import_conventions.aliases.get(&qualified_name) else {
@@ -2128,7 +2073,6 @@ mod tests {
 
     #[test]
     fn select_rule_preview() -> Result<()> {
-        // Test inclusion when toggling preview on and off
         let actual = resolve_rules(
             [RuleSelection {
                 select: Some(vec![UnresolvedRuleSelector::cli("FURB145")]),
@@ -2155,7 +2099,6 @@ mod tests {
         let expected = RuleSet::from_rule(Rule::SliceCopy);
         assert_eq!(actual, expected);
 
-        // Test inclusion when preview is on but explicit codes are required
         let actual = resolve_rules(
             [RuleSelection {
                 select: Some(vec![UnresolvedRuleSelector::cli("FURB145")]),
@@ -2212,7 +2155,6 @@ mod tests {
         let d41 = UnresolvedRuleSelector::cli("D41");
         let d417 = UnresolvedRuleSelector::cli("D417");
 
-        // D417 does not appear when D41 is provided...
         assert_override(
             vec![RuleSelection {
                 select: Some(vec![d41.clone()]),
@@ -2221,7 +2163,6 @@ mod tests {
             false,
         )?;
 
-        // ...but does appear when specified directly.
         assert_override(
             vec![RuleSelection {
                 select: Some(vec![d41.clone(), d417.clone()]),
@@ -2230,7 +2171,6 @@ mod tests {
             true,
         )?;
 
-        // ...but disappears if there's a subsequent `--select`.
         assert_override(
             vec![
                 RuleSelection {
@@ -2245,7 +2185,6 @@ mod tests {
             false,
         )?;
 
-        // ...although an `--extend-select` is fine.
         assert_override(
             vec![
                 RuleSelection {

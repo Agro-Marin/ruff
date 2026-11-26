@@ -636,7 +636,6 @@ impl<'a> AnyNodeRef<'a> {
                     }
                 }
 
-                // Not a node that contains an indented child node.
                 _ => return None,
             };
 

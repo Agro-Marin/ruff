@@ -72,10 +72,7 @@ pub(crate) fn airflow_3_incompatible_function_signature(checker: &Checker, expr:
         return;
     };
 
-    // Handle method calls on instances
     if let Expr::Attribute(ExprAttribute { attr, value, .. }) = func.as_ref() {
-        // Resolve the qualified name: try variable assignments first, then fall back to direct
-        // constructor calls.
         let qualified_name = typing::resolve_assignment(value, checker.semantic()).or_else(|| {
             value
                 .as_call_expr()
@@ -88,7 +85,6 @@ pub(crate) fn airflow_3_incompatible_function_signature(checker: &Checker, expr:
         return;
     }
 
-    // Handle direct constructor calls
     let Some(qualified_name) = checker.semantic().resolve_qualified_name(func) else {
         return;
     };
@@ -105,7 +101,6 @@ pub(crate) fn airflow_3_incompatible_method_signature_def(
         return;
     }
 
-    // Check for deprecated get_link signature in BaseOperatorLink subclasses
     if is_method_in_subclass(
         function_def,
         checker.semantic(),
@@ -121,12 +116,10 @@ pub(crate) fn airflow_3_incompatible_method_signature_def(
         let positional_count = parameters.posonlyargs.len() + parameters.args.len();
 
         let is_valid_signature = match positional_count {
-            // check valid signature `def get_link(self, operator, *, ti_key)`
             2 => parameters
                 .kwonlyargs
                 .iter()
                 .any(|p| p.name().as_str() == "ti_key"),
-            // check valid signature `def get_link(self, operator, ti_key)`
             3 => parameters
                 .posonlyargs
                 .iter()

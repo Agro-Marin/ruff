@@ -1,7 +1,6 @@
 #!/bin/bash
 set -eu
 
-# https://stackoverflow.com/a/246128/3549270
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 cd "$SCRIPT_DIR"
@@ -25,7 +24,6 @@ if [ ! -d corpus/common ]; then
       curl -L 'https://zenodo.org/record/3628784/files/python-corpus.tar.gz?download=1' | tar xz
     fi
 
-    # Build a smaller corpus in addition to the (optional) larger corpus
     echo "Building a smaller corpus dataset..."
     curl -L 'https://github.com/python/cpython/archive/refs/tags/v3.13.0.tar.gz' | tar xz
     cp -r "../../../crates/ty_python_semantic/resources/corpus" "ty_python_semantic"
@@ -33,7 +31,6 @@ if [ ! -d corpus/common ]; then
     cp -r "../../../crates/ruff_python_formatter/resources/test/fixtures" "ruff_python_formatter"
     cp -r "../../../crates/ruff_python_parser/resources" "ruff_python_parser"
 
-    # Delete all non-Python files
     find . -type f -not -name "*.py" -delete
   )
 

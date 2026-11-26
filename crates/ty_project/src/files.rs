@@ -23,9 +23,6 @@ use crate::db::Db;
 /// ensure that Salsa always knows when the set of indexed files have changed.
 #[derive(Debug, get_size2::GetSize)]
 pub struct IndexedFiles {
-    // This mutex is intentionally non-poisoning: Salsa cancellation can unwind while the lazy
-    // index is being built. Indexing only transitions to `Indexed` after a complete walk, so the
-    // `Lazy` state remains valid and can be retried.
     state: Mutex<State>,
 }
 
@@ -77,22 +74,8 @@ impl IndexedFiles {
     ///
     /// The changes are automatically written back to the database once the view is dropped.
     pub(super) fn indexed_mut(db: &mut dyn Db, project: Project) -> Option<IndexedMut<'_>> {
-        // Calling `trigger_cancellation` cancels all pending salsa queries. This ensures that there are no pending
-        // reads to the file set (this `db` is the only alive db).
         db.trigger_cancellation();
 
-        // Replace the state with lazy. The `IndexedMut` guard restores the state
-        // to `State::Indexed`  or sets a new `PackageFiles` when it gets dropped to ensure the state
-        // is restored to how it has been before replacing the value.
-        //
-        // It isn't necessary to hold on to the lock after this point:
-        // * The above call to `trigger_cancellation` guarantees that there's exactly **one** DB reference.
-        // * `Indexed` has a `'db` lifetime, and this method requires a `&mut db`.
-        //   This means that there can't be any pending reference to `Indexed` because Rust
-        //   doesn't allow borrowing `db` as mutable (to call this method) and immutable (`Indexed<'db>`) at the same time.
-        //   There can't be any other `Indexed<'db>` references created by clones of this DB because
-        //   all clones must have been dropped at this point and the `Indexed`
-        //   can't outlive the database (constrained by the `db` lifetime).
         let state = {
             let files = project.file_set(db);
             let mut locked = files.state.lock();
@@ -100,8 +83,6 @@ impl IndexedFiles {
         };
 
         let indexed = match state {
-            // If it's already lazy, just return. We also don't need to restore anything because the
-            // replace above was a no-op.
             State::Lazy => return None,
             State::Indexed(indexed) => indexed,
         };
@@ -184,7 +165,6 @@ pub(crate) struct IndexedFile {
 #[derive(Debug)]
 pub struct Indexed<'db> {
     inner: Arc<IndexedInner>,
-    // Preserve the lifetime of `PackageFiles`.
     _lifetime: PhantomData<&'db ()>,
 }
 
@@ -283,12 +263,10 @@ impl IndexedMut<'_> {
         let indexed = Arc::clone(&self.indexed);
 
         if self.did_change {
-            // If there are changes, set the new file_set to trigger a salsa revision change.
             self.project
                 .set_file_set(db)
                 .to(IndexedFiles::indexed(indexed));
         } else {
-            // The `indexed_mut` replaced the `state` with Lazy. Restore it back to the indexed state.
             *self.project.file_set(db).state.lock() = State::Indexed(indexed);
         }
     }
@@ -326,9 +304,6 @@ mod tests {
         let files = project.files(&db);
         assert!(files.contains(file));
 
-        // Calling files a second time should not dead-lock.
-        // This can e.g. happen when `check_file` iterates over all files and
-        // `should_check_file` queries the open files.
         let files_2 = project.files(&db);
         assert_eq!(
             files_2.iter().collect::<Vec<_>>(),
@@ -349,7 +324,6 @@ mod tests {
         let indexing_db = db.clone();
         let indexing = std::thread::spawn(move || project.files(&indexing_db).len());
 
-        // Wait until the lazy index has started walking files before requesting cancellation.
         let deadline = Instant::now() + Duration::from_secs(5);
         while !db
             .take_salsa_events()
@@ -363,8 +337,6 @@ mod tests {
         db.synthetic_write(Durability::LOW);
         let cancelled = match indexing.join() {
             Ok(indexed_files) => {
-                // Indexing can finish between the cancellation check and the write. That's valid;
-                // there is no interrupted index to recover in that case.
                 assert_eq!(indexed_files, 10_000);
                 return Ok(());
             }
@@ -376,7 +348,6 @@ mod tests {
             "file indexing did not propagate the salsa cancellation"
         );
 
-        // The next access must retry the incomplete lazy index.
         assert_eq!(project.files(&db).len(), 10_000);
 
         Ok(())

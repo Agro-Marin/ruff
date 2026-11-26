@@ -1,6 +1,3 @@
-/**
- * Editor for the settings JSON.
- */
 
 import { useCallback } from "react";
 import { Theme } from "shared";
@@ -77,11 +74,9 @@ export default function SettingsEditor({
         return;
       }
 
-      // Allow pasting a TOML settings configuration if it replaces the entire settings.
       if (model.getFullModelRange().equalsRange(event.range)) {
         const pasted = model.getValueInRange(event.range);
 
-        // Text starting with a `{` must be JSON. Don't even try to parse as TOML.
         if (!pasted.trimStart().startsWith("{")) {
           import("smol-toml").then((toml) => {
             try {
@@ -90,7 +85,6 @@ export default function SettingsEditor({
 
               model.setValue(JSON.stringify(cleansed, null, 4));
             } catch (e) {
-              // Turned out to not be TOML after all.
               // oxlint-disable-next-line no-console
               console.warn("Failed to parse settings as TOML", e);
             }
@@ -126,7 +120,6 @@ export default function SettingsEditor({
 function stripToolRuff(settings: object) {
   const { tool, ...nonToolSettings } = settings as any;
 
-  // Flatten out `tool.ruff.x` to just `x`
   if (typeof tool === "object" && !Array.isArray(tool)) {
     if (tool.ruff != null) {
       return { ...nonToolSettings, ...tool.ruff };

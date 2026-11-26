@@ -142,8 +142,6 @@ impl SemanticSyntaxChecker {
                 }
 
                 if handled_lazy_error {
-                    // Skip the regular `from`-import validations after reporting the lazy-specific
-                    // syntax error with the highest precedence.
                 } else if import_from.is_future_import(ctx.python_version()) {
                     for name in names {
                         if !is_known_future_feature(&name.name) {
@@ -477,7 +475,6 @@ impl SemanticSyntaxChecker {
                 if let Some(type_params) = type_params {
                     visitor.visit_type_params(type_params);
                 }
-                // the __future__ annotation error takes precedence over the generic error
                 if ctx.future_annotations_or_stub() || ctx.python_version() > PythonVersion::PY313 {
                     visitor.position = InvalidExpressionPosition::TypeAnnotation;
                 } else if type_params.is_some() {
@@ -882,18 +879,14 @@ impl SemanticSyntaxChecker {
     /// this case will break any internal state that depends on function scopes, such as `async`
     /// context detection.
     pub fn visit_stmt<Ctx: SemanticSyntaxContext>(&mut self, stmt: &ast::Stmt, ctx: &Ctx) {
-        // check for errors
         self.check_stmt(stmt, ctx);
 
-        // update internal state
         self.augmented_assignment_target = None;
 
         match stmt {
             Stmt::Expr(StmtExpr { value, .. })
                 if !self.seen_module_docstring_boundary && value.is_string_literal_expr() => {}
             Stmt::ImportFrom(import_from) => {
-                // Allow eager `__future__` imports until we see any other import. Lazy imports,
-                // including `lazy from __future__ import ...`, always close the boundary.
                 if import_from.is_lazy || !import_from.is_future_import(ctx.python_version()) {
                     self.seen_futures_boundary = true;
                 }
@@ -972,8 +965,6 @@ impl SemanticSyntaxChecker {
             }) => {
                 Self::check_generator_expr(elt, generators, ctx);
                 Self::check_generator_clauses(generators, ctx);
-                // Note that `await_outside_async_function` is not called here because generators
-                // are evaluated lazily. See the note in the function for more details.
             }
             Expr::Name(ast::ExprName {
                 range,
@@ -1019,7 +1010,6 @@ impl SemanticSyntaxChecker {
                     }
                 }
 
-                // PLE0118
                 if let Some(stmt) = ctx.global(id) {
                     let start = stmt.start();
                     if expr.start() < start {
@@ -1132,28 +1122,9 @@ impl SemanticSyntaxChecker {
         if ctx.in_async_context() {
             return;
         }
-        // `await` is allowed at the top level of a Jupyter notebook.
-        // See: https://ipython.readthedocs.io/en/stable/interactive/autoawait.html.
         if ctx.in_module_scope() && ctx.in_notebook() {
             return;
         }
-        // Generators are evaluated lazily, so you can use `await` in them. For example:
-        //
-        // ```python
-        // # This is valid
-        // def f():
-        //     (await x for x in y)
-        //     (x async for x in y)
-        //
-        // # This is invalid
-        // def f():
-        //     (x for x in await y)
-        //     [await x for x in y]
-        // ```
-        //
-        // This check is required in addition to avoiding calling this function in `visit_expr`
-        // because the generator scope applies to nested parts of the `Expr::Generator` that are
-        // visited separately.
         if ctx.in_generator_context() {
             return;
         }
@@ -1170,17 +1141,12 @@ impl SemanticSyntaxChecker {
         expr: &Expr,
         kind: YieldOutsideFunctionKind,
     ) {
-        // We are intentionally not inspecting the async status of the scope for now to mimic F704.
-        // await-outside-async is PLE1142 instead, so we'll end up emitting both syntax errors for
-        // cases that trigger F704
 
         if ctx.in_function_scope() {
             return;
         }
 
         if kind.is_await() {
-            // `await` is allowed at the top level of a Jupyter notebook.
-            // See: https://ipython.readthedocs.io/en/stable/interactive/autoawait.html.
             if ctx.in_module_scope() && ctx.in_notebook() {
                 return;
             }
@@ -1261,8 +1227,6 @@ impl SemanticSyntaxChecker {
         };
         visitor.visit_expr(expr);
 
-        // TODO(brent): With multiple diagnostic ranges, mark both the named expression target
-        // (currently reported) and the comprehension target it rebinds.
         for range in visitor.ranges {
             // test_err rebound_comprehension_variable
             // [(a := 0) for a in range(0)]
@@ -1309,7 +1273,6 @@ impl SemanticSyntaxChecker {
         if python_version >= PythonVersion::PY311 {
             return;
         }
-        // async allowed at notebook top-level
         if ctx.in_notebook() && ctx.in_module_scope() {
             return;
         }
@@ -1419,7 +1382,6 @@ impl Display for SemanticSyntaxError {
                 f.write_str("multiple starred names in sequence pattern")
             }
             SemanticSyntaxErrorKind::IrrefutableCasePattern(kind) => match kind {
-                // These error messages are taken from CPython's syntax errors
                 IrrefutablePatternKind::Name(name) => {
                     write!(
                         f,
@@ -2184,14 +2146,12 @@ impl Visitor<'_> for ClassBodyNamedExpressionVisitor {
     fn visit_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Lambda(ast::ExprLambda { parameters, .. }) => {
-                // Defaults execute in the enclosing comprehension; lambda bodies do not.
                 if let Some(parameters) = parameters {
                     self.visit_parameters(parameters);
                 }
                 return;
             }
             Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) | Expr::Generator(_) => {
-                // Nested comprehensions are checked when normal traversal reaches them.
                 return;
             }
             Expr::Named(ast::ExprNamed { target, range, .. }) if target.is_name_expr() => {
@@ -2252,7 +2212,6 @@ struct ReturnVisitor {
 impl Visitor<'_> for ReturnVisitor {
     fn visit_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            // Do not recurse into nested functions; they're evaluated separately.
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
             Stmt::Return(ast::StmtReturn {
                 value: Some(_),
@@ -2342,8 +2301,6 @@ impl<'a, Ctx: SemanticSyntaxContext> MatchPatternVisitor<'a, Ctx> {
                 let mut seen = FxHashSet::default();
                 for key in keys
                     .iter()
-                    // Signed and complex numbers are allowed as keys but are represented as unary
-                    // or binary expressions rather than literals.
                     .filter(|key| {
                         key.is_literal_expr() || key.is_unary_op_expr() || key.is_bin_op_expr()
                     })
@@ -2428,9 +2385,6 @@ impl<'a, Ctx: SemanticSyntaxContext> MatchPatternVisitor<'a, Ctx> {
             Pattern::MatchOr(ast::PatternMatchOr {
                 patterns, range, ..
             }) => {
-                // each of these patterns should be visited separately because patterns can only be
-                // duplicated within a single arm of the or pattern. For example, the case below is
-                // a valid pattern.
 
                 // test_ok multiple_assignment_in_case_pattern
                 // match 2:

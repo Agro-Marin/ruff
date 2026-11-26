@@ -28,7 +28,6 @@ pub(super) fn validate_paramspec_components<'db>(
     let db = context.db();
     let env = context.program_environment();
 
-    // Extract ParamSpec info from *args annotation
     let args_paramspec = parameters.vararg.as_deref().and_then(|vararg| {
         let annotation = vararg.annotation()?;
         let ty = infer_type(annotation);
@@ -42,7 +41,6 @@ pub(super) fn validate_paramspec_components<'db>(
         }
     });
 
-    // Extract ParamSpec info from **kwargs annotation
     let kwargs_paramspec = parameters.kwarg.as_deref().and_then(|kwarg| {
         let annotation = kwarg.annotation()?;
         let ty = infer_type(annotation);
@@ -60,9 +58,7 @@ pub(super) fn validate_paramspec_components<'db>(
     let kwarg_name = parameters.kwarg.as_deref().map(|k| k.name.as_str());
 
     match (args_paramspec, kwargs_paramspec) {
-        // Both *args: P.args and **kwargs: P.kwargs present
         (Some((args_tv, args_annotation)), Some((kwargs_tv, kwargs_annotation))) => {
-            // Check they refer to the same ParamSpec
             if !args_tv.is_same_typevar_as(db, kwargs_tv) {
                 let args_name = args_tv.name(db);
                 let vararg = vararg_name.unwrap_or("args");
@@ -116,7 +112,6 @@ pub(super) fn validate_paramspec_components<'db>(
                     );
                 }
 
-                // Same ParamSpec - check no keyword-only params between them
                 if !parameters.kwonlyargs.is_empty() {
                     let name = args_tv.name(db);
                     let vararg = vararg_name.unwrap_or("args");
@@ -133,12 +128,10 @@ pub(super) fn validate_paramspec_components<'db>(
             }
         }
 
-        // *args: P.args without matching **kwargs: P.kwargs
         (Some((args_tv, args_annotation)), None) => {
             let name = args_tv.name(db);
             let vararg = vararg_name.unwrap_or("args");
             let kwarg = kwarg_name.unwrap_or("kwargs");
-            // Report on the kwarg annotation if it exists, otherwise on *args
             let range = if let Some(kwarg_param) = parameters.kwarg.as_deref() {
                 kwarg_param
                     .annotation()
@@ -154,12 +147,10 @@ pub(super) fn validate_paramspec_components<'db>(
             }
         }
 
-        // **kwargs: P.kwargs without matching *args: P.args
         (None, Some((kwargs_tv, kwargs_annotation))) => {
             let name = kwargs_tv.name(db);
             let vararg = vararg_name.unwrap_or("args");
             let kwarg = kwarg_name.unwrap_or("kwargs");
-            // Report on the vararg annotation if it exists, otherwise on **kwargs
             let range = if let Some(vararg_param) = parameters.vararg.as_deref() {
                 vararg_param
                     .annotation()
@@ -173,7 +164,6 @@ pub(super) fn validate_paramspec_components<'db>(
                     "`**{kwarg}: {name}.kwargs` must be accompanied by `*{vararg}: {name}.args`",
                 ));
             } else {
-                // No *args at all
                 if let Some(builder) = context.report_lint(&INVALID_PARAMSPEC, kwargs_annotation) {
                     builder.into_diagnostic(format_args!(
                         "`**{kwarg}: {name}.kwargs` must be accompanied by \
@@ -183,7 +173,6 @@ pub(super) fn validate_paramspec_components<'db>(
             }
         }
 
-        // No ParamSpec components in either position
         (None, None) => {}
     }
 }

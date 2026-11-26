@@ -38,8 +38,6 @@ impl FormatNodeRule<ExprAttribute> for FormatExprAttribute {
         let comments = f.context().comments().clone();
         let dangling = comments.dangling(item);
 
-        // Names and identifiers both preserve their source spelling. A contiguous `a.b`
-        // can therefore share one slice, provided no comments or fluent layout intervene.
         if value.is_name_expr()
             && !call_chain_layout.is_fluent()
             && &f.context().source()[TextRange::new(value.end(), attr.start())] == "."
@@ -57,7 +55,6 @@ impl FormatNodeRule<ExprAttribute> for FormatExprAttribute {
 
             if call_chain_layout.is_fluent() {
                 if parenthesize_value {
-                    // Don't propagate the call chain layout.
                     value.format().with_options(Parentheses::Always).fmt(f)?;
                 } else {
                     match value.as_ref() {
@@ -87,17 +84,6 @@ impl FormatNodeRule<ExprAttribute> for FormatExprAttribute {
                 value.format().with_options(Parentheses::Never).fmt(f)?;
             }
 
-            // Always add a line break if the value is parenthesized and there's an
-            // end of line comment on the same line as the closing parenthesis.
-            // ```python
-            // (
-            //      (
-            //          a
-            //      )  # `end_of_line_comment`
-            //      .
-            //      b
-            // )
-            // ```
             let has_trailing_end_of_line_comment =
                 SimpleTokenizer::starts_at(value.end(), f.context().source())
                     .skip_trivia()
@@ -114,31 +100,11 @@ impl FormatNodeRule<ExprAttribute> for FormatExprAttribute {
             if has_trailing_end_of_line_comment {
                 hard_line_break().fmt(f)?;
             }
-            // Allow the `.` on its own line if this is a fluent call chain
-            // and the value either requires parenthesizing or is a call or subscript expression
-            // (it's a fluent chain but not the first element).
-            //
-            // In preview we also break _at_ the first call in the chain.
-            // For example:
-            //
-            // ```diff
-            // # stable formatting vs. preview
-            //  x = (
-            // -    df.merge()
-            // +    df
-            // +    .merge()
-            //      .groupby()
-            //      .agg()
-            //      .filter()
-            //  )
-            // ```
             else if call_chain_layout.is_fluent() {
                 if parenthesize_value
                     || value.is_call_expr()
                     || value.is_subscript_expr()
                     || (
-                        // Remember to update the doc-comment above when
-                        // stabilizing this behavior.
                         is_fluent_layout_split_first_call_enabled(f.context())
                             && call_chain_layout.is_first_call_like()
                     )
@@ -147,18 +113,6 @@ impl FormatNodeRule<ExprAttribute> for FormatExprAttribute {
                 }
             }
 
-            // Identify dangling comments before and after the dot:
-            // ```python
-            // (
-            //      (
-            //          a
-            //      )
-            //      # `before_dot`
-            //      .  # `after_dot`
-            //      # `after_dot`
-            //      b
-            // )
-            // ```
             let dot_start = attr.start() - TextSize::new(1);
             if dangling.is_empty()
                 && f.context().source().as_bytes()[usize::from(dot_start)] == b'.'
@@ -206,18 +160,11 @@ impl NeedsParentheses for ExprAttribute {
         _parent: AnyNodeRef,
         context: &PyFormatContext,
     ) -> OptionalParentheses {
-        // Checks if there are any own line comments in an attribute chain (a.b.c).
         if CallChainLayout::from_expression(self.into(), context).is_fluent() {
             OptionalParentheses::Multiline
         } else if context.comments().has_dangling(self) {
             OptionalParentheses::Always
         } else if context.is_expression_parenthesized(self.value.as_ref().into()) {
-            // We have to avoid creating syntax errors like
-            // ```python
-            // variable = (something) # trailing
-            // .my_attribute
-            // ```
-            // See https://github.com/astral-sh/ruff/issues/19350
             if context
                 .comments()
                 .trailing(self.value.as_ref())
@@ -234,8 +181,6 @@ impl NeedsParentheses for ExprAttribute {
     }
 }
 
-// Non Hex, octal or binary number literals need parentheses to disambiguate the attribute `.` from
-// a decimal point. Floating point numbers don't strictly need parentheses but it reads better (rather than 0.0.test()).
 fn is_base_ten_number_literal(expr: &Expr, source: &str) -> bool {
     if let Some(ExprNumberLiteral {
         value,

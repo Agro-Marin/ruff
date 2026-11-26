@@ -87,12 +87,10 @@ impl Violation for CachedInstanceMethod {
 pub(crate) fn cached_instance_method(checker: &Checker, function_def: &ast::StmtFunctionDef) {
     let scope = checker.semantic().current_scope();
 
-    // Parent scope _must_ be a class.
     let ScopeKind::Class(class_def) = scope.kind else {
         return;
     };
 
-    // The function must be an _instance_ method.
     let type_ = function_type::classify(
         &function_def.name,
         &function_def.decorator_list,
@@ -107,7 +105,6 @@ pub(crate) fn cached_instance_method(checker: &Checker, function_def: &ast::Stmt
 
     for decorator in &function_def.decorator_list {
         if is_cache_func(map_callable(&decorator.expression), checker.semantic()) {
-            // If we found a cached instance method, validate (lazily) that the class is not an enum.
             if class::is_enumeration(class_def, checker.semantic()) {
                 return;
             }

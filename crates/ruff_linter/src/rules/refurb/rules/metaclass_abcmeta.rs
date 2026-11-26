@@ -68,12 +68,10 @@ impl AlwaysFixableViolation for MetaClassABCMeta {
 
 /// FURB180
 pub(crate) fn metaclass_abcmeta(checker: &Checker, class_def: &StmtClassDef) {
-    // Determine whether the class definition contains at least one argument.
     let Some(arguments) = &class_def.arguments.as_ref() else {
         return;
     };
 
-    // Identify the `metaclass` keyword.
     let Some((position, keyword)) = class_def.keywords().iter().find_position(|&keyword| {
         keyword
             .arg
@@ -83,7 +81,6 @@ pub(crate) fn metaclass_abcmeta(checker: &Checker, class_def: &StmtClassDef) {
         return;
     };
 
-    // Determine whether it's assigned to `abc.ABCMeta`.
     if !checker
         .semantic()
         .matches_qualified_name(&keyword.value, &["abc", "ABCMeta"])
@@ -92,16 +89,10 @@ pub(crate) fn metaclass_abcmeta(checker: &Checker, class_def: &StmtClassDef) {
     }
 
     let applicability = if !class_def.bases().is_empty() {
-        // The class has base arguments (not just a `metaclass` keyword).
-        // Applying the fix may change semantics, so it is considered unsafe.
         Applicability::Unsafe
     } else if checker.comment_ranges().intersects(arguments.range()) {
-        // The `metaclass` keyword overlaps with a comment.
-        // Applying the fix would remove or alter the comment, so it is unsafe.
         Applicability::Unsafe
     } else {
-        // An empty class definition with no overlapping comments.
-        // Applying the fix is considered safe.
         Applicability::Safe
     };
     let mut diagnostic = checker.report_diagnostic(MetaClassABCMeta, keyword.range);
@@ -113,7 +104,6 @@ pub(crate) fn metaclass_abcmeta(checker: &Checker, class_def: &StmtClassDef) {
             checker.semantic(),
         )?;
 
-        // Check the `abc.ABC` is in base classes.
         let has_abc = analyze::class::any_qualified_base_class(
             class_def,
             checker.semantic(),
@@ -129,8 +119,6 @@ pub(crate) fn metaclass_abcmeta(checker: &Checker, class_def: &StmtClassDef) {
         )?;
 
         Ok(if position > 0 {
-            // When the `abc.ABCMeta` is not the first keyword and `abc.ABC` is not
-            // in base classes put `abc.ABC` before the first keyword argument.
             if has_abc {
                 Fix::applicable_edit(delete_metaclass_keyword, applicability)
             } else {
@@ -145,10 +133,8 @@ pub(crate) fn metaclass_abcmeta(checker: &Checker, class_def: &StmtClassDef) {
             }
         } else {
             let edit_action = if has_abc {
-                // Class already inherits the `abc.ABC`, delete the `metaclass` keyword only.
                 delete_metaclass_keyword
             } else {
-                // Replace `metaclass` keyword by `abc.ABC`.
                 Edit::range_replacement(binding, keyword.range)
             };
 

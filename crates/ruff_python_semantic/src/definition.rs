@@ -219,8 +219,6 @@ impl<'a> Definitions<'a> {
             IndexVec::with_capacity(self.len());
 
         for definition in self.iter() {
-            // Determine the visibility of the next definition, taking into account its parent's
-            // visibility.
             let visibility = {
                 match &definition {
                     Definition::Module(module) => module_visibility(*module),

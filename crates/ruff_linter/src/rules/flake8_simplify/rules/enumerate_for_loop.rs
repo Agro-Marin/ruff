@@ -59,12 +59,10 @@ impl Violation for EnumerateForLoop {
 
 /// SIM113
 pub(crate) fn enumerate_for_loop(checker: &Checker, for_stmt: &ast::StmtFor) {
-    // If the loop is async, abort.
     if for_stmt.is_async {
         return;
     }
 
-    // If the loop contains a `continue`, abort.
     let mut visitor = LoopControlFlowVisitor::default();
     visitor.visit_body(&for_stmt.body);
     if visitor.has_continue {
@@ -72,14 +70,11 @@ pub(crate) fn enumerate_for_loop(checker: &Checker, for_stmt: &ast::StmtFor) {
     }
 
     for stmt in &for_stmt.body {
-        // Find the augmented assignment expression (e.g., `i += 1`).
         if let Some(index) = match_index_increment(stmt) {
-            // Find the binding corresponding to the initialization (e.g., `i = 1`).
             let Some(id) = checker.semantic().resolve_name(index) else {
                 continue;
             };
 
-            // If it's not an assignment (e.g., it's a function argument), ignore it.
             let initial_binding = checker.semantic().binding(id);
             if !initial_binding.kind.is_assignment() {
                 continue;
@@ -90,7 +85,6 @@ pub(crate) fn enumerate_for_loop(checker: &Checker, for_stmt: &ast::StmtFor) {
                 continue;
             }
 
-            // Ensure that the index variable was initialized to 0 (or instance of `int` if preview is enabled).
             let Some(value) = typing::find_binding_value(initial_binding, checker.semantic())
             else {
                 continue;
@@ -109,8 +103,6 @@ pub(crate) fn enumerate_for_loop(checker: &Checker, for_stmt: &ast::StmtFor) {
                 continue;
             }
 
-            // If the binding is not at the same level as the `for` loop (e.g., it's in an `if`),
-            // ignore it.
             let Some(for_loop_id) = checker.semantic().current_statement_id() else {
                 continue;
             };
@@ -123,9 +115,6 @@ pub(crate) fn enumerate_for_loop(checker: &Checker, for_stmt: &ast::StmtFor) {
                 continue;
             }
 
-            // Identify the binding created by the augmented assignment.
-            // TODO(charlie): There should be a way to go from `ExprName` to `BindingId` (like
-            // `resolve_name`, but for bindings rather than references).
             let increment_binding = {
                 let mut bindings = checker
                     .semantic()
@@ -138,7 +127,6 @@ pub(crate) fn enumerate_for_loop(checker: &Checker, for_stmt: &ast::StmtFor) {
                     continue;
                 };
 
-                // If there are multiple assignments to this variable _within_ the loop, ignore it.
                 if bindings.next().is_some() {
                     continue;
                 }
@@ -146,8 +134,6 @@ pub(crate) fn enumerate_for_loop(checker: &Checker, for_stmt: &ast::StmtFor) {
                 binding
             };
 
-            // Reassignments in the same scope inherit older references. Ignore anything that
-            // predates the counter's initialization and only consider uses in its current lifetime.
             let initial_binding_start = initial_binding.range.start();
             if increment_binding.references().any(|id| {
                 let reference = checker.semantic().reference(id);
@@ -205,7 +191,6 @@ impl StatementVisitor<'_> for LoopControlFlowVisitor {
         match stmt {
             Stmt::Continue(_) => self.has_continue = true,
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
-                // Don't recurse.
             }
             _ => walk_stmt(self, stmt),
         }

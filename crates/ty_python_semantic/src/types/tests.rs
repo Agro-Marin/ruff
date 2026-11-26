@@ -18,7 +18,6 @@ use ty_python_core::{ProgramFile, TestProgramDb as _};
 
 #[test]
 fn member_lookup_result_size() {
-    // Property diagnostics must not enlarge every cached member lookup.
     assert_eq!(
         size_of::<MemberLookupResult<'_>>(),
         size_of::<Result<PlaceAndQualifiers<'_>, MemberLookupError<'_>>>(),
@@ -116,7 +115,6 @@ fn bounded_intersection_preserves_late_union_elements() {
     let narrow = UnionType::from_elements(db, &env, (5..=7).map(Type::int_literal));
     let expected = UnionType::from_elements(db, &env, (5..=6).map(Type::int_literal));
 
-    // The first union exceeds the budget, but its last two elements survive the intersection.
     for elements in [[wide, narrow], [narrow, wide]] {
         assert_eq!(
             IntersectionType::bounded_from_elements(db, &env, elements),
@@ -124,7 +122,6 @@ fn bounded_intersection_preserves_late_union_elements() {
         );
     }
 
-    // A narrowing factor applies before union distribution even when it appears last.
     let literal = Type::int_literal(5);
     for elements in [
         [wide, narrow, literal],
@@ -145,12 +142,10 @@ fn bounded_intersection_returns_none_when_budget_exhausted() {
     let env = db.program_environment();
     let wide = UnionType::from_elements(db, &env, (1..=6).map(Type::int_literal));
 
-    // A single union requires no distribution and is returned exactly, regardless of its size.
     assert_eq!(
         IntersectionType::bounded_from_elements(db, &env, [wide]),
         Some(wide)
     );
-    // Exceeding the budget must return `None`, not a partial intersection.
     assert_eq!(
         IntersectionType::bounded_from_elements(db, &env, [wide, wide]),
         None
@@ -193,12 +188,9 @@ fn bounded_intersection_limits_negated_alias_expansion() -> anyhow::Result<()> {
         exclusions.push(Type::TypeAlias(alias).negate(db, &env));
     }
 
-    // De Morgan's law expands these negated intersections into a product of unions.
     assert!(IntersectionType::bounded_from_elements(db, &env, &exclusions[..2]).is_some());
     assert!(IntersectionType::bounded_from_elements(db, &env, &exclusions).is_none());
 
-    // A narrowing factor prunes these alternatives before they can exhaust the budget,
-    // regardless of where it appears among the negated aliases.
     let literal = Type::int_literal(5);
     for position in 0..=exclusions.len() {
         let mut elements = exclusions.clone();
@@ -209,7 +201,6 @@ fn bounded_intersection_limits_negated_alias_expansion() -> anyhow::Result<()> {
         );
     }
 
-    // Double negation of a literal is also a narrowing factor, not a disjunction.
     let excluded_literal = global_symbol(db, file, "ExcludedLiteral")
         .place
         .expect_type();
@@ -222,7 +213,6 @@ fn bounded_intersection_limits_negated_alias_expansion() -> anyhow::Result<()> {
         Some(Type::LiteralValue(LiteralValueType::unpromotable(5)))
     );
 
-    // A double negation introduces no alternatives and must not consume the first-union exemption.
     let excluded = global_symbol(db, file, "Excluded").place.expect_type();
     let Type::KnownInstance(KnownInstanceType::TypeAliasType(alias)) = excluded else {
         anyhow::bail!("expected `Excluded` to be a type alias");
@@ -371,19 +361,10 @@ fn todo_types() {
 
     assert!(todo1.is_assignable_to(db, &env, int));
 
-    // We lose information when combining several `Todo` types. This is an
-    // acknowledged limitation of the current implementation. We cannot
-    // easily store the meta information of several `Todo`s in a single
-    // variant, as `TodoType` needs to implement `Copy`, meaning it can't
-    // contain `Vec`/`Box`/etc., and can't be boxed itself.
-    //
-    // Lifting this restriction would require us to intern `TodoType` in
-    // salsa, but that would mean we would have to pass in `db` everywhere.
 
     // A union of several `Todo` types collapses to a single `Todo` type:
     assert!(UnionType::from_elements(db, &env, [todo1, todo2]).is_todo());
 
-    // And similar for intersection types:
     assert!(IntersectionType::from_elements(db, &env, [todo1, todo2]).is_todo());
     assert!(
         IntersectionBuilder::new(db, &env)
@@ -472,8 +453,6 @@ fn divergent_type() {
         None
     );
 
-    // The `Divergent` type must not be eliminated in union with other dynamic types,
-    // as this would prevent detection of divergent type inference using `Divergent`.
     let union = UnionType::from_elements(db, &env, [Type::unknown(), div]);
     assert_eq!(
         union.display(db, &db.program_environment()).to_string(),
@@ -498,8 +477,6 @@ fn divergent_type() {
     assert!(!div.is_redundant_with(db, &env, Type::unknown()));
     assert!(!Type::unknown().is_redundant_with(db, &env, div));
 
-    // `Divergent & T` and `Divergent & ~T` both simplify to `Divergent`, except for the
-    // specific case of `Divergent & Never`, which simplifies to `Never`.
     let divergent_intersection = IntersectionBuilder::new(db, &env)
         .add_positive(div)
         .add_positive(todo_type!("2"))
@@ -523,9 +500,6 @@ fn divergent_type() {
         .build();
     assert_eq!(divergent_never_intersection, Type::Never);
 
-    // The `object` type has a good convergence property, that is, its union with all other types is `object`.
-    // (e.g. `object | tuple[Divergent] == object`, `object | tuple[object] == object`)
-    // So we can safely eliminate `Divergent`.
     let union = UnionType::from_elements(db, &env, [div, KnownClass::Object.to_instance(db, &env)]);
     assert_eq!(
         union.display(db, &db.program_environment()).to_string(),
@@ -654,7 +628,6 @@ fn divergent_type() {
         "int"
     );
 
-    // The same can be said about intersections for the `Never` type.
     let intersection = IntersectionType::from_elements(db, &env, [Type::Never, div]);
     assert_eq!(
         intersection
@@ -771,8 +744,6 @@ fn pending_narrowing_cycle_recovery_preserves_guarded_contributions() {
     let callable_returning =
         |return_ty| Type::single_callable(&db, Signature::new(Parameters::empty(), return_ty));
 
-    // A constructor must retain a recursive reference even when a union also contains a
-    // resolved initializer. Otherwise, subsequent iterations can grow without a depth bound.
     let approximation = UnionType::from_elements(
         &db,
         &env,
@@ -798,7 +769,6 @@ fn pending_narrowing_cycle_recovery_preserves_guarded_contributions() {
     let unresolved = UnionType::from_elements(&db, &env, [pending, recursive]);
     assert_eq!(normalize(unresolved), pending);
 
-    // Pending narrowing in an opaque bound invalidates the enclosing type argument.
     let pending_typevar = BoundTypeVarInstance::synthetic_self(
         &db,
         SelfTypeVarOrigin::ReceiverPlaceholder,
@@ -810,7 +780,6 @@ fn pending_narrowing_cycle_recovery_preserves_guarded_contributions() {
         list_of(recursive)
     );
 
-    // Metadata not rewritten by recursive normalization must not retain pending narrowing.
     let typevar_object =
         Type::KnownInstance(KnownInstanceType::TypeVar(pending_typevar.typevar(&db)));
     assert_eq!(normalize(list_of(typevar_object)), recursive);
@@ -830,8 +799,6 @@ fn pending_narrowing_cycle_recovery_checks_alias_arguments() -> anyhow::Result<(
         |ty| Type::pending_narrowing_normalized(ty, &db, &env, recursive, &is_cycle_marker);
     let list_of = |element| KnownClass::List.to_specialized_instance(&db, &env, &[element]);
 
-    // Stored arguments remain provisional even when the alias body does not use them.
-    // An alias does not itself establish recursive structure, but an enclosing constructor does.
     let ty = global_symbol(&db, file, "Constant").place.expect_type();
     let Type::KnownInstance(KnownInstanceType::TypeAliasType(alias)) = ty else {
         anyhow::bail!("expected `Constant` to be a type alias");
@@ -854,16 +821,12 @@ fn unrestricted_tuple_materialization_absorbs_divergent_approximations() {
     let approximation = |element| list_of(Type::heterogeneous_tuple(db, &env, [element]));
     let top = list_of(Type::homogeneous_tuple(db, &env, Type::any())).top_materialization(db, &env);
 
-    // This fixed top absorbs every exact-tuple approximation, including a marker nested
-    // more deeply in a later iteration. Removing the marker here therefore converges.
     let first = approximation(div);
     for candidate in [first, approximation(first)] {
         assert_eq!(UnionType::from_elements(db, &env, [candidate, top]), top);
         assert_eq!(UnionType::from_elements(db, &env, [top, candidate]), top);
     }
 
-    // An unresolved marker is not itself an unrestricted gradual element type. Its
-    // homogeneous tuple must not acquire the same family as `tuple[Any, ...]`.
     let divergent_top =
         list_of(Type::homogeneous_tuple(db, &env, div)).top_materialization(db, &env);
     let empty = list_of(Type::empty_tuple(db, &env));

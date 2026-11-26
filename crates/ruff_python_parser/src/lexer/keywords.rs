@@ -84,7 +84,6 @@ const fn find_multiplier() -> u64 {
         KEYWORDS.len() <= 64,
         "too many keywords for a 64-slot table"
     );
-    // Zero pads each group because an ASCII identifier packs to a nonzero word.
     let mut by_length = [[0; KEYWORDS.len()]; 7];
     let mut keywords = KEYWORDS;
     while let Some((&(keyword, _), rest)) = keywords.split_first() {
@@ -99,7 +98,6 @@ const fn find_multiplier() -> u64 {
         keywords = rest;
     }
 
-    // If no byte places the whole group, start over with the next odd low byte.
     let mut seed = 1;
     'seeds: while seed < 256 {
         let mut multiplier = seed;

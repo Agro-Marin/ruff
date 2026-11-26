@@ -7,9 +7,6 @@ export type Playground = {
   settingsSource: string;
 };
 
-/**
- * Fetch a playground by ID.
- */
 export async function fetchPlayground(id: string): Promise<Playground | null> {
   const response = await fetch(`${API_URL}/${encodeURIComponent(id)}`);
   if (!response.ok) {
@@ -18,9 +15,6 @@ export async function fetchPlayground(id: string): Promise<Playground | null> {
   return await response.json();
 }
 
-/**
- * Save a playground and return its ID.
- */
 export async function savePlayground(playground: Playground): Promise<string> {
   const response = await fetch(API_URL, {
     method: "POST",

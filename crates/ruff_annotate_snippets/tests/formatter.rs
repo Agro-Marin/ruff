@@ -337,7 +337,6 @@ fn test_format_snippet_annotation_standalone() {
     let line_1 = "This is line 1";
     let line_2 = "This is line 2";
     let source = [line_1, line_2].join("\n");
-    // In line 2
     let range = 22..24;
     let input = &[Level::ERROR.primary_title("").element(
         Snippet::source(&source)
@@ -616,7 +615,6 @@ fn issue_130() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(4..11)),
-        // bar\nbaz
     )];
 
     let expected_ascii = str![[r#"
@@ -653,7 +651,6 @@ a\"
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(0..10)),
-        // 1..10 works
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -687,7 +684,6 @@ fn char_and_nl_annotate_char() {
             .line_start(3)
             .fold(false)
             .annotation(AnnotationKind::Primary.span(0..2)),
-        // a\r
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -722,7 +718,6 @@ fn char_eol_annotate_char() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(0..3)),
-        // a\r\n
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -752,7 +747,6 @@ fn char_eol_annotate_char_double_width() {
             .path("<current file>")
             .fold(false)
             .annotation(AnnotationKind::Primary.span(3..8)),
-        // ん\r\n
     )];
 
     let expected_ascii = str![[r#"
@@ -823,7 +817,6 @@ fn annotate_eol() {
             .line_start(3)
             .fold(false)
             .annotation(AnnotationKind::Primary.span(1..2)),
-        // \r
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -858,7 +851,6 @@ fn annotate_eol2() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(1..3)),
-        // \r\n
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -889,7 +881,6 @@ fn annotate_eol3() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(2..3)),
-        // \n
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -921,7 +912,6 @@ fn annotate_eol4() {
             .line_start(3)
             .fold(false)
             .annotation(AnnotationKind::Primary.span(2..2)),
-        // \n
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -955,7 +945,6 @@ fn annotate_eol_double_width() {
             .path("<current file>")
             .fold(false)
             .annotation(AnnotationKind::Primary.span(7..8)),
-        // \n
     )];
 
     let expected_ascii = str![[r#"
@@ -994,7 +983,6 @@ fn multiline_eol_start() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(1..4)),
-        // \r\nb
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -1029,7 +1017,6 @@ fn multiline_eol_start2() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(2..4)),
-        // \nb
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -1064,7 +1051,6 @@ fn multiline_eol_start3() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(1..3)),
-        // \nb
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -1098,7 +1084,6 @@ fn multiline_eol_start_double_width() {
             .path("<current file>")
             .fold(false)
             .annotation(AnnotationKind::Primary.span(7..11)),
-        // \r\nに
     )];
 
     let expected_ascii = str![[r#"
@@ -1139,7 +1124,6 @@ fn multiline_eol_start_eol_end() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(1..4)),
-        // \nb\n
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -1175,7 +1159,6 @@ fn multiline_eol_start_eol_end2() {
             .line_start(3)
             .fold(false)
             .annotation(AnnotationKind::Primary.span(2..5)),
-        // \nb\r
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -1214,7 +1197,6 @@ fn multiline_eol_start_eol_end3() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(2..6)),
-        // \nb\r\n
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -1249,7 +1231,6 @@ fn multiline_eol_start_eof_end() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(1..5)),
-        // \r\nb(EOF)
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -1284,7 +1265,6 @@ fn multiline_eol_start_eof_end_double_width() {
             .path("file/path")
             .line_start(3)
             .annotation(AnnotationKind::Primary.span(3..9)),
-        // \r\nに(EOF)
     )];
     let expected_ascii = str![[r#"
 error: 
@@ -2409,7 +2389,6 @@ zappy
                 )
                 .id("E0277"),
         ),
-        // We need an empty group here to ensure the HELP line is rendered correctly
         Level::HELP
             .secondary_title(
                 "consider removing the `?Sized` bound to make the type parameter `Sized`",
@@ -2967,12 +2946,6 @@ note: function defined here
     assert_data_eq!(renderer.render(input), expected_unicode);
 }
 
-// This tests that an ellipsis is not inserted into Unicode text when a line
-// wasn't actually trimmed.
-//
-// This is a regression test where `...` was inserted because the code wasn't
-// properly accounting for the *rendered* length versus the length in bytes in
-// all cases.
 #[test]
 fn unicode_cut_handling() {
     let source = "version = \"0.1.0\"\n# Ensure that the spans from toml handle utf-8 correctly\nauthors = [\n    { name = \"Z\u{351}\u{36b}\u{343}\u{36a}\u{302}\u{36b}\u{33d}\u{34f}\u{334}\u{319}\u{324}\u{31e}\u{349}\u{35a}\u{32f}\u{31e}\u{320}\u{34d}A\u{36b}\u{357}\u{334}\u{362}\u{335}\u{31c}\u{330}\u{354}L\u{368}\u{367}\u{369}\u{358}\u{320}G\u{311}\u{357}\u{30e}\u{305}\u{35b}\u{341}\u{334}\u{33b}\u{348}\u{34d}\u{354}\u{339}O\u{342}\u{30c}\u{30c}\u{358}\u{328}\u{335}\u{339}\u{33b}\u{31d}\u{333}\", email = 1 }\n]\n";
@@ -4132,7 +4105,6 @@ fn main() {
 
 #[test]
 fn snippet_no_path() {
-    // Taken from: https://docs.python.org/3/library/typing.html#annotating-callable-objects
 
     let source = "def __call__(self, *vals: bytes, maxlen: int | None = None) -> list[bytes]: ...";
     let input = &[Level::ERROR.primary_title("").element(
@@ -4160,7 +4132,6 @@ error:
 
 #[test]
 fn multiple_snippet_no_path() {
-    // Taken from: https://docs.python.org/3/library/typing.html#annotating-callable-objects
 
     let source = "def __call__(self, *vals: bytes, maxlen: int | None = None) -> list[bytes]: ...";
     let input = &[Level::ERROR
@@ -5434,7 +5405,6 @@ fn long_line_cut_custom() {
             .line_start(1)
             .annotation(AnnotationKind::Primary.span(0..4)),
     );
-    // This trims a little less because `…` is visually smaller than `...`.
     let expected = str![[r#"
 error: 
   |
@@ -5447,23 +5417,18 @@ error:
 
 #[test]
 fn leading_nbsp_no_overflow() {
-    // Regression test: an annotation pointing at leading whitespace caused a
-    // subtraction overflow in Margin::compute because `label_right` can be less
-    // than `whitespace_left`. See https://github.com/astral-sh/ty/issues/836
     let source = " \u{00A0}                                     'betting_env.datastructure.team_lineup.Tamheet.get_latest': ( 'dataStructure/team_lineup.htm#teamsheet.getlatest',";
     let input = Level::ERROR.primary_title("test").element(
         Snippet::source(source)
             .line_start(1)
             .annotation(AnnotationKind::Primary.span(0..1)),
     );
-    // Should not panic.
     let renderer = Renderer::plain();
     let _ = renderer.render(&[input]).clone();
 }
 
 #[test]
 fn hide_snippet() {
-    // tests/ui/traits/alias/object-fail.rs
     let source = r#"#![feature(trait_alias)]
 
 trait EqAlias = Eq;

@@ -92,11 +92,6 @@ pub(crate) fn manual_dict_comprehension(checker: &Checker, for_stmt: &ast::StmtF
     let body = body.as_slice();
     let target = target.as_ref();
     let (stmt, if_test) = match body {
-        // ```python
-        // for idx, name in enumerate(names):
-        //     if idx % 2 == 0:
-        //         result[name] = idx
-        // ```
         [
             Stmt::If(ast::StmtIf {
                 body,
@@ -105,8 +100,6 @@ pub(crate) fn manual_dict_comprehension(checker: &Checker, for_stmt: &ast::StmtF
                 ..
             }),
         ] => {
-            // TODO(charlie): If there's an `else` clause, verify that the `else` has the
-            // same structure.
             if !elif_else_clauses.is_empty() {
                 return;
             }
@@ -115,10 +108,6 @@ pub(crate) fn manual_dict_comprehension(checker: &Checker, for_stmt: &ast::StmtF
             };
             (stmt, Some(test))
         }
-        // ```python
-        // for idx, name in enumerate(names):
-        //     result[name] = idx
-        // ```
         [stmt] => (stmt, None),
         _ => return,
     };
@@ -144,15 +133,10 @@ pub(crate) fn manual_dict_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         return;
     };
 
-    // An assignment expression is a syntax error anywhere in a comprehension's iterable, even
-    // when parenthesized (e.g., `{k: v for k, v in (y := z)}`), so the loop can't be converted.
     if any_over_expr(iter, &Expr::is_named_expr) {
         return;
     }
 
-    // If any references to a target variable are after the loop,
-    // then removing the loop would cause a NameError. Make sure none
-    // of the variables are used outside the for loop.
     if has_post_loop_references(checker, target, for_stmt.end()) {
         return;
     }
@@ -183,7 +167,6 @@ pub(crate) fn manual_dict_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         _ => return,
     }
 
-    // Exclude non-dictionary value.
     let Expr::Name(name) = &**subscript_value else {
         return;
     };
@@ -198,20 +181,6 @@ pub(crate) fn manual_dict_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         return;
     }
 
-    // Avoid if the value is used in the conditional test, e.g.,
-    //
-    // ```python
-    // for x in y:
-    //    if x in filtered:
-    //        filtered[x] = y
-    // ```
-    //
-    // Converting this to a dictionary comprehension would raise a `NameError` as
-    // `filtered` is not defined yet:
-    //
-    // ```python
-    // filtered = {x: y for x in y if x in filtered}
-    // ```
     if if_test.is_some_and(|test| {
         any_over_expr(test, |expr| {
             ComparableExpr::from(expr) == ComparableExpr::from(name)
@@ -228,13 +197,9 @@ pub(crate) fn manual_dict_comprehension(checker: &Checker, for_stmt: &ast::StmtF
             _ => None,
         });
 
-        // If the variable is an empty dict literal, then we might be able to replace it with a full dict comprehension.
-        // otherwise, it has to be replaced with a `dict.update`
         let binding_is_empty_dict =
             binding_value.is_some_and(|binding_value| match binding_value {
-                // value = {}
                 Expr::Dict(dict_expr) => dict_expr.is_empty(),
-                // value = dict()
                 Expr::Call(call) => {
                     checker
                         .semantic()
@@ -250,28 +215,20 @@ pub(crate) fn manual_dict_comprehension(checker: &Checker, for_stmt: &ast::StmtF
             let binding_parent = checker.semantic().parent_statement_id(binding_source);
             for_loop_parent == binding_parent
         });
-        // If the binding is not a single name expression, it could be replaced with a dict comprehension,
-        // but not necessarily, so this needs to be manually fixed. This does not apply when using an update.
         let binding_has_one_target = binding_stmt.is_some_and(|binding_stmt| match binding_stmt {
             ast::Stmt::AnnAssign(_) => true,
             ast::Stmt::Assign(assign) => assign.targets.len() == 1,
             _ => false,
         });
-        // If the binding gets used in between the assignment and the for loop, a comprehension is no longer safe
 
-        // If the binding is after the for loop, then it can't be fixed, and this check would panic,
-        // so we check that they are in the same statement first
         let binding_unused_between = assignment_in_same_statement
             && binding_stmt.is_some_and(|binding_stmt| {
                 let from_assign_to_loop = TextRange::new(binding_stmt.end(), for_stmt.start());
-                // Test if there's any reference to the result dictionary between its definition and the for loop.
-                // If there's at least one, then it's been accessed in the middle somewhere, so it's not safe to change into a comprehension
                 !binding
                     .references()
                     .map(|ref_id| checker.semantic().reference(ref_id).range())
                     .any(|text_range| from_assign_to_loop.contains_range(text_range))
             });
-        // A dict update works in every context, while a dict comprehension only works when all the criteria are true
         let fix_type = if binding_is_empty_dict
             && assignment_in_same_statement
             && binding_has_one_target
@@ -324,14 +281,6 @@ fn convert_to_dict_comprehension(
 
     let if_str = match if_test {
         Some(test) => {
-            // If the test is an assignment expression,
-            // we must parenthesize it when it appears
-            // inside the comprehension to avoid a syntax error.
-            //
-            // Notice that we do not need `any_over_expr` here,
-            // since if the assignment expression appears
-            // internally (e.g. as an operand in a boolean
-            // operation) then it will already be parenthesized.
             match test {
                 Expr::Named(_) | Expr::If(_) | Expr::Lambda(_) => {
                     format!(" if ({})", locator.slice(test.range()))
@@ -351,7 +300,6 @@ fn convert_to_dict_comprehension(
     } else {
         "for"
     };
-    // Handles the case where `key` has a trailing comma, e.g, `dict[x,] = y`
     let key_str = if let Expr::Tuple(ast::ExprTuple {
         elts,
         parenthesized,
@@ -370,7 +318,6 @@ fn convert_to_dict_comprehension(
         locator.slice(key).to_string()
     };
 
-    // If the value is a tuple without parentheses, add them
     let value_str = if let Expr::Tuple(ast::ExprTuple {
         parenthesized: false,
         ..
@@ -439,8 +386,6 @@ fn convert_to_dict_comprehension(
                 None => String::new(),
             };
 
-            // If there are multiple binding statements in one line, we don't want to accidentally delete them
-            // Instead, we just delete the binding statement and leave any comments where they are
             let (binding_stmt_deletion_range, binding_is_multiple_stmts) =
                 statement_deletion_range(checker, binding_stmt_range);
 
@@ -488,8 +433,6 @@ fn has_post_loop_references(checker: &Checker, expr: &Expr, loop_end: TextSize) 
                 .iter()
                 .find(|binding| name.range() == binding.range)
             else {
-                // no binding in for statement => err on the safe side and make the checker skip
-                // e.g., `for foo[0] in bar:` or `for foo.bar in baz:`
                 return true;
             };
 

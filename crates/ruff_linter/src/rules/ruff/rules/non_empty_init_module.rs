@@ -102,19 +102,11 @@ pub(crate) fn non_empty_init_module(checker: &Checker, stmt: &Stmt) {
 
     let semantic = checker.semantic();
 
-    // Only flag top-level statements
     if !semantic.at_top_level() {
         return;
     }
 
-    // Docstrings are documentation rather than code, so they're allowed in both modes. Even though
-    // module-level attributes are disallowed, we still allow attribute docstrings to avoid needing
-    // two `noqa` comments in a case like:
-    //
-    // ```py
     // MY_CONSTANT = 1  # noqa: RUF067
-    // "A very important constant"
-    // ```
     if semantic.in_pep_257_docstring() || semantic.in_attribute_docstring() {
         return;
     }
@@ -123,22 +115,16 @@ pub(crate) fn non_empty_init_module(checker: &Checker, stmt: &Stmt) {
 
     if !strictly_empty_init_modules {
         match stmt {
-            // Allow imports
             Stmt::Import(_) | Stmt::ImportFrom(_) => return,
 
-            // Allow PEP-562 module `__getattr__` and `__dir__`
             Stmt::FunctionDef(func) if matches!(&*func.name, "__getattr__" | "__dir__") => return,
 
-            // Allow `TYPE_CHECKING` blocks
             Stmt::If(stmt_if) if is_type_checking_block(stmt_if, semantic) => return,
 
             _ => {}
         }
 
         if let Some(assignment) = Assignment::from_stmt(stmt) {
-            // Allow assignments to any dunder-named target (e.g. `__all__`, `__path__`, or
-            // tool-specific names like `__submodules__`). Chained assignments require every target
-            // to be a dunder.
             if assignment.all_targets_are_dunder() {
                 return;
             }

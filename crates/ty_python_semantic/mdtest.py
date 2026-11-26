@@ -95,19 +95,15 @@ class MDTestRunner:
         self, status_message: str, *, message_on_success: bool = True
     ) -> bool:
         with self.console.status(status_message):
-            # Run it with 'human' format in case there are errors:
             try:
                 self._run_cargo_test(message_format="human")
             except subprocess.CalledProcessError as e:
                 print(e.output)
                 return False
 
-            # Run it again with 'json' format to find the mdtest executable:
             try:
                 json_output = self._run_cargo_test(message_format="json")
             except subprocess.CalledProcessError as _:
-                # `cargo test` can still fail if something changed in between the two runs.
-                # Here we don't have a human-readable output, so just show a generic message:
                 self.console.print("[red]Error[/red]: Failed to compile tests")
                 return False
 
@@ -213,7 +209,6 @@ class MDTestRunner:
             )
 
     def _print_trimmed_cargo_test_output(self, output: str, test_name: str) -> None:
-        # Skip 'cargo test' boilerplate at the beginning:
         lines = output.splitlines()
         start_index = 0
         for i, line in enumerate(lines):
@@ -225,7 +220,6 @@ class MDTestRunner:
             if "MDTEST_TEST_FILTER" in line:
                 continue
             if line.strip() == "-" * 50:
-                # Skip 'cargo test' boilerplate at the end
                 break
 
             print(line)
@@ -233,9 +227,6 @@ class MDTestRunner:
     def watch(self):
         def keyboard_input() -> None:
             for _ in sys.stdin:
-                # This is silly, but there is no other way to inject events into
-                # the main `watch` loop. We use changes to the `README.md` file
-                # as a trigger to re-run all mdtests:
                 MDTEST_README.touch()
 
         input_thread = threading.Thread(target=keyboard_input, daemon=True)
@@ -255,17 +246,10 @@ class MDTestRunner:
             for change, path_str in changes:
                 path = Path(path_str)
 
-                # See above: `README.md` changes trigger a full re-run of all tests
                 if path == MDTEST_README:
                     self._run_mdtest(self.filters)
                     continue
 
-                # When a pending snapshot (.snap.new) is rejected in a separate
-                # process (e.g. `cargo insta review`), the file is deleted.
-                # A common reason for rejecting a snapshot is that it was stale
-                # (produced by an earlier test run and now outdated). Re-run the
-                # relevant tests so the snapshot is regenerated from the current
-                # state of the code.
                 if (
                     change == Change.deleted
                     and path.name.endswith(".snap.new")
@@ -292,10 +276,6 @@ class MDTestRunner:
 
                 match change:
                     case Change.added:
-                        # When saving a file, some editors (looking at you, Vim) might first
-                        # save the file with a temporary name (e.g. `file.md~`) and then rename
-                        # it to the final name. This creates a `deleted` and `added` change.
-                        # We treat those files as `changed` here.
                         if (Change.deleted, path_str) in changes:
                             changed_mdtests.add(mdtest)
                         else:
@@ -303,7 +283,6 @@ class MDTestRunner:
                     case Change.modified:
                         changed_mdtests.add(mdtest)
                     case Change.deleted:
-                        # No need to do anything when a Markdown test is deleted
                         pass
                     case _ as unreachable:
                         assert_never(unreachable)

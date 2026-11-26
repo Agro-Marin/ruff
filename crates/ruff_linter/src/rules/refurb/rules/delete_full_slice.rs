@@ -65,7 +65,6 @@ pub(crate) fn delete_full_slice(checker: &Checker, delete: &ast::StmtDelete) {
 
         let mut diagnostic = checker.report_diagnostic(DeleteFullSlice, delete.range);
 
-        // Fix is only supported for single-target deletions.
         if delete.targets.len() == 1 {
             let replacement = generate_method_call(name.id.clone(), "clear", checker.generator());
             diagnostic.set_fix(Fix::unsafe_edit(Edit::replacement(
@@ -79,10 +78,8 @@ pub(crate) fn delete_full_slice(checker: &Checker, delete: &ast::StmtDelete) {
 
 /// Match `del expr[:]` where `expr` is a list.
 fn match_full_slice<'a>(expr: &'a Expr, semantic: &SemanticModel) -> Option<&'a ast::ExprName> {
-    // Check that it is `del expr[...]`.
     let subscript = expr.as_subscript_expr()?;
 
-    // Check that it is` `del expr[:]`.
     if !matches!(
         subscript.slice.as_ref(),
         Expr::Slice(ast::ExprSlice {
@@ -96,13 +93,11 @@ fn match_full_slice<'a>(expr: &'a Expr, semantic: &SemanticModel) -> Option<&'a 
         return None;
     }
 
-    // It should only apply to variables that are known to be lists.
     let name = subscript.value.as_name_expr()?;
     let binding = semantic.binding(semantic.only_binding(name)?);
     if !is_list(binding, semantic) {
         return None;
     }
 
-    // Name is needed for the fix suggestion.
     Some(name)
 }

@@ -113,9 +113,6 @@ impl<'db> AbstractMethods<'db> {
             );
             diagnostic.sub(sub);
 
-            // If the implicitly abstract method is defined in first-party code
-            // and the return type is assignable to `None`, they may not have intended
-            // for it to be implicitly abstract; add a clarificatory note:
             if kind.is_implicit_due_to_stub_body() && db.should_check_file(definition.file(db)) {
                 let function_type_as_callable = infer_definition_types(db, *definition)
                     .binding_type(*definition)
@@ -250,8 +247,6 @@ impl<'db> ClassType<'db> {
     /// and have not been overridden with a concrete implementation anywhere in the MRO
     ///
     /// The value of the map is a struct containing information about the abstract method.
-    // Inferring class members can call constructors that query abstractness again.
-    // Start with no abstract methods while resolving these cycles.
     #[salsa::tracked(returns(ref), heap_size=ruff_memory_usage::heap_size, cycle_initial=|_, _, _| FxIndexMap::default())]
     pub(in crate::types) fn abstract_methods(
         self,
@@ -268,7 +263,6 @@ impl<'db> ClassType<'db> {
                     type_as_abstract_method(db, method.func(db), defining_class)
                 }
                 Type::PropertyInstance(property) => {
-                    // A property is abstract if any of its accessors is abstract.
                     property
                         .getter(db)
                         .and_then(|getter| type_as_abstract_method(db, getter, defining_class))
@@ -290,15 +284,11 @@ impl<'db> ClassType<'db> {
         let mut abstract_methods: FxIndexMap<Name, _> = FxIndexMap::default();
         let env = &ProgramEnvironment::from_file(self.class_literal(db).program_file(db));
 
-        // Iterate through the MRO in reverse order,
-        // skipping `object` (we know it doesn't define any abstract methods)
         for supercls in self.iter_mro(db).rev().skip(1) {
             let ClassBase::Class(class) = supercls else {
                 continue;
             };
 
-            // Currently we do not recognize dynamic classes as being able to define abstract methods,
-            // but we do recognise them as being able to override abstract methods defined in static classes.
             let ClassLiteral::Static(class_literal) = class.class_literal(db) else {
                 abstract_methods
                     .retain(|name, _| class.own_class_member(db, env, None, name).is_undefined());
@@ -311,9 +301,6 @@ impl<'db> ClassType<'db> {
             let can_be_implicitly_abstract =
                 !class_literal.file(db).is_stub(db) && class.is_protocol(db);
 
-            // Treat abstract methods from superclasses as having been overridden
-            // if this class has a synthesized method by that name,
-            // or this class has a `ClassVar` declaration by that name
             abstract_methods.retain(|name, _| {
                 if class_literal
                     .own_synthesized_member(db, env, None, None, name)
@@ -333,9 +320,6 @@ impl<'db> ClassType<'db> {
 
             for (symbol_id, bindings_iterator) in use_def_map.all_end_of_scope_symbol_bindings() {
                 let name = place_table.symbol(symbol_id).name();
-                // Avoid inferring signatures for methods that cannot introduce abstractness.
-                // Inspect all reachable definitions: an earlier overload can be abstract even
-                // when the final implementation is concrete.
                 if !can_be_implicitly_abstract
                     && !abstract_methods.contains_key(name)
                     && use_def_map
@@ -360,13 +344,11 @@ impl<'db> ClassType<'db> {
                     };
                     abstract_methods.insert(name.clone(), abstract_method);
                 } else {
-                    // If this method is concrete, remove it from the map of abstract methods.
                     abstract_methods.shift_remove(name);
                 }
             }
 
             // Slot descriptors override abstract properties. Dataclass-generated slots can also
-            // replace abstract properties defined in this class's body.
             abstract_methods.retain(|name, _| !class_literal.has_own_slot_descriptor(db, name));
         }
 

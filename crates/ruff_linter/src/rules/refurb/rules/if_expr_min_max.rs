@@ -91,13 +91,10 @@ pub(crate) fn if_expr_min_max(checker: &Checker, if_exp: &ast::ExprIf) {
         return;
     };
 
-    // Ignore, e.g., `foo < bar < baz`.
     let Some((left, op, right)) = compare.as_single() else {
         return;
     };
 
-    // Determine whether to use `min()` or `max()`, and whether to flip the
-    // order of the arguments, which is relevant for breaking ties.
     let (mut min_max, mut flip_args) = match op {
         CmpOp::Gt => (MinMax::Max, true),
         CmpOp::GtE => (MinMax::Max, false),

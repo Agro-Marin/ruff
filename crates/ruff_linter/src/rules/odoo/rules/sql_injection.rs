@@ -126,8 +126,6 @@ impl<'a> Visitor<'a> for Places<'a> {
                 self.functions.insert(address(function), self.current);
                 self.definitions.push(Visit::Function(function));
                 let outer = self.current;
-                // Decorators, defaults and annotations are children of the
-                // function node, so test_lint places them in its scope.
                 self.current.scope = Scope::Function(function);
                 visitor::walk_stmt(self, stmt);
                 self.current = outer;
@@ -584,10 +582,6 @@ impl<'a> SqlInjectionCheck<'a> {
     fn check_name_constexpr(&mut self, node: &'a Expr, name: &'a str, args_allowed: bool) -> bool {
         let scope = self.place(node).scope;
         let key = (scope.id(), name);
-        // `q = q % {...}` asks about q while q is being resolved. Assume the
-        // answer is yes: the other bindings decide, since a non-constant seed
-        // fails on its own line and a constant one stays constant through an
-        // accumulation of constants.
         if !self.resolving_names.insert(key) {
             return true;
         }
@@ -611,7 +605,6 @@ impl<'a> SqlInjectionCheck<'a> {
             });
         }
         if results.is_empty() {
-            // Free variables use the enclosing function's binding.
             if let Some(outer @ Scope::Function(_)) = self.outer_scope(scope) {
                 return self.resolve_name(name, outer, args_allowed);
             }
@@ -677,8 +670,6 @@ impl<'a> SqlInjectionCheck<'a> {
             self.const_def_cache.insert(key, true);
             return true;
         }
-        // Seeded before the walk: a helper reached again through a cycle adds no
-        // return of its own, and the other returns decide.
         self.const_def_cache.insert(key, true);
         let result = return_values(function)
             .into_iter()
@@ -781,8 +772,6 @@ impl<'a> SqlInjectionCheck<'a> {
 
     fn is_risky(&mut self, call: &'a ast::ExprCall) -> bool {
         match &*call.func {
-            // odoo.db's Connection method forwards its statement to execute;
-            // checked at every call site, whatever its receiver.
             Expr::Attribute(attribute) if attribute.attr.as_str() == "get_rows_autocommit" => {}
             Expr::Attribute(attribute)
                 if matches!(attribute.attr.as_str(), "execute" | "executemany" | "SQL") =>

@@ -52,12 +52,10 @@ impl AlwaysFixableViolation for BooleanChainedComparison {
 
 /// PLR1716
 pub(crate) fn boolean_chained_comparison(checker: &Checker, expr_bool_op: &ExprBoolOp) {
-    // early exit for non `and` boolean operations
     if expr_bool_op.op != BoolOp::And {
         return;
     }
 
-    // early exit when not all expressions are compare expressions
     if !expr_bool_op.values.iter().all(Expr::is_compare_expr) {
         return;
     }
@@ -65,7 +63,6 @@ pub(crate) fn boolean_chained_comparison(checker: &Checker, expr_bool_op: &ExprB
     let locator = checker.locator();
     let tokens = checker.tokens();
 
-    // retrieve all compare expressions from boolean expression
     let compare_expressions = expr_bool_op
         .values
         .iter()
@@ -96,10 +93,7 @@ pub(crate) fn boolean_chained_comparison(checker: &Checker, expr_bool_op: &ExprB
         let right_paren_count =
             parentheses_iterator(right_compare.into(), Some(expr_bool_op.into()), tokens).count();
 
-        // Create the edit that removes the comparison operator
 
-        // In `a<(b) and ((b))<c`, we need to handle the
-        // parentheses when specifying the fix range.
         let left_compare_right_range =
             parenthesized_range(left_compare_right.into(), left_compare.into(), tokens)
                 .unwrap_or(left_compare_right.range());
@@ -114,7 +108,6 @@ pub(crate) fn boolean_chained_comparison(checker: &Checker, expr_bool_op: &ExprB
             ),
         );
 
-        // Balance left and right parentheses
         let fix = match left_paren_count.cmp(&right_paren_count) {
             std::cmp::Ordering::Less => {
                 let balance_parens_edit = Edit::insertion(

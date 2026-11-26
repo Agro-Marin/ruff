@@ -25,7 +25,6 @@ use common::{CliTest, user_config_directory_env_var};
 fn test_quiet_output() -> anyhow::Result<()> {
     let case = CliTest::with_file("test.py", "x: int = 1")?;
 
-    // By default, we emit an "all checks passed" message
     assert_cmd_snapshot!(case.command(), @"
     success: true
     exit_code: 0
@@ -35,7 +34,6 @@ fn test_quiet_output() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // With `quiet`, the message is not displayed
     assert_cmd_snapshot!(case.command().arg("--quiet"), @"
     success: true
     exit_code: 0
@@ -46,7 +44,6 @@ fn test_quiet_output() -> anyhow::Result<()> {
 
     let case = CliTest::with_file("test.py", "x: int = 'foo'")?;
 
-    // By default, we emit a diagnostic
     assert_cmd_snapshot!(case.command(), @r#"
     success: false
     exit_code: 1
@@ -64,7 +61,6 @@ fn test_quiet_output() -> anyhow::Result<()> {
     ----- stderr -----
     "#);
 
-    // With `quiet`, the diagnostic is not displayed, just the summary message
     assert_cmd_snapshot!(case.command().arg("--quiet"), @"
     success: false
     exit_code: 1
@@ -74,7 +70,6 @@ fn test_quiet_output() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // We allow `-q`
     assert_cmd_snapshot!(case.command().arg("-q"), @"
     success: false
     exit_code: 1
@@ -84,7 +79,6 @@ fn test_quiet_output() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // And repeated `-qq`
     assert_cmd_snapshot!(case.command().arg("-qq"), @"
     success: false
     exit_code: 1
@@ -162,7 +156,6 @@ fn test_include_hidden_files_by_default() -> anyhow::Result<()> {
 
 #[test]
 fn test_respect_ignore_files() -> anyhow::Result<()> {
-    // First test that the default option works correctly (the file is skipped)
     let case = CliTest::with_files([(".ignore", "test.py"), ("test.py", "~")])?;
     assert_cmd_snapshot!(case.command(), @"
     success: true
@@ -174,7 +167,6 @@ fn test_respect_ignore_files() -> anyhow::Result<()> {
     WARN No python files found under the given path(s)
     ");
 
-    // Test that we can set to false via CLI
     assert_cmd_snapshot!(case.command().arg("--no-respect-ignore-files"), @"
     success: false
     exit_code: 1
@@ -190,7 +182,6 @@ fn test_respect_ignore_files() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Test that we can set to false via config file
     case.write_file("ty.toml", "src.respect-ignore-files = false")?;
     assert_cmd_snapshot!(case.command(), @"
     success: false
@@ -207,7 +198,6 @@ fn test_respect_ignore_files() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Ensure CLI takes precedence
     case.write_file("ty.toml", "src.respect-ignore-files = true")?;
     assert_cmd_snapshot!(case.command().arg("--no-respect-ignore-files"), @"
     success: false
@@ -268,7 +258,6 @@ fn cli_arguments_are_relative_to_the_current_directory() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Make sure that the CLI fails when the `libs` directory is not in the search path.
     assert_cmd_snapshot!(case.command().current_dir(case.root().join("child")), @"
     success: false
     exit_code: 1
@@ -406,9 +395,6 @@ fn user_configuration() -> anyhow::Result<()> {
     "
     );
 
-    // The user-level configuration sets the severity for `unresolved-reference` to warn.
-    // Changing the level for `division-by-zero` has no effect, because the project-level configuration
-    // has higher precedence.
     case.write_file(
         config_directory.join("ty/ty.toml"),
         r#"
@@ -505,8 +491,6 @@ fn check_specific_paths() -> anyhow::Result<()> {
     "
     );
 
-    // Now check only the `tests` and `other.py` files.
-    // We should no longer see any diagnostics related to `main.py`.
     assert_cmd_snapshot!(
         case.command().arg("project/tests").arg("project/other.py"),
         @"

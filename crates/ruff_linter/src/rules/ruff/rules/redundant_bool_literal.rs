@@ -115,8 +115,6 @@ pub(crate) fn redundant_bool_literal<'a>(checker: &Checker, literal_expr: &'a Ex
     let mut diagnostic =
         checker.report_diagnostic(RedundantBoolLiteral { seen_others }, literal_expr.range());
 
-    // Provide a [`Fix`] when the complete `Literal` can be replaced. Applying the fix
-    // can leave an unused import to be fixed by the `unused-import` rule.
     if !seen_others {
         if checker.semantic().has_builtin_binding("bool") {
             diagnostic.set_fix(Fix::unsafe_edit(Edit::range_replacement(

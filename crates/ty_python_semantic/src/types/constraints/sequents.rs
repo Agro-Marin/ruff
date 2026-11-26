@@ -38,7 +38,6 @@ pub(super) struct InternedSequentConstraint<'db> {
     pub(super) constraint: AtomicConstraint<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for InternedSequentConstraint<'_> {}
 
 /// A collection of _sequents_ that describe how the constraints mentioned in a BDD relate to each
@@ -95,8 +94,6 @@ struct SequentMapBuilder<'db> {
 #[derive(Clone, Debug, Eq, Hash, PartialEq, get_size2::GetSize, salsa::SalsaValue)]
 pub(super) enum SequentGroup<'db> {
     Ungrouped(Box<[Sequent<InternedSequentConstraint<'db>>]>),
-    // Grouped sequents are uncommon; keeping their extra metadata out of line makes the common
-    // ungrouped entries smaller.
     Grouped(Box<GroupedSequents<'db>>),
 }
 
@@ -155,7 +152,7 @@ pub(super) enum Sequent<C, FuelCost = ()> {
 }
 
 impl<'db> SequentMap<'db> {
-    #[expect(dead_code)] // Keep this around for debugging purposes
+    #[expect(dead_code)]
     fn display<'a>(
         &'a self,
         db: &'db dyn Db,
@@ -384,9 +381,6 @@ impl<'db> SequentMap<'db> {
         env: &ProgramEnvironment<'db>,
         constraint: AtomicConstraint<'db>,
     ) -> Option<&'db Self> {
-        // Most individual constraints produce no sequents. Avoid interning the query arguments
-        // and retaining an empty Salsa result for those cases. Keep the checks in sync with the
-        // single-constraint `add_sequents` methods below.
         let may_produce_sequents = match constraint {
             AtomicConstraint::ConcreteLower(bound) => {
                 bound.bound == bound.typevar.domain(db).bottom(db)
@@ -455,10 +449,6 @@ impl<'db> SequentMap<'db> {
         left: AtomicConstraint<'db>,
         right: AtomicConstraint<'db>,
     ) -> Option<&'db Self> {
-        // Currently, the only pattern we look for is when two concrete lower-bound constraints
-        // have disjoint bounds. Given `l₁ ≤ T ∧ l₂ ≤ T`, the only sequent we could theoretically
-        // produce is `(l₁ | l₂) ≤ T`. But we don't store that as a single constraint; we always
-        // break that apart into the two smaller constraints that we started with.
         if let AtomicConstraint::ConcreteLower(left) = left
             && let AtomicConstraint::ConcreteLower(right) = right
             && left.typevar.is_same_typevar_as(db, right.typevar)
@@ -687,36 +677,7 @@ impl<'db> AtomicConstraint<'db> {
         lower: impl ProvidesConcreteLowerBound<'db>,
         upper: impl ProvidesConcreteUpperBound<'db>,
     ) {
-        // Given constraints `α ≤ T` and `T ≤ β`, `α ≤ β` must also hold. If those bounds contain
-        // other typevars, we can infer additional constraints. (α and U won't be bare typevars,
-        // since those will be modeled by `TypeVarRange` bounds.)
-        //
-        //   1. `(Covariant[S] ≤ T) ∧ (T ≤ Covariant[U]) → (S ≤ U)`
-        //      `(Covariant[S] ≤ T) ∧ (T ≤ Covariant[τ]) → (S ≤ τ)`
-        //      `(Covariant[τ] ≤ T) ∧ (T ≤ Covariant[U]) → (τ ≤ U)`
-        //
-        //   2. `(Contravariant[S] ≤ T) ∧ (T ≤ Contravariant[U]) → (U ≤ S)`
-        //      `(Contravariant[S] ≤ T) ∧ (T ≤ Contravariant[τ]) → (τ ≤ S)`
-        //      `(Contravariant[τ] ≤ T) ∧ (T ≤ Contravariant[U]) → (U ≤ τ)`
-        //
-        //   3. `(Invariant[S] ≤ T) ∧ (T ≤ Invariant[U]) → (S = U)`
-        //      `(Invariant[S] ≤ T) ∧ (T ≤ Invariant[τ]) → (S = τ)`
-        //      `(Invariant[τ] ≤ T) ∧ (T ≤ Invariant[U]) → (τ = U)`
-        //
-        // and whenever the bounds are assignable, even if they don't mention exactly the same
-        // types:
-        //
-        //   class Sub(Covariant[int]): ...
-        //
-        //   4. `(Covariant[S] ≤ T ≤ Sub) → (S ≤ int)`
-        //      `(Sub ≤ T ≤ Covariant[U]) → (int ≤ U)`
-        //
-        // To handle all of these cases, we perform a constraint set assignability check to see
-        // when `α ≤ β`. This gives us a constraint set, which should be the rhs of the sequent
-        // implication. (That is, this check directly encodes `(α ≤ T) ∧ (T ≤ β) → (α ≤ β)` as an
-        // implication.)
 
-        // Skip trivial cases where the assignability check won't produce useful results.
         if lower.bound() == lower.typevar().domain(db).bottom(db)
             || upper.bound() == upper.typevar().domain(db).top(db)
         {
@@ -743,8 +704,6 @@ impl<'db> AtomicConstraint<'db> {
         lower: impl ProvidesConcreteLowerBound<'db>,
         upper: impl ProvidesConcreteUpperBound<'db>,
     ) {
-        // Given constraints `T = α` and `T = β`, `α = β` must also hold. If those bounds contain
-        // other typevars, we can infer additional constraints.
         if lower.bound().is_static_sequent_eligible(db, env)
             && upper.bound().is_static_sequent_eligible(db, env)
         {
@@ -771,53 +730,15 @@ impl<'db> AtomicConstraint<'db> {
         when: &OwnedConstraintSet<'db>,
     ) {
         when.query(|builder, when| {
-            // If the relation _never_ holds, these constraints are contradictory.
             if when.is_trivially_never_satisfied() {
                 map.add_pair_impossibility(lower_constraint, upper_constraint);
                 return;
             }
 
-            // Fast path: If the relation _always_, there are no derived constraints
-            // that we can infer. This would be handled correctly by the logic below, but this is a
-            // useful early return. Since we only use this check as an early return happy path, we can
-            // accept false negatives. That lets us use the simpler and cheaper check against
-            // ALWAYS_TRUE, rather than a more expensive is_always_satisfiable call.
             if when.is_trivially_always_satisfied() {
                 return;
             }
 
-            // Technically, we've just calculated a _constraint set_ as the rhs of this implication.
-            // Unfortunately, our sequent map can currently only store implications where the rhs is a
-            // single constraint.
-            //
-            // If the constraint set that we get represents a single conjunction, we can still shoehorn
-            // it into this shape, since we can "break apart" a conjunction on the rhs of an
-            // implication:
-            //
-            //   a → b ∧ c ∧ d
-            //
-            // becomes
-            //
-            //   a → b
-            //   a → c
-            //   a → d
-            //
-            // That takes care of breaking apart the rhs conjunction: we can add each positive
-            // constraint as a separate single_implication.
-            //
-            // We can also handle _negative_ constraints, because those turn into impossibilities:
-            //
-            //   a → ¬b
-            //
-            // becomes
-            //
-            //   a ∧ b → false
-            //
-            // TODO: This should handle the most common cases. In the future, we could handle arbitrary
-            // rhs constraint sets by moving this logic into PathAssignments::walk_path, and performing
-            // it once for _every_ root→always path in the BDD. (That would require resetting the
-            // PathAssignments state for each of those paths, which is why the logic would have to
-            // move.)
             let mut storage = builder.storage.borrow_mut();
             let mut node = when.node;
             if !node.is_single_conjunction(&mut storage) {
@@ -865,25 +786,12 @@ impl<'db> AtomicConstraint<'db> {
         replacement_bound: Type<'db>,
         replacement_source: ReplacementSource,
     ) -> Option<Type<'db>> {
-        // Substituting a gradual type is not always safe.
-        //
-        // If we are substituting because a lower or upper bound, that means we are applying
-        // transitivity. Gradual assignability is not transitive. Substituting a dynamic
-        // replacement into another bound would let an uncertain relationship participate in an
-        // arbitrarily long sequent chain.
-        //
-        // If we are substituting because of an equivalence bound, that means we have two terms
-        // that are equal, and we are just substituting one for the other. This does not rely on
-        // transitivity, and is therefore sound even for gradual types.
         if !replacement_source.is_equivalence
             && !replacement_bound.is_static_sequent_eligible(db, env)
         {
             return None;
         }
 
-        // A self-referential bound can consume another bound on the same typevar repeatedly. For
-        // example, combining `F[U] ≤ U` with `M ≤ U` would first produce `F[M] ≤ U`, then
-        // `F[F[M]] ≤ U`, and so on.
         if needle_typevar.is_same_typevar_as(db, replacement_typevar) {
             return None;
         }
@@ -919,10 +827,6 @@ impl<'db> AtomicConstraint<'db> {
             && let Type::Callable(callable) = needle_bound
             && callable.kind(db) == CallableTypeKind::ParamSpecValue
         {
-            // A captured signature already retains its typevars' declared bounds. Substituting
-            // those bounds for its local generic parameters would enumerate combinations of
-            // specialized overloads without providing any new call-site evidence. Free typevars
-            // still participate in substitution, as do evidence-backed bounds on local typevars.
             let visitor = ApplyTypeMappingVisitor::new(env);
             let signatures = CallableSignature::from_overloads(
                 callable.signatures(db).iter().flat_map(|signature| {
@@ -953,9 +857,6 @@ impl<'db> AtomicConstraint<'db> {
         left: impl ProvidesConcreteLowerBound<'db>,
         right: impl ProvidesConcreteLowerBound<'db>,
     ) {
-        // Given `α ≤ T` and `β ≤ U`, if α contains U covariantly, we can substitute β for U:
-        //
-        //   (Co[U] ≤ T) ∧ (β ≤ U) ⇒ (Co[β] ≤ T)
         if left
             .bound()
             .variance_of(db, env, right.typevar().identity(db))
@@ -991,9 +892,6 @@ impl<'db> AtomicConstraint<'db> {
         left: impl ProvidesConcreteUpperBound<'db>,
         right: impl ProvidesConcreteUpperBound<'db>,
     ) {
-        // Given `T ≤ α` and `U ≤ β`, if α contains U covariantly, we can substitute β for U:
-        //
-        //   (T ≤ Co[U]) ∧ (U ≤ β) ⇒ (T ≤ Co[β])
         if left
             .bound()
             .variance_of(db, env, right.typevar().identity(db))
@@ -1029,9 +927,6 @@ impl<'db> AtomicConstraint<'db> {
         left: ConcreteEquivalenceBound<'db>,
         right: ConcreteEquivalenceBound<'db>,
     ) {
-        // Given `T = α` and `U = β`, if α contains U covariantly, we can substitute β for U:
-        //
-        //   (T = Co[U]) ∧ (U = β) ⇒ (T = Co[β])
         if left
             .bound()
             .variance_of(db, env, right.typevar().identity(db))
@@ -1065,9 +960,6 @@ impl<'db> AtomicConstraint<'db> {
     ) {
         let provenance = ConstraintProvenance::derived(lower.provenance(), upper.provenance());
 
-        // Given `α ≤ T` and `U ≤ β`, if α contains U contravariantly, substitute β for U:
-        //
-        //   (Contra[U] ≤ T) ∧ (U ≤ β) ⇒ (Contra[β] ≤ T)
         if lower
             .bound()
             .variance_of(db, env, upper.typevar().identity(db))
@@ -1091,9 +983,6 @@ impl<'db> AtomicConstraint<'db> {
             }
         }
 
-        // If β contains T contravariantly, substitute α for T:
-        //
-        //   (α ≤ T) ∧ (U ≤ Contra[T]) ⇒ (U ≤ Contra[α])
         if upper
             .bound()
             .variance_of(db, env, lower.typevar().identity(db))
@@ -1125,10 +1014,6 @@ impl<'db> AtomicConstraint<'db> {
         left: impl ProvidesConcreteBound<'db>,
         right: ConcreteEquivalenceBound<'db>,
     ) {
-        // Given `T ~ α` and `U = β`, if α contains U invariantly, we can substitute β for U. For
-        // instance,
-        //
-        //   (T ~ In[U]) ∧ (U = β) ⇒ (T ~ In[β])
         if left
             .bound()
             .variance_of(db, env, right.typevar().identity(db))
@@ -1160,10 +1045,6 @@ impl<'db> AtomicConstraint<'db> {
         left: impl ProvidesConcreteLowerBound<'db>,
         right: impl ProvidesTypeVarRangeBound<'db>,
     ) {
-        // Given `α ≤ T` and `S ≤ U`, if α contains U covariantly, we can substitute S for U. For
-        // instance,
-        //
-        //   (Co[U] ≤ T) ∧ (S ≤ U) ⇒ (Co[S] ≤ T)
         if left
             .bound()
             .variance_of(db, env, right.right().identity(db))
@@ -1195,10 +1076,6 @@ impl<'db> AtomicConstraint<'db> {
         left: impl ProvidesConcreteUpperBound<'db>,
         right: impl ProvidesTypeVarRangeBound<'db>,
     ) {
-        // Given `T ≤ α` and `U ≤ S`, if α contains U covariantly, we can substitute S for U. For
-        // instance,
-        //
-        //   (T ≤ Co[U]) ∧ (U ≤ S) ⇒ (T ≤ Co[S])
         if left
             .bound()
             .variance_of(db, env, right.left().identity(db))
@@ -1230,10 +1107,6 @@ impl<'db> AtomicConstraint<'db> {
         left: ConcreteEquivalenceBound<'db>,
         right: impl ProvidesTypeVarEquivalenceBound<'db>,
     ) {
-        // Given `T = α` and `S = U`, if α contains S covariantly, we can substitute U for S. For
-        // instance,
-        //
-        //   (T = Co[S]) ∧ (S = U) ⇒ (T = Co[U])
         if left
             .bound()
             .variance_of(db, env, right.left().identity(db))
@@ -1265,10 +1138,6 @@ impl<'db> AtomicConstraint<'db> {
         left: impl ProvidesConcreteLowerBound<'db>,
         right: impl ProvidesTypeVarRangeBound<'db>,
     ) {
-        // Given `α ≤ T` and `U ≤ S`, if α contains U contravariantly, we can substitute S for U
-        // and flip the constraint. For instance,
-        //
-        //   (Contra[U] ≤ T) ∧ (U ≤ S) ⇒ (Contra[S] ≤ T)
         if left
             .bound()
             .variance_of(db, env, right.left().identity(db))
@@ -1300,10 +1169,6 @@ impl<'db> AtomicConstraint<'db> {
         left: impl ProvidesConcreteUpperBound<'db>,
         right: impl ProvidesTypeVarRangeBound<'db>,
     ) {
-        // Given `T ≤ α` and `S ≤ U`, if α contains U contravariantly, we can substitute S for U
-        // and flip the constraint. For instance,
-        //
-        //   (T ≤ Contra[U]) ∧ (S ≤ U) ⇒ (T ≤ Contra[S])
         if left
             .bound()
             .variance_of(db, env, right.right().identity(db))
@@ -1335,10 +1200,6 @@ impl<'db> AtomicConstraint<'db> {
         left: ConcreteEquivalenceBound<'db>,
         right: impl ProvidesTypeVarEquivalenceBound<'db>,
     ) {
-        // Given `T = α` and `S = U`, if α contains U contravariantly, we can substitute S for U
-        // and flip the constraint. For instance,
-        //
-        //   (T = Contra[U]) ∧ (S = U) ⇒ (T = Contra[S])
         if left
             .bound()
             .variance_of(db, env, right.left().identity(db))
@@ -1370,10 +1231,6 @@ impl<'db> AtomicConstraint<'db> {
         left: impl ProvidesConcreteBound<'db>,
         right: impl ProvidesTypeVarEquivalenceBound<'db>,
     ) {
-        // Given `T ~ α` and `S = U`, if α contains U invariantly, we can substitute S for U. For
-        // instance,
-        //
-        //   (T ~ In[U]) ∧ (S = U) ⇒ (T ~ In[S])
         if left
             .bound()
             .variance_of(db, env, right.left().identity(db))
@@ -1434,14 +1291,11 @@ impl<'db> ConcreteLowerBound<'db> {
         _env: &ProgramEnvironment<'db>,
         map: &mut SequentMapBuilder<'db>,
     ) {
-        // `⊥ ≤ T` is always true
         if self.bound == self.typevar.domain(db).bottom(db) {
             map.add_single_tautology(self.into());
         }
 
-        // `⊤ ≤ T` implies `T = ⊤`
         if self.bound == self.typevar.domain(db).top(db) {
-            // The implied upper bound comes from the type variable's domain, not inference evidence.
             let provenance = self.provenance | ConstraintProvenance::VALIDITY;
             let derived = ConcreteEquivalenceBound::new(provenance, self.typevar, self.bound);
             map.add_single_implication(self.into(), derived.into());
@@ -1456,36 +1310,24 @@ impl<'db> ConcreteLowerBound<'db> {
         other: ConcreteLowerBound<'db>,
         reversed: bool,
     ) {
-        // We can infer sequents from `α ≤ T` and `β ≤ U` if α _contains_ U and/or β contains T.
         if !self.typevar.is_same_typevar_as(db, other.typevar) {
             AtomicConstraint::add_covariant_lower_tightened_sequent(db, env, map, self, other);
             AtomicConstraint::add_covariant_lower_tightened_sequent(db, env, map, other, self);
             return;
         }
 
-        // These might seem redundant with the union calculation check below, since `a → b` means
-        // that `a ∧ b = a`. But we are not normalizing constraint bounds, and these clauses help
-        // us identify constraints that are identical besides e.g. ordering of union/intersection
-        // elements. (For instance, when processing `τ₁ & τ₂ ≤ T` and `τ₂ & τ₁ ≤ T`, these clauses
-        // would add sequents for `(τ₁ & τ₂ ≤ T) → (τ₂ & τ₁ ≤ T)` and vice versa.)
 
-        // We use subtyping here, as a gradual range `Any <= T` permits materializations not implied
-        // by `int <= T`, despite `Any` and `int` being mutually assignable.
         let lower = self.bound.bottom_materialization(db, env);
         let other_lower = other.bound.bottom_materialization(db, env);
 
-        // (β ≤ α) ⇒ ((α ≤ T) ⇒ (β ≤ T))
         if other_lower.is_constraint_set_subtype_of(db, env, lower) {
             map.add_single_implication(self.into(), other.into());
         }
 
-        // (α ≤ β) ⇒ ((β ≤ T) ⇒ (α ≤ T))
         if lower.is_constraint_set_subtype_of(db, env, other_lower) {
             map.add_single_implication(other.into(), self.into());
         }
 
-        // `(α ≤ T) ∧ (β ≤ T)` is equivalent to `(α | β) ≤ T`. We do not create lower bounds that
-        // are unions, so only add sequents when the union simplifies away.
         let combined = possibly_reversed_union(db, env, reversed, self.bound, other.bound);
         if !combined.is_union() {
             let provenance = ConstraintProvenance::simplified(
@@ -1497,7 +1339,6 @@ impl<'db> ConcreteLowerBound<'db> {
             );
             let combined = ConcreteLowerBound::new(provenance, self.typevar, combined);
 
-            // The result is an equivalence, so add implications in both directions.
             map.add_pair_implication(self.into(), other.into(), combined.into());
             map.add_single_implication(combined.into(), self.into());
             map.add_single_implication(combined.into(), other.into());
@@ -1512,12 +1353,9 @@ impl<'db> ConcreteLowerBound<'db> {
         other: ConcreteUpperBound<'db>,
         _reversed: bool,
     ) {
-        // We can infer sequents from `α ≤ T` and `U ≤ β` if α _contains_ U and/or β contains T.
         if !self.typevar.is_same_typevar_as(db, other.typevar) {
             AtomicConstraint::add_contravariant_tightened_sequent(db, env, map, self, other);
 
-            // `(T ≤ pivot) ∧ (pivot ≤ U) → (T ≤ U)` when both constraints use the same
-            // statically eligible pivot type.
             if self.typevar.domain(db) == other.typevar.domain(db)
                 && other.bound != self.typevar.domain(db).bottom(db)
                 && other.bound != self.typevar.domain(db).top(db)
@@ -1534,20 +1372,12 @@ impl<'db> ConcreteLowerBound<'db> {
             return;
         }
 
-        // Gradual assignability is not transitive, so only fully static bounds can contribute
-        // additional range sequents.
         if !self.bound.is_static_sequent_eligible(db, env)
             || !other.bound.is_static_sequent_eligible(db, env)
         {
             return;
         }
 
-        // `(α ≤ T) ∧ (T ≤ β)` simplifies to `T = α` when `α = β`. For ordinary typevars, only
-        // simplify when the materialized bounds are the same `Type`; checking semantic equivalence
-        // can recursively expand protocol members. ParamSpec bounds still need the semantic check
-        // because callable types with different return types can represent the same parameter list.
-        // (We don't need to add the projection implication `(T = α) ⇒ (α ≤ T)`, since anything we
-        // can derive from `α ≤ T` we can also derive from `T = α`.)
         let lower = self.bound.bottom_materialization(db, env);
         let upper = other.bound.top_materialization(db, env);
         if lower == upper
@@ -1571,14 +1401,12 @@ impl<'db> ConcreteLowerBound<'db> {
         other: ConcreteEquivalenceBound<'db>,
         _reversed: bool,
     ) {
-        // We can infer sequents from `α ≤ T` and `U = β` if α _contains_ U and/or β contains T.
         if !self.typevar.is_same_typevar_as(db, other.typevar) {
             AtomicConstraint::add_covariant_lower_tightened_sequent(db, env, map, self, other);
             AtomicConstraint::add_covariant_lower_tightened_sequent(db, env, map, other, self);
             AtomicConstraint::add_contravariant_tightened_sequent(db, env, map, self, other);
             AtomicConstraint::add_invariant_tightened_sequent(db, env, map, self, other);
 
-            // `(pivot ≤ T) ∧ (U = pivot) → (U ≤ T)`.
             if self.typevar.domain(db) == other.typevar.domain(db)
                 && self.bound.is_static_sequent_eligible(db, env)
                 && other.bound.is_static_sequent_eligible(db, env)
@@ -1593,9 +1421,6 @@ impl<'db> ConcreteLowerBound<'db> {
             return;
         }
 
-        // (α ≤ β) ⇒ ((T = β) ⇒ (α ≤ T))
-        // This requires a static equivalence bound: `T = Any` permits `T = str`, so
-        // assignability of `int` to `Any` does not imply `int ≤ T`.
         if other.bound.is_static_sequent_eligible(db, env)
             && self
                 .bound
@@ -1604,8 +1429,6 @@ impl<'db> ConcreteLowerBound<'db> {
             map.add_single_implication(other.into(), self.into());
         }
 
-        // Given constraints `α ≤ T` and `T = β`, `α ≤ β` must also hold. If those bounds contain
-        // other typevars, we can infer additional constraints.
         AtomicConstraint::add_sequents_for_range(db, env, map, self, other);
     }
 
@@ -1617,14 +1440,12 @@ impl<'db> ConcreteLowerBound<'db> {
         other: TypeVarRangeBound<'db>,
         _reversed: bool,
     ) {
-        // Given constraints `α ≤ T` and `T ≤ U`, `α ≤ U` must also hold.
         if self.typevar.is_same_typevar_as(db, other.left) {
             let provenance = ConstraintProvenance::derived(self.provenance, other.provenance);
             let derived = ConcreteLowerBound::new(provenance, other.right, self.bound);
             map.add_pair_implication(self.into(), other.into(), derived.into());
         }
 
-        // We can infer sequents from `α ≤ T` and `S ≤ U` if α _contains_ U.
         AtomicConstraint::add_covariant_lower_weakened_sequent(db, env, map, self, other);
         AtomicConstraint::add_contravariant_lower_weakened_sequent(db, env, map, self, other);
     }
@@ -1637,7 +1458,6 @@ impl<'db> ConcreteLowerBound<'db> {
         other: TypeVarEquivalenceBound<'db>,
         _reversed: bool,
     ) {
-        // Given constraints `α ≤ T` and `T = U`, `α ≤ U` must also hold.
         let other_typevar = if self.typevar.is_same_typevar_as(db, other.left) {
             Some(other.right)
         } else if self.typevar.is_same_typevar_as(db, other.right) {
@@ -1651,7 +1471,6 @@ impl<'db> ConcreteLowerBound<'db> {
             map.add_pair_implication(self.into(), other.into(), derived.into());
         }
 
-        // We can infer sequents from `α ≤ T` and `S ≤ U` if α _contains_ U.
         map.add_grouped_sequents(other, |map, other| {
             let reversed = other.reverse();
             AtomicConstraint::add_covariant_lower_weakened_sequent(db, env, map, self, other);
@@ -1670,24 +1489,16 @@ impl<'db> ConcreteUpperBound<'db> {
         env: &ProgramEnvironment<'db>,
         map: &mut SequentMapBuilder<'db>,
     ) {
-        // `T ≤ ⊤` is always true
         if self.bound == self.typevar.domain(db).top(db) {
             map.add_single_tautology(self.into());
         }
 
-        // `T ≤ ⊥` implies `T = ⊥`
         if self.bound == self.typevar.domain(db).bottom(db) {
-            // The implied lower bound comes from the type variable's domain, not inference evidence.
             let provenance = self.provenance | ConstraintProvenance::VALIDITY;
             let derived = ConcreteEquivalenceBound::new(provenance, self.typevar, self.bound);
             map.add_single_implication(self.into(), derived.into());
         }
 
-        // `U ≤ T | A` implies `U & ~Top[A] ≤ T`. In particular, when U is fixed by the caller,
-        // the original upper bound cannot select a solution for T. The residual lower bound
-        // preserves U without requiring T to accept the part of U already covered by A.
-        // Subtracting A's top materialization excludes every materialization of a gradual arm, so
-        // a fully covered U contributes no inference evidence and does not override T's default.
         let Type::Union(union) = self.bound else {
             return;
         };
@@ -1696,9 +1507,6 @@ impl<'db> ConcreteUpperBound<'db> {
                 continue;
             };
             let other_elements = union.elements(db).iter().filter(|other| *other != element);
-            // Wait for substitutions to resolve other type variables in the union. Otherwise,
-            // `U ≤ T | V` would produce mutually dependent lower bounds `U & ~V ≤ T` and
-            // `U & ~T ≤ V`, which cannot independently select solutions for T and V.
             if other_elements
                 .clone()
                 .any(|other| any_over_type_expanding_aliases(db, env, *other, Type::is_type_var))
@@ -1712,7 +1520,6 @@ impl<'db> ConcreteUpperBound<'db> {
                     other_elements.map(|other| other.top_materialization(db, env).negate(db, env)),
                 ),
             );
-            // `Never ≤ T` supplies no inference evidence and must not override T's default.
             let Some(residual) = residual.filter(|residual| !residual.is_never()) else {
                 continue;
             };
@@ -1732,45 +1539,28 @@ impl<'db> ConcreteUpperBound<'db> {
         other: ConcreteUpperBound<'db>,
         reversed: bool,
     ) {
-        // We can infer sequents from `T ≤ α` and `U ≤ β` if α _contains_ U and/or β contains T.
         if !self.typevar.is_same_typevar_as(db, other.typevar) {
             AtomicConstraint::add_covariant_upper_tightened_sequent(db, env, map, self, other);
             AtomicConstraint::add_covariant_upper_tightened_sequent(db, env, map, other, self);
             return;
         }
 
-        // These might seem redundant with the intersection calculation check below, since `a → b`
-        // means that `a ∧ b = a`. But we are not normalizing constraint bounds, and these clauses
-        // help us identify constraints that are identical besides e.g. ordering of
-        // union/intersection elements. (For instance, when processing `T ≤ τ₁ | τ₂` and
-        // `T ≤ τ₂ | τ₁`, these clauses would add sequents for `(T ≤ τ₁ | τ₂) → (T ≤ τ₂ | τ₁)` and
-        // vice versa.)
 
-        // We use subtyping here, as a gradual range `T <= Any` permits materializations not implied
-        // by `T <= int`, despite `Any` and `int` being mutually assignable.
         let upper = self.bound.top_materialization(db, env);
         let other_upper = other.bound.top_materialization(db, env);
 
-        // (α ≤ β) ⇒ ((T ≤ α) ⇒ (T ≤ β))
         if upper.is_constraint_set_subtype_of(db, env, other_upper) {
             map.add_single_implication(self.into(), other.into());
         }
 
-        // (β ≤ α) ⇒ ((T ≤ β) ⇒ (T ≤ α))
         if other_upper.is_constraint_set_subtype_of(db, env, upper) {
             map.add_single_implication(other.into(), self.into());
         }
 
-        // Keep unions as separate, factored upper bounds. Intersecting a union with another bound
-        // can distribute the result into a union of intersections. That expanded type no longer
-        // looks like an intersection, and repeatedly combining it with other upper bounds can
-        // produce a combinatorial number of equivalent constraints.
         if self.bound.is_union() || other.bound.is_union() {
             return;
         }
 
-        // `(T ≤ α) ∧ (T ≤ β)` is equivalent to `T ≤ (α & β)`. We do not create upper bounds that
-        // are intersections, so only add sequents when the intersection simplifies away.
         let combined = possibly_reversed_intersection(db, env, reversed, self.bound, other.bound);
         if !combined.is_nontrivial_intersection(db) {
             let provenance = ConstraintProvenance::simplified(
@@ -1782,7 +1572,6 @@ impl<'db> ConcreteUpperBound<'db> {
             );
             let combined = ConcreteUpperBound::new(provenance, self.typevar, combined);
 
-            // The result is an equivalence, so add implications in both directions.
             map.add_pair_implication(self.into(), other.into(), combined.into());
             map.add_single_implication(combined.into(), self.into());
             map.add_single_implication(combined.into(), other.into());
@@ -1797,14 +1586,12 @@ impl<'db> ConcreteUpperBound<'db> {
         other: ConcreteEquivalenceBound<'db>,
         _reversed: bool,
     ) {
-        // We can infer sequents from `T ≤ α` and `U = β` if α _contains_ U and/or β contains T.
         if !self.typevar.is_same_typevar_as(db, other.typevar) {
             AtomicConstraint::add_covariant_upper_tightened_sequent(db, env, map, self, other);
             AtomicConstraint::add_covariant_upper_tightened_sequent(db, env, map, other, self);
             AtomicConstraint::add_contravariant_tightened_sequent(db, env, map, other, self);
             AtomicConstraint::add_invariant_tightened_sequent(db, env, map, self, other);
 
-            // `(T ≤ pivot) ∧ (U = pivot) → (T ≤ U)`.
             if self.typevar.domain(db) == other.typevar.domain(db)
                 && self.bound.is_static_sequent_eligible(db, env)
                 && other.bound.is_static_sequent_eligible(db, env)
@@ -1819,9 +1606,6 @@ impl<'db> ConcreteUpperBound<'db> {
             return;
         }
 
-        // (β ≤ α) ⇒ ((T = β) ⇒ (T ≤ α))
-        // This requires a static equivalence bound: `T = Any` permits `T = str`, so
-        // assignability of `Any` to `int` does not imply `T ≤ int`.
         if other.bound.is_static_sequent_eligible(db, env)
             && other
                 .bound
@@ -1830,8 +1614,6 @@ impl<'db> ConcreteUpperBound<'db> {
             map.add_single_implication(other.into(), self.into());
         }
 
-        // Given constraints `T ≤ α` and `T = β`, `β ≤ α` must also hold. If those bounds contain
-        // other typevars, we can infer additional constraints.
         AtomicConstraint::add_sequents_for_range(db, env, map, other, self);
     }
 
@@ -1843,14 +1625,12 @@ impl<'db> ConcreteUpperBound<'db> {
         other: TypeVarRangeBound<'db>,
         _reversed: bool,
     ) {
-        // Given constraints `T ≤ α` and `U ≤ T`, `U ≤ α` must also hold.
         if self.typevar.is_same_typevar_as(db, other.right) {
             let provenance = ConstraintProvenance::derived(self.provenance, other.provenance);
             let derived = ConcreteUpperBound::new(provenance, other.left, self.bound);
             map.add_pair_implication(self.into(), other.into(), derived.into());
         }
 
-        // We can infer sequents from `T ≤ α` and `S ≤ U` if α _contains_ S.
         AtomicConstraint::add_covariant_upper_weakened_sequent(db, env, map, self, other);
         AtomicConstraint::add_contravariant_upper_weakened_sequent(db, env, map, self, other);
     }
@@ -1863,7 +1643,6 @@ impl<'db> ConcreteUpperBound<'db> {
         other: TypeVarEquivalenceBound<'db>,
         _reversed: bool,
     ) {
-        // Given constraints `T ≤ α` and `U = T`, `U ≤ α` must also hold.
         let other_typevar = if self.typevar.is_same_typevar_as(db, other.left) {
             Some(other.right)
         } else if self.typevar.is_same_typevar_as(db, other.right) {
@@ -1877,7 +1656,6 @@ impl<'db> ConcreteUpperBound<'db> {
             map.add_pair_implication(self.into(), other.into(), derived.into());
         }
 
-        // We can infer sequents from `T ≤ α` and `S = U` if α _contains_ S.
         map.add_grouped_sequents(other, |map, other| {
             let reversed = other.reverse();
             AtomicConstraint::add_covariant_upper_weakened_sequent(db, env, map, self, reversed);
@@ -1895,7 +1673,6 @@ impl<'db> ConcreteEquivalenceBound<'db> {
         _env: &ProgramEnvironment<'db>,
         _map: &mut SequentMapBuilder<'db>,
     ) {
-        // We cannot infer any sequents from `T = α` on its own.
     }
 
     fn add_sequents_with_concrete_equivalence(
@@ -1906,7 +1683,6 @@ impl<'db> ConcreteEquivalenceBound<'db> {
         other: ConcreteEquivalenceBound<'db>,
         _reversed: bool,
     ) {
-        // We can infer sequents from `T = α` and `U = β` if α _contains_ U and/or β contains T.
         if !self.typevar.is_same_typevar_as(db, other.typevar) {
             AtomicConstraint::add_covariant_equivalence_tightened_sequent(
                 db, env, map, self, other,
@@ -1921,8 +1697,6 @@ impl<'db> ConcreteEquivalenceBound<'db> {
             return;
         }
 
-        // Given `T = α` and `T = β`, if α and β are equivalent (but not _identical_), we can infer
-        // either from the other.
         if self.bound == other.bound {
             return;
         }
@@ -1937,8 +1711,6 @@ impl<'db> ConcreteEquivalenceBound<'db> {
             map.add_single_implication(other.into(), derived.into());
         }
 
-        // Given constraints `T = α` and `T = β`, `α = β` must also hold. If those bounds contain
-        // other typevars, we can infer additional constraints.
         AtomicConstraint::add_sequents_for_equivalence(db, env, map, self, other);
     }
 
@@ -1950,24 +1722,18 @@ impl<'db> ConcreteEquivalenceBound<'db> {
         other: TypeVarRangeBound<'db>,
         _reversed: bool,
     ) {
-        // Given constraints `T = α` and `T ≤ U`, `α ≤ U` must also hold.
-        // Retaining the equality makes this an equivalent replacement for `T ≤ U`, so the
-        // fixed `T` does not remain in `U`'s inference bounds.
         if self.typevar.is_same_typevar_as(db, other.left) {
             let provenance = ConstraintProvenance::derived(self.provenance, other.provenance);
             let derived = ConcreteLowerBound::new(provenance, other.right, self.bound);
             map.add_substitution(other.into(), self.into(), derived.into());
         }
 
-        // Given constraints `T = α` and `U ≤ T`, `U ≤ α` must also hold.
-        // The retained equality likewise makes this an equivalent replacement for `U ≤ T`.
         if self.typevar.is_same_typevar_as(db, other.right) {
             let provenance = ConstraintProvenance::derived(self.provenance, other.provenance);
             let derived = ConcreteUpperBound::new(provenance, other.left, self.bound);
             map.add_substitution(other.into(), self.into(), derived.into());
         }
 
-        // We can infer sequents from `T = α` and `S ≤ U` if α _contains_ S or U.
         AtomicConstraint::add_covariant_lower_weakened_sequent(db, env, map, self, other);
         AtomicConstraint::add_covariant_upper_weakened_sequent(db, env, map, self, other);
         AtomicConstraint::add_contravariant_lower_weakened_sequent(db, env, map, self, other);
@@ -1982,7 +1748,6 @@ impl<'db> ConcreteEquivalenceBound<'db> {
         other: TypeVarEquivalenceBound<'db>,
         _reversed: bool,
     ) {
-        // Given constraints `T = α` and `T = U`, `U = α` must also hold.
         let other_typevar = if self.typevar.is_same_typevar_as(db, other.left) {
             Some(other.right)
         } else if self.typevar.is_same_typevar_as(db, other.right) {
@@ -1996,7 +1761,6 @@ impl<'db> ConcreteEquivalenceBound<'db> {
             map.add_substitution(other.into(), self.into(), derived.into());
         }
 
-        // We can infer sequents from `T = α` and `S = U` if α _contains_ U.
         map.add_grouped_sequents(other, |map, other| {
             let reversed = other.reverse();
             AtomicConstraint::add_covariant_equivalence_weakened_sequent(
@@ -2017,7 +1781,6 @@ impl<'db> TypeVarRangeBound<'db> {
         _env: &ProgramEnvironment<'db>,
         map: &mut SequentMapBuilder<'db>,
     ) {
-        // `T ≤ T` is always true
         if self.left.is_same_typevar_as(db, self.right) {
             map.add_single_tautology(self.into());
         }
@@ -2031,7 +1794,6 @@ impl<'db> TypeVarRangeBound<'db> {
         other: TypeVarRangeBound<'db>,
         _reversed: bool,
     ) {
-        // `S ≤ T` and `T ≤ S` implies `S = T`
         if self.left.is_same_typevar_as(db, other.right)
             && self.right.is_same_typevar_as(db, other.left)
         {
@@ -2041,7 +1803,6 @@ impl<'db> TypeVarRangeBound<'db> {
             return;
         }
 
-        // Given constraints `S ≤ T` and `T ≤ U`, `S ≤ U` must also hold.
         let (left, right) = if self.right.is_same_typevar_as(db, other.left) {
             (self.left, other.right)
         } else if self.left.is_same_typevar_as(db, other.right) {
@@ -2063,7 +1824,6 @@ impl<'db> TypeVarRangeBound<'db> {
         other: TypeVarEquivalenceBound<'db>,
         _reversed: bool,
     ) {
-        // Given constraints `S ≤ T` and `T = U`, `S ≤ U` must also hold.
         let replacement = if self.right.is_same_typevar_as(db, other.left) {
             Some(other.right)
         } else if self.right.is_same_typevar_as(db, other.right) {
@@ -2077,7 +1837,6 @@ impl<'db> TypeVarRangeBound<'db> {
             map.add_pair_implication(self.into(), other.into(), derived.into());
         }
 
-        // Given constraints `S ≤ T` and `R = S`, `R ≤ T` must also hold.
         let replacement = if self.left.is_same_typevar_as(db, other.left) {
             Some(other.right)
         } else if self.left.is_same_typevar_as(db, other.right) {
@@ -2100,7 +1859,6 @@ impl<'db> TypeVarEquivalenceBound<'db> {
         _env: &ProgramEnvironment<'db>,
         map: &mut SequentMapBuilder<'db>,
     ) {
-        // `T = T` is always true
         if self.left.is_same_typevar_as(db, self.right) {
             map.add_single_tautology(self.into());
         }
@@ -2114,7 +1872,6 @@ impl<'db> TypeVarEquivalenceBound<'db> {
         other: TypeVarEquivalenceBound<'db>,
         _reversed: bool,
     ) {
-        // Given constraints `S = T` and `T = U`, `S = U` must also hold.
         let replacement = if self.right.is_same_typevar_as(db, other.left) {
             Some(other.right)
         } else if self.right.is_same_typevar_as(db, other.right) {
@@ -2128,7 +1885,6 @@ impl<'db> TypeVarEquivalenceBound<'db> {
             map.add_pair_implication(self.into(), other.into(), derived.into());
         }
 
-        // Given constraints `S = T` and `R = S`, `R = T` must also hold.
         let replacement = if self.left.is_same_typevar_as(db, other.left) {
             Some(other.right)
         } else if self.left.is_same_typevar_as(db, other.right) {
@@ -2327,7 +2083,6 @@ mod tests {
         let free = paramspec_signature(db, Type::TypeVar(t), None);
         let specialized = paramspec_signature(db, int, None);
 
-        // The same variable can be bound in one signature and free in another.
         for keep_local in [false, true] {
             let captured = Type::Callable(CallableType::paramspec_value_from_signatures(
                 db,

@@ -87,12 +87,10 @@ enum Kind {
 
 /// If a function is a call to `open`, returns the kind of `open` call.
 fn is_open(func: &Expr, semantic: &SemanticModel) -> Option<Kind> {
-    // Ex) `open(...)`
     if semantic.match_builtin_expr(func, "open") {
         return Some(Kind::Builtin);
     }
 
-    // Ex) `pathlib.Path(...).open(...)`
     let ast::ExprAttribute { attr, value, .. } = func.as_attribute_expr()?;
     if attr != "open" {
         return None;

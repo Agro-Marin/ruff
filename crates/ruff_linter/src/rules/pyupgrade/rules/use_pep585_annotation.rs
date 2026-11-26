@@ -107,9 +107,6 @@ pub(crate) fn use_pep585_annotation(checker: &Checker, expr: &Expr, replacement:
             None
         };
 
-        // Adding `from __future__ import annotations` changes runtime behavior for all
-        // annotations in the file, so those fixes are always unsafe. Without a future
-        // import, the original applicability applies: safe only on Python 3.10+.
         let applicability =
             if future_import.is_none() && checker.target_version() >= PythonVersion::PY310 {
                 Applicability::Safe
@@ -118,7 +115,6 @@ pub(crate) fn use_pep585_annotation(checker: &Checker, expr: &Expr, replacement:
             };
         match replacement {
             ModuleMember::BuiltIn(name) => {
-                // Built-in type, like `list`.
                 diagnostic.try_set_fix(|| {
                     let (import_edit, binding) = checker.importer().get_or_import_builtin_symbol(
                         name,
@@ -134,7 +130,6 @@ pub(crate) fn use_pep585_annotation(checker: &Checker, expr: &Expr, replacement:
                 });
             }
             ModuleMember::Member(module, member) => {
-                // Imported type, like `collections.deque`.
                 diagnostic.try_set_fix(|| {
                     let (import_edit, binding) = checker.importer().get_or_import_symbol(
                         &ImportRequest::import_from(module, member),

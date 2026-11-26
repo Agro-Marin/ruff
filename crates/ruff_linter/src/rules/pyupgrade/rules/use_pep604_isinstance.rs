@@ -97,11 +97,9 @@ pub(crate) fn use_pep604_isinstance(checker: &Checker, expr: &Expr, func: &Expr,
     let Expr::Tuple(tuple) = types else {
         return;
     };
-    // Ex) `()`
     if tuple.is_empty() {
         return;
     }
-    // Ex) `(*args,)`
     if tuple.iter().any(Expr::is_starred_expr) {
         return;
     }

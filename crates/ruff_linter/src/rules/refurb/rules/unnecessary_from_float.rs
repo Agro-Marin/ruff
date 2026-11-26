@@ -92,7 +92,6 @@ pub(crate) fn unnecessary_from_float(checker: &Checker, call: &ExprCall) {
         return;
     };
 
-    // The method name must be either `from_float` or `from_decimal`.
     let method_name = match attr.as_str() {
         "from_float" => MethodName::FromFloat,
         "from_decimal" => MethodName::FromDecimal,
@@ -101,7 +100,6 @@ pub(crate) fn unnecessary_from_float(checker: &Checker, call: &ExprCall) {
 
     let semantic = checker.semantic();
 
-    // The value must be either `decimal.Decimal` or `fractions.Fraction`.
     let Some(qualified_name) = semantic.resolve_qualified_name(value) else {
         return;
     };
@@ -112,7 +110,6 @@ pub(crate) fn unnecessary_from_float(checker: &Checker, call: &ExprCall) {
         _ => return,
     };
 
-    // `Decimal.from_decimal` doesn't exist.
     if matches!(
         (method_name, constructor),
         (MethodName::FromDecimal, Constructor::Decimal)
@@ -128,16 +125,13 @@ pub(crate) fn unnecessary_from_float(checker: &Checker, call: &ExprCall) {
         call.range(),
     );
 
-    // Validate that the method call has correct arguments and get the argument value
     let Some(arg_value) = has_valid_method_arguments(call, method_name, constructor) else {
-        // Don't suggest a fix for invalid calls
         return;
     };
 
     let constructor_name = checker.locator().slice(&**value).to_string();
     let has_comments = checker.comment_ranges().intersects(call.range());
 
-    // Special case for non-finite float literals: Decimal.from_float(float("inf")) -> Decimal("inf")
     if let Some(replacement) = handle_non_finite_float_special_case(
         call,
         method_name,
@@ -157,17 +151,14 @@ pub(crate) fn unnecessary_from_float(checker: &Checker, call: &ExprCall) {
         return;
     }
 
-    // Check if we should suppress the fix due to type validation concerns
     let is_type_safe = is_valid_argument_type(arg_value, method_name, constructor, checker);
 
-    // Determine fix safety
     let applicability = if is_type_safe && !has_comments {
         Applicability::Safe
     } else {
         Applicability::Unsafe
     };
 
-    // Build the replacement
     let arg_text = checker.locator().slice(arg_value);
     let replacement_text = format!("{constructor_name}({arg_text})");
 
@@ -202,7 +193,6 @@ fn is_valid_argument_type(
     };
 
     match (method_name, constructor) {
-        // Decimal.from_float: Only int or bool are safe (float is unsafe due to FloatOperation trap)
         (MethodName::FromFloat, Constructor::Decimal) => match resolved_type {
             ResolvedPythonType::Atom(PythonType::Number(
                 NumberLike::Integer | NumberLike::Bool,
@@ -210,7 +200,6 @@ fn is_valid_argument_type(
             ResolvedPythonType::Unknown => is_int,
             _ => false,
         },
-        // Fraction.from_float accepts int, bool, float
         (MethodName::FromFloat, Constructor::Fraction) => match resolved_type {
             ResolvedPythonType::Atom(PythonType::Number(
                 NumberLike::Integer | NumberLike::Bool | NumberLike::Float,
@@ -218,9 +207,7 @@ fn is_valid_argument_type(
             ResolvedPythonType::Unknown => is_int || is_float,
             _ => false,
         },
-        // Fraction.from_decimal accepts int, bool, Decimal
         (MethodName::FromDecimal, Constructor::Fraction) => {
-            // First check if it's a Decimal constructor call
             let is_decimal_call = arg_expr.as_call_expr().is_some_and(|call| {
                 semantic.matches_qualified_name(&call.func, &["decimal", "Decimal"])
             });
@@ -253,17 +240,13 @@ fn has_valid_method_arguments(
 
     match method_name {
         MethodName::FromFloat => {
-            // Decimal.from_float is positional-only; Fraction.from_float allows keyword 'f'.
             if constructor == Constructor::Decimal {
-                // Only allow positional argument for Decimal.from_float
                 call.arguments.find_positional(0)
             } else {
-                // Fraction.from_float allows either positional or 'f' keyword
                 call.arguments.find_argument_value("f", 0)
             }
         }
         MethodName::FromDecimal => {
-            // from_decimal(dec) - should have exactly one positional argument or 'dec' keyword
             call.arguments.find_argument_value("dec", 0)
         }
     }
@@ -278,7 +261,6 @@ fn handle_non_finite_float_special_case(
     constructor_name: &str,
     checker: &Checker,
 ) -> Option<Edit> {
-    // Only applies to Decimal.from_float
     if !matches!(
         (method_name, constructor),
         (MethodName::FromFloat, Constructor::Decimal)
@@ -293,12 +275,10 @@ fn handle_non_finite_float_special_case(
         return None;
     };
 
-    // Must be a call to the `float` builtin.
     if !checker.semantic().match_builtin_expr(func, "float") {
         return None;
     }
 
-    // Must have exactly one argument, which is a string literal.
     if !arguments.keywords.is_empty() {
         return None;
     }
@@ -308,12 +288,7 @@ fn handle_non_finite_float_special_case(
     let normalized = as_non_finite_float_string_literal(float_arg)?;
     let replacement_text = format!(
         r#"{constructor_name}("{}")"#,
-        // `Decimal.from_float(float(" -nan")) == Decimal("nan")`
         if normalized == "-nan" {
-            // Here we do not attempt to remove just the '-' character.
-            // It may have been encoded (e.g. as '\N{hyphen-minus}')
-            // in the original source slice, and the added complexity
-            // does not make sense for this edge case.
             "nan"
         } else {
             normalized

@@ -45,7 +45,6 @@ impl<'a> Iterator for Split<'a, '_> {
         for (i, b) in self.s.bytes().enumerate() {
             if b == b' ' || self.splitters.contains(&b) {
                 let ret = &self.s[..i];
-                // dont include the space, but include everything else on the next step
                 if b != b' ' {
                     self.pending = &self.s[i..i + 1]
                 }
@@ -53,7 +52,6 @@ impl<'a> Iterator for Split<'a, '_> {
                 return Some(ret);
             }
         }
-        // trailing data
         self.done = true;
         Some(self.s)
     }

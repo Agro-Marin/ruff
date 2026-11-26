@@ -482,7 +482,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return;
         }
 
-        // Avoid duplicate diagnostics if we're visiting a nested boolean test.
         if !self.index.is_boolean_test_root(&unary.operand) {
             return;
         }
@@ -571,8 +570,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                             if let Some(mut diagnostic) =
                                 self.report_redundant_condition(&condition)
                             {
-                                // An operand's truthiness can differ from the full condition's,
-                                // so use the latter to determine which branch is unreachable.
                                 self.add_secondary_annotations_for_redundant_if_or_elif(
                                     &condition,
                                     &mut diagnostic,
@@ -709,8 +706,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     ..
                 })
         ) {
-            // Literal flags such as `if False` and `while 1` are almost certainly deliberate.
-            // `assert None` also comes up a weird amount in certain ecosystem projects, too!
             return None;
         }
 
@@ -738,7 +733,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         } else if value_type.bool(db, env).is_ambiguous() {
             ConditionKind::ShortCircuit
         } else if any_over_expr(expression, ast::Expr::is_named_expr) {
-            // Include deferred bodies: a surrounding call may execute a lambda or generator.
             ConditionKind::ContainsWalrus
         } else {
             ConditionKind::Value
@@ -759,7 +753,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         expression: &ast::Expr,
         expanded_type: ExpandedType<'db>,
     ) -> Option<UnionType<'db>> {
-        // Only check types that are unions with `None`:
         let union = expanded_type.as_union()?;
 
         let db = self.db();
@@ -770,10 +763,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return None;
         }
 
-        // Check if one of the non-`None` elements of the union may be falsy.
-        // Dynamic types can materialize to always-truthy types. Excluding them respects
-        // the gradual guarantee: replacing an always-truthy union element with `Any`
-        // or `Unknown` should not introduce a diagnostic.
         if !elements.iter().any(|element| {
             if element.is_none(db)
                 || element.is_dynamic()
@@ -784,14 +773,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 return false;
             }
 
-            // Non-final classes without a `__bool__` or `__len__` method have ambiguous
-            // truthiness in the `try_bool` check above, since their truthiness *could* be
-            // affected by a subclass defining one of these methods.
-            // However, for this particular diagnostic, we want to assume that classes
-            // without these methods are always truthy. If we don't do that, we would flag
-            // all Boolean checks on types like `MyClass | None`, based on the assumption
-            // that there *might* be a subclass affecting truthiness. This would lead to
-            // too many false positives, so we make a conservative choice here.
             ["__bool__", "__len__"].iter().any(|name| {
                 !element
                     .member_lookup_with_policy(
@@ -807,10 +788,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return None;
         }
 
-        // A compound expression can combine `None` and other falsy values from unrelated
-        // operands, as in `enabled and match` with `match: Match[str] | None`. Require a
-        // value-producing operand to qualify independently, including through assignments.
-        // The shared condition traversal prefers operand diagnostics where possible.
         let is_candidate = |operand: &ast::Expr| {
             self.truthiness_test_of_none_union_candidate(
                 operand,
@@ -1038,7 +1015,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
         match test.expression {
             ast::Expr::BoolOp(ast::ExprBoolOp { values, .. }) => {
-                // Include the final operand: `if flag and func` tests `func` when `flag` is true.
                 for value in values {
                     check_operand(value, condition_context, conditions);
                 }
@@ -1055,8 +1031,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             ast::Expr::If(ast::ExprIf {
                 test, body, orelse, ..
             }) => {
-                // This test chooses a branch independently of the enclosing truthiness check.
-                // The selected branch supplies the value tested by the enclosing condition.
                 self.check_boolean_test(
                     self.boolean_test(test, ExpressionContext::Condition),
                     condition_context.nested_test(),
@@ -1084,9 +1058,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             test.value_type,
             Type::KnownInstance(KnownInstanceType::ConstraintSet(_))
         ) {
-            // Boolean tests against `ty_extensions._internal.ConstraintSet` are (hopefully)
-            // only going to occur in the context of our test suite, and it's very annoying
-            // if we report them as redundant.
             return ConditionCheckResult::SUPPRESS_ALL;
         }
 
@@ -1103,10 +1074,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return operand_result;
         }
 
-        // An unreachable operand can retain a literal type, as in `False and "yes"`.
-        // Its diagnostic would be discarded, so it must not suppress the enclosing condition.
-        // Only scan reachability here if an enclosing condition could be reported. Otherwise,
-        // diagnostic emission checks reachability after checking whether the rule is enabled.
         if preference == BooleanDiagnosticPreference::EnclosingCondition
             && !self
                 .context
@@ -1198,7 +1165,6 @@ impl<'ast> Visitor<'ast> for SubexpressionChecker<'_, 'ast, '_> {
     fn visit_expr(&mut self, expression: &'ast ast::Expr) {
         let builder = self.builder;
 
-        // Lambda bodies and comprehension scopes have their own inference and test owners.
         if builder.index.try_expression_scope_id(expression)
             != Some(builder.scope().file_scope_id(builder.db()))
         {
@@ -1287,9 +1253,6 @@ fn suite_ends_with_exit(
                     StatementCall::from_expression(value) =>
             {
                 let callable_type = builder.expression_type(&call.func);
-                // In a statically unreachable branch, even an ordinary callable can have type
-                // `Never`. Preserve the exemption in that case to avoid false positives on
-                // defensive checks made unreachable by type annotations.
                 callable_type.is_never()
                     || is_non_terminal_call(db, env, callable_type, is_await, || {
                         builder.expression_type(value)
@@ -1299,10 +1262,6 @@ fn suite_ends_with_exit(
             ast::Stmt::Return(ast::StmtReturn { value, .. }) => match kind {
                 SuiteExitKind::Any => true,
                 SuiteExitKind::Defensive => value.as_ref().is_some_and(|expr| {
-                    // Known limitation: `Any`, `Unknown`, and `Never` are also assignable to
-                    // `NotImplementedType`, so an ordinary return *can* suppress a diagnostic here.
-                    // We prioritise minimising false positives over minimising false negatives
-                    // when recognizing potentially deliberate defensive checks.
                     builder.expression_type(expr).is_assignable_to(
                         db,
                         env,

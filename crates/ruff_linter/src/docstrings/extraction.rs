@@ -6,7 +6,6 @@ use ruff_python_semantic::{Definition, DefinitionId, Definitions, Member, Member
 /// Extract a docstring from a function or class body.
 pub(crate) fn docstring_from(suite: &[Stmt]) -> Option<&ast::ExprStringLiteral> {
     let stmt = suite.first()?;
-    // Require the docstring to be a standalone expression.
     let Stmt::Expr(ast::StmtExpr {
         value,
         range: _,
@@ -15,7 +14,6 @@ pub(crate) fn docstring_from(suite: &[Stmt]) -> Option<&ast::ExprStringLiteral> 
     else {
         return None;
     };
-    // Only match strings.
     value.as_string_literal_expr()
 }
 

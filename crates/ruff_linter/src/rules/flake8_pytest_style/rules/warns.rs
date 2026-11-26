@@ -206,14 +206,11 @@ pub(crate) fn complex_warns(checker: &Checker, stmt: &Stmt, items: &[WithItem], 
         _ => false,
     });
 
-    // Check body for `pytest.warns` context manager
     if warns_called {
         let is_too_complex = if let [stmt] = body {
             match stmt {
                 Stmt::With(ast::StmtWith { body, .. }) => is_non_trivial_with_body(body),
-                // Allow function and class definitions to test decorators.
                 Stmt::ClassDef(_) | Stmt::FunctionDef(_) => false,
-                // Allow empty `for` loops to test iterators.
                 Stmt::For(ast::StmtFor { body, .. }) => match &body[..] {
                     [Stmt::Pass(_)] => false,
                     [Stmt::Expr(ast::StmtExpr { value, .. })] => !value.is_ellipsis_literal_expr(),

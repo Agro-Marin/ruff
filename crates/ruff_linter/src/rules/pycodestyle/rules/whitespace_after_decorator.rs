@@ -50,9 +50,7 @@ pub(crate) fn whitespace_after_decorator(checker: &Checker, decorator_list: &[De
     for decorator in decorator_list {
         let decorator_text = checker.locator().slice(decorator);
 
-        // Determine whether the `@` is followed by whitespace.
         if let Some(trailing) = decorator_text.strip_prefix('@') {
-            // Collect the whitespace characters after the `@`.
             if trailing.chars().next().is_some_and(is_python_whitespace) {
                 let end = trailing
                     .chars()

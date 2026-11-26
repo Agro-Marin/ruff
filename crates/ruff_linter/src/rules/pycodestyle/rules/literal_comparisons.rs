@@ -205,14 +205,9 @@ fn generate_redundant_comparison(
 
 /// E711, E712
 pub(crate) fn literal_comparisons(checker: &Checker, compare: &ast::ExprCompare) {
-    // Mapping from (bad operator index) to (replacement operator). As we iterate
-    // through the list of operators, we apply "dummy" fixes for each error,
-    // then replace the entire expression at the end with one "real" fix, to
-    // avoid conflicts.
     let mut bad_ops: FxHashMap<usize, CmpOp> = FxHashMap::default();
     let mut diagnostics = vec![];
 
-    // Check `left`.
     let left = compare.first_operand();
     let comparators = compare.comparators();
     let mut comparator = left;
@@ -281,7 +276,6 @@ pub(crate) fn literal_comparisons(checker: &Checker, compare: &ast::ExprCompare)
         }
     }
 
-    // Check each comparator in order.
     for (index, (op, next)) in compare.ops.iter().zip(comparators).enumerate() {
         if helpers::is_constant_non_singleton(comparator) {
             comparator = next;
@@ -365,8 +359,6 @@ pub(crate) fn literal_comparisons(checker: &Checker, compare: &ast::ExprCompare)
         comparator = next;
     }
 
-    // TODO(charlie): Respect `noqa` directives. If one of the operators has a
-    // `noqa`, but another doesn't, both will be removed here.
     if !bad_ops.is_empty() {
         let ops = compare
             .ops

@@ -88,7 +88,6 @@ pub(crate) fn asyncio_dangling_task(checker: &Checker, expr: &Expr, semantic: &S
         return;
     };
 
-    // Ex) `asyncio.create_task(...)`
     if let Some(method) = semantic
         .resolve_qualified_name(func)
         .and_then(|qualified_name| match qualified_name.segments() {
@@ -105,7 +104,6 @@ pub(crate) fn asyncio_dangling_task(checker: &Checker, expr: &Expr, semantic: &S
             expr.range(),
         );
     } else
-    // Ex) `loop = ...; loop.create_task(...)`
     if let Expr::Attribute(ast::ExprAttribute { attr, value, .. }) = func.as_ref() {
         if attr == "create_task" {
             if let Expr::Name(name) = value.as_ref() {
@@ -135,7 +133,6 @@ pub(crate) fn asyncio_dangling_task(checker: &Checker, expr: &Expr, semantic: &S
 pub(crate) fn asyncio_dangling_binding(scope: &Scope, checker: &Checker) {
     let semantic = checker.semantic();
     for binding_id in scope.binding_ids() {
-        // If the binding itself is used, or it's not an assignment, skip it.
         let binding = semantic.binding(binding_id);
         if binding.is_used()
             || binding.is_global()
@@ -145,13 +142,6 @@ pub(crate) fn asyncio_dangling_binding(scope: &Scope, checker: &Checker) {
             continue;
         }
 
-        // Otherwise, flag any dangling tasks, including those that are shadowed, as in:
-        // ```python
-        // if x > 0:
-        //     task = asyncio.create_task(make_request())
-        // else:
-        //     task = asyncio.create_task(make_request())
-        // ```
         for binding_id in std::iter::successors(Some(binding_id), |id| scope.shadowed_binding(*id))
         {
             let binding = semantic.binding(binding_id);

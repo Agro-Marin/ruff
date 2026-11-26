@@ -47,7 +47,6 @@ impl OsSystem {
         );
 
         Self {
-            // Spreading `..Default` because it isn't possible to feature gate the initializer of a single field.
             inner: Arc::new(OsSystemInner {
                 cwd: cwd.to_path_buf(),
                 ..Default::default()
@@ -139,10 +138,6 @@ impl System for OsSystem {
     }
 
     fn user_config_directory(&self) -> Option<SystemPathBuf> {
-        // In testing, we allow overriding the user configuration directory by using a
-        // thread local because overriding the environment variables breaks test isolation
-        // (tests run concurrently) and mutating environment variable in a multithreaded
-        // application is inherently unsafe.
         #[cfg(feature = "testing")]
         if let Ok(directory_override) = self.try_get_user_config_directory_override() {
             return directory_override;
@@ -166,8 +161,6 @@ impl System for OsSystem {
             .map(|dirs| dirs.cache_dir().join("ty"))
             .map(|cache_dir| {
                 if cfg!(windows) {
-                    // On Windows, we append `cache` to the LocalAppData directory, i.e., prefer
-                    // `C:\Users\User\AppData\Local\ty\cache` over `C:\Users\User\AppData\Local\ty`.
                     cache_dir.join("cache")
                 } else {
                     cache_dir
@@ -328,13 +321,9 @@ impl DirectoryWalker for OsDirectoryWalker {
                 match entry {
                     Ok(entry) => {
                         // SAFETY: The walkdir crate supports `stdin` files and `file_type` can be `None` for these files.
-                        //   We don't make use of this feature, which is why unwrapping here is ok.
                         let file_type = entry.file_type().unwrap();
                         let depth = entry.depth();
 
-                        // `walkdir` reports errors related to parsing ignore files as part of the entry.
-                        // These aren't fatal for us. We should keep going even if an ignore file contains a syntax error.
-                        // But we log the error here for better visibility (same as ripgrep, Ruff ignores it)
                         if let Some(error) = entry.error() {
                             tracing::warn!("{error}");
                         }
@@ -355,7 +344,6 @@ impl DirectoryWalker for OsDirectoryWalker {
                                     kind: walk_directory::ErrorKind::NonUtf8Path { path },
                                 }));
 
-                                // Skip the entire directory because all the paths won't be UTF-8 paths.
                                 ::ignore::WalkState::Skip
                             }
                         }
@@ -363,9 +351,6 @@ impl DirectoryWalker for OsDirectoryWalker {
                     Err(error) => match ignore_to_walk_directory_error(error, None, None) {
                         Ok(error) => visitor.visit(Err(error)).into(),
                         Err(error) => {
-                            // This should only be reached when the error is a `.ignore` file related error
-                            // (which, should not be reported here but the `ignore` crate doesn't distinguish between ignore and IO errors).
-                            // Let's log the error to at least make it visible.
                             tracing::warn!("Failed to traverse directory: {error}.");
                             ::ignore::WalkState::Continue
                         }
@@ -419,7 +404,6 @@ fn ignore_to_walk_directory_error(
                     depth,
                     kind: walk_directory::ErrorKind::NonUtf8Path { path: child },
                 }),
-                // We should never reach this because we should never traverse into a non UTF8 path but handle it anyway.
                 (_, Err(ancestor)) => Ok(walk_directory::Error {
                     depth,
                     kind: walk_directory::ErrorKind::NonUtf8Path { path: ancestor },
@@ -438,7 +422,6 @@ fn ignore_to_walk_directory_error(
             }),
         },
 
-        // Ignore related errors, we warn about them but we don't abort iteration because of them.
         error @ (Error::Glob { .. }
         | Error::UnrecognizedFileType(_)
         | Error::InvalidDefinition
@@ -589,12 +572,7 @@ mod tests {
             panic!("Expected the read_dir() call to fail!");
         };
 
-        // We can't assert the error kind here because it's apparently an unstable feature!
-        // https://github.com/rust-lang/rust/issues/86442
-        // assert_eq!(error.kind(), std::io::ErrorKind::NotADirectory);
 
-        // We can't even assert the error message on all platforms, as it's different on Windows,
-        // where the message is "The directory name is invalid" rather than "Not a directory".
         if cfg!(unix) {
             assert!(error.to_string().contains("Not a directory"));
         }
@@ -671,7 +649,6 @@ mod tests {
         std::fs::write(root.join("a/bar.py"), "print('bar')\n")?;
         std::fs::write(root.join("a/baz.py"), "print('baz')\n")?;
 
-        // Exclude the `b` directory.
         std::fs::write(root.join("a/.ignore"), "b/\n")?;
         std::fs::write(root.join("a/b/c.py"), "print('c')\n")?;
 

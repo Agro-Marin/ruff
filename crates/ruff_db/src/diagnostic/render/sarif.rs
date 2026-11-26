@@ -51,9 +51,6 @@ impl Renderer for SarifRenderer<'_> {
         let mut unique_rules = HashMap::new();
         for result in &results {
             if let Some(name) = result.lint_name {
-                // A rule's severity can differ between files. Keep one descriptor per rule,
-                // using its highest reported severity for GitHub's `problem.severity`;
-                // each result retains its own level.
                 unique_rules
                     .entry((name, result.rule_id.as_str()))
                     .and_modify(|level: &mut SarifLevel| *level = (*level).max(result.level))
@@ -155,8 +152,6 @@ impl<'a> SarifRule<'a> {
             help_uri: &metadata.help_url,
             properties: SarifProperties {
                 id: code,
-                // Preserve the existing SARIF output when preview prefers rule names:
-                // omit the linter even if the rule also has a code.
                 kind: if code == metadata.name.as_str() {
                     None
                 } else {

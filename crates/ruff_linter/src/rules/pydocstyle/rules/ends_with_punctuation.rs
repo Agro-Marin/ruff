@@ -70,14 +70,12 @@ pub(crate) fn ends_with_punctuation(checker: &Checker, docstring: &Docstring) {
     if let Some(first_line) = body.trim().universal_newlines().next() {
         let trimmed = first_line.trim();
 
-        // Avoid false-positives: `:param`, etc.
         for prefix in [":param", ":type", ":raises", ":return", ":rtype"] {
             if trimmed.starts_with(prefix) {
                 return;
             }
         }
 
-        // Avoid false-positives: `Args:`, etc.
         for section_kind in SectionKind::iter() {
             if let Some(suffix) = trimmed.strip_suffix(section_kind.as_str()) {
                 if suffix.is_empty() {
@@ -96,20 +94,13 @@ pub(crate) fn ends_with_punctuation(checker: &Checker, docstring: &Docstring) {
         let trimmed = line.trim_end();
 
         if trimmed.ends_with('\\') {
-            // Ignore the edge case whether a single quoted string is multiple lines through an
-            // escape (https://github.com/astral-sh/ruff/issues/7139). Single quote docstrings are
-            // flagged by D300.
-            // ```python
-            // "\
             // "
-            // ```
             return;
         }
 
         if !trimmed.ends_with(['.', '!', '?']) {
             let mut diagnostic =
                 checker.report_diagnostic(MissingTerminalPunctuation, docstring.range());
-            // Best-effort fix: avoid adding a period after other punctuation marks.
             if !trimmed.ends_with([':', ';']) {
                 diagnostic.set_fix(Fix::unsafe_edit(Edit::insertion(
                     ".".to_string(),

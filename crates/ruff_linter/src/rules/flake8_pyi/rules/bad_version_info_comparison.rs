@@ -132,14 +132,12 @@ pub(crate) fn bad_version_info_comparison(checker: &Checker, test: &Expr, has_el
     }
 
     if matches!(op, CmpOp::GtE) {
-        // No issue to be raised, early exit.
         return;
     }
 
     if matches!(op, CmpOp::Lt) {
         if checker.is_rule_enabled(Rule::BadVersionInfoOrder)
             && (
-                // See https://github.com/astral-sh/ruff/issues/15347.
                 checker.source_type.is_stub()
                     || is_bad_version_info_in_non_stub_enabled(checker.settings())
             )

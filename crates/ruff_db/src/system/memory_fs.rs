@@ -95,7 +95,6 @@ impl MemoryFileSystem {
 
     pub fn canonicalize(&self, path: impl AsRef<SystemPath>) -> Result<SystemPathBuf> {
         let path = path.as_ref();
-        // Mimic the behavior of a real FS where canonicalize errors if the `path` doesn't exist
         self.metadata(path)?;
         Ok(SystemPathBuf::from_utf8_path_buf(self.normalize_path(path)))
     }
@@ -115,8 +114,6 @@ impl MemoryFileSystem {
     }
 
     pub fn is_executable(&self, path: &SystemPath) -> bool {
-        // Since the permissions of every file are 755,
-        // it follows that every file is executable.
         self.is_file(path)
     }
 
@@ -339,8 +336,6 @@ impl MemoryFileSystem {
             let mut by_path = fs.inner.by_path.write().unwrap();
             let normalized = fs.normalize_path(path);
 
-            // Test if the directory is empty
-            // Skip the directory path itself
             for (maybe_child, _) in by_path.range(normalized.clone()..).skip(1) {
                 if maybe_child.starts_with(&normalized) {
                     return Err(io::Error::from(io::ErrorKind::DirectoryNotEmpty));
@@ -381,9 +376,6 @@ impl MemoryFileSystem {
             return Err(io::Error::from(io::ErrorKind::NotADirectory));
         };
 
-        // Collect the entries into a vector to avoid deadlocks when the
-        // consumer calls into other file system methods while iterating over the
-        // directory entries.
         let collected = by_path
             .range(normalized.clone()..)
             .skip(1)
@@ -570,10 +562,6 @@ struct MemoryIgnoreIncremental {
 
 impl IgnoreIncremental for MemoryIgnoreIncremental {
     fn is_ignored(&mut self, path: &SystemPath, is_directory: bool) -> bool {
-        // This matches the semantics of the in-memory recursive
-        // directory traversal. That is, the only thing we care
-        // about filtering is hidden files. We let everything else
-        // through.
         self.ignore_hidden && !is_directory && is_hidden(path)
     }
 }
@@ -665,8 +653,6 @@ impl DirectoryWalker for MemoryWalker {
                 WalkerState::Nested { path, depth } => (path, depth),
             };
 
-            // Use `read_directory` here instead of locking `by_path` to avoid deadlocks
-            // when the `visitor` calls any file system operations.
             let entries = match self.fs.read_directory(&path) {
                 Ok(entries) => entries,
                 Err(error) => {
@@ -800,7 +786,6 @@ mod tests {
     fn permissions() -> Result<()> {
         let fs = with_files(["a.py"]);
 
-        // The default permissions match the default on Linux: 0755
         assert_eq!(
             fs.metadata(SystemPath::new("a.py"))?.permissions(),
             Some(MemoryFileSystem::PERMISSION)
@@ -814,14 +799,12 @@ mod tests {
         let fs = MemoryFileSystem::new();
         let path = SystemPath::new("a.py");
 
-        // Creates a file if it doesn't exist
         fs.touch(path)?;
 
         assert!(fs.exists(path));
 
         let timestamp1 = fs.metadata(path)?.revision();
 
-        // Sleep to ensure that the timestamp changes
         std::thread::sleep(Duration::from_millis(1));
 
         fs.touch(path)?;
@@ -840,7 +823,6 @@ mod tests {
         fs.create_directory_all(directory)?;
         let before = fs.metadata(directory)?.revision();
 
-        // Sleep to ensure that the timestamp changes
         std::thread::sleep(Duration::from_millis(1));
 
         fs.touch(SystemPath::new("src/new.py"))?;
@@ -861,7 +843,6 @@ mod tests {
         assert!(fs.is_directory(SystemPath::new("a/b")));
         assert!(fs.is_directory(SystemPath::new("a/b/c")));
 
-        // Should not fail if the directory already exists
         fs.create_directory_all(SystemPath::new("a/b/c")).unwrap();
     }
 
@@ -975,10 +956,8 @@ mod tests {
 
         assert!(!fs.exists(SystemPath::new("a/a.py")));
 
-        // It doesn't delete the enclosing directories
         assert!(fs.exists(SystemPath::new("a")));
 
-        // It doesn't delete unrelated files.
         assert!(fs.exists(SystemPath::new("b.py")));
 
         Ok(())
@@ -1025,7 +1004,6 @@ mod tests {
 
         assert!(!fs.exists(SystemPath::new("a")));
 
-        // It doesn't delete unrelated files.
         assert!(fs.exists(SystemPath::new("b.py")));
 
         Ok(())

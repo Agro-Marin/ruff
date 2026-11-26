@@ -1,9 +1,3 @@
-// +------------------------------------------------------------+
-// | Code adopted from:                                         |
-// | Repository: https://github.com/rust-lang/rust-analyzer.git |
-// | File: `crates/stdx/src/thread/pool.rs`                     |
-// | Commit: 03b3cb6be9f21c082f4206b35c7fe7f291c94eaa           |
-// +------------------------------------------------------------+
 //! [`Pool`] implements a basic custom thread pool
 //! inspired by the [`threadpool` crate](http://docs.rs/threadpool).
 //! When you spawn a task you specify a thread priority
@@ -27,13 +21,7 @@ use crossbeam::channel::{Receiver, Sender};
 use super::{Builder, JoinHandle, ThreadPriority};
 
 pub(crate) struct Pool {
-    // `_handles` is never read: the field is present
-    // only for its `Drop` impl.
 
-    // The worker threads exit once the channel closes;
-    // make sure to keep `job_sender` above `handles`
-    // so that the channel is actually closed
-    // before we join the worker threads!
     job_sender: Sender<Job>,
     _handles: Vec<JoinHandle>,
     extant_tasks: Arc<AtomicUsize>,
@@ -46,13 +34,11 @@ struct Job {
 
 impl Pool {
     pub(crate) fn new(threads: NonZeroUsize) -> Pool {
-        // Override OS defaults to avoid stack overflows on platforms with low stack size defaults.
         const STACK_SIZE: usize = 2 * 1024 * 1024;
         const INITIAL_PRIORITY: ThreadPriority = ThreadPriority::Worker;
 
         let threads = usize::from(threads);
 
-        // Channel buffer capacity is between 2 and 4, depending on the pool size.
         let (job_sender, job_receiver) = crossbeam::channel::bounded(std::cmp::min(threads * 2, 4));
         let extant_tasks = Arc::new(AtomicUsize::new(0));
 
@@ -74,11 +60,6 @@ impl Pool {
                             extant_tasks.fetch_add(1, Ordering::SeqCst);
 
                             // SAFETY: it's safe to assume that `job.f` is unwind safe because we always
-                            // abort the process if it panics.
-                            // Panicking here ensures that we don't swallow errors and is the same as
-                            // what rayon does.
-                            // Any recovery should be implemented outside the thread pool (e.g. when
-                            // dispatching requests/notifications etc).
                             if let Err(error) = std::panic::catch_unwind(AssertUnwindSafe(job.f)) {
                                 if let Some(msg) = error.downcast_ref::<String>() {
                                     tracing::error!("Worker thread panicked with: {msg}; aborting");

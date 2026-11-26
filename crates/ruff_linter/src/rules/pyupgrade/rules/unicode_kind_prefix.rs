@@ -51,10 +51,6 @@ pub(crate) fn unicode_kind_prefix(checker: &Checker, string: &StringLiteral) {
             .slice(TextRange::new(prefix_range.end(), string.end()))
             .to_owned();
 
-        // If the preceding character is equivalent to the quote character, insert a space to avoid a
-        // syntax error. For example, when removing the `u` prefix in `""u""`, rewrite to `"" ""`
-        // instead of `""""`.
-        // see https://github.com/astral-sh/ruff/issues/18895
         let edit = if locator
             .slice(TextRange::up_to(prefix_range.start()))
             .chars()

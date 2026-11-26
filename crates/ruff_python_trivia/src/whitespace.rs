@@ -84,7 +84,6 @@ pub fn has_trailing_content(offset: TextSize, source: &str) -> bool {
 pub const fn is_python_whitespace(c: char) -> bool {
     matches!(
         c,
-        // Space, tab, or form-feed
         ' ' | '\t' | '\x0C'
     )
 }

@@ -24,7 +24,6 @@ pub(crate) enum UnittestAssert {
     FailUnless,
     FailUnlessAlmostEqual,
     FailUnlessEqual,
-    // FailUnlessRaises,
     False,
     Greater,
     GreaterEqual,
@@ -37,9 +36,7 @@ pub(crate) enum UnittestAssert {
     Less,
     LessEqual,
     ListEqual,
-    // Logs,
     MultiLineEqual,
-    // NoLogs,
     NotAlmostEqual,
     NotAlmostEquals,
     NotEqual,
@@ -48,9 +45,6 @@ pub(crate) enum UnittestAssert {
     NotIsInstance,
     NotRegex,
     NotRegexpMatches,
-    // Raises,
-    // RaisesRegex,
-    // RaisesRegexp,
     Regex,
     RegexpMatches,
     SequenceEqual,
@@ -58,8 +52,6 @@ pub(crate) enum UnittestAssert {
     True,
     TupleEqual,
     Underscore,
-    // Warns,
-    // WarnsRegex,
 }
 
 impl std::fmt::Display for UnittestAssert {
@@ -232,14 +224,12 @@ impl UnittestAssert {
         args: &'a [Expr],
         keywords: &'a [Keyword],
     ) -> Result<FxHashMap<&'a str, &'a Expr>> {
-        // If we have variable-length arguments, abort.
         if args.iter().any(Expr::is_starred_expr) || keywords.iter().any(|kw| kw.arg.is_none()) {
             bail!("Variable-length arguments are not supported");
         }
 
         let arg_spec = self.arg_spec();
 
-        // If any of the keyword arguments are not in the argument spec, abort.
         if keywords.iter().any(|kw| {
             kw.arg
                 .as_ref()
@@ -248,16 +238,13 @@ impl UnittestAssert {
             bail!("Unknown keyword argument");
         }
 
-        // Generate a map from argument name to value.
         let mut args_map: FxHashMap<&str, &Expr> =
             FxHashMap::with_capacity_and_hasher(args.len() + keywords.len(), FxBuildHasher);
 
-        // Process positional arguments.
         for (arg_name, value) in arg_spec.iter().zip(args) {
             args_map.insert(arg_name, value);
         }
 
-        // Process keyword arguments.
         for arg_name in arg_spec.iter().skip(args.len()) {
             if let Some(value) = keywords.iter().find_map(|keyword| {
                 if keyword

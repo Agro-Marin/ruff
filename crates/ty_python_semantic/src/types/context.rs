@@ -78,20 +78,14 @@ impl<'db> ProgramEnvironment<'db> {
             ProgramSource::Program(id) => return Program::from_id(id),
             ProgramSource::File(file) => {
                 cold_path();
-                // The source handle and database share `'db`; re-wrapping the stored ingredient
-                // ID immediately before the read restores the original database lifetime.
                 ProgramFile::from_id(file).program(db)
             }
             ProgramSource::Definition(definition) => {
                 cold_path();
-                // The source handle and database share `'db`; re-wrapping the stored ingredient
-                // ID immediately before the read restores the original database lifetime.
                 Definition::from_id(definition).program(db)
             }
             ProgramSource::Scope(scope) => {
                 cold_path();
-                // The source handle and database share `'db`; re-wrapping the stored ingredient
-                // ID immediately before the read restores the original database lifetime.
                 ScopeId::from_id(scope).program(db)
             }
         };
@@ -117,10 +111,6 @@ impl<'db> ProgramEnvironment<'db> {
 #[derive(Clone, Copy)]
 enum ProgramSource {
     Program(Id),
-    // Salsa interned handles are thin `Id` wrappers, so converting between `ProgramFile` and `Id`
-    // is an inlined representation change with no database lookup. Keeping the lifetime-bearing
-    // `ProgramFile` out of the `Cell` preserves covariance in `'db`; replacing this variant after
-    // the first read avoids repeated Salsa ingredient reads in hot, recursive type operations.
     File(Id),
     Definition(Id),
     Scope(Id),
@@ -390,17 +380,11 @@ impl<'db, 'ast> InferContext<'db, 'ast> {
             return true;
         }
 
-        // Accessing the semantic index here is fine because
-        // the index belongs to the same file as for which we emit the diagnostic.
         let index = semantic_index(self.db(), self.program_file);
 
         let scope_id = self.scope.file_scope_id(self.db());
 
-        // Inspect all ancestor function scopes by walking bottom up and check
         // if any is decorated with `@no_type_check`. We use the undecorated type
-        // rather than the binding type because other decorators (e.g. unknown ones)
-        // may transform the function type into a non-`FunctionLiteral`.
-        // `undecorated_type()` can be `None` during cycle recovery.
         index
             .ancestor_scopes(scope_id)
             .filter_map(|(_, scope)| scope.node().as_function())
@@ -525,25 +509,7 @@ impl LintDiagnosticGuard<'_, '_> {
     /// Callers can add additional primary or secondary annotations via the
     /// `DerefMut` trait implementation to a `Diagnostic`.
     pub(super) fn set_primary_annotation_message(&mut self, message: impl IntoDiagnosticMessage) {
-        // N.B. It is normally bad juju to define `self` methods
-        // on types that implement `Deref`. Instead, it's idiomatic
-        // to do `fn foo(this: &mut LintDiagnosticGuard)`, which in
-        // turn forces callers to use
-        // `LintDiagnosticGuard(&mut guard, message)`. But this is
-        // supremely annoying for what is expected to be a common
-        // case.
-        //
-        // Moreover, most of the downside that comes from these sorts
-        // of methods is a semver hazard. Because the deref target type
-        // could also define a method by the same name, and that leads
-        // to confusion. But we own all the code involved here and
-        // there is no semver boundary. So... ¯\_(ツ)_/¯ ---AG
 
-        // OK because we know the diagnostic was constructed with a single
-        // primary annotation that will always come before any other annotation
-        // in the diagnostic. (This relies on the `Diagnostic` API not exposing
-        // any methods for removing annotations or re-ordering them, which is
-        // true as of 2025-04-11.)
         let ann = self.primary_annotation_mut().unwrap();
         ann.set_message(message);
     }
@@ -567,7 +533,6 @@ impl std::ops::Deref for LintDiagnosticGuard<'_, '_> {
     type Target = Diagnostic;
 
     fn deref(&self) -> &Diagnostic {
-        // OK because `self.diag` is only `None` within `Drop`.
         self.diag.as_ref().unwrap()
     }
 }
@@ -581,7 +546,6 @@ impl std::ops::Deref for LintDiagnosticGuard<'_, '_> {
 /// when this guard is dropped.
 impl std::ops::DerefMut for LintDiagnosticGuard<'_, '_> {
     fn deref_mut(&mut self) -> &mut Diagnostic {
-        // OK because `self.diag` is only `None` within `Drop`.
         self.diag.as_mut().unwrap()
     }
 }
@@ -593,9 +557,6 @@ impl std::ops::DerefMut for LintDiagnosticGuard<'_, '_> {
 /// relevant suppression.
 impl Drop for LintDiagnosticGuard<'_, '_> {
     fn drop(&mut self) {
-        // OK because the only way `self.diag` is `None`
-        // is via this impl, which can only run at most
-        // once.
         let mut diag = self.diag.take().unwrap();
 
         if let Some(message_override) = self.message_override.take() {
@@ -692,25 +653,12 @@ impl<'db, 'ctx> LintDiagnosticGuardBuilder<'db, 'ctx> {
             }
         }
 
-        // The comment below was copied from the original
-        // implementation of diagnostic reporting. The code
-        // has been refactored, but this still kind of looked
-        // relevant, so I've preserved the note. ---AG
-        //
-        // TODO: Don't emit the diagnostic if:
-        // * The enclosing node contains any syntax errors
-        // * The rule is disabled for this file. We probably want to introduce a new query that
-        //   returns a rule selector for a given file that respects the package's settings,
         //   any global pragma comments in the file, and any per-file-ignores.
 
         if !ctx.db().should_check_file(ctx.file) {
             return None;
         }
-        // Skip over diagnostics if the rule
-        // is disabled.
         let (severity, source) = ctx.db().rule_selection(ctx.file).get(lint)?;
-        // If we're not in type checking mode,
-        // we can bail now.
         if ctx.is_in_no_type_check() {
             return None;
         }
@@ -732,9 +680,6 @@ impl<'db, 'ctx> LintDiagnosticGuardBuilder<'db, 'ctx> {
                 return None;
             }
 
-            // Suppress diagnostics in unreachable code. This checks both whether
-            // the scope itself is unreachable and whether the specific statement or
-            // expression containing this diagnostic is unreachable.
             if !ctx.is_range_reachable(range) {
                 return None;
             }
@@ -768,9 +713,6 @@ impl<'db, 'ctx> LintDiagnosticGuardBuilder<'db, 'ctx> {
         self,
         message: impl std::fmt::Display,
     ) -> LintDiagnosticGuard<'db, 'ctx> {
-        // This is why `LintDiagnosticGuard::set_primary_annotation_message` exists.
-        // We add the primary annotation here (because it's required). Without a message
-        // override, its optional message can be added later via `set_primary_annotation_message`.
         let primary_span = Span::from(self.ctx.file()).with_range(self.primary_range);
         let mut diag = Diagnostic::new(DiagnosticId::Lint(self.id.name()), self.severity, message);
         diag.annotate(Annotation::primary(primary_span));

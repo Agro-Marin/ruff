@@ -8,8 +8,6 @@ pub(crate) struct MatchName<'a> {
 
 impl MatchName<'_> {
     fn is_match(&self, banned_module: &str) -> bool {
-        // Ex) Match banned `foo.bar` to import `foo.bar`, without allocating, assuming that
-        // `module` is `foo`, `member` is `bar`, and `banned_module` is `foo.bar`.
         banned_module
             .strip_prefix(self.module)
             .and_then(|banned_module| banned_module.strip_prefix('.'))
@@ -27,12 +25,10 @@ pub(crate) struct MatchNameOrParent<'a> {
 
 impl MatchNameOrParent<'_> {
     fn is_match(&self, banned_module: &str) -> bool {
-        // Ex) Match banned `foo` to import `foo`.
         if self.module == banned_module {
             return true;
         }
 
-        // Ex) Match banned `foo` to import `foo.bar`.
         if self
             .module
             .strip_prefix(banned_module)

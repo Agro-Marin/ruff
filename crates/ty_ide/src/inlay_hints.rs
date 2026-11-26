@@ -39,10 +39,8 @@ impl InlayHint {
         let InlayHintImportContext { db, file, .. } = context;
 
         let env = ProgramEnvironment::from_file(file);
-        // Render the type to a string, and get subspans for all the types that make it up
         let details = ty.display(db, &env).to_string_parts();
 
-        // Filter out repetitive hints like `x: T = T()`
         if call_matches_name(&assignment.value, &details.label) {
             return None;
         }
@@ -71,18 +69,8 @@ impl InlayHint {
         let env = ProgramEnvironment::from_file(file);
         let mut dynamic_importer = DynamicImporter::new(importer, scope_node);
 
-        // Ok so the idea here is that we potentially have a random soup of spans here,
-        // and each byte of the string can have at most one target associate with it.
-        // Thankfully, they were generally pushed in print order, with the inner smaller types
-        // appearing before the outer bigger ones.
-        //
-        // So we record where we are in the string, and every time we find a type, we
-        // check if it's further along in the string. If it is, great, we give it the
-        // span for its range, and then advance where we are.
         let mut offset = 0;
 
-        // This edit label could be different from the original label if we need to
-        // qualify certain imported symbols. `A` could turn into `foo.A`.
         let mut edit_label = details.label.clone();
         let mut edit_offset: isize = 0;
 
@@ -92,18 +80,14 @@ impl InlayHint {
                 TypeDetail::Type(ty) => {
                     let start = target.start().to_usize();
                     let end = target.end().to_usize();
-                    // If we skipped over some bytes, push them with no target
                     if start > offset {
                         label_parts.push(details.label[offset..start].into());
                     }
 
-                    // Possibly import the current type and return the qualified name
                     let mut qualified_name = |dynamic_importer: &mut DynamicImporter<'_, 'db>| {
                         let type_definition = ty.definition(db, &env)?;
                         let definition = type_definition.definition()?;
 
-                        // Only module-level names can be imported with `from <module> import <name>`.
-                        // If the definition lives in a class or function body we can't produce a safe edit.
                         if !definition.file_scope(db).is_global() {
                             allow_edits = false;
                             return None;
@@ -112,14 +96,11 @@ impl InlayHint {
                         let module =
                             file_to_module(db, definition.program_file(db).resolver_file(db))?;
 
-                        // Types like `ty_extensions.Unknown` only exist in stubs and cannot be
-                        // imported at runtime, so we do not provide edits.
                         if module.is_known_stub_only(db) {
                             allow_edits = false;
                             return None;
                         }
 
-                        // Don't try to import symbols in scope
                         let definition_file = definition.file(db);
                         if definition_file == file.file(db) {
                             return None;
@@ -127,7 +108,6 @@ impl InlayHint {
 
                         let definition_name = definition.name(db);
 
-                        // Fallback to the label if we cannot find the name
                         let definition_name = definition_name
                             .as_deref()
                             .unwrap_or(&details.label[start..end]);
@@ -148,9 +128,7 @@ impl InlayHint {
                         )
                     };
 
-                    // Ok, this is the first type that claimed these bytes, give it the target
                     if start >= offset {
-                        // Try to import the symbol and update the edit label if required
                         if let Some(qualified_name) = qualified_name(&mut dynamic_importer) {
                             let edit_start = (start.cast_signed() + edit_offset).cast_unsigned();
                             let edit_end = (end.cast_signed() + edit_offset).cast_unsigned();
@@ -162,7 +140,6 @@ impl InlayHint {
 
                         let target = ty.navigation_targets(db, &env).into_iter().next();
 
-                        // Always use original text for the label part
                         label_parts.push(
                             InlayHintLabelPart::new(&details.label[start..end]).with_target(target),
                         );
@@ -172,12 +149,10 @@ impl InlayHint {
                 TypeDetail::SignatureStart
                 | TypeDetail::SignatureEnd
                 | TypeDetail::Parameter(_) => {
-                    // Don't care about these
                 }
             }
         }
 
-        // "flush" the rest of the label without any target
         if offset < details.label.len() {
             label_parts.push(details.label[offset..details.label.len()].into());
         }
@@ -224,8 +199,6 @@ impl InlayHint {
     /// Attach the edits that turn this positional argument into a keyword argument.
     fn enable_call_argument_edit(&mut self, argument: &Expr) {
         let needs_parentheses = match argument {
-            // The named expression starts at the name on the left of `:=`. The hint starts
-            // at that same name or at the outermost opening parenthesis if the argument is grouped.
             Expr::Named(_) => self.position == argument.start(),
             Expr::Generator(generator) => !generator.parenthesized,
             _ => false,
@@ -397,7 +370,6 @@ pub struct InlayHintSettings {
     /// Whether to show inferred return types on unannotated function definitions.
     /// Requires `analysis.return-type-inference` to be activated.
     pub return_types: bool,
-    // Add any new setting that enables additional inlays to `any_enabled`.
 }
 
 impl InlayHintSettings {
@@ -568,7 +540,6 @@ impl<'a> SourceOrderVisitor<'a> for InlayHintVisitor<'a, '_> {
                     ));
                 }
             }
-            // TODO
             Stmt::For(_) => {}
             _ => {}
         }
@@ -590,8 +561,6 @@ impl<'a> SourceOrderVisitor<'a> for InlayHintVisitor<'a, '_> {
 
                 self.visit_expr(&call.func);
 
-                // `argument_names` is keyed by positional-arg index, not source-order index,
-                // so track them separately to stay in sync after keyword args appear mid-call.
                 let mut positional_index = 0;
                 for arg_or_keyword in call.arguments.iter_source_order() {
                     if let ArgOrKeyword::Arg(argument) = arg_or_keyword {
@@ -599,15 +568,8 @@ impl<'a> SourceOrderVisitor<'a> for InlayHintVisitor<'a, '_> {
                             details.argument_names.get(&positional_index)
                             && !arg_matches_name(argument, name)
                         {
-                            // A keyword cannot precede a plain positional argument. `args` also
-                            // includes starred arguments. Changing `f(value(), *items())` to
-                            // `f(x=value(), *items())` would evaluate `items()` first and could
-                            // pass `x` twice.
                             let is_last_positional =
                                 positional_index + 1 == call.arguments.args.len();
-                            // For `def f(ｉｆ): ...`, `name` is already normalized to the
-                            // reserved word `if`. Inserting `if=` would be a syntax error.
-                            // Repeating an existing keyword, as in `f(x=1, x=2)`, would be too.
                             let mode = if is_last_positional
                                 && !argument.is_starred_expr()
                                 && is_identifier(name)
@@ -661,13 +623,9 @@ fn arg_matches_name(argument: &Expr, name: &str) -> bool {
     let mut expr = argument;
     loop {
         match expr {
-            // `x=x(1, 2)` counts as a match, recurse for it
             Expr::Call(expr_call) => expr = &expr_call.func,
-            // `x=x[0]` is a match, recurse for it
             Expr::Subscript(expr_subscript) => expr = &expr_subscript.value,
-            // `x=x` is a match
             Expr::Name(expr_name) => return name_matches_parameter(expr_name.id.as_str(), name),
-            // `x=y.x` is a match
             Expr::Attribute(expr_attribute) => {
                 return name_matches_parameter(expr_attribute.attr.as_str(), name);
             }
@@ -699,15 +657,12 @@ fn name_matches_parameter(argument_name: &str, parameter_name: &str) -> bool {
 /// This allows us to filter out repetitive inlay hints like `x: T = T(...)`.
 /// While still allowing non-trivial ones like `x: T[U] = T()`.
 fn call_matches_name(expr: &Expr, name: &str) -> bool {
-    // Only care about function calls
     let Expr::Call(call) = expr else {
         return false;
     };
 
     match &*call.func {
-        // `x: T = T()` is a match
         Expr::Name(expr_name) => expr_name.id.as_str() == name,
-        // `x: T = a.T()` is a match
         Expr::Attribute(expr_attribute) => expr_attribute.attr.as_str() == name,
         _ => false,
     }
@@ -719,29 +674,22 @@ fn call_matches_name(expr: &Expr, name: &str) -> bool {
 /// This is used to suppress inlay hints for things like `x = 1`, `x, y = (1, 2)`, etc.
 fn type_hint_is_excessive_for_expr(expr: &Expr) -> bool {
     match expr {
-        // A tuple of all literals is excessive to typehint
         Expr::Tuple(expr_tuple) => expr_tuple.elts.iter().all(type_hint_is_excessive_for_expr),
 
-        // Various Literal[...] types which are always excessive to hint
         Expr::BytesLiteral(_)
         | Expr::NumberLiteral(_)
         | Expr::BooleanLiteral(_)
         | Expr::StringLiteral(_) => true,
-        // `None` isn't terribly verbose, but still redundant
         Expr::NoneLiteral(_) => true,
-        // This one expands to `str` which isn't verbose but is redundant
         Expr::FString(_) => true,
-        // This one expands to `Template` which isn't verbose but is redundant
         Expr::TString(_) => true,
 
-        // You too `+1 and `-1`, get back here
         Expr::UnaryOp(ExprUnaryOp {
             op: UnaryOp::UAdd | UnaryOp::USub,
             operand,
             ..
         }) => matches!(**operand, Expr::NumberLiteral(_)),
 
-        // Everything else is reasonable
         _ => false,
     }
 }
@@ -800,13 +748,11 @@ impl<'a, 'db> DynamicImporter<'a, 'db> {
         symbol_name: &str,
         label_text: &str,
     ) -> Option<String> {
-        // Ensure members are computed before borrowing other fields.
         let members = self.members.get_or_insert_with(|| {
             self.importer
                 .members_in_scope_at(self.scope_node, self.scope_offset)
         });
 
-        // Check if the label is like `foo.A`
         let mut is_possibly_qualified_name = label_text.contains('.');
 
         if let Some(member) = members.find_member(symbol_name) {
@@ -814,9 +760,6 @@ impl<'a, 'db> DynamicImporter<'a, 'db> {
                 return None;
             }
 
-            // There is another member in scope with the same name,
-            // so we need to qualify this so we don't reference the
-            // in scope member.
             is_possibly_qualified_name = true;
         }
 
@@ -944,7 +887,6 @@ mod tests {
 
         let mut insta_settings = insta::Settings::clone_current();
         insta_settings.add_filter(r#"\\(\w\w|\.|")"#, "/$1");
-        // Filter out TODO types because they are different between debug and release builds.
         insta_settings.add_filter(r"@Todo\(.+\)", "@Todo");
 
         let insta_settings_guard = insta_settings.bind_to_scope();
@@ -1211,7 +1153,6 @@ mod tests {
            |
         "#);
 
-        // We do not infer return types for overloaded functions.
         let mut test = return_type_hint_test(
             r#"
         from typing import overload
@@ -1238,7 +1179,6 @@ mod tests {
             return "a" if isinstance(x, str) else 0
         "#);
 
-        // TODO: Show a `str` return-type hint once async return-type inference is supported.
         let mut test = return_type_hint_test(
             r#"
         async def asynchronous(x: int):
@@ -1426,8 +1366,6 @@ Source with applied edits:
                 inlay_hint_buf.insert_str(end_position, &hint_str);
             }
 
-            // Hints can be applied independently, but these snapshots combine all edits.
-            // Deduplicate imports shared by multiple hints before applying them together.
             let all_edits: Vec<_> = all_edits
                 .into_iter()
                 .unique_by(|edit| (edit.range, edit.new_text.clone()))
@@ -1510,7 +1448,6 @@ Source with applied edits:
 
     #[test]
     fn test_assign_statement() {
-        // The type hint and its edit follow the whole assignment target, including its parentheses.
         let mut test = inlay_hint_test(
             "
             def i(x: int, /) -> int:
@@ -3939,7 +3876,6 @@ Source with applied edits:
 
     #[test]
     fn test_function_call_with_positional_or_keyword_parameter() {
-        // Both the hint and its edit go before the argument's outermost parentheses.
         let mut test = inlay_hint_test(
             "
             def foo(x: int): pass
@@ -3996,9 +3932,6 @@ Source with applied edits:
             apply_inlay_hints(DEFINITION, call)
         }
 
-        // An assignment expression or a sole generator argument can use the call's parentheses.
-        // Inserting just `x=` would produce `f(x=y := 1)` or `f(x=i for i in [1])`. Both are invalid.
-        // As a keyword value, the expression needs its own pair, which may already be present.
         assert_snapshot!(apply_keyword_hint("f(y := 1)"), @"f(x=(y := 1))");
         assert_snapshot!(apply_keyword_hint("f((y := 1))"), @"f(x=(y := 1))");
         assert_snapshot!(apply_keyword_hint("f(f(y := 1))"), @"f(x=f(x=(y := 1)))");
@@ -4099,7 +4032,6 @@ Source with applied edits:
 
     #[test]
     fn test_function_call_with_positional_or_keyword_parameter_redundant_attribute_not() {
-        // This one checks that we don't allow elide `x=` for `x.y`
         let mut test = inlay_hint_test(
             "
             def foo(x: int): pass
@@ -4382,8 +4314,6 @@ Source with applied edits:
 
     #[test]
     fn argument_name_hint_before_variadic_arguments_has_no_edit() {
-        // The second argument binds to `*rest` and has no hint. Keep the hint for `x` visible,
-        // but inserting it would turn `f(1, 2)` into the invalid call `f(x=1, 2)`.
         let mut test = inlay_hint_test(
             "
             def f(x, *rest): ...
@@ -4446,17 +4376,12 @@ Source with applied edits:
             .try_into()
             .unwrap();
 
-        // The unpacked `2` goes into `rest`, so only `1` gets a hint. Inserting `x=` would
-        // produce `f(x=1, *[2])`. Python would raise a `TypeError` at runtime because the
-        // unpacked `2` and the keyword argument `x=1` both supply `x`.
         assert_eq!(hint.display().to_string(), "x=");
         assert!(hint.text_edits.is_empty());
     }
 
     #[test]
     fn argument_name_hint_for_parameter_that_normalizes_to_a_keyword() {
-        // Python accepts the fullwidth spelling in the definition. Inserting the normalized
-        // hint would produce `f(if=1)`, which is a syntax error.
         let mut test = inlay_hint_test(
             "
             def f(ｉｆ): ...
@@ -4482,14 +4407,11 @@ Source with applied edits:
           |    ^^
         ");
 
-        // The soft keyword `match` can be used directly as a keyword argument.
         assert_snapshot!(apply_inlay_hints("def f(match): ...\n", "f(1)"), @"f(match=1)");
     }
 
     #[test]
     fn argument_name_hint_for_keyword_already_in_call_has_no_edit() {
-        // The original call would raise `TypeError` at runtime. Inserting `x=` would make
-        // it a syntax error instead, because `f(x=1, x=2)` repeats an explicit keyword.
         let mut test = inlay_hint_test(
             "
             def f(x): ...
@@ -4548,8 +4470,6 @@ Source with applied edits:
 
     #[test]
     fn test_function_call_with_unpacked_tuple_argument() {
-        // When an unpacked tuple fills multiple parameters, no hint should be shown
-        // for that argument because showing a single parameter name would be misleading.
         let mut test = inlay_hint_test(
             "
             def foo(a: str, b: int, c: int, d: str): ...
@@ -4557,7 +4477,6 @@ Source with applied edits:
             foo('foo', *t, d='bar')",
         );
 
-        // `*t` fills both `b` and `c`, so no hint is shown for it
         assert_snapshot!(test.inlay_hints(), @"
 
         def foo(a: str, b: int, c: int, d: str): ...
@@ -4579,7 +4498,6 @@ Source with applied edits:
 
     #[test]
     fn test_function_call_with_unpacked_tuple_argument_single_element() {
-        // When an unpacked tuple fills only one parameter, a hint should be shown.
         let mut test = inlay_hint_test(
             "
             def foo(a: str, b: int, c: str): ...
@@ -4639,8 +4557,6 @@ Source with applied edits:
 
     #[test]
     fn test_function_call_last_plain_positional_before_starred_argument() {
-        // Both hints are display-only. In `foo(a=1, *t)`, the unpacked `2` would fill `a`,
-        // so `a=1` would supply it again.
         let mut test = inlay_hint_test(
             "
             def foo(a: int, b: int): ...
@@ -5381,8 +5297,6 @@ Source with applied edits:
 
     #[test]
     fn test_function_call_positional_after_keyword_in_source_order() {
-        // ty should continue to map positional args correctly in invalid or in-progress code,
-        // even if a keyword arg appears earlier in source order.
         let mut test = inlay_hint_test(
             "
             def foo(x: int, y: str): pass
@@ -6226,10 +6140,6 @@ Source with applied edits:
             b = S('x', 'y')",
         );
 
-        // The call S('x', 'y') should match the second overload (*names: str),
-        // and since *names is variadic, no parameter name hints should be shown.
-        // Before the fix, this incorrectly showed `name=` and `is_symmetric=` hints
-        // from the first overload.
         assert_snapshot!(test.inlay_hints(), @"
 
         from typing import overload, Optional, Sequence
@@ -6293,9 +6203,6 @@ Source with applied edits:
             ",
         );
 
-        // Neither overload matches via type checking (list[Unknown] is neither int nor str),
-        // so `matching_overloads()` returns empty. The arity-based fallback picks the first
-        // overload (1 matched arg out of 1 required), and we should see the `x=` hint.
         assert_snapshot!(test.inlay_hints(), @"
 
         from typing import overload
@@ -7286,7 +7193,6 @@ Source with applied edits:
 
     #[test]
     fn inferred_unknown_type() {
-        // We do not suggest edits/imports for ty-internal types (Unknown), even if they are nested.
         let mut test = return_type_hint_test(
             r#"
         def twice(value):
@@ -7322,7 +7228,6 @@ Source with applied edits:
            |                           ^^^^^^^
         ");
 
-        // We still suggest edits/imports for a user-defined class named Unknown.
         let mut test = return_type_hint_test(
             r#"
         from module import make_unknown
@@ -7378,7 +7283,6 @@ Source with applied edits:
 
     #[test]
     fn typeshed_helper_type() {
-        // We do not suggest edits/imports for typeshed-internal types (PathEntryFinderProtocol).
         let mut test = inlay_hint_test(
             r#"
         import pkgutil
@@ -7861,8 +7765,6 @@ Source with applied edits:
 
     #[test]
     fn auto_import_each_hint_independently() {
-        // Each hint needs its own imports, even when another hint uses the same types.
-        // Repeated types within a hint should only produce one import per symbol.
         let mut test =
             inlay_hint_test("from module import y\nx = (y, 1, y, 1)\nx = (y, 1, y, 1)\n");
         test.with_extra_file(
@@ -8695,8 +8597,6 @@ Source with applied edits:
             annotation.hide_snippet(true);
             main.annotate(annotation);
 
-            // These fixes aren't actually safe but using `safe` has the benefit over unsafe
-            // that it doesn't render a noisy "This is an unsafe fix" note
             let fix = Fix::safe_edits(
                 self.first_edit.to_fix_edit(),
                 self.rest.iter().map(InlayHintTextEdit::to_fix_edit),

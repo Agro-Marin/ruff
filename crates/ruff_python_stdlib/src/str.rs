@@ -21,10 +21,8 @@
 pub fn is_lowercase(s: &str) -> bool {
     for (i, &c) in s.as_bytes().iter().enumerate() {
         match c {
-            // Match against ASCII uppercase characters.
             b'A'..=b'Z' => return false,
             _ if c.is_ascii() => {}
-            // If the character is non-ASCII, fallback to slow path.
             _ => {
                 return s[i..]
                     .chars()
@@ -58,10 +56,8 @@ pub fn is_lowercase(s: &str) -> bool {
 pub fn is_uppercase(s: &str) -> bool {
     for (i, &c) in s.as_bytes().iter().enumerate() {
         match c {
-            // Match against ASCII lowercase characters.
             b'a'..=b'z' => return false,
             _ if c.is_ascii() => {}
-            // If the character is non-ASCII, fallback to slow path.
             _ => {
                 return s[i..]
                     .chars()

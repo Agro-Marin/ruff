@@ -20,9 +20,6 @@ pub(crate) fn hierarchy_handler(
 ) -> Option<Vec<TypeHierarchyItem>> {
     let encoding = snapshot.position_encoding();
 
-    // We don't actually know which project the request
-    // came from, so just look for results across all
-    // projects.
     let mut items = vec![];
     for db in snapshot.projects() {
         let Some((file, offset)) = resolve_file_uri_range(

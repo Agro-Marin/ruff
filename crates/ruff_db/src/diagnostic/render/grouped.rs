@@ -30,8 +30,6 @@ impl Renderer for GroupedRenderer<'_> {
             DiagnosticStylesheet::plain()
         };
         for (filename, messages) in group_diagnostics_by_filename(diagnostics, self.resolver) {
-            // Compute the maximum number of digits in the row and column, for messages in
-            // this file.
 
             let mut max_row_length = OneIndexed::MIN;
             let mut max_column_length = OneIndexed::MIN;
@@ -46,7 +44,6 @@ impl Renderer for GroupedRenderer<'_> {
             let row_length = max_row_length.digits();
             let column_length = max_column_length.digits();
 
-            // Print the filename.
             let indent = if let Some(filename) = filename {
                 writeln!(f, "{}:", fmt_styled(filename, stylesheet.underline))?;
                 "  "
@@ -54,7 +51,6 @@ impl Renderer for GroupedRenderer<'_> {
                 ""
             };
 
-            // Print each message.
             for message in messages {
                 write!(
                     f,
@@ -76,7 +72,6 @@ impl Renderer for GroupedRenderer<'_> {
                 )?;
             }
 
-            // Print a blank line between files.
             writeln!(f)?;
         }
 
@@ -154,7 +149,6 @@ impl Display for DisplayGroupedMessage<'_> {
                     " ".repeat(self.row_length.get() - start_location.line.digits().get())
             )?;
 
-            // Check if we're working on a jupyter notebook and translate positions with cell accordingly
             let (row, col) = if let Some(jupyter_index) = self.notebook_index {
                 write!(
                     f,
@@ -215,7 +209,6 @@ impl Display for RuleCodeAndBody<'_> {
         if self.show_fix_status
             && let Some(fix) = self.message.fix()
         {
-            // Do not display an indicator for inapplicable fixes
             if fix.applies(self.applicability) {
                 let code = if use_name {
                     self.message.id().as_str()

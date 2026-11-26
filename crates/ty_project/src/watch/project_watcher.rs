@@ -52,10 +52,6 @@ impl ProjectWatcher {
                 return;
             }
 
-            // `watch_paths` reads `.pth` files to find editable module search paths. If a
-            // script's `site-packages` was unwatched when a `.pth` file changed from `/old`
-            // to `/new`, this pass registered `/old` using stale contents. The refresh above
-            // updates the `.pth` file; recompute the plan and register `/new` before returning.
             if self.cache_key == Some(watch_paths(db, db.project()).cache_key()) {
                 return;
             }
@@ -79,11 +75,6 @@ impl ProjectWatcher {
         let mut watcher_paths = self.watcher.paths_mut();
         let mut newly_covered_paths = Vec::new();
 
-        // On Linux, overlapping watches through a symlink report events using the path of the
-        // last registered watch. If `/project/bar` points to `/bar`, the module search path
-        // `/bar` must be watched after `/project` so imports receive events under `/bar`.
-        // Configuration paths come last so their events use their explicit paths. Appending
-        // preserves this precedence; other changes require re-registering in the new order.
         let first_new_path = if !self.has_errored_paths && paths.starts_with(&self.watched_paths) {
             self.watched_paths.len()
         } else {
@@ -99,15 +90,11 @@ impl ProjectWatcher {
 
         for path in paths.iter().skip(first_new_path) {
             if let Err(error) = watcher_paths.add(path) {
-                // TODO: Log a user-facing warning.
                 tracing::warn!(
                     "Failed to setup watcher for path `{path}`: {error}. You have to restart ty after making changes to files under this path or you might see stale results."
                 );
                 self.has_errored_paths = true;
             } else {
-                // A previous recursive watch already covered this path, even if it must be
-                // re-registered for precedence. Skip initial setup to avoid rescanning every
-                // project file immediately after discovery.
                 if self.cache_key.is_some()
                     && !previously_watched
                         .iter()
@@ -139,8 +126,6 @@ impl ProjectWatcher {
             return false;
         }
 
-        // A newly covered path may contain known files that changed while it was unwatched.
-        // Registering the watch does not update their cached contents, so refresh them here.
         Files::sync_all_recursive(db, newly_covered_paths);
 
         true
@@ -265,8 +250,6 @@ pub fn watch_paths(db: &dyn Db, project: Project) -> WatchPaths {
         .virtual_environment()
         .filter(|environment| !environment.starts_with(project_path));
 
-    // Watch the workspace and project roots and any paths provided by the user on the CLI.
-    // A recursive parent watch also covers nested paths, including member projects.
     let included_paths = ruff_db::system::deduplicate_nested_paths(
         std::iter::once(project_path).chain(workspace_root).chain(
             project
@@ -287,9 +270,6 @@ pub fn watch_paths(db: &dyn Db, project: Project) -> WatchPaths {
         }
     }
 
-    // Register module search paths after their parents even when a recursive watch already
-    // covers them. On Linux, a parent watch can report changes through another symlink,
-    // such as `.venv/lib64` instead of `.venv/lib`, leaving import resolution stale.
     let module_paths = search_paths
         .into_iter()
         .filter(|path| *path != project_path);
@@ -301,7 +281,6 @@ pub fn watch_paths(db: &dyn Db, project: Project) -> WatchPaths {
         .map(SystemPath::to_path_buf)
         .collect();
 
-    // Keep the last occurrence so later groups retain their registration precedence.
     let mut seen = FxHashSet::default();
     let mut unique_paths = Vec::new();
     for path in paths.into_iter().rev() {

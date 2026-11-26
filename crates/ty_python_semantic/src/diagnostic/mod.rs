@@ -96,7 +96,6 @@ pub(crate) fn add_inferred_python_version_hint_to_diagnostic(
                     ),
                 );
                 sub_diagnostic.annotate(annotation.message("Virtual environment metadata"));
-                // TODO: it would also be nice to tell them how we resolved their virtual environment...
                 diagnostic.sub(sub_diagnostic);
             } else {
                 diagnostic.info(format_args!(
@@ -120,7 +119,6 @@ pub(crate) fn add_inferred_python_version_hint_to_diagnostic(
             site_packages_parent_dir,
             source: _,
         } => {
-            // TODO: it would also be nice to tell them how we resolved this Python installation...
             diagnostic.info(format_args!(
                 "Python {version} was assumed when {action} \
                 because of the layout of your Python installation"
@@ -224,7 +222,6 @@ impl std::ops::Deref for DiagnosticGuard<'_> {
     type Target = Diagnostic;
 
     fn deref(&self) -> &Diagnostic {
-        // OK because `self.diag` is only `None` within `Drop`.
         self.diag.as_ref().unwrap()
     }
 }
@@ -238,7 +235,6 @@ impl std::ops::Deref for DiagnosticGuard<'_> {
 /// when this guard is dropped.
 impl std::ops::DerefMut for DiagnosticGuard<'_> {
     fn deref_mut(&mut self) -> &mut Diagnostic {
-        // OK because `self.diag` is only `None` within `Drop`.
         self.diag.as_mut().unwrap()
     }
 }
@@ -255,13 +251,9 @@ impl std::ops::DerefMut for DiagnosticGuard<'_> {
 impl Drop for DiagnosticGuard<'_> {
     fn drop(&mut self) {
         if std::thread::panicking() {
-            // Don't submit diagnostics when panicking because they might be incomplete.
             return;
         }
 
-        // OK because the only way `self.diag` is `None`
-        // is via this impl, which can only run at most
-        // once.
         let mut diag = self.diag.take().unwrap();
 
         let Some(ann) = diag.primary_annotation() else {

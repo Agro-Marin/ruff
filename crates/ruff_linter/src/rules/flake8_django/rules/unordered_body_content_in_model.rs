@@ -93,7 +93,6 @@ pub(crate) fn unordered_body_content_in_model(checker: &Checker, class_def: &ast
         return;
     }
 
-    // Track all the element types we've seen so far.
     let mut element_types = Vec::new();
     let mut prev_element_type = None;
     for element in &class_def.body {
@@ -101,9 +100,6 @@ pub(crate) fn unordered_body_content_in_model(checker: &Checker, class_def: &ast
             continue;
         };
 
-        // Skip consecutive elements of the same type. It's less noisy to only report
-        // violations at type boundaries (e.g., avoid raising a violation for _every_
-        // field declaration that's out of order).
         if prev_element_type == Some(element_type) {
             continue;
         }

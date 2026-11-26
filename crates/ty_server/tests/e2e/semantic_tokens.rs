@@ -125,7 +125,6 @@ fn multiline_token_client_supporting_multiline_tokens() -> Result<()> {
     Ok(())
 }
 
-// Regression test for https://github.com/astral-sh/ty/issues/2346
 #[test]
 fn no_stale_tokens_after_opening_the_same_file_with_new_content() -> Result<()> {
     let file_name = "src/foo";

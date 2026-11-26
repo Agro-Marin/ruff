@@ -68,7 +68,6 @@ pub(super) fn to_interpolated_string_element(
                 node_index: node_index.clone(),
             },
         )),
-        // These should be pretty safe to wrap in a formatted value.
         Expr::NumberLiteral(_) | Expr::BooleanLiteral(_) | Expr::Name(_) | Expr::Attribute(_) => {
             Some(to_interpolated_string_interpolation_element(expr))
         }

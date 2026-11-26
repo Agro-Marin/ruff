@@ -39,14 +39,10 @@ where
 
     let options = options.into_iter();
 
-    // Don't spend a *huge* amount of time computing suggestions if there are many candidates.
-    // This limit is fairly arbitrary and can be adjusted as needed.
     if options.len() > 4096 {
         return None;
     }
 
-    // Filter out the typo itself from the candidate list
-    // so we never suggest the exact same name as the one that failed to resolve.
     let options = options.filter(|name| *name != typo);
 
     let options: BTreeSet<&'a str> =
@@ -133,7 +129,6 @@ fn levenshtein_distance(string_a: &str, string_b: &str, max_cost: usize) -> usiz
     let string_a_chars: Vec<char> = string_a.chars().collect();
     let string_b_chars: Vec<char> = string_b.chars().collect();
 
-    // Trim away common affixes
     let pre = string_a_chars
         .iter()
         .zip(string_b_chars.iter())
@@ -142,7 +137,6 @@ fn levenshtein_distance(string_a: &str, string_b: &str, max_cost: usize) -> usiz
     let string_a_chars = &string_a_chars[pre..];
     let string_b_chars = &string_b_chars[pre..];
 
-    // Trim away common suffixes
     let post = string_a_chars
         .iter()
         .rev()
@@ -155,19 +149,15 @@ fn levenshtein_distance(string_a: &str, string_b: &str, max_cost: usize) -> usiz
     let mut string_a_len = string_a_chars.len();
     let mut string_b_len = string_b_chars.len();
 
-    // Short-circuit if either string is empty after trimming affixes/suffixes
     if string_a_len == 0 || string_b_len == 0 {
         return MOVE_COST * (string_a_len + string_b_len);
     }
 
-    // `string_a` should refer to the shorter of the two strings.
-    // This enables us to create a smaller buffer in the main loop below.
     if string_b_chars.len() < string_a_chars.len() {
         std::mem::swap(&mut string_a_chars, &mut string_b_chars);
         std::mem::swap(&mut string_a_len, &mut string_b_len);
     }
 
-    // Quick fail if a match is impossible.
     if (string_b_len - string_a_len) * MOVE_COST > max_cost {
         return max_cost + 1;
     }

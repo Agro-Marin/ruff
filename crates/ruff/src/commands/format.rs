@@ -93,7 +93,6 @@ pub(crate) fn format(
 
     warn_incompatible_formatter_settings(&resolver);
 
-    // Discover the package root for each Python file.
     let package_roots = resolver.package_roots(
         &paths
             .iter()
@@ -105,8 +104,6 @@ pub(crate) fn format(
     let caches = if cli.no_cache {
         None
     } else {
-        // `--no-cache` doesn't respect code changes, and so is often confusing during
-        // development.
         #[cfg(debug_assertions)]
         crate::warn_user!("Detected debug build without --no-cache.");
 
@@ -124,11 +121,9 @@ pub(crate) fn format(
 
                     let source_type = settings.formatter.extension.get_source_type(path);
                     if source_type.is_toml() {
-                        // Ignore TOML files.
                         return None;
                     }
 
-                    // Ignore files that are excluded from formatting
                     if (settings.file_resolver.force_exclude || !resolved_file.is_root())
                         && match_exclusion(
                             path,
@@ -185,13 +180,8 @@ pub(crate) fn format(
         duration
     );
 
-    // Store the caches.
     caches.persist()?;
 
-    // Report on any errors.
-    //
-    // We only convert errors to `Diagnostic`s in `Check` mode, otherwise we fall back on printing
-    // simple messages.
     if !mode.is_check() {
         errors.sort_unstable_by(|a, b| a.path().cmp(&b.path()));
 
@@ -211,10 +201,8 @@ pub(crate) fn format(
         writer.flush()?;
     }
 
-    // Report on the formatting changes.
     if config_arguments.log_level >= LogLevel::Default {
         if mode.is_diff() {
-            // Allow piping the diff to e.g. a file by writing the summary to stderr
             results.write_summary(&mut stderr().lock())?;
         } else if output_format.is_human_readable() {
             results.write_summary(&mut stdout().lock())?;
@@ -269,20 +257,16 @@ pub(crate) fn format_path(
         }
     }
 
-    // Extract the sources from the file.
     let unformatted = match SourceKind::from_path(path, source_type) {
         Ok(Some(source_kind)) => source_kind,
-        // Non-Python Jupyter notebook.
         Ok(None) => return Ok(FormatResult::Skipped),
         Err(err) => {
             return Err(FormatCommandError::Read(Some(path.to_path_buf()), err));
         }
     };
 
-    // Don't write back to the cache if formatting a range.
     let cache = cache.filter(|_| range.is_none());
 
-    // Format the source.
     let format_result = match format_source(&unformatted, Some(path), settings, range)? {
         FormattedSource::Formatted(formatted) => match mode {
             FormatMode::Write => {
@@ -372,7 +356,6 @@ pub(crate) fn format_source(
                     formatted
                 })
             } else {
-                // Using `Printed::into_code` requires adding `ruff_formatter` as a direct dependency, and I suspect that Rust can optimize the closure away regardless.
                 #[expect(clippy::redundant_closure_for_method_calls)]
                 format_module_source(unformatted, options).map(|formatted| formatted.into_code())
             };
@@ -412,16 +395,13 @@ pub(crate) fn format_source(
             let mut last: Option<TextSize> = None;
             let mut source_map = SourceMap::default();
 
-            // Format each cell individually.
             for (start, end) in notebook.cell_offsets().iter().tuple_windows::<(_, _)>() {
                 let range = TextRange::new(*start, *end);
                 let unformatted = &notebook.source_code()[range];
 
-                // Format the cell.
                 let formatted =
                     format_module_source(unformatted, options.clone()).map_err(|err| {
                         if let FormatModuleError::ParseError(err) = err {
-                            // Offset the error by the start of the cell
                             FormatCommandError::parse(
                                 ParseError {
                                     error: err.error,
@@ -435,44 +415,34 @@ pub(crate) fn format_source(
                         }
                     })?;
 
-                // If the cell is unchanged, skip it.
                 let formatted = formatted.as_code();
                 if formatted.len() == unformatted.len() && formatted == unformatted {
                     continue;
                 }
 
-                // If this is the first newly-formatted cell, initialize the output.
                 let output = output
                     .get_or_insert_with(|| String::with_capacity(notebook.source_code().len()));
 
-                // Add all contents from `last` to the current cell.
                 let slice = &notebook.source_code()
                     [TextRange::new(last.unwrap_or_default(), range.start())];
                 output.push_str(slice);
 
-                // Add the start source marker for the cell.
                 source_map.push_marker(*start, output.text_len());
 
-                // Add the cell itself.
                 output.push_str(formatted);
 
-                // Add the end source marker for the added cell.
                 source_map.push_marker(*end, output.text_len());
 
-                // Track that the cell was formatted.
                 last = Some(*end);
             }
 
-            // If the file was unchanged, return `None`.
             let (Some(mut output), Some(last)) = (output, last) else {
                 return Ok(FormattedSource::Unchanged);
             };
 
-            // Add the remaining content.
             let slice = &notebook.source_code()[usize::from(last)..];
             output.push_str(slice);
 
-            // Update the notebook.
             let mut formatted = notebook.clone();
             formatted.update(&source_map, output);
 
@@ -611,7 +581,6 @@ impl<'a> FormatResults<'a> {
 
     /// Write a summary of the formatting results to the given writer.
     fn write_summary(&self, f: &mut impl Write) -> io::Result<()> {
-        // Compute the number of changed and unchanged files.
         let mut changed = 0u32;
         let mut unchanged = 0u32;
         for result in self.results {
@@ -627,7 +596,6 @@ impl<'a> FormatResults<'a> {
             }
         }
 
-        // Write out a summary of the formatting results.
         if changed > 0 && unchanged > 0 {
             writeln!(
                 f,
@@ -706,21 +674,9 @@ impl<'a> FormatResults<'a> {
                 "File would be reformatted",
             );
 
-            // Locate the first and last characters that differ to use as the diagnostic
-            // range and to narrow the `Edit` range.
             let modified_range = ModifiedRange::new(unformatted, formatted);
 
             let path = result.path.to_string_lossy();
-            // For scripts, this is a single `Edit` using the `ModifiedRange` above, but notebook
-            // edits must be split by cell in order to render them as diffs.
-            //
-            // We also attempt to estimate the line number width for aligning the
-            // annotate-snippets header. This is only an estimate because we don't actually know
-            // if the maximum line number present in the document will be rendered as part of
-            // the diff, either as a changed line or as an unchanged context line. For
-            // notebooks, we refine our estimate by checking the number of lines in each cell
-            // individually, otherwise we could use `formatted.source_code().count_lines(...)`
-            // in both cases.
             let (fix, line_count) = if let SourceKind::IpyNotebook(formatted) = formatted
                 && let SourceKind::IpyNotebook(unformatted) = unformatted
             {
@@ -731,16 +687,6 @@ impl<'a> FormatResults<'a> {
                     .ranges()
                     .zip(unformatted.cell_offsets().ranges())
                     .filter_map(|(formatted_range, unformatted_range)| {
-                        // Filter out cells that weren't modified. We use `intersect` instead of
-                        // `contains_range` because the full modified range might start or end in
-                        // the middle of a cell:
-                        //
-                        // ```
-                        // | cell 1 | cell 2 | cell 3 |
-                        //     |----------------| modified range
-                        // ```
-                        //
-                        // The intersection will be `Some` for all three cells in this case.
                         if modified_range
                             .unformatted
                             .intersect(unformatted_range)
@@ -799,16 +745,6 @@ impl<'a> FormatResults<'a> {
             diagnostic.annotate(annotation);
             diagnostic.set_fix(fix);
 
-            // TODO(brent) this offset is a hack to get the header of the diagnostic message, which
-            // is rendered by our fork of `annotate-snippets`, to align with our manually-rendered
-            // diff. `annotate-snippets` computes the alignment of the arrow in the header based on
-            // the maximum line number width in its rendered snippet. However, we don't have a
-            // reasonable range to underline in an annotation, so we don't send `annotate-snippets`
-            // a snippet to measure. If we commit to staying on our fork, a more robust way of
-            // handling this would be to move the diff rendering in
-            // `ruff_db::diagnostic::render::full` into `annotate-snippets`, likely as another
-            // `DisplayLine` variant and update the `lineno_width` calculation in
-            // `DisplayList::fmt`. That would handle this offset "automatically."
             let line_count = (line_count + CONTEXT_LINES).min(
                 formatted
                     .source_code()
@@ -1055,9 +991,6 @@ impl ModifiedRange {
             prefix_length += unformatted.text_len();
         }
 
-        // For the ends of the ranges, track the length of the common suffix and then subtract that
-        // from each total text length. Unlike for `start`, the character offsets are very unlikely
-        // to be equal, so they need to be treated separately.
         let mut suffix_length = TextSize::ZERO;
         for (old, new) in unformatted[prefix_length.to_usize()..]
             .chars()
@@ -1082,19 +1015,10 @@ impl ModifiedRange {
 }
 
 pub(super) fn warn_incompatible_formatter_settings(resolver: &Resolver) {
-    // First, collect all rules that are incompatible regardless of the linter-specific settings.
     let mut incompatible_rules = FxHashSet::default();
     for setting in resolver.settings() {
         for rule in [
-            // Flags missing trailing commas when all arguments are on its own line:
-            // ```python
-            // def args(
-            //     aaaaaaaa, bbbbbbbbb, cccccccccc, ddddddddd, eeeeeeee, ffffff, gggggggggggg, hhhh
-            // ):
-            //     pass
-            // ```
             Rule::MissingTrailingComma,
-            // The formatter always removes blank lines before the docstring.
             Rule::IncorrectBlankLineBeforeClass,
         ] {
             if setting.linter.rules.enabled(rule) {
@@ -1121,9 +1045,7 @@ pub(super) fn warn_incompatible_formatter_settings(resolver: &Resolver) {
         }
     }
 
-    // Next, validate settings-specific incompatibilities.
     for setting in resolver.settings() {
-        // Validate all rules that rely on tab styles.
         if setting.linter.rules.enabled(Rule::TabIndentation)
             && setting.formatter.indent_style.is_tab()
         {
@@ -1150,7 +1072,6 @@ pub(super) fn warn_incompatible_formatter_settings(resolver: &Resolver) {
             );
         }
 
-        // Validate all rules that rely on tab styles.
         if setting.linter.rules.enabled(Rule::DocstringTabIndentation)
             && setting.formatter.indent_style.is_tab()
         {
@@ -1160,7 +1081,6 @@ pub(super) fn warn_incompatible_formatter_settings(resolver: &Resolver) {
             );
         }
 
-        // Validate all rules that rely on custom indent widths.
         if setting.linter.rules.any_enabled(&[
             Rule::IndentationWithInvalidMultiple,
             Rule::IndentationWithInvalidMultipleComment,
@@ -1174,7 +1094,6 @@ pub(super) fn warn_incompatible_formatter_settings(resolver: &Resolver) {
             );
         }
 
-        // Validate all rules that rely on quote styles.
         if setting
             .linter
             .rules
@@ -1228,25 +1147,19 @@ pub(super) fn warn_incompatible_formatter_settings(resolver: &Resolver) {
             );
         }
 
-        // Validate all isort settings.
         if setting.linter.rules.enabled(Rule::UnsortedImports) {
-            // The formatter removes empty lines if the value is larger than 2 but always inserts a empty line after imports.
-            // Two empty lines are okay because `isort` only uses this setting for top-level imports (not in nested blocks).
             if !matches!(setting.linter.isort.lines_after_imports, 1 | 2 | -1) {
                 warn_user_once!(
                     "The isort option `isort.lines-after-imports` with a value other than `-1`, `1` or `2` is incompatible with the formatter. To avoid unexpected behavior, we recommend setting the option to one of: `2`, `1`, or `-1` (default)."
                 );
             }
 
-            // Values larger than two get reduced to one line by the formatter if the import is in a nested block.
             if setting.linter.isort.lines_between_types > 1 {
                 warn_user_once!(
                     "The isort option `isort.lines-between-types` with a value greater than 1 is incompatible with the formatter. To avoid unexpected behavior, we recommend setting the option to one of: `1` or `0` (default)."
                 );
             }
 
-            // isort inserts a trailing comma which the formatter preserves, but only if `skip-magic-trailing-comma` isn't false.
-            // This isn't relevant when using `force-single-line`, since isort will never include a trailing comma in that case.
             if setting.formatter.magic_trailing_comma.is_ignore()
                 && !setting.linter.isort.force_single_line
             {

@@ -57,18 +57,14 @@ pub(crate) fn useless_return(
     body: &[Stmt],
     returns: Option<&Expr>,
 ) {
-    // Skip functions that have a return annotation that is not `None`.
     if !returns.is_none_or(Expr::is_none_literal_expr) {
         return;
     }
 
-    // Find the last statement in the function.
     let Some(last_stmt) = body.last() else {
-        // Skip empty functions.
         return;
     };
 
-    // Verify that the last statement is a return statement.
     let Stmt::Return(ast::StmtReturn {
         value,
         range: _,
@@ -78,12 +74,10 @@ pub(crate) fn useless_return(
         return;
     };
 
-    // Skip functions that consist of a single return statement.
     if body.len() == 1 {
         return;
     }
 
-    // Skip functions that consist of a docstring and a return statement.
     if body.len() == 2 {
         if let Stmt::Expr(ast::StmtExpr {
             value,
@@ -97,7 +91,6 @@ pub(crate) fn useless_return(
         }
     }
 
-    // Verify that the return statement is either bare or returns `None`.
     if !value
         .as_ref()
         .is_none_or(|expr| expr.is_none_literal_expr())
@@ -105,7 +98,6 @@ pub(crate) fn useless_return(
         return;
     }
 
-    // Finally: verify that there are no _other_ return statements in the function.
     let mut visitor = ReturnStatementVisitor::default();
     visitor.visit_body(body);
     if visitor.returns.len() > 1 {
@@ -114,15 +106,12 @@ pub(crate) fn useless_return(
 
     let mut diagnostic = checker.report_diagnostic(UselessReturn, last_stmt.range());
 
-    // Preserve a trailing comment on the same line as the `return` statement.
     let edit = if let Some(index) = trailing_comment_start_offset(last_stmt, checker.source()) {
         Edit::range_deletion(last_stmt.range().add_end(index))
     } else {
         fix::edits::delete_stmt(last_stmt, Some(stmt), checker.locator(), checker.indexer())
     };
 
-    // Mark the fix as unsafe if it would still delete comments, e.g., inside a parenthesized
-    // return value.
     let applicability = if checker
         .comment_ranges()
         .comments_in_range(edit.range())

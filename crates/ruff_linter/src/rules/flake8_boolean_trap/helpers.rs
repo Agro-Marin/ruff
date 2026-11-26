@@ -80,39 +80,22 @@ fn is_user_allowed_func_call(
 /// See: <https://docs.python.org/3/library/operator.html>
 fn is_operator_method(name: &str) -> bool {
     match name {
-        // Membership (`in`).
         "__contains__" => true,
-        // Item access (`[]`, `[]=`, and `del []`).
         "__getitem__" | "__setitem__" | "__delitem__" => true,
-        // Addition (`+` and `+=`).
         "__add__" | "__radd__" | "__iadd__" => true,
-        // Subtraction (`-` and `-=`).
         "__sub__" | "__rsub__" | "__isub__" => true,
-        // Multiplication (`*` and `*=`).
         "__mul__" | "__rmul__" | "__imul__" => true,
-        // Division (`/` and `/=`).
         "__truediv__" | "__rtruediv__" | "__itruediv__" => true,
-        // Floor division (`//` and `//=`).
         "__floordiv__" | "__rfloordiv__" | "__ifloordiv__" => true,
-        // Remainder (`%` and `%=`).
         "__mod__" | "__rmod__" | "__imod__" => true,
-        // Exponentiation (`**` and `**=`).
         "__pow__" | "__rpow__" | "__ipow__" => true,
-        // Left shift (`<<` and `<<=`).
         "__lshift__" | "__rlshift__" | "__ilshift__" => true,
-        // Right shift (`>>` and `>>=`).
         "__rshift__" | "__rrshift__" | "__irshift__" => true,
-        // Matrix multiplication (`@` and `@=`).
         "__matmul__" | "__rmatmul__" | "__imatmul__" => true,
-        // Meet (`&` and `&=`).
         "__and__" | "__rand__" | "__iand__" => true,
-        // Join (`|` and `|=`).
         "__or__" | "__ror__" | "__ior__" => true,
-        // Exclusive-or (`^` and `^=`).
         "__xor__" | "__rxor__" | "__ixor__" => true,
-        // Comparison (`>`, `<`, `>=`, `<=`, `==`, and `!=`).
         "__gt__" | "__lt__" | "__ge__" | "__le__" | "__eq__" | "__ne__" => true,
-        // Unary operators (`+`, `-`, and `~`), included for completeness.
         "__pos__" | "__neg__" | "__invert__" => true,
         _ => false,
     }
@@ -133,22 +116,15 @@ pub(super) fn allow_boolean_trap(call: &ast::ExprCall, checker: &Checker) -> boo
         _ => return false,
     };
 
-    // If the function name is explicitly allowed, then the boolean trap is
-    // allowed.
     if is_allowed_func_call(func_name) {
         return true;
     }
 
-    // If the function appears to be a setter (e.g., `set_visible` or `setVisible`), then the
-    // boolean trap is allowed. We want to avoid raising a violation for cases in which the argument
-    // is positional-only and third-party, and this tends to be the case for setters.
     if call.arguments.args.len() == 1 {
-        // Ex) `foo.set(True)`
         if func_name == "set" {
             return true;
         }
 
-        // Ex) `foo.set_visible(True)`
         if func_name
             .strip_prefix("set")
             .is_some_and(|suffix| suffix.starts_with(|c: char| c == '_' || c.is_ascii_uppercase()))
@@ -157,12 +133,10 @@ pub(super) fn allow_boolean_trap(call: &ast::ExprCall, checker: &Checker) -> boo
         }
     }
 
-    // If the function is explicitly allowed, then the boolean trap is allowed.
     if is_semantically_allowed_func_call(call, checker.semantic()) {
         return true;
     }
 
-    // If the call is explicitly allowed by the user, then the boolean trap is allowed.
     if is_user_allowed_func_call(call, checker.semantic(), checker.settings()) {
         return true;
     }

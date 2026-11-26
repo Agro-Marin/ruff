@@ -51,7 +51,6 @@ def cli_benchmark_environment(
 ) -> dict[str, str]:
     """Use checker concurrency defaults independently of the LSP pool limits."""
     env = benchmark_environment(cwd, single_threaded=single_threaded)
-    # Rayon still accepts its deprecated override; Python can also override CPU discovery.
     for key in ("RAYON_RS_NUM_CPUS", "PYTHON_CPU_COUNT"):
         env.pop(key, None)
     if not single_threaded:
@@ -94,33 +93,24 @@ class Hyperfine(NamedTuple):
         """Run the benchmark using `hyperfine`."""
         args = [
             "hyperfine",
-            # Ignore any warning/error diagnostics but fail if there are any fatal errors, incorrect configuration, etc.
-            # mypy exit codes: https://github.com/python/mypy/issues/14615#issuecomment-1420163253
-            # pyright exit codes: https://docs.basedpyright.com/v1.31.6/configuration/command-line/#pyright-exit-codes
-            # pyrefly exit codes: Not documented
             # ty: https://docs.astral.sh/ty/reference/exit-codes/
             "--ignore-failure=1",
         ]
 
-        # Export to JSON.
         if self.json:
             args.extend(["--export-json", f"{self.name}.json"])
 
-        # Preamble: benchmark-wide setup.
         if self.verbose:
             args.append("--show-output")
 
         args.extend(["--warmup", str(self.warmup), "--min-runs", str(self.min_runs)])
 
-        # Add all command names,
         for command in self.commands:
             args.extend(["--command-name", command.name])
 
-        # Add all prepare statements.
         for command in self.commands:
             args.extend(["--prepare", shlex.join(command.prepare or [])])
 
-        # Add all commands.
         for command in self.commands:
             args.append(shlex.join(command.command))
 

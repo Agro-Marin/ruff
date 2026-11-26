@@ -36,11 +36,9 @@ pub(crate) fn check_noqa(
     settings: &LinterSettings,
     suppressions: &Suppressions,
 ) -> Vec<usize> {
-    // Identify any codes that are globally exempted (within the current file).
     let file_noqa_directives =
         FileNoqaDirectives::extract(locator, comment_ranges, &settings.external, path);
 
-    // Extract all `noqa` directives.
     let mut noqa_directives = NoqaDirectives::from_commented_ranges(comment_ranges, path, locator);
 
     if file_noqa_directives.is_empty() && noqa_directives.is_empty() && suppressions.is_empty() {
@@ -50,16 +48,11 @@ pub(crate) fn check_noqa(
 
     let exemption = FileExemption::from(&file_noqa_directives);
 
-    // Generate diagnostics for suppression comments before applying suppressions so that the
-    // diagnostics can themselves be suppressed.
     suppressions.check_rule_codes(context, locator);
 
-    // Indices of diagnostics that were ignored by a `noqa` directive.
     let mut ignored_diagnostics = vec![];
 
-    // Remove any ignored diagnostics.
     'outer: for (index, diagnostic) in context.iter().enumerate() {
-        // Syntax errors and other non-lint diagnostics cannot be suppressed.
         let Some(name) = diagnostic.id().as_lint() else {
             continue;
         };
@@ -68,13 +61,11 @@ pub(crate) fn check_noqa(
             continue;
         }
 
-        // Apply file-level suppressions first
         if exemption.includes_name(name) {
             ignored_diagnostics.push(index);
             continue;
         }
 
-        // Apply ranged suppressions next
         if suppressions.check_diagnostic(diagnostic) {
             ignored_diagnostics.push(index);
             continue;
@@ -107,7 +98,6 @@ pub(crate) fn check_noqa(
         }
     }
 
-    // Only migrate directives that don't require RUF100 cleanup first.
     let check_unused_noqa = context.is_rule_enabled(Rule::UnusedNOQA)
         && analyze_directives
         && !exemption.includes(Rule::UnusedNOQA);
@@ -264,7 +254,6 @@ pub(crate) fn check_noqa(
         }
     }
 
-    // Diagnostics for unused/invalid range suppressions
     suppressions.check_suppressions(context, locator);
 
     if context.is_rule_enabled(Rule::RedirectedNOQA) && !exemption.includes(Rule::RedirectedNOQA) {

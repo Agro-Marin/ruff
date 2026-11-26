@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-// These optional dependencies are used by the benchmark targets or under the
-// CodSpeed cfg. Keep them visible to Cargo's unused-dependency check.
 #[cfg(feature = "codspeed-criterion-compat")]
 use codspeed_criterion_compat as _;
 #[cfg(feature = "divan")]
@@ -42,7 +40,6 @@ pub static NUMPY_CTYPESLIB: TestFile = TestFile::new(
     include_str!("../resources/numpy/ctypeslib.py"),
 );
 
-// "https://raw.githubusercontent.com/DHI/mikeio/b7d26418f4db2909b0aa965253dbe83194d7bb5b/tests/test_dataset.py"
 pub static LARGE_DATASET: TestFile = TestFile::new(
     "large/dataset.py",
     include_str!("../resources/large/dataset.py"),

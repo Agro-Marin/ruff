@@ -1,9 +1,5 @@
 import { strToU8, zipSync } from "fflate";
 
-/**
- * Creates a ZIP archive from the given files and triggers a browser download.
- * The filename includes a short content hash for uniqueness.
- */
 export async function downloadZip(
   files: { [name: string]: string },
   prefix = "playground",

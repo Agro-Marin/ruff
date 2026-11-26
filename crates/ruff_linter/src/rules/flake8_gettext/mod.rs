@@ -14,14 +14,12 @@ pub(crate) fn is_ngettext_call(checker: &Checker, func: &Expr) -> bool {
         return false;
     }
 
-    // Check direct name reference first (e.g., `ngettext(...)`)
     if let Some(name) = func.as_name_expr() {
         if name.id == "ngettext" {
             return true;
         }
     }
 
-    // Check qualified name (e.g., `gettext_mod.ngettext(...)`)
     checker
         .semantic()
         .resolve_qualified_name(func)

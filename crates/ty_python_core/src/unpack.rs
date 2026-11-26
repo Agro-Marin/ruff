@@ -54,7 +54,6 @@ pub struct Unpack<'db> {
     pub value: UnpackValue<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for Unpack<'_> {}
 
 impl<'db> Unpack<'db> {

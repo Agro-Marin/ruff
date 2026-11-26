@@ -142,7 +142,6 @@ enum FormatContext {
 /// Returns `true` if the expression should be parenthesized when used in an f-string.
 fn parenthesize(expr: &Expr, text: &str, context: FormatContext) -> bool {
     match (context, expr) {
-        // E.g., `x + y` should be parenthesized in `f"{(x + y)[0]}"`.
         (
             FormatContext::Accessed,
             Expr::BinOp(_)
@@ -156,7 +155,6 @@ fn parenthesize(expr: &Expr, text: &str, context: FormatContext) -> bool {
             | Expr::YieldFrom(_)
             | Expr::Starred(_),
         ) => true,
-        // E.g., `12` should be parenthesized in `f"{(12).real}"`.
         (
             FormatContext::Accessed,
             Expr::NumberLiteral(ast::ExprNumberLiteral {
@@ -165,10 +163,8 @@ fn parenthesize(expr: &Expr, text: &str, context: FormatContext) -> bool {
             }),
         ) => text
             .chars()
-            // Ignore digit separators so decimal literals like `1_2` still count as pure digits.
             .filter(|c| *c != '_')
             .all(|c| c.is_ascii_digit()),
-        // E.g., `{x, y}` should be parenthesized in `f"{(x, y)}"`.
         (
             _,
             Expr::Generator(_)
@@ -252,38 +248,30 @@ impl FStringConversion {
     ) -> Result<Self> {
         let contents = locator.slice(range);
 
-        // Strip the unicode prefix. It's redundant in Python 3, and invalid when used
-        // with f-strings.
         let contents = if contents.starts_with('U') || contents.starts_with('u') {
             &contents[1..]
         } else {
             contents
         };
 
-        // Temporarily strip the raw prefix, if present. It will be prepended to the result, before the
-        // 'f', to match the prefix order both the Ruff formatter (and Black) use when formatting code.
         let raw = contents.starts_with('R') || contents.starts_with('r');
         let contents = if raw { &contents[1..] } else { contents };
 
-        // Remove the leading and trailing quotes.
         let leading_quote = leading_quote(contents).context("Unable to identify leading quote")?;
         let trailing_quote =
             trailing_quote(contents).context("Unable to identify trailing quote")?;
         let contents = &contents[leading_quote.len()..contents.len() - trailing_quote.len()];
 
-        // If the format string is empty, it doesn't need to be converted.
         if contents.is_empty() {
             return Ok(Self::EmptyLiteral);
         }
 
-        // Parse the format string.
         let format_string = if raw {
             FormatString::from_raw_str(contents)
         } else {
             FormatString::from_str(contents)
         }?;
 
-        // If the format string contains only literal parts, it doesn't need to be converted.
         if format_string
             .format_parts
             .iter()
@@ -305,7 +293,6 @@ impl FStringConversion {
 
                     let field = FieldName::parse(&field_name)?;
 
-                    // Map from field type to specifier.
                     let specifier = match field.field_type {
                         FieldType::Auto => IndexOrKeyword::Index(summary.arg_auto()),
                         FieldType::Index(index) => IndexOrKeyword::Index(index),
@@ -325,13 +312,6 @@ impl FStringConversion {
                         }
                     };
 
-                    // If the argument contains a side effect, and it's repeated in the format
-                    // string, we can't convert the format string to an f-string. For example,
-                    // converting `"{x} {x}".format(x=foo())` would result in `f"{foo()} {foo()}"`,
-                    // which would call `foo()` twice.
-                    //
-                    // This is also true for builtins, so we don't treat them as special when
-                    // checking for effects here.
                     if !seen.insert(specifier) && contains_effect(arg, |_| false) {
                         return Ok(Self::SideEffects);
                     }
@@ -371,8 +351,6 @@ impl FStringConversion {
                                         "string index contains the f-string quote"
                                     ));
                                 }
-                                // `str.format` takes the backslash literally, but inside the
-                                // quoted key it would start an escape sequence.
                                 if index.contains('\\') {
                                     return Err(anyhow::anyhow!(
                                         "string index contains a backslash"
@@ -408,7 +386,6 @@ impl FStringConversion {
             }
         }
 
-        // Construct the format string.
         let mut contents = String::with_capacity(usize::from(raw) + 1 + converted.len());
         if raw {
             contents.push('r');
@@ -427,7 +404,6 @@ pub(crate) fn f_strings(checker: &Checker, call: &ast::ExprCall, summary: &Forma
         return;
     }
 
-    // `"{} {1}".format(a, b)` raises `ValueError`, but the equivalent f-string would succeed.
     if !summary.autos.is_empty() && !summary.indices.is_empty() {
         return;
     }
@@ -452,29 +428,13 @@ pub(crate) fn f_strings(checker: &Checker, call: &ast::ExprCall, summary: &Forma
         };
         match token.kind() {
             TokenKind::Dot => {
-                // ```
-                // (
-                //     "a"
-                //     " {} "
-                //     "b"
-                // ).format(x)
-                // ```
-                // ^ Get the position of the character before the dot.
-                //
-                // We know that the expression is a string literal, so we can safely assume that the
-                // dot is the start of an attribute access.
                 break token.start();
             }
             TokenKind::String if !token.unwrap_string_flags().is_unclosed() => {
                 match FStringConversion::try_convert(token.range(), &mut summary, checker.locator())
                 {
-                    // If the format string contains side effects that would need to be repeated,
-                    // we can't convert it to an f-string.
                     Ok(FStringConversion::SideEffects) => return,
-                    // If any of the segments fail to convert, then we can't convert the entire
-                    // expression.
                     Err(_) => return,
-                    // Otherwise, push the conversion to be processed later.
                     Ok(conversion) => patches.push((token.range(), conversion)),
                 }
             }
@@ -491,18 +451,14 @@ pub(crate) fn f_strings(checker: &Checker, call: &ast::ExprCall, summary: &Forma
         let fstring = match conversion {
             FStringConversion::Convert(fstring) => fstring,
             FStringConversion::EmptyLiteral => {
-                // Keep a leading empty literal to avoid orphaning a space, parenthesis, or comment
-                // before the first kept segment; drop later ones by advancing `prev_end`.
                 if !contents.is_empty() {
                     prev_end = range.end();
                 }
                 continue;
             }
             FStringConversion::NonEmptyLiteral => {
-                // Convert escaped curly brackets e.g. `{{` to `{` in literal string parts
                 curly_unescape(checker.locator().slice(range)).to_string()
             }
-            // We handled this in the previous loop.
             FStringConversion::SideEffects => unreachable!(),
         };
         contents.push_str(
@@ -515,8 +471,6 @@ pub(crate) fn f_strings(checker: &Checker, call: &ast::ExprCall, summary: &Forma
     }
     contents.push_str(checker.locator().slice(TextRange::new(prev_end, end)));
 
-    // If necessary, add a space between any leading keyword (`return`, `yield`, `assert`, etc.)
-    // and the string. For example, `return"foo"` is valid, but `returnf"foo"` is not.
     let existing = checker.locator().slice(TextRange::up_to(call.start()));
     if existing
         .chars()
@@ -526,9 +480,6 @@ pub(crate) fn f_strings(checker: &Checker, call: &ast::ExprCall, summary: &Forma
         contents.insert(0, ' ');
     }
 
-    // Finally, avoid refactors that would introduce a runtime error.
-    // For example, Django's `gettext` supports `format`-style arguments, but not f-strings.
-    // See: https://docs.djangoproject.com/en/4.2/topics/i18n/translation
     if checker.semantic().current_expressions().any(|expr| {
         expr.as_call_expr().is_some_and(|call| {
             checker
@@ -547,17 +498,10 @@ pub(crate) fn f_strings(checker: &Checker, call: &ast::ExprCall, summary: &Forma
 
     let mut diagnostic = checker.report_diagnostic(FString, call.range());
 
-    // Avoid fix if there are comments within the call:
-    // ```
-    // "{}".format(
-    //     0,  # 0
-    // )
-    // ```
     let has_comments = checker.comment_ranges().intersects(call.arguments.range());
 
     if !has_comments {
         if contents.is_empty() {
-            // Ex) `''.format(self.project)`
             diagnostic.set_fix(Fix::safe_edit(Edit::range_replacement(
                 checker.locator().slice(literal).to_string(),
                 call.range(),

@@ -44,7 +44,6 @@ impl FormatNodeRule<StmtImportFrom> for FormatStmtImportFrom {
         )?;
 
         if let [name] = names.as_slice() {
-            // star can't be surrounded by parentheses
             if name.name.as_str() == "*" {
                 return token("*").fmt(f);
             }
@@ -57,13 +56,6 @@ impl FormatNodeRule<StmtImportFrom> for FormatStmtImportFrom {
                 .finish()
         });
 
-        // A dangling comment on an import is a parenthesized comment, like:
-        // ```python
-        // from example import (  # comment
-        //     A,
-        //     B,
-        // )
-        // ```
         let comments = f.context().comments().clone();
         let parenthesized_comments = comments.dangling(item);
 

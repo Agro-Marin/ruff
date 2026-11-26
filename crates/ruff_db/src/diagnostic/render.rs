@@ -194,10 +194,6 @@ impl<'a> ResolvedDiagnostic<'a> {
         let id = if use_code && let Some(code) = diag.secondary_code() {
             code.to_string()
         } else if config.hide_severity {
-            // When Ruff gets real severities, we should put the colon back in
-            // `DisplaySet::format_annotation` for both cases, but this is a small hack to improve the
-            // formatting of human-readable names for now. This should also be kept consistent with the
-            // concise formatting.
             format!("{id}:", id = diag.id())
         } else {
             diag.id().to_string()
@@ -265,10 +261,6 @@ impl<'a> ResolvedDiagnostic<'a> {
             anns.sort_by_key(|ann1| ann1.range.start());
         }
 
-        // The merge window determines how close two annotations need
-        // to be (in lines) to be rendered inside a single snippet.
-        // This is independent of `context`, which controls how many
-        // extra padding lines appear before and after each snippet.
         let merge_window = config.merge_window.max(config.context);
 
         let mut snippet_by_path: BTreeMap<&'a str, Vec<Vec<&ResolvedAnnotation<'a>>>> =
@@ -296,9 +288,6 @@ impl<'a> ResolvedDiagnostic<'a> {
                 )
                 .get();
 
-                // For notebooks, check whether the end of the
-                // previous annotation and the start of the current
-                // annotation are in different cells.
                 let prev_cell_index = prev.notebook_index.as_ref().map(|notebook_index| {
                     let prev_end = prev
                         .diagnostic_source
@@ -318,15 +307,7 @@ impl<'a> ResolvedDiagnostic<'a> {
                 });
                 let in_different_cells = prev_cell_index != this_cell_index;
 
-                // The boundary case here is when `prev_context_ends`
-                // is exactly one less than `this_context_begins`. In
-                // that case, the context windows are adjacent and we
                 // should fall through below to add this annotation to
-                // the existing snippet.
-                //
-                // For notebooks, also check that the context windows
-                // are in the same cell. Windows from different cells
-                // should never be considered adjacent.
                 if in_different_cells || this_context_begins.saturating_sub(prev_context_ends) > 1 {
                     snippet_by_path
                         .entry(path)
@@ -391,8 +372,6 @@ impl<'a> ResolvedAnnotation<'a> {
     ) -> Option<ResolvedAnnotation<'a>> {
         let source = diagnostic_source.as_source_code();
         let (range, line_start, line_end) = match (ann.span.range(), ann.message.is_some()) {
-            // An annotation with no range AND no message is probably(?)
-            // meaningless, but we should try to render it anyway.
             (None, _) => (
                 TextRange::empty(TextSize::new(0)),
                 OneIndexed::MIN,
@@ -401,12 +380,6 @@ impl<'a> ResolvedAnnotation<'a> {
             (Some(range), _) => {
                 let line_start = source.line_index(range.start());
                 let mut line_end = source.line_index(range.end());
-                // As a special case, if the *end* of our range comes
-                // right after a line terminator, we say that the last
-                // line number for this annotation is the previous
-                // line and not the next line. In other words, in this
-                // case, we treat our line number as an inclusive
-                // upper bound.
                 if source.slice(range).ends_with(['\r', '\n']) {
                     line_end = line_end.saturating_sub(1).max(line_start);
                 }
@@ -625,10 +598,6 @@ impl<'r> RenderableSnippet<'r> {
             .as_source_code()
             .slice(TextRange::new(snippet_start, snippet_end));
 
-        // Strip the BOM from the beginning of the snippet, if present. Doing this here saves us the
-        // trouble of updating the annotation ranges in `replace_unprintable`, and also allows us to
-        // check that the BOM is at the very beginning of the file, not just the beginning of the
-        // snippet.
         const BOM: char = '\u{feff}';
         let bom_len = BOM.text_len();
         let (snippet, snippet_start) =
@@ -706,8 +675,6 @@ impl<'r> RenderableAnnotation<'r> {
     /// lifetime parameter here refers to the lifetime of the resolver that
     /// created the given `ResolvedAnnotation`.
     fn new(snippet_start: TextSize, ann: &'_ ResolvedAnnotation<'r>) -> RenderableAnnotation<'r> {
-        // An annotation can start at byte zero even when a leading BOM was stripped from the
-        // snippet. Clamp each endpoint separately so the annotation still covers any visible text.
         let range = TextRange::new(
             ann.range.start().saturating_sub(snippet_start),
             ann.range.end().saturating_sub(snippet_start),
@@ -868,7 +835,6 @@ fn context_before(
     notebook_index: Option<&NotebookIndex>,
 ) -> OneIndexed {
     let mut line = start.saturating_sub(len);
-    // Trim leading empty lines.
     while line < start {
         if !source.line_text(line).trim().is_empty() {
             break;
@@ -906,7 +872,6 @@ fn context_after(
 ) -> OneIndexed {
     let max_lines = OneIndexed::from_zero_indexed(source.line_count());
     let mut line = start.saturating_add(len).min(max_lines);
-    // Trim trailing empty lines.
     while line > start {
         if !source.line_text(line).trim().is_empty() {
             break;
@@ -942,12 +907,6 @@ fn replace_unprintable<'r>(
     source: &'r str,
     mut annotations: Vec<RenderableAnnotation<'r>>,
 ) -> EscapedSourceCode<'r> {
-    // Updates the annotation ranges given by the caller whenever a single byte (at `index` in
-    // `source`) is replaced with `len` bytes.
-    //
-    // When the index occurs before the start of the range, the range is
-    // offset by `len`. When the range occurs after or at the start but before
-    // the end, then the end of the range only is offset by `len`.
     let mut update_ranges = |index: usize, len: u32| {
         for ann in &mut annotations {
             if index < usize::from(ann.range.start()) {
@@ -958,8 +917,6 @@ fn replace_unprintable<'r>(
         }
     };
 
-    // If `c` is an unprintable character, then this returns a printable
-    // representation of it (using a fancier Unicode codepoint).
     let unprintable_replacement = |c: char| -> Option<char> {
         match c {
             '\x07' => Some('␇'),
@@ -973,7 +930,6 @@ fn replace_unprintable<'r>(
     let mut last_end = 0;
     let mut result = String::new();
     for (index, c) in source.char_indices() {
-        // normalize `\r` line endings but don't double `\r\n`
         if c == '\r' && !source[index + 1..].starts_with("\n") {
             result.push_str(&source[last_end..index]);
             result.push('\n');
@@ -989,7 +945,6 @@ fn replace_unprintable<'r>(
         }
     }
 
-    // No tabs or unprintable chars
     if result.is_empty() {
         EscapedSourceCode {
             annotations,
@@ -1010,22 +965,6 @@ struct EscapedSourceCode<'r> {
 }
 
 impl<'r> EscapedSourceCode<'r> {
-    // This attempts to "fix up" the spans on each annotation  in the case where
-    // it's an empty span immediately following a line terminator.
-    //
-    // At present, `annotate-snippets` (both upstream and our vendored copy)
-    // will render annotations of such spans to point to the space immediately
-    // following the previous line. But ideally, this should point to the space
-    // immediately preceding the next line.
-    //
-    // After attempting to fix `annotate-snippets` and giving up after a couple
-    // hours, this routine takes a different tact: it adjusts the span to be
-    // non-empty and it will cover the first codepoint of the following line.
-    // This forces `annotate-snippets` to point to the right place.
-    //
-    // See also: <https://github.com/astral-sh/ruff/issues/15509> and
-    // `ruff_linter::message::text::SourceCode::fix_up_empty_spans_after_line_terminator`,
-    // from which this was adapted.
     fn fix_up_empty_spans_after_line_terminator(mut self) -> EscapedSourceCode<'r> {
         for ann in &mut self.annotations {
             let range = ann.range;
@@ -1107,8 +1046,6 @@ jackrabbit
 kangaroo
 ";
 
-    // Useful for testing context windows that trim leading/trailing
-    // lines that are pure whitespace or empty.
     static SPACEY_ANIMALS: &str = "\
 aardvark
 
@@ -1287,8 +1224,6 @@ watermelon
         ",
         );
 
-        // Just highlight one multi-byte codepoint
-        // that has a >1 Unicode width.
         let diag = env.err().primary("non-ascii", "2:4", "2:8", "").build();
         insta::assert_snapshot!(
             env.render(&diag),
@@ -1311,7 +1246,6 @@ watermelon
         let mut env = TestEnvironment::new();
         env.add("animals", ANIMALS);
 
-        // Smaller context
         let diag = env.err().primary("animals", "5", "5", "").build();
         env.context(1);
         insta::assert_snapshot!(
@@ -1328,7 +1262,6 @@ watermelon
         ",
         );
 
-        // No context
         let diag = env.err().primary("animals", "5", "5", "").build();
         env.context(0);
         insta::assert_snapshot!(
@@ -1342,7 +1275,6 @@ watermelon
         ",
         );
 
-        // No context before snippet
         let diag = env.err().primary("animals", "1", "1", "").build();
         env.context(2);
         insta::assert_snapshot!(
@@ -1359,7 +1291,6 @@ watermelon
         ",
         );
 
-        // No context after snippet
         let diag = env.err().primary("animals", "11", "11", "").build();
         env.context(2);
         insta::assert_snapshot!(
@@ -1375,7 +1306,6 @@ watermelon
         ",
         );
 
-        // Context that exceeds source
         let diag = env.err().primary("animals", "5", "5", "").build();
         env.context(200);
         insta::assert_snapshot!(
@@ -1437,21 +1367,11 @@ watermelon
         let mut env = TestEnvironment::new();
         env.add("animals", ANIMALS);
 
-        // Set the context explicitly to 1 to make
-        // it easier to reason about, and to avoid
-        // making this test tricky to update if the
-        // default context changes.
         env.context(1);
 
         let diag = env
             .err()
             .primary("animals", "1", "1", "")
-            // This is the line that immediately follows
-            // the context from the first annotation,
-            // so there is no overlap. But since it's
-            // adjacent, the snippet "expands" out to
-            // include this line. (And the line after,
-            // for one additional line of context.)
             .primary("animals", "3", "3", "")
             .build();
         insta::assert_snapshot!(
@@ -1470,10 +1390,6 @@ watermelon
         ",
         );
 
-        // If the annotation were on the next line,
-        // then the context windows for each annotation
-        // are adjacent, and thus we still end up with
-        // one snippet.
         let diag = env
             .err()
             .primary("animals", "1", "1", "")
@@ -1496,12 +1412,6 @@ watermelon
         ",
         );
 
-        // But the line after that one, the context
-        // windows are no longer adjacent. You can
-        // tell this is correct because line 3 is
-        // omitted from the snippet below, since it
-        // is not in either annotation's context
-        // window.
         let diag = env
             .err()
             .primary("animals", "1", "1", "")
@@ -1527,8 +1437,6 @@ watermelon
         ",
         );
 
-        // Do the same round of tests as above,
-        // but with a bigger context window.
         env.context(3);
         let diag = env
             .err()
@@ -1588,9 +1496,6 @@ watermelon
             .primary("animals", "1", "1", "")
             .primary("animals", "9", "9", "")
             .build();
-        // Line 5 is missing, as expected, since
-        // it is not in either annotation's context
-        // window.
         insta::assert_snapshot!(
             env.render(&diag),
             @"
@@ -1622,11 +1527,6 @@ watermelon
         let mut env = TestEnvironment::new();
         env.add("spacey-animals", SPACEY_ANIMALS);
 
-        // Set the context to `2` and pick `elephant`
-        // from the input. It has two adjacent non-whitespace
-        // lines on both sides, but then two whitespace
-        // lines after that. As a result, the context window
-        // effectively shrinks to `1`.
         env.context(2);
         let diag = env.err().primary("spacey-animals", "8", "8", "").build();
         insta::assert_snapshot!(
@@ -1643,8 +1543,6 @@ watermelon
         ",
         );
 
-        // Same thing, but where trimming only happens
-        // in the preceding context.
         let diag = env.err().primary("spacey-animals", "12", "12", "").build();
         insta::assert_snapshot!(
             env.render(&diag),
@@ -1661,8 +1559,6 @@ watermelon
         ",
         );
 
-        // Again, with trimming only happening in the
-        // following context.
         let diag = env.err().primary("spacey-animals", "13", "13", "").build();
         insta::assert_snapshot!(
             env.render(&diag),
@@ -1691,19 +1587,6 @@ watermelon
             .primary("spacey-animals", "3", "3", "")
             .primary("spacey-animals", "5", "5", "")
             .build();
-        // Normally this would be one snippet, since
-        // a context of `1` on line `3` will be adjacent
-        // to the same sized context on line `5`. But since
-        // the context calculation trims leading/trailing
-        // whitespace lines, the context is not actually
-        // adjacent.
-        //
-        // Arguably, this is perhaps not what we want. In
-        // this case, the whitespace trimming is probably
-        // getting in the way of a more succinct and less
-        // jarring snippet. I wasn't 100% sure which
-        // behavior we wanted, so I left it as-is for now
-        // instead of special casing the snippet assembly.
         insta::assert_snapshot!(
             env.render(&diag),
             @"
@@ -1903,8 +1786,6 @@ watermelon
         ",
         );
 
-        // Flip the order of the subs and ensure
-        // this is reflected in the output.
         let mut diag = env.err().primary("animals", "3", "3", "").build();
         diag.sub(env.sub_warn().primary("animals", "11", "11", "").build());
         diag.sub(env.sub_warn().primary("fruits", "3", "3", "").build());
@@ -1948,12 +1829,6 @@ watermelon
         env.add("animals", ANIMALS);
 
         let mut diag = env.err().primary("animals", "3", "3", "").build();
-        // There's nothing preventing a sub-diagnostic from referencing
-        // the same snippet rendered in another sub-diagnostic or the
-        // parent diagnostic. While annotations *within* a diagnostic
-        // (sub or otherwise) are coalesced into a minimal number of
-        // snippets, no such minimizing is done for sub-diagnostics.
-        // Namely, they are generally treated as completely separate.
         diag.sub(env.sub_warn().secondary("animals", "3", "3", "").build());
         insta::assert_snapshot!(
             env.render(&diag),
@@ -1987,9 +1862,7 @@ watermelon
         let mut env = TestEnvironment::new();
         env.add("animals", ANIMALS);
 
-        // We just try out various offsets here.
 
-        // Two entire lines.
         let diag = env.err().primary("animals", "5", "6", "").build();
         insta::assert_snapshot!(
             env.render(&diag),
@@ -2008,11 +1881,6 @@ watermelon
         ",
         );
 
-        // Two lines plus the start of a third. Since we treat the end
-        // position as inclusive AND because `ruff_annotate_snippets`
-        // will render the position of the start of the line as just
-        // past the end of the previous line, our annotation still only
-        // extends across two lines.
         let diag = env.err().primary("animals", "5", "7:0", "").build();
         insta::assert_snapshot!(
             env.render(&diag),
@@ -2031,8 +1899,6 @@ watermelon
         ",
         );
 
-        // Add one more to our end position though, and the third
-        // line gets included (as you might expect).
         let diag = env.err().primary("animals", "5", "7:1", "").build();
         insta::assert_snapshot!(
             env.render(&diag),
@@ -2052,7 +1918,6 @@ watermelon
         ",
         );
 
-        // Starting and stopping in the middle of two different lines.
         let diag = env.err().primary("animals", "5:3", "8:8", "").build();
         insta::assert_snapshot!(
             env.render(&diag),
@@ -2074,7 +1939,6 @@ watermelon
         ",
         );
 
-        // Same as above, but with a secondary annotation.
         let diag = env.err().secondary("animals", "5:3", "8:8", "").build();
         insta::assert_snapshot!(
             env.render(&diag),
@@ -2102,7 +1966,6 @@ watermelon
         let mut env = TestEnvironment::new();
         env.add("animals", ANIMALS);
 
-        // One annotation fully contained within another.
         let diag = env
             .err()
             .primary("animals", "5", "6", "")
@@ -2128,8 +1991,6 @@ watermelon
         ",
         );
 
-        // Same as above, but with order swapped.
-        // Shouldn't impact rendering.
         let diag = env
             .err()
             .primary("animals", "4", "7", "")
@@ -2155,10 +2016,6 @@ watermelon
         ",
         );
 
-        // One annotation is completely contained
-        // by the other, but the other has one
-        // non-overlapping line preceding the
-        // overlapping portion.
         let diag = env
             .err()
             .primary("animals", "5", "7", "")
@@ -2184,19 +2041,11 @@ watermelon
         ",
         );
 
-        // One annotation is completely contained
-        // by the other, but the other has one
-        // non-overlapping line following the
-        // overlapping portion.
         let diag = env
             .err()
             .primary("animals", "5", "6", "")
             .primary("animals", "5", "7", "")
             .build();
-        // NOTE: I find the rendering here pretty
-        // confusing, but I believe it is correct.
-        // I'm not sure if it's possible to do much
-        // better using only ASCII art.
         insta::assert_snapshot!(
             env.render(&diag),
             @"
@@ -2216,8 +2065,6 @@ watermelon
         ",
         );
 
-        // Annotations partially overlap, but both
-        // contain lines that aren't in the other.
         let diag = env
             .err()
             .primary("animals", "5", "6", "")
@@ -2270,7 +2117,6 @@ watermelon
         ",
         );
 
-        // Same as above, but add two annotations for the same range.
         let diag = env
             .err()
             .primary("animals", "5:2", "5:6", "giant land mammal")
@@ -2301,9 +2147,6 @@ watermelon
         let mut env = TestEnvironment::new();
         env.add("animals", ANIMALS);
 
-        // The secondary annotation is not only added first,
-        // but it appears first in the source. But it still
-        // comes second.
         let diag = env
             .err()
             .secondary("animals", "1", "1", "secondary")
@@ -2332,14 +2175,6 @@ watermelon
         ",
         );
 
-        // This is a weirder case where there are multiple
-        // snippets with primary annotations. We ensure that
-        // all such snippets appear before any snippets with
-        // zero primary annotations. Otherwise, the snippets
-        // appear in source order.
-        //
-        // (We also drop the context so that we can squeeze
-        // more snippets out of our test data.)
         env.context(0);
         let diag = env
             .err()
@@ -2413,10 +2248,6 @@ watermelon
         ",
         );
 
-        // Same as the single file test, we try adding
-        // multiple primary annotations across multiple
-        // files. Those should always appear first
-        // *within* each file.
         env.context(0);
         let diag = env
             .err()
@@ -2549,8 +2380,6 @@ watermelon
                 config: DisplayDiagnosticConfig::new("ty"),
                 format: DiagnosticFormat::default(),
             };
-            // Default to a merge window of 0 for testing purposes,
-            // even though this is not the default for user-facing diagnostics.
             env.merge_window(0);
             env
         }
@@ -2558,10 +2387,6 @@ watermelon
         /// Set the number of contextual lines to include for each snippet
         /// in diagnostic rendering.
         pub(super) fn context(&mut self, lines: usize) {
-            // Kind of annoying. I considered making `DisplayDiagnosticConfig`
-            // be `Copy` (which it could be, at time of writing, 2025-03-07),
-            // but it seems likely to me that it will grow non-`Copy`
-            // configuration. So just deal with this inconvenience for now.
             let config = self.config.clone();
             self.config = config.context(lines);
         }

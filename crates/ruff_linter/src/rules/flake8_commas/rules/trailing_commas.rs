@@ -76,7 +76,6 @@ impl From<(TokenKind, TextRange)> for SimpleToken {
             TokenKind::Type => TokenType::Type,
             TokenKind::For => TokenType::For,
             TokenKind::Lambda => TokenType::Lambda,
-            // Import treated like a function.
             TokenKind::Import => TokenType::Named,
             _ => TokenType::Irrelevant,
         };
@@ -260,11 +259,7 @@ pub(crate) fn trailing_commas(
     let mut interpolated_strings = 0u32;
     let simple_tokens = tokens.iter().filter_map(|token| {
         match token.kind() {
-            // Completely ignore comments -- they just interfere with the logic.
             TokenKind::Comment => None,
-            // F-strings and t-strings are handled as `String` token type with the complete range
-            // of the outermost interpolated string. This means that the expression inside the
-            // interpolated string is not checked for trailing commas.
             TokenKind::FStringStart | TokenKind::TStringStart => {
                 interpolated_strings = interpolated_strings.saturating_add(1);
                 None
@@ -297,23 +292,15 @@ pub(crate) fn trailing_commas(
 
     for token in simple_tokens {
         if prev.ty == TokenType::NonLogicalNewline && token.ty == TokenType::NonLogicalNewline {
-            // Collapse consecutive newlines to the first one -- trailing commas are
-            // added before the first newline.
             continue;
         }
 
-        // Update the comma context stack.
         let context = update_context(token, prev, prev_prev, &mut stack);
 
         check_token(token, prev, prev_prev, context, locator, lint_context);
 
-        // Pop the current context if the current token ended it.
-        // The top context is never popped (if unbalanced closing brackets).
         let pop_context = match context.ty {
-            // Lambda terminated by `:`.
             ContextType::LambdaParameters => token.ty == TokenType::Colon,
-            // All others terminated by a closing bracket.
-            // flake8-commas doesn't verify that it matches the opening...
             _ => token.ty == TokenType::ClosingBracket,
         };
         if pop_context && stack.len() > 1 {
@@ -333,33 +320,25 @@ fn check_token(
     locator: &Locator,
     lint_context: &LintContext,
 ) {
-    // Is it allowed to have a trailing comma before this token?
     let comma_allowed = token.ty == TokenType::ClosingBracket
         && match context.ty {
             ContextType::No => false,
             ContextType::FunctionParameters => true,
             ContextType::CallArguments => true,
             ContextType::TypeParameters => true,
-            // `(1)` is not equivalent to `(1,)`.
             ContextType::Tuple => context.num_commas != 0,
-            // `x[1]` is not equivalent to `x[1,]`.
             ContextType::Subscript => context.num_commas != 0,
             ContextType::List => true,
             ContextType::Dict => true,
-            // Lambdas are required to be a single line, trailing comma never makes sense.
             ContextType::LambdaParameters => false,
         };
 
-    // Is prev a prohibited trailing comma?
     let comma_prohibited = prev.ty == TokenType::Comma && {
-        // Is `(1,)` or `x[1,]`?
         let is_singleton_tuplish =
             matches!(context.ty, ContextType::Subscript | ContextType::Tuple)
                 && context.num_commas <= 1;
-        // There was no non-logical newline, so prohibit (except in `(1,)` or `x[1,]`).
         if comma_allowed && !is_singleton_tuplish {
             true
-            // Lambdas not handled by comma_allowed so handle it specially.
         } else {
             context.ty == ContextType::LambdaParameters && token.ty == TokenType::Colon
         }
@@ -374,8 +353,6 @@ fn check_token(
         }
     }
 
-    // Is prev a prohibited trailing comma on a bare tuple?
-    // Approximation: any comma followed by a statement-ending newline.
     let bare_comma_prohibited = prev.ty == TokenType::Comma && token.ty == TokenType::Newline;
     if bare_comma_prohibited {
         lint_context.report_diagnostic_if_enabled(TrailingCommaOnBareTuple, prev.range());
@@ -386,11 +363,6 @@ fn check_token(
         return;
     }
 
-    // Comma is required if:
-    // - It is allowed,
-    // - Followed by a newline,
-    // - Not already present,
-    // - Not on an empty (), {}, [].
     let comma_required = prev.ty == TokenType::NonLogicalNewline
         && !matches!(
             prev_prev.ty,
@@ -403,10 +375,6 @@ fn check_token(
         if let Some(mut diagnostic) = lint_context
             .report_diagnostic_if_enabled(MissingTrailingComma, TextRange::empty(prev_prev.end()))
         {
-            // Create a replacement that includes the final bracket (or other token),
-            // rather than just inserting a comma at the end. This prevents the UP034 fix
-            // removing any brackets in the same linter pass - doing both at the same time could
-            // lead to a syntax error.
             let contents = locator.slice(prev_prev.range());
             diagnostic.set_fix(Fix::safe_edit(Edit::range_replacement(
                 format!("{contents},"),

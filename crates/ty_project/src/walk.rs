@@ -56,7 +56,6 @@ impl<'a> ProjectFilesFilter<'a> {
                     .iter()
                     .filter_map(|included_path| {
                         if let Ok(relative_path) = path.strip_prefix(included_path) {
-                            // Exact matches are always included, unless forced to exclude
                             if relative_path.as_str().is_empty() && !self.force_exclude {
                                 Some(CheckPathMatch::Full)
                             } else {
@@ -193,8 +192,6 @@ impl ProjectFilesWalker {
             let cancellation = &cancellation;
             let force_exclude = filter.force_exclude();
 
-            // The memory walker runs on the caller's thread, where a different database may
-            // already be attached. The caller tracks the file-set input, not this visitor's reads.
             let visit = move |entry: Result<DirectoryEntry, walk_directory::Error>| {
                 salsa::attach_allow_change(&*db, || {
                     db.unwind_if_revision_cancelled();
@@ -213,7 +210,6 @@ impl ProjectFilesWalker {
                                 GlobFilterCheckMode::TopDown
                             };
 
-                            // Skip excluded directories, including explicitly passed ones with `--force-exclude`.
                             if entry.file_type().is_directory() {
                                 if entry.depth() > 0 || force_exclude {
                                     let directory_included =
@@ -239,13 +235,9 @@ impl ProjectFilesWalker {
                                     };
                                 }
                             } else {
-                                // For all files, except the ones that were explicitly passed to the walker (CLI),
-                                // check if they're included in the project.
                                 if entry.depth() > 0 || force_exclude {
                                     match filter.is_file_included(entry.path(), match_mode) {
                                         include_result @ IncludeResult::Included { .. } => {
-                                            // Ignore any non python files to avoid creating too many entries in `Files`.
-                                            // Unless the file is explicitly passed on the CLI or a literal match in the `include`, we then always assume it's a file ty can analyze
                                             if entry.depth() > 0
                                                 && !include_result
                                                     .should_index_file(db.system(), entry.path())
@@ -272,8 +264,6 @@ impl ProjectFilesWalker {
                                     }
                                 }
 
-                                // If this returns `Err`, then the file was deleted between now and when the walk callback was called.
-                                // We can ignore this.
                                 if let Ok(file) = system_path_to_file(&*db, entry.path()) {
                                     let is_script = script_tag(&*db, file).is_some();
                                     if entry.depth() > 0 && exclude_scripts && is_script {
@@ -320,8 +310,6 @@ impl ProjectFilesWalker {
                     WalkState::Continue
                 })
             };
-            // The OS walker joins its workers with unwrap(), losing the Salsa cancellation
-            // payload if it unwinds across a worker thread. Propagate it on the caller instead.
             Box::new(move |entry| match salsa::Cancelled::catch(AssertUnwindSafe(|| visit(entry))) {
                 Ok(state) => state,
                 Err(reason) => {

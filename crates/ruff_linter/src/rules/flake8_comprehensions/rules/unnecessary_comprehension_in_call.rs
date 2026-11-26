@@ -155,23 +155,17 @@ pub(crate) fn unnecessary_comprehension_in_call(
         }
     };
     if args.len() == 1 {
-        // If there's only one argument, remove the list or set brackets.
         diagnostic.try_set_fix(|| {
             fixes::fix_unnecessary_comprehension_in_call(expr, checker.locator(), checker.stylist())
         });
     } else {
-        // If there are multiple arguments, replace the list or set brackets with parentheses.
-        // If a function call has multiple arguments, one of which is a generator, then the
-        // generator must be parenthesized.
 
-        // Replace `[` with `(`.
         let collection_start = Edit::replacement(
             "(".to_string(),
             arg.start(),
             arg.start() + TextSize::from(1),
         );
 
-        // Replace `]` with `)`.
         let collection_end =
             Edit::replacement(")".to_string(), arg.end() - TextSize::from(1), arg.end());
 

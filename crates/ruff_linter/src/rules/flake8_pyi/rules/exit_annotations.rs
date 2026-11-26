@@ -171,13 +171,10 @@ pub(crate) fn bad_exit_annotation(checker: &Checker, function: &StmtFunctionDef)
         return;
     }
 
-    // If there are less than three positional arguments, at least one of them must be a star-arg,
-    // and it must be annotated with `object`.
     if non_self_positional_args.len() < 3 {
         check_short_args_list(checker, parameters, func_kind);
     }
 
-    // Every positional argument (beyond the first four) must have a default.
     for parameter in non_self_positional_args
         .iter()
         .skip(3)
@@ -192,7 +189,6 @@ pub(crate) fn bad_exit_annotation(checker: &Checker, function: &StmtFunctionDef)
         );
     }
 
-    // ...as should all keyword-only arguments.
     for parameter in parameters
         .kwonlyargs
         .iter()
@@ -255,7 +251,6 @@ fn check_positional_args_for_non_overloaded_method(
     non_self_positional_params: &[&ParameterWithDefault],
     kind: FuncKind,
 ) {
-    // For each argument, define the predicate against which to check the annotation.
     type AnnotationValidator = fn(&Expr, &SemanticModel) -> bool;
 
     let validations: [(ErrorKind, AnnotationValidator); 3] = [
@@ -279,8 +274,6 @@ fn check_positional_args_for_non_overloaded_method(
             continue;
         }
 
-        // If there's an annotation that's not `object` or `Unused`, check that the annotated type
-        // matches the predicate.
         if checker.match_maybe_stringized_annotation(annotation, |expr| {
             non_none_annotation_element(expr, checker.semantic())
                 .is_some_and(|elem| predicate(elem, checker.semantic()))
@@ -322,7 +315,6 @@ fn check_positional_args_for_overloaded_method(
 
     let semantic = checker.semantic();
 
-    // Collect all the overloads for this method into a SmallVec
     let function_overloads: SmallVec<[&StmtFunctionDef; 2]> = parent_class_def
         .body
         .iter()
@@ -336,7 +328,6 @@ fn check_positional_args_for_overloaded_method(
         })
         .collect();
 
-    // If the number of overloads for this method is not exactly 2, don't do any checking
     if function_overloads.len() != 2 {
         return;
     }
@@ -348,12 +339,10 @@ fn check_positional_args_for_overloaded_method(
             ..
         } = function_def;
 
-        // If any overloads are an unexpected sync/async colour, don't do any checking
         if *is_async != kind.is_async() {
             return;
         }
 
-        // If any overloads have any variadic arguments, don't do any checking
         let Parameters {
             range: _,
             node_index: _,
@@ -367,13 +356,10 @@ fn check_positional_args_for_overloaded_method(
             return;
         };
 
-        // If any overloads have any keyword-only arguments, don't do any checking
         if !kwonlyargs.is_empty() {
             return;
         }
 
-        // If the number of non-keyword-only arguments is not exactly equal to 4
-        // for any overloads, don't do any checking
         if posonlyargs.len() + args.len() != 4 {
             return;
         }
@@ -383,26 +369,9 @@ fn check_positional_args_for_overloaded_method(
         function_overloads.contains(&semantic.current_statement().as_function_def_stmt().unwrap())
     );
 
-    // We've now established that no overloads for this method have any variadic parameters,
-    // no overloads have any keyword-only parameters, all overloads are the expected
-    // sync/async colour, and all overloads have exactly 3 non-`self` non-keyword-only parameters.
-    // The method we're currently looking at is one of those overloads.
-    // It therefore follows that, in order for it to be correctly annotated, it must be
-    // one of the following two possible overloads:
-    //
-    // ```
     // @overload
-    // def __(a)exit__(self, typ: None, exc: None, tb: None) -> None: ...
     // @overload
-    // def __(a)exit__(self, typ: type[BaseException], exc: BaseException, tb: TracebackType) -> None: ...
-    // ```
-    //
-    // We'll allow small variations on either of these (if, e.g. a parameter is unannotated,
-    // annotated with `object` or `_typeshed.Unused`). *Basically*, though, the rule is:
-    // - If the function overload matches *either* of those, it's okay.
-    // - If not: emit a diagnostic.
 
-    // Start by checking the first possibility:
     if non_self_positional_args.iter().all(|parameter| {
         parameter_annotation_loosely_matches_predicate(
             parameter,
@@ -413,7 +382,6 @@ fn check_positional_args_for_overloaded_method(
         return;
     }
 
-    // Now check the second:
     if parameter_annotation_loosely_matches_predicate(
         non_self_positional_args[0],
         |annotation| is_base_exception_type(annotation, semantic),
@@ -430,7 +398,6 @@ fn check_positional_args_for_overloaded_method(
         return;
     }
 
-    // Okay, neither of them match...
     checker.report_diagnostic(
         BadExitAnnotation {
             func_kind: kind,
@@ -445,7 +412,6 @@ fn non_none_annotation_element<'a>(
     annotation: &'a Expr,
     semantic: &SemanticModel,
 ) -> Option<&'a Expr> {
-    // E.g., `typing.Union` or `typing.Optional`
     if let Expr::Subscript(ExprSubscript { value, slice, .. }) = annotation {
         let qualified_name = semantic.resolve_qualified_name(value)?;
 
@@ -475,7 +441,6 @@ fn non_none_annotation_element<'a>(
         };
     }
 
-    // PEP 604-style union (e.g., `int | None`)
     if let Expr::BinOp(ExprBinOp {
         op: Operator::BitOr,
         left,

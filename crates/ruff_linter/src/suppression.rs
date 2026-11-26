@@ -407,8 +407,6 @@ impl Suppressions {
             return;
         }
 
-        // Each comment or matched pair produces one valid suppression per code, all sharing the
-        // same first comment range.
         let mut seen_comments = FxHashSet::default();
 
         for suppression in &self.valid {
@@ -427,9 +425,6 @@ impl Suppressions {
                     let mut diagnostic =
                         context.report_diagnostic(RedirectedNOQA { original, target }, *range);
                     let edit = Edit::range_replacement(target.to_string(), *range);
-                    // Conservatively mark any fixes involving a `ruff: disable` comment unsafe
-                    // because the fix could make the `disable` match a previously unmatched, nested
-                    // `enable` comment.
                     let fix = if let Some(second_range) = second_range {
                         diagnostic.secondary_annotation_without_message(*second_range);
                         Fix::unsafe_edits(
@@ -546,15 +541,13 @@ impl Suppressions {
             let name_is_valid = is_human_readable_names_enabled(self.preview) && name_is_known;
 
             if !code_is_valid && !name_is_valid {
-                // InvalidRuleCode
                 let (_key, group) = grouped_diagnostic
                     .get_or_insert_with(|| (key, SuppressionDiagnostic::new(suppression)));
                 group.invalid_codes.push(code_str);
                 group.has_stable_rule_name |= name_is_known;
             } else if !suppression.used.get() {
-                // UnusedNOQA
                 let Some(rule) = suppression.rule(self.preview) else {
-                    continue; // "external" lint code, don't treat it as unused
+                    continue;
                 };
 
                 let (_key, group) = grouped_diagnostic
@@ -580,7 +573,6 @@ impl Suppressions {
                 ..
             }) = &suppression.comments
             {
-                // UnmatchedSuppressionComment
                 if unmatched_ranges.insert(range) {
                     context.report_diagnostic_if_enabled(UnmatchedSuppressionComment {}, *range);
                 }
@@ -639,7 +631,6 @@ impl Suppressions {
             highlight_only_code,
         );
 
-        // It's unsafe to remove an entire nested comment but okay to remove a subset of its codes.
         let applicability =
             if first_comment.is_nested() && edit.range().contains_range(first_comment.range) {
                 Applicability::Unsafe
@@ -774,20 +765,17 @@ impl<'a> SuppressionsBuilder<'a> {
         'comments: while let Some(suppression) = suppressions.peek() {
             indents.clear();
 
-            // Standalone suppression comments
             if self.register_standalone_suppression(suppression, tokens) {
                 suppressions.next();
                 continue;
             }
 
-            // Matched suppression comments
             let (before, after) = tokens.split_at(suppression.token_range.start());
 
             let mut count = 0;
             let last_indent = before
                 .iter()
                 .rfind(|token| {
-                    // look for the last indent not matched by a dedent
                     count += match token.kind() {
                         TokenKind::Dedent => 1,
                         TokenKind::Indent => -1,
@@ -799,8 +787,6 @@ impl<'a> SuppressionsBuilder<'a> {
 
             indents.push(last_indent);
 
-            // Iterate through tokens, tracking indentation, filtering trailing comments, and then
-            // looking for matching comments from the previous block when reaching a dedent token.
             for (token_index, token) in after.iter().enumerate() {
                 let current_indent = indents.last().copied().unwrap_or_default();
                 match token.kind() {
@@ -827,7 +813,6 @@ impl<'a> SuppressionsBuilder<'a> {
                             let Some(indent) =
                                 indentation_at_offset(suppression.range.start(), self.source)
                             else {
-                                // trailing suppressions are not supported
                                 self.invalid.push(InvalidSuppression {
                                     kind: InvalidSuppressionKind::Trailing,
                                     comment: suppression,
@@ -835,7 +820,6 @@ impl<'a> SuppressionsBuilder<'a> {
                                 continue;
                             };
 
-                            // comment matches current block's indentation, or precedes an indent/dedent token
                             if indent == current_indent
                                 || after[token_index..]
                                     .iter()
@@ -849,7 +833,6 @@ impl<'a> SuppressionsBuilder<'a> {
                                     comment: suppression,
                                 });
                             } else {
-                                // weirdly indented? ¯\_(ツ)_/¯
                                 self.invalid.push(InvalidSuppression {
                                     kind: InvalidSuppressionKind::Indentation,
                                     comment: suppression,
@@ -897,11 +880,9 @@ impl<'a> SuppressionsBuilder<'a> {
                 let (before, after) = tokens.split_at(suppression.token_range.start());
                 let range =
                     if indentation_at_offset(suppression.range.start(), self.source).is_some() {
-                        // own-line ignore
                         let mut range =
                             Self::standalone_comment_range(suppression.range, before, after);
 
-                        // Allow an ignore to suppress diagnostics on a leading shebang.
                         if let Some(shebang) = leading_shebang_range(self.source, tokens)
                             && shebang.end() == self.source.line_start(suppression.range.start())
                         {
@@ -910,7 +891,6 @@ impl<'a> SuppressionsBuilder<'a> {
 
                         range
                     } else {
-                        // trailing ignore
                         self.trailing_comment_range(suppression.token_range, before)
                     };
                 for code in suppression.codes_as_str(self.source) {
@@ -925,7 +905,6 @@ impl<'a> SuppressionsBuilder<'a> {
             }
             SuppressionAction::FileIgnore => {
                 match indentation_at_offset(suppression.range.start(), self.source) {
-                    // Module scope
                     Some("") => {
                         let range = TextRange::up_to(self.source.text_len());
                         for code in suppression.codes_as_str(self.source) {
@@ -937,14 +916,12 @@ impl<'a> SuppressionsBuilder<'a> {
                             });
                         }
                     }
-                    // Indented/inside block
                     Some(_) => {
                         self.invalid.push(InvalidSuppression {
                             kind: InvalidSuppressionKind::NotModuleScope,
                             comment: suppression.clone(),
                         });
                     }
-                    // Trailing
                     None => {
                         self.invalid.push(InvalidSuppression {
                             kind: InvalidSuppressionKind::Trailing,
@@ -961,28 +938,21 @@ impl<'a> SuppressionsBuilder<'a> {
     fn match_comments(&mut self, current_indent: &str, dedent_range: TextRange) {
         let mut comment_index = 0;
 
-        // for each pending comment, search for matching comments at the same indentation level,
-        // generate range suppressions for any matches, and then discard any unmatched comments
-        // from the outgoing indentation block
         while comment_index < self.pending.len() {
             let comment = &self.pending[comment_index];
 
-            // skip comments from an outer indentation level
             if comment.indent.text_len() < current_indent.text_len() {
                 comment_index += 1;
                 continue;
             }
 
-            // find the first matching comment
             if let Some(other_index) = self.pending[comment_index + 1..]
                 .iter()
                 .position(|other| comment.matches(other, self.source))
             {
-                // offset from current candidate
                 let other_index = comment_index + 1 + other_index;
                 let other = &self.pending[other_index];
 
-                // record a combined range suppression from the matching comments
                 let combined_range =
                     TextRange::new(comment.comment.range.start(), other.comment.range.end());
                 for code in comment.comment.codes_as_str(self.source) {
@@ -997,12 +967,9 @@ impl<'a> SuppressionsBuilder<'a> {
                     });
                 }
 
-                // remove both comments from further consideration
                 self.pending.remove(other_index);
                 self.pending.remove(comment_index);
             } else if matches!(comment.comment.action, SuppressionAction::Disable) {
-                // treat "disable" comments without a matching "enable" as *implicitly* matched
-                // to the end of the current indentation level
                 let implicit_range =
                     TextRange::new(comment.comment.range.start(), dedent_range.end());
                 for code in comment.comment.codes_as_str(self.source) {
@@ -1069,8 +1036,6 @@ impl<'a> SuppressionsBuilder<'a> {
         let mut end = range.end();
         let mut is_inner_comment = false;
 
-        // Look backwards. If the next non-trivia token is a Newline, then this is above the logical
-        // line, otherwise this is "inside" of a multi-line statement or header.
         for prev_token in before.iter().rev() {
             match prev_token.kind() {
                 TokenKind::Newline => {
@@ -1084,10 +1049,6 @@ impl<'a> SuppressionsBuilder<'a> {
             }
         }
 
-        // Look forward. If this is an "inner" comment, then find the end of the next line that
-        // isn't a comment (nb: the tokens start with the suppression comment, which potentially
-        // gets its own NonLogicalNewline). Otherwise, find the end of the statement or header
-        // by stopping at the next Newline token.
         let mut is_blank_or_comment_only = true;
         let mut seen_nonlogical_newline = false;
         for next_token in after {
@@ -1149,7 +1110,6 @@ impl<'a> SuppressionsBuilder<'a> {
     fn trailing_comment_range(&self, range: TextRange, before: &[Token]) -> TextRange {
         let mut start = range.start();
 
-        // Look backward to find the previous newline.
         for prev_token in before.iter().rev() {
             match prev_token.kind() {
                 TokenKind::Newline | TokenKind::NonLogicalNewline => {
@@ -1161,7 +1121,6 @@ impl<'a> SuppressionsBuilder<'a> {
             }
         }
 
-        // Until the end of the line.
         let end = self.source.line_end(range.end());
 
         TextRange::new(start, end)
@@ -1260,7 +1219,6 @@ impl<'src> SuppressionParser<'src> {
 
         let reason_start = self.offset();
 
-        // Consume the comment until its end or until the next "sub-comment" starts.
         self.cursor.eat_while(|c| c != '#');
 
         let reason = TextRange::new(reason_start, self.offset());
@@ -1302,7 +1260,6 @@ impl<'src> SuppressionParser<'src> {
         } else if self.cursor.as_str().starts_with("noqa")
             || self.cursor.as_str().starts_with("isort")
         {
-            // alternate suppression variants, ignore for now
             Err(ParseErrorKind::NotASuppression)
         } else {
             Err(ParseErrorKind::UnknownAction)
@@ -1361,7 +1318,6 @@ impl<'src> SuppressionParser<'src> {
 
     fn eat_word(&mut self) -> bool {
         if self.cursor.eat_if(char::is_alphabetic) {
-            // Allow `:` for better error recovery when someone uses `lint:code` instead of just `code`.
             self.cursor
                 .eat_while(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | ':'));
             true

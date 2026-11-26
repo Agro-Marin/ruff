@@ -121,8 +121,6 @@ pub(crate) fn bad_generator_return_type(function_def: &ast::StmtFunctionDef, che
         _ => return,
     };
 
-    // Determine the module from which the existing annotation is imported (e.g., `typing` or
-    // `collections.abc`)
     let (method, module, member) = {
         let Some(qualified_name) = semantic.resolve_qualified_name(map_subscript(returns)) else {
             return;
@@ -154,11 +152,6 @@ pub(crate) fn bad_generator_return_type(function_def: &ast::StmtFunctionDef, che
         }
     };
 
-    // `Generator` allows three type parameters; `AsyncGenerator` allows two.
-    // If type parameters are present,
-    // check that all parameters except the first one are either `typing.Any` or `None`:
-    // - if so, collect information on the first parameter for use in the rule's autofix;
-    // - if not, don't emit the diagnostic
     let yield_type_info = match returns {
         ast::Expr::Subscript(ast::ExprSubscript { slice, .. }) => match slice.as_ref() {
             ast::Expr::Tuple(slice_tuple) => {
@@ -184,10 +177,6 @@ pub(crate) fn bad_generator_return_type(function_def: &ast::StmtFunctionDef, che
         _ => None,
     };
 
-    // For .py files (runtime Python!),
-    // only emit the lint if it's a simple __(a)iter__ implementation
-    // -- for more complex function bodies,
-    // it's more likely we'll be emitting a false positive here
     if !checker.source_type.is_stub() {
         let mut yield_encountered = false;
         for stmt in &function_def.body {
@@ -261,7 +250,6 @@ fn generate_fix(
         )
     });
 
-    // Mark as unsafe if it's a runtime Python file and the body has more than one statement in it.
     let applicability = if checker.source_type.is_stub() || function_def.body.len() == 1 {
         Applicability::Safe
     } else {

@@ -21,13 +21,10 @@ pub const RULE_NAME_REDIRECTS: &[(&str, Rule)] = &[(
 
 static REDIRECTS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     let mut redirects = HashMap::from([
-        // The following are here because we don't yet have the many-to-one mapping enabled.
         ("SIM111", "SIM110"),
-        // The following are deprecated.
         ("C9", "C90"),
         ("T1", "T10"),
         ("T2", "T20"),
-        // TODO(charlie): Remove by 2023-02-01.
         ("R", "RET"),
         ("R5", "RET5"),
         ("R50", "RET50"),
@@ -46,7 +43,6 @@ static REDIRECTS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
         ("IC002", "ICN001"),
         ("IC003", "ICN001"),
         ("IC004", "ICN001"),
-        // TODO(charlie): Remove by 2023-01-01.
         ("U", "UP"),
         ("U0", "UP0"),
         ("U00", "UP00"),
@@ -68,14 +64,12 @@ static REDIRECTS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
         ("U016", "UP016"),
         ("U017", "UP017"),
         ("U019", "UP019"),
-        // TODO(charlie): Remove by 2023-02-01.
         ("I2", "TID2"),
         ("I25", "TID25"),
         ("I252", "TID252"),
         ("M", "RUF100"),
         ("M0", "RUF100"),
         ("M001", "RUF100"),
-        // TODO(charlie): Remove by 2023-02-01.
         ("PDV", "PD"),
         ("PDV0", "PD0"),
         ("PDV002", "PD002"),
@@ -93,10 +87,8 @@ static REDIRECTS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
         ("PDV9", "PD9"),
         ("PDV90", "PD90"),
         ("PDV901", "PD901"),
-        // TODO(charlie): Remove by 2023-04-01.
         ("TYP", "TC"),
         ("TYP001", "TC001"),
-        // TODO(charlie): Remove by 2023-06-01.
         ("RUF004", "B026"),
         ("PIE802", "C419"),
         ("PLW0130", "B033"),
@@ -108,7 +100,6 @@ static REDIRECTS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
         ("TRY200", "B904"),
         ("PGH001", "S307"),
         ("PGH002", "G010"),
-        // flake8-trio and flake8-async merged with name flake8-async
         ("TRIO", "ASYNC1"),
         ("TRIO1", "ASYNC1"),
         ("TRIO10", "ASYNC10"),
@@ -118,21 +109,14 @@ static REDIRECTS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
         ("TRIO11", "ASYNC11"),
         ("TRIO110", "ASYNC110"),
         ("TRIO115", "ASYNC115"),
-        // Removed in v0.5
         ("PLR1701", "SIM101"),
-        // Test redirect by exact code
         #[cfg(any(feature = "test-rules", test))]
         ("RUF940", "RUF950"),
-        // Test redirect by prefix
         #[cfg(any(feature = "test-rules", test))]
         ("RUF96", "RUF95"),
-        // See: https://github.com/astral-sh/ruff/issues/10791
         ("PLW0117", "PLW0177"),
-        // See: https://github.com/astral-sh/ruff/issues/12110
         ("RUF025", "C420"),
-        // See: https://github.com/astral-sh/ruff/issues/13492
         ("TRY302", "TRY203"),
-        // TCH renamed to TC to harmonize with flake8 plugin
         ("TCH", "TC"),
         ("TCH001", "TC001"),
         ("TCH002", "TC002"),

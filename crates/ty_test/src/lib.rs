@@ -106,7 +106,6 @@ fn run_test(
         Log::Filter(filter) => setup_logging_with_filter(filter),
     });
 
-    // Initialize the system and remove all files and directories to reset the system to a clean state.
     match test.configuration().system.unwrap_or_default() {
         SystemKind::InMemory => {
             db.use_in_memory_system();
@@ -136,7 +135,6 @@ fn run_test(
     let custom_typeshed_path = test.configuration().typeshed();
     let python_version = test.configuration().python_version().unwrap_or_default();
 
-    // Setup virtual environment with dependencies if specified
     let venv_for_external_dependencies = SystemPathBuf::from("/.venv");
     if let Some(dependencies) = test.configuration().dependencies() {
         if !std::env::var(MDTEST_EXTERNAL).is_ok_and(|v| v == "1") {
@@ -197,7 +195,6 @@ fn run_test(
 
             let temp_string;
             let to_write = if embedded.lang == "pth" && !embedded.code.starts_with('/') {
-                // Make any relative .pths be relative to src_path
                 temp_string = format!("{src_path}/{}", embedded.code);
                 &*temp_string
             } else {
@@ -209,7 +206,6 @@ fn run_test(
             if !(full_path.starts_with(&src_path)
                 && matches!(embedded.lang, "py" | "python" | "pyi" | "ipynb"))
             {
-                // These files need to be written to the file system (above), but we don't run any checks on them.
                 return None;
             }
 
@@ -222,7 +218,6 @@ fn run_test(
         })
         .collect();
 
-    // Create a custom typeshed `VERSIONS` file if none was provided.
     if let Some(typeshed_path) = custom_typeshed_path {
         db.files()
             .try_add_root(db, typeshed_path, FileRootKind::SearchPath);
@@ -231,7 +226,6 @@ fn run_test(
             let contents = typeshed_files
                 .iter()
                 .fold(String::new(), |mut content, path| {
-                    // This is intentionally kept simple:
                     let module_name = path
                         .as_str()
                         .trim_end_matches(".pyi")
@@ -247,7 +241,6 @@ fn run_test(
     let configuration = test.configuration();
 
     let python = if configuration.dependencies().is_some() {
-        // If dependencies were specified, use the venv we just set up
         Some(venv_for_external_dependencies.as_path())
     } else {
         configuration.python()
@@ -263,7 +256,6 @@ fn run_test(
             .into_vec()
     });
 
-    // Make any relative extra-paths be relative to src_path
     let extra_paths = configuration
         .extra_paths()
         .unwrap_or_default()
@@ -311,7 +303,6 @@ fn run_test(
 
     let mut all_diagnostics = vec![];
 
-    // Edits for updating changed inline snapshots.
     let mut markdown_edits = vec![];
 
     let mut any_pull_types_failures = false;
@@ -403,8 +394,6 @@ fn run_test(
         failures.push(failure);
     }
 
-    // Filter out `revealed-type` and `undefined-reveal` diagnostics from snapshots,
-    // since they make snapshots very noisy!
     mdtest::snapshot_diagnostics(
         test,
         db,
@@ -418,8 +407,6 @@ fn run_test(
         },
     );
 
-    // Test to fix all fixable diagnostics and verify that they don't introduce any syntax errors.
-    // But don't try to run fixes for tests that are expected to panic.
     if test.should_expect_panic().is_err() {
         let token_source = CancellationTokenSource::new();
         let result = fix_all_diagnostics(
@@ -496,8 +483,6 @@ fn run_module_resolution_consistency_test(db: &db::Db) -> Result<(), Vec<ModuleI
     let mut errs = vec![];
     let environment = db.program().resolver_environment(db);
     for from_list in list_modules(db, environment).iter().copied() {
-        // TODO: For now list_modules does not partake in desperate module resolution so
-        // only compare against confident module resolution.
         errs.push(
             match resolve_module_confident(db, environment, from_list.name(db)) {
                 None => ModuleInconsistency {
@@ -565,8 +550,6 @@ impl std::fmt::Display for ModuleInconsistency<'_> {
     }
 }
 
-// Site-packages placeholders are specific to ty's fixtures. Keeping their normalization outside
-// the shared mdtest crate avoids rewriting Ruff snapshots or paths in displayed source and messages.
 fn normalize_site_packages_paths(rendered: &str, python_version: PythonVersion) -> String {
     let unix_site_packages_path = format!("/lib/python{python_version}/site-packages/");
     let mut normalized = String::with_capacity(rendered.len());

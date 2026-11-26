@@ -50,7 +50,6 @@ impl Violation for ComparisonWithItself {
 pub(crate) fn comparison_with_itself(checker: &Checker, compare: &ExprCompare) {
     for (left, op, right) in compare.iter() {
         match (left, right) {
-            // Ex) `foo == foo`
             (Expr::Name(left_name), Expr::Name(right_name)) if left_name.id == right_name.id => {
                 let actual = format!(
                     "{} {} {}",
@@ -65,9 +64,7 @@ pub(crate) fn comparison_with_itself(checker: &Checker, compare: &ExprCompare) {
                     left_name.range(),
                 );
             }
-            // Ex) `id(foo) == id(foo)`
             (Expr::Call(left_call), Expr::Call(right_call)) => {
-                // Both calls must take a single argument, of the same name.
                 if !left_call.arguments.keywords.is_empty()
                     || !right_call.arguments.keywords.is_empty()
                 {
@@ -83,7 +80,6 @@ pub(crate) fn comparison_with_itself(checker: &Checker, compare: &ExprCompare) {
                     continue;
                 }
 
-                // Both calls must be to the same function.
                 let semantic = checker.semantic();
                 let Some(left_name) = semantic.resolve_builtin_symbol(&left_call.func) else {
                     continue;
@@ -95,7 +91,6 @@ pub(crate) fn comparison_with_itself(checker: &Checker, compare: &ExprCompare) {
                     continue;
                 }
 
-                // The call must be to pure function, like `id`.
                 if matches!(
                     left_name,
                     "id" | "len" | "type" | "int" | "bool" | "str" | "repr" | "bytes"

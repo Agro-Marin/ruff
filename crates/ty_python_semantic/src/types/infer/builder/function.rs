@@ -167,8 +167,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
         let parameters = function.parameters.as_ref();
         let scope = self.scope().file_scope_id(db);
-        // In a stub body, every symbol comes from a parameter. Repeated names can produce
-        // assignment diagnostics when a later parameter rebinds an earlier one.
         if is_stub_body(&function.body)
             && self.index.place_table(scope).symbols().len() == parameters.len()
         {
@@ -184,8 +182,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 }
             }
         } else {
-            // Parameters have definitions in the body scope, but their annotations and defaults
-            // belong to enclosing scopes. Visit them explicitly to collect their diagnostics.
             for parameter in parameters {
                 self.infer_definition(parameter);
             }
@@ -242,9 +238,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 );
                 expected_return_type(db, env, annotation)
             });
-            // A return may satisfy either the lexical annotation or the public annotation,
-            // whose returned callables may bind their own type variables. If the lexical
-            // annotation already accepts the value, the parameter types are unnecessary.
             let accepts = |ty: Type<'db>, relation| {
                 let builder = ConstraintSetBuilder::new();
                 let check = |target| {
@@ -259,14 +252,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
             let scope_id = self.index.node_scope(NodeWithScopeRef::Function(function));
             if scope_id.is_generator_function(self.index) {
-                // TODO: `AsyncGeneratorType` and `GeneratorType` are both generic classes.
-                //
-                // If type arguments are supplied to `(Async)Iterable`, `(Async)Iterator`,
-                // `(Async)Generator` or `(Async)GeneratorType` in the return annotation,
-                // we should iterate over the `yield` expressions and `return` statements
-                // in the function to check that they are consistent with the type arguments
-                // provided. Once we do this, the `.to_instance_unknown` call below should
-                // be replaced with `.to_specialized_instance`.
                 let inferred_return = if function.is_async {
                     KnownClass::AsyncGeneratorType
                 } else {
@@ -305,8 +290,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                                 expected_return_ty,
                             )
                         {
-                            // N.B. the implementation here is the ~same as for `UNSOUND_YIELD` and `UNSOUND_ASSIGNMENT`;
-                            // update those too if updating this!
                             report_unsound_return(
                                 &self.context,
                                 return_statement.range,
@@ -340,8 +323,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     .iter()
                     .copied()
                     .filter_map(|ty_range| match ty_range.ty {
-                        // We skip `is_assignable_to` checks for `NotImplemented`,
-                        // so we remove it beforehand.
                         Type::Union(union) => Some(TypeAndRange {
                             ty: union.filter(db, |ty| !ty.is_notimplemented(db)),
                             range: ty_range.range,
@@ -362,8 +343,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     && public.is_fully_static(db, env)
                     && !accepts(return_statement.ty, TypeRelation::Redundancy { pure: true })
                 {
-                    // N.B. the implementation here is the ~same as for `UNSOUND_YIELD` and `UNSOUND_ASSIGNMENT`;
-                    // update those too if updating this!
                     report_unsound_return(
                         &self.context,
                         return_statement.range,
@@ -448,8 +427,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             match decorator_type {
                 Type::FunctionLiteral(function) => match function.known(db) {
                     Some(KnownFunction::NoTypeCheck) => {
-                        // If the function is decorated with the `no_type_check` decorator,
-                        // we need to suppress any errors that come after the decorators.
                         self.context.inference_flags |= InferenceFlags::IN_NO_TYPE_CHECK;
                         continue;
                     }
@@ -475,8 +452,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             decorator_types_and_nodes.push((decorator_type, decorator));
         }
         if !has_transforming_decorators {
-            // With only known decorators, use the complete overload set's declaration
-            // flags, including its recovery for inconsistently decorated overloads.
             decorator_types_and_nodes.clear();
         }
 
@@ -512,19 +487,12 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             ));
         }
 
-        // If there are type params, parameters and returns are evaluated in that scope. Otherwise,
-        // we defer the inference of any parameter and return annotations. That ensures that we do
-        // not add any spurious salsa cycles when applying decorators below. (Applying a decorator
-        // requires getting the signature of this function definition, which in turn requires
-        // (lazily) inferring the parameter and return types.) If defaults exist, we also defer so
-        // they can be inferred once with type context in the enclosing scope.
         if function_has_deferred_annotations(function) || parameters_have_defaults(parameters) {
             self.deferred.insert(definition);
         }
 
         let known_function = KnownFunction::try_from_definition_and_name(db, definition, name);
 
-        // `type_check_only` is itself not available at runtime
         if known_function == Some(KnownFunction::TypeCheckOnly) {
             function_decorators |= FunctionDecorators::TYPE_CHECK_ONLY;
         }
@@ -557,8 +525,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 function_type
             },
         );
-        // Explicit method wrappers apply in decorator order. Their declaration flags
-        // must not make the input to an inner decorator look already wrapped.
         if has_transforming_decorators
             && function_decorators
                 .intersects(FunctionDecorators::STATICMETHOD | FunctionDecorators::CLASSMETHOD)
@@ -569,8 +535,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             self.undecorated_type = Some(inferred_ty);
         }
 
-        // Check that the function's own type parameters don't shadow
-        // type variables from enclosing scopes (by name).
         if let Some(type_params) = &function.type_params {
             let current_scope = self.scope().file_scope_id(db);
             for type_param in type_params.iter() {
@@ -670,8 +634,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         }
 
         if is_decorated_overload_implementation {
-            // Overloads describe the exposed function. The implementation check compares the
-            // unbound callable, before classmethod or staticmethod descriptor binding.
             let unwrap_method = |ty| match ty {
                 Type::KnownInstance(KnownInstanceType::MethodWrapper(wrapper)) => {
                     wrapper.wrapped(db)
@@ -770,7 +732,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         definition: Definition<'db>,
         function: &ast::StmtFunctionDef,
     ) {
-        // PEP 695 annotations are inferred in the function's type-parameter scope.
         if !function_has_deferred_annotations(function) {
             return;
         }
@@ -794,11 +755,8 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         self.suppress_errors_for_no_type_check(definition, function);
         let previous_typevar_binding_context = self.typevar_binding_context.replace(definition);
 
-        // In stub files, default values may reference names that are defined later in the file.
         let previous_deferred_state = self.replace_deferred_state(self.in_stub().into());
 
-        // Borrow annotation types from their own inference result instead of copying that result
-        // into this query. Scope inference merges both regions when checking the whole function.
         for param_with_default in function.parameters.iter_non_variadic_params() {
             let Some(default) = param_with_default.default() else {
                 continue;
@@ -822,8 +780,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             && function_known_decorator_flags(self.db(), definition)
                 .contains(FunctionDecorators::NO_TYPE_CHECK)
         {
-            // Decorator expressions and their diagnostics belong to their own inference query.
-            // Signature and default inference only need to know whether errors are suppressed.
             self.context.inference_flags |= InferenceFlags::IN_NO_TYPE_CHECK;
         }
     }
@@ -994,11 +950,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             return;
         };
 
-        // Legacy PEP 484 positional-only parameters like `def f(__x: int, **kwargs:
-        // Unpack[TD])` are not callable by keyword, so they do not overlap with keys
-        // accepted through `**kwargs`. The convention only applies to the leading
-        // positional-or-keyword parameters that are actually converted to positional-only
-        // parameters by `Parameters::from_parameters`.
         let pep_484_positional_only_count = if parameters.posonlyargs.is_empty() {
             parameters
                 .args
@@ -1114,8 +1065,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         if let Some(annotation) = parameter.annotation.as_ref() {
             let declared_ty = self.file_expression_type(annotation);
 
-            // P.args and P.kwargs are only valid as annotations on *args and **kwargs,
-            // not on regular parameters.
             if let Type::TypeVar(typevar) = declared_ty
                 && typevar.is_paramspec(db)
                 && let Some(attr) = typevar.paramspec_attr(db)
@@ -1139,7 +1088,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 let default_expr = default_expr.as_ref();
                 let default_ty = self.file_expression_type(default_expr);
 
-                // Avoid duplicate diagnostics: invalid TypedDict literals already emit specific errors.
                 let suppress_invalid_default =
                     is_invalid_typed_dict_literal(db, env, declared_ty, default_expr.into());
                 if !default_ty.is_assignable_to(db, env, declared_ty)
@@ -1212,7 +1160,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             return ty;
         }
 
-        // A bare ParamSpec is diagnosed when inferring the annotation.
         if let Some(component) = typevar.paramspec_attr(db)
             && let Some(builder) = self.context.report_lint(&INVALID_TYPE_FORM, annotation)
         {
@@ -1296,13 +1243,11 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         let parent_file_scope_id = function_scope.parent()?;
         let mut parent_scope_id = parent_file_scope_id.to_scope_id(db, file);
 
-        // Skip type parameter scopes, if the method itself is generic.
         if parent_scope_id.is_annotation(db) {
             let parent_scope = parent_scope_id.scope(db);
             parent_scope_id = parent_scope.parent()?.to_scope_id(db, file);
         }
 
-        // Return early if this is not a method inside a class.
         let class = parent_scope_id.scope(db).node().as_class()?;
 
         let method_definition = self.index.expect_single_definition(function);
@@ -1430,8 +1375,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         definition: Definition<'db>,
     ) {
         let db = self.db();
-        // Note that this currently always returns `None` because we do not support `Unpack`
-        // annotations for callable types.
         let ty = if let Some(parameter_type) = self.annotated_lambda_parameter_type(index, lambda) {
             parameter_type
         } else {
@@ -1481,7 +1424,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         );
         let callable = enclosing_stmt.expression_type(lambda).as_callable()?;
         let [signature] = callable.signatures(self.db()).overloads.as_slice() else {
-            // TODO: If there are multiple applicable overloads, we could attempt multi-inference.
             return None;
         };
 
@@ -1839,9 +1781,6 @@ impl KnownFunction {
                         );
                     }
 
-                    // deduplicate definitions before attaching a subdiagnostic to each definition,
-                    // or we'd have multiple subdiagnostics pointing to a single definition
-                    // if the two types are specializations of the same generic class.
                     let definitions: FxIndexMap<Definition<'db>, String> = types
                         .into_iter()
                         .filter_map(|ty| ty.definition(db, env))
@@ -2028,7 +1967,6 @@ impl KnownFunction {
                                     .display_with(db, env, display_settings.clone())
                                     .to_string(),
                             );
-                            // Omit the comma for the last element (which is always `object`)
                             if class
                                 .into_class()
                                 .is_none_or(|base| !base.is_object(builder.db()))
@@ -2036,10 +1974,6 @@ impl KnownFunction {
                                 message.push_str(", ");
                             }
                         }
-                        // If the last element was also the first element
-                        // (i.e., it's a length-1 tuple -- which can only happen if we're revealing
-                        // the MRO for `object` itself), add a trailing comma so that it's still a
-                        // valid tuple display.
                         if class.is_object(db) {
                             message.push(',');
                         }
@@ -2113,10 +2047,6 @@ impl KnownFunction {
                 let module_name = full_module_name.value(db);
 
                 if known == KnownFunction::DunderImport && module_name.contains('.') {
-                    // `__import__("collections.abc")` returns the `collections` module.
-                    // `importlib.import_module("collections.abc")` returns the `collections.abc` module.
-                    // ty doesn't have a way to represent the return type of the former yet.
-                    // https://github.com/astral-sh/ruff/pull/19008#discussion_r2173481311
                     return;
                 }
 
@@ -2135,8 +2065,6 @@ impl KnownFunction {
             }
 
             KnownFunction::TotalOrdering => {
-                // When `total_ordering(cls)` is called as a function (not as a decorator),
-                // check that the class defines at least one ordering method.
                 let [Some(class_type)] = parameter_types else {
                     return;
                 };
@@ -2361,15 +2289,9 @@ fn is_instance_truthiness<'db>(
             unreachable!("semantic operation on an unbound recursive variable")
         }
         Type::Union(..) => {
-            // We do not handle unions specifically here, because something like `A | SubclassOfA` would
-            // have been simplified to `A` anyway
             Truthiness::Ambiguous
         }
 
-        // Create a new intersection that maps type variables to their upper bounds,
-        // and evaluate the truthiness of the `isinstance()` check with that type.
-        // Along the way, short-circuit to `AlwaysTrue` if we find any positive element
-        // that is always true.
         Type::Intersection(intersection) => {
             let mut effective = IntersectionBuilder::new(db, env);
             let mut found_tvars_or_newtypes = false;
@@ -2474,8 +2396,6 @@ fn is_instance_truthiness<'db>(
         | Type::Divergent(_)
         | Type::Never
         | Type::TypedDict(_) => {
-            // We could probably try to infer more precise types in some of these cases, but it's unclear
-            // if it's worth the effort.
             Truthiness::Ambiguous
         }
     }
@@ -2497,7 +2417,6 @@ fn report_invalid_union_type_elements<'db>(
         .filter(|element| match element {
             Type::ClassLiteral(_) => false,
             Type::SpecialForm(special_form) if special_form.is_valid_isinstance_target() => false,
-            // `Any` can be used in `issubclass()` calls but not `isinstance()` calls.
             Type::SpecialForm(SpecialFormType::Any) if function == KnownFunction::IsSubclass => {
                 false
             }
@@ -2529,8 +2448,6 @@ fn report_invalid_union_type_elements<'db>(
         );
     }
 
-    // When we have a secondary annotation pointing at the UnionType expression,
-    // "the union" is unambiguous. Otherwise, spell out the union type in the message.
     let union_suffix = if union_type_expr.is_none()
         && let Ok(ty) = union.union_type(db, env)
     {

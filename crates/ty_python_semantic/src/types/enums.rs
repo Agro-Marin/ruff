@@ -318,7 +318,6 @@ pub struct EnumClassLiteral<'db> {
     pub(crate) members_are_exhaustive: bool,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for EnumClassLiteral<'_> {}
 
 impl<'db> ClassLiteral<'db> {
@@ -693,7 +692,6 @@ pub struct EnumComplementType<'db> {
     pub(crate) rest: FxOrderSet<Type<'db>>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for EnumComplementType<'_> {}
 
 pub(crate) type EnumComplement<'db> = EnumComplementType<'db>;
@@ -801,9 +799,6 @@ impl<'db> EnumComplementType<'db> {
         match alternatives.as_slice() {
             [] => Type::Never,
             [single] => *single,
-            // Keep this exact. Routing these literals through `UnionBuilder` can widen very large
-            // enum complements back to the original enum class, losing the excluded members that
-            // made the compact complement useful in the first place.
             _ => Type::Union(UnionType::new(
                 db,
                 alternatives.into_boxed_slice(),
@@ -891,10 +886,6 @@ impl<'db> EnumComplementType<'db> {
 
     /// Return `true` if users can spell an equivalent type for this complement.
     pub(crate) fn is_spellable(self, db: &'db dyn Db) -> bool {
-        // A plain enum complement is an implementation detail for a type that users can still spell
-        // as a union of the remaining enum literals. Complements with `rest` components, such as
-        // `Color & Any & ~Literal[Color.RED]`, are not equivalent to that literal union because the
-        // additional intersection components must remain.
         self.rest(db).is_empty()
     }
 
@@ -970,7 +961,6 @@ pub(crate) fn enum_ignored_names<'db>(db: &'db dyn Db, scope_id: ScopeId<'db>) -
             })
         }
 
-        // TODO: support the list-variant of `_ignore_`.
         Place::Undefined => FxHashSet::default(),
     }
 }
@@ -1012,15 +1002,6 @@ pub(crate) fn enum_metadata<'db>(
     let class = match class {
         ClassLiteral::Static(class) => class,
         ClassLiteral::Dynamic(..) => {
-            // Classes created via `type` cannot be enums; the following fails at runtime:
-            // ```python
-            // import enum
-            //
-            // class BaseEnum(enum.Enum):
-            //     pass
-            //
-            // MyEnum = type("MyEnum", (BaseEnum,), {"A": 1, "B": 2})
-            // ```
             return None;
         }
         ClassLiteral::DynamicNamedTuple(..) | ClassLiteral::DynamicTypedDict(..) => return None,
@@ -1042,7 +1023,6 @@ pub(crate) fn enum_metadata<'db>(
                     .alias_detection_value(db, &env, *ty, false)
                     .and_then(|alias_value_ty| {
                         try_register_alias(alias_value_ty, name, &mut enum_values, &mut aliases)
-                            // Identical raw literals remain aliases even when normalization widens.
                             .or_else(|| {
                                 try_register_alias(*ty, name, &mut enum_values, &mut aliases)
                             })
@@ -1065,7 +1045,6 @@ pub(crate) fn enum_metadata<'db>(
             });
         }
     };
-    // This is a fast path to avoid traversing the MRO of known classes
     if class
         .known(db)
         .is_some_and(|known_class| !known_class.is_enum_subclass_with_members())
@@ -1075,7 +1054,6 @@ pub(crate) fn enum_metadata<'db>(
 
     let scope_id = class.body_scope(db);
     let use_def_map = use_def_map(db, scope_id);
-    // As a fast path, avoid looking up base classes if the class body is empty
     use_def_map.all_end_of_scope_symbol_bindings().next()?;
 
     let env = ProgramEnvironment::from_file(class.program_file(db));
@@ -1094,16 +1072,12 @@ pub(crate) fn enum_metadata<'db>(
     let mut prev_bool_literal = None;
     let ignored_names = enum_ignored_names(db, scope_id);
 
-    // Look up custom construction methods, falling back to parent enum classes. An opaque binding
-    // still shadows methods from classes later in the MRO.
     let data_type = inherited_enum_data_type(db, &env, ClassLiteral::Static(class));
     let user_defined_init = custom_enum_method(db, scope_id, "__init__")
         .or_else(|| inherited_user_defined_enum_method(db, &env, class, "__init__"));
     let init = resolve_enum_method(user_defined_init, || {
         inherited_known_enum_method(db, &env, class, "__init__")
     });
-    // CPython checks `__new_member__` and then `__new__` on each enum base before continuing
-    // through the MRO or falling back to the data-type constructor.
     let user_defined_new = custom_enum_method(db, scope_id, "__new__")
         .or_else(|| inherited_user_defined_enum_new(db, &env, class))
         .or_else(|| inherited_user_defined_mixin_new(db, class));
@@ -1134,8 +1108,6 @@ pub(crate) fn enum_metadata<'db>(
             let name = table.symbol(symbol_id).name();
 
             if name.starts_with("__") {
-                // Skip private attributes (`__private`) and dunders (`__module__`, etc.).
-                // CPython's enum metaclass never treats these as members.
                 return None;
             }
 
@@ -1144,7 +1116,6 @@ pub(crate) fn enum_metadata<'db>(
                 "_generate_next_value_" | "_ignore_" | "_value_" | "_name_"
             ) || ignored_names.contains(name)
             {
-                // Skip ignored attributes
                 return None;
             }
 
@@ -1158,14 +1129,11 @@ pub(crate) fn enum_metadata<'db>(
                 Place::Defined(DefinedPlace { ty, .. }) => {
                     let special_case = match ty {
                         Type::Callable(_) | Type::FunctionLiteral(_) => {
-                            // Some types are specifically disallowed for enum members.
                             return None;
                         }
                         Type::NominalInstance(instance) => match instance.known_class(db) {
-                            // enum.nonmember
                             Some(KnownClass::Nonmember) => return None,
 
-                            // enum.member
                             Some(KnownClass::Member) => {
                                 explicit_member_wrapper = true;
                                 Some(
@@ -1176,12 +1144,10 @@ pub(crate) fn enum_metadata<'db>(
                                 )
                             }
 
-                            // enum.auto
                             Some(KnownClass::Auto) => {
                                 auto_counter += 1;
                                 auto_members.insert(name.clone());
 
-                                // `StrEnum`s have different `auto()` behaviour to enums inheriting from `(str, Enum)`
                                 let auto_value_ty =
                                     if Type::ClassLiteral(ClassLiteral::Static(class))
                                         .is_subtype_of(
@@ -1210,11 +1176,6 @@ pub(crate) fn enum_metadata<'db>(
                                                 })
                                                 .collect();
 
-                                        // `IntEnum`s have the same `auto()` behaviour to enums inheriting from `(int, Enum)`,
-                                        // and `IntEnum`s also have `int` in their MROs, so both cases are handled here.
-                                        //
-                                        // In general, the `auto()` behaviour for enums with non-`int` mixins is hard to predict,
-                                        // so we fall back to `Any` in those cases.
                                         if matches!(
                                             custom_mixins.as_slice(),
                                             [] | [Some(KnownClass::Int)]
@@ -1261,7 +1222,6 @@ pub(crate) fn enum_metadata<'db>(
                             }) => ty,
 
                             Place::Defined(_) => {
-                                // Descriptors are not considered members.
                                 return None;
                             }
                         }
@@ -1287,8 +1247,6 @@ pub(crate) fn enum_metadata<'db>(
                 return None;
             }
 
-            // Track whether this member's value is a non-literal `int`, so a
-            // following `auto()` knows to widen its result to `int`.
             prev_value_was_non_literal_int = value_ty.as_int_like_literal().is_none()
                 && value_ty.is_assignable_to(db, &env, KnownClass::Int.to_instance(db, &env));
             prev_bool_literal =
@@ -1317,7 +1275,6 @@ pub(crate) fn enum_metadata<'db>(
         .collect::<FxIndexMap<_, _>>();
 
     if members.is_empty() {
-        // Enum subclasses without members are not considered enums.
         return None;
     }
 
@@ -1573,9 +1530,6 @@ fn inherited_user_defined_mixin_new<'db>(
                 return None;
             }
             let binding = custom_enum_method(db, base.body_scope(db), "__new__")?;
-            // The mixin may be inherited as a specialized generic alias (`Mixin[str]`). Apply that
-            // specialization, so that members are checked against the specialized `__new__`
-            // signature instead of one with free typevars.
             let EnumMethodBinding::Function(function) = binding else {
                 return Some(EnumMethodBinding::Opaque);
             };

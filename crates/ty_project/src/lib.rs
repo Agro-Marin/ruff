@@ -298,7 +298,6 @@ impl Project {
         let environment = workspace
             .environment()
             .ok_or(DependencyMetadataError::MissingEnvironment)?;
-        // Track the path before resolving it, so a synced change can invalidate the result.
         if let Ok(directory) = system_path_to_directory(db, environment) {
             let _ = directory.revision(db);
         }
@@ -306,17 +305,12 @@ impl Project {
             db.system()
                 .canonicalize_path(environment)
                 .map_err(|error| {
-                    // If `.venv` points to `env`, deleting `env` makes this fail before we read
-                    // the target's directory status below. Salsa then drops that dependency,
-                    // so recreating `env` and syncing only its path won't invalidate the cached
-                    // error. Retry on the next revision so dependency checks can recover.
                     db.report_untracked_read();
                     DependencyMetadataError::InvalidEnvironment {
                         path: environment.to_path_buf(),
                         message: error.to_string().into(),
                     }
                 })?;
-        // Changes may be reported for the canonical target instead of the symlink.
         let _ = system_path_to_directory(db, &canonical_environment);
         let program_settings = self.program_settings(db);
         let selected_environment = program_settings
@@ -326,8 +320,6 @@ impl Project {
             .as_ref()
             .ok_or(DependencyMetadataError::MissingSelectedEnvironment)?;
 
-        // An explicit Python environment can override uv's selection. Its installed modules may
-        // belong to different distributions, so uv's ownership map cannot describe those imports.
         if selected_environment.sys_prefix().as_std_path() != canonical_environment.as_std_path() {
             return Err(DependencyMetadataError::EnvironmentMismatch {
                 selected: selected_environment.sys_prefix().to_path_buf(),
@@ -486,10 +478,6 @@ impl Project {
         }
 
         if files_changed {
-            // The project file set only depends on the project root, explicit check paths,
-            // force-exclude, and `src` settings. Check paths and force-exclude are updated
-            // through their own setters, so a config reload only needs to reindex when the
-            // root or resolved `src` settings changed.
             self.reload_files(db);
         }
 
@@ -567,22 +555,13 @@ impl Project {
                     Ok(diagnostics) => {
                         reporter.report_checked_file(db, file, diagnostics);
 
-                        // This is outside `check_file_impl` to avoid that opening or closing
-                        // a file invalidates the `check_file_impl` query of every file!
-                        // Scripts with invalid settings are never parsed by `check_file_impl`, so
-                        // they have no AST to clear.
                         if !open_files.contains(&file)
                             && Script::for_file(db, file)
                                 .is_none_or(|script| script.has_valid_settings(db))
                         {
                             let python_file = program_file.python_file(db);
-                            // The module has already been parsed by `check_file_impl`.
-                            // We only retrieve it here so that we can call `clear` on it.
                             let parsed = parsed_module(db, python_file);
 
-                            // Drop the AST now that we are done checking this file. It is not currently open,
-                            // so it is unlikely to be accessed again soon. If any queries need to access the AST
-                            // from across files, it will be re-parsed.
                             parsed.clear();
                         }
                     }
@@ -687,8 +666,6 @@ impl Project {
     fn take_open_files(self, db: &mut dyn Db) -> FxHashSet<File> {
         tracing::debug!("Take open project files");
 
-        // Salsa will cancel any pending queries and remove its own reference to `open_files`
-        // so that the reference counter to `open_files` now drops to 1.
         self.set_open_fileset(db).to(FxHashSet::default())
     }
 
@@ -777,7 +754,6 @@ impl Project {
     ///
     /// This is a no-op if the project files haven't been indexed yet.
     fn replace_index_diagnostics(self, db: &mut dyn Db, diagnostics: Vec<Diagnostic>) {
-        // Check before acquiring a mutable index, which cancels pending queries.
         match self.file_set(db).get() {
             Index::Lazy(_) => return,
             Index::Indexed(index) if index.diagnostics() == diagnostics => return,
@@ -839,8 +815,6 @@ impl Project {
 
     /// Returns the scripts whose uv environments need preparing at startup or after a reload.
     pub fn scripts_to_synchronize(self, db: &dyn Db) -> Vec<File> {
-        // Discovering scripts reads every project file. Keep the index lazy when
-        // no environment synchronization will be requested.
         if self.metadata(db).script_uv_override() == Some(false) {
             return Vec::new();
         }
@@ -851,7 +825,6 @@ impl Project {
         tracing::debug!("Reloading files for project `{}`", self.name(db));
 
         if !self.file_set(db).is_lazy() {
-            // Force a re-index of the files in the next revision.
             self.set_file_set(db).to(IndexedFiles::lazy());
         }
     }
@@ -936,7 +909,6 @@ pub(crate) fn is_project_file(db: &dyn Db, file: File) -> bool {
     }
 
     let project = db.project();
-    // Indexed files should not depend on changes to the open-file set.
     project.files(db).contains(file) || project.open_files(db).contains(&file)
 }
 
@@ -955,11 +927,6 @@ pub(crate) fn should_check_file(db: &dyn Db, file: File) -> bool {
     let project = db.project();
     let path = file.path(db);
 
-    // NOTE: The tracing messages below were added because whether a file should be checked or not
-    // can sometimes be at the root of confusing UX like "diagnostics all of a sudden stopped
-    // working." Having a trace message indicating why a particular file isn't being checked can
-    // be quite helpful for narrowing down the issue. The messages are at TRACE because they are
-    // extremely noisy.
 
     if path.is_vendored_path() {
         tracing::trace!("Not checking {path} because it is a vendored path");
@@ -978,15 +945,6 @@ pub(crate) fn should_check_file(db: &dyn Db, file: File) -> bool {
             should_check
         }
         CheckMode::AllFiles => {
-            // Virtual files are always checked.
-            //
-            // We also check the open file set. In theory, we shouldn't need to do this since it is
-            // accounted for by the virtual file check (for the case when a file wants to be checked
-            // but isn't saved to disk yet). However, not all clients follow the LSP convention that
-            // URIs for documents not on disk yet use the `untitled://...` scheme. That is, we assume
-            // that a `file://...` scheme corresponds to a saved file on disk, and anything else is
-            // "virtual." For example, neovim uses `file://...` even for an open buffer that does not
-            // correspond to a file saved to disk yet.
             if path.is_system_virtual_path() {
                 return true;
             }
@@ -1132,23 +1090,11 @@ where
         Err(error) => {
             match error.payload.downcast_ref::<salsa::Cancelled>() {
                 None => {
-                    // Add a diagnostic (by not early returning) for
-                    // any non Salsa panic (a bug in ty)
                 }
                 Some(salsa::Cancelled::PropagatedPanic) => {
-                    // Add a diagnostic for propagated Salsa panics. That is, query `A`
-                    // running on thread `a` depends on query `B` running on thread `b`
-                    // and query `B` panics. However, avoid adding such a diagnostic
-                    // if query `B` panicked because of a cancellation by calling
-                    // `unwind_if_revision_cancelled`.
-                    //
-                    // The propagated Salsa panic isn't very actionable for users,
-                    // but it can be useful to know that file A failed to type check
-                    // because file B panicked (both files will have a panic-diagnostic).
                     db.unwind_if_revision_cancelled();
                 }
 
-                // For any pending write or local cancellation, resume the panic to abort the outer query.
                 Some(_) => {
                     error.resume_unwind();
                 }
@@ -1185,8 +1131,6 @@ where
                 });
             }
 
-            // Report an untracked read because Salsa didn't carry over
-            // the dependencies of any query called by `f` because it panicked.
             db.report_untracked_read();
 
             Err(diagnostic)
@@ -1216,7 +1160,6 @@ mod tests {
         db.write_file(path, "x = 10")?;
         let file = system_path_to_file(&db, path).unwrap();
 
-        // Now the file gets deleted before we had a chance to read its source text.
         db.memory_file_system().remove_file(path)?;
         file.sync(&mut db);
 
@@ -1233,8 +1176,6 @@ mod tests {
         let events = db.take_salsa_events();
         assert_function_query_was_not_run(&db, check_types, db.program_file(file), &events);
 
-        // The user now creates a new file with an empty text. The source text
-        // content returned by `source_text` remains unchanged, but the diagnostics should get updated.
         db.write_file(path, "").unwrap();
 
         assert_eq!(source_text(&db, file).as_str(), "");

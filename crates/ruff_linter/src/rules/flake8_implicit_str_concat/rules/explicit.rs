@@ -64,10 +64,6 @@ impl Violation for ExplicitStringConcatenation {
 
 /// ISC003
 pub(crate) fn explicit(checker: &Checker, expr: &Expr) {
-    // If the user sets `allow-multiline` to `false`, then we should allow explicitly concatenated
-    // strings that span multiple lines even if this rule is enabled. Otherwise, there's no way
-    // for the user to write multiline strings, and that setting is "more explicit" than this rule
-    // being enabled.
     if !checker
         .settings()
         .flake8_implicit_str_concat
@@ -103,10 +99,6 @@ pub(crate) fn explicit(checker: &Checker, expr: &Expr) {
                 let is_parenthesized = |expr: &Expr| {
                     parenthesized_range(expr.into(), bin_op.into(), checker.tokens()).is_some()
                 };
-                // If either `left` or `right` is parenthesized, generating
-                // a fix would be too involved. Just report the diagnostic.
-                // Currently, attempting `generate_fix` would result in
-                // an invalid code. See: #19757
                 if is_parenthesized(left) || is_parenthesized(right) {
                     return;
                 }
@@ -123,9 +115,6 @@ pub(crate) fn explicit(checker: &Checker, expr: &Expr) {
 /// expression statement into a docstring, which would change the program's
 /// behavior (e.g., by setting `__doc__`). See #27979.
 fn fix_creates_docstring(checker: &Checker, expr: &ast::ExprBinOp) -> bool {
-    // Only concatenations of plain string literals can produce a docstring
-    // after the fix; f-strings, byte strings, and template strings are not
-    // recognized as docstrings by Python.
     if !matches!(
         (expr.left.as_ref(), expr.right.as_ref()),
         (Expr::StringLiteral(_), Expr::StringLiteral(_))
@@ -156,8 +145,6 @@ fn generate_fix(checker: &Checker, expr_bin_op: &ast::ExprBinOp) -> Option<Fix> 
     let linebreak_before_operator =
         before_plus.contains_line_break(TextRange::at(TextSize::new(0), before_plus.text_len()));
 
-    // If removing `+` from first line trim trailing spaces
-    // Preserve indentation when removing `+` from second line
     let before_plus = if linebreak_before_operator {
         before_plus
     } else {

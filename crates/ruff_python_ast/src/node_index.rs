@@ -64,8 +64,6 @@ impl NodeIndex {
     /// A placeholder `NodeIndex`.
     const NONE: NodeIndex = NodeIndex(NonZeroU32::new(NodeIndex::NONE_).unwrap());
 
-    // Note that the index `u32::MAX` is reserved for the `NonZeroU32` niche, and
-    // this placeholder also reserves the second highest index.
     const NONE_: u32 = u32::MAX - 1;
 
     /// Returns the index as a `u32`. or `None` for `NodeIndex::NONE`.
@@ -119,8 +117,6 @@ pub fn sub_indices(index: u32) -> Result<(u32, u32), NodeIndexError> {
         );
     };
 
-    // If this overflows the file has hundreds of thousands of lines of code,
-    // but that *can* happen (we just can't support string annotations that deep)
     let sub_index_without_level = without_level
         .checked_mul(nodes_in_level)
         .ok_or(error_kind)?;
@@ -129,7 +125,6 @@ pub fn sub_indices(index: u32) -> Result<(u32, u32), NodeIndexError> {
     }
 
     let first_index = sub_index_without_level | next_level;
-    // Can't overflow by construction
     let last_index = first_index + nodes_in_level - 1;
     Ok((first_index, last_index))
 }

@@ -73,8 +73,6 @@ fn generate() -> String {
 
     let mut ty = Cli::command();
 
-    // It is very important to build the command before beginning inspection or subcommands
-    // will be missing all of the propagated options.
     ty.build();
 
     let mut parents = Vec::new();
@@ -96,7 +94,6 @@ fn generate_command<'a>(output: &mut String, command: &'a Command, parents: &mut
         return;
     }
 
-    // Generate the command header.
     let name = if parents.is_empty() {
         command.get_name().to_string()
     } else {
@@ -107,21 +104,15 @@ fn generate_command<'a>(output: &mut String, command: &'a Command, parents: &mut
         )
     };
 
-    // Display the top-level `ty` command at the same level as its children
     let level = max(2, parents.len() + 1);
     output.push_str(&format!("{} {name}\n\n", "#".repeat(level)));
 
-    // Display the command description.
     if let Some(about) = command.get_long_about().or_else(|| command.get_about()) {
         output.push_str(&about.to_string());
         output.push_str("\n\n");
     }
 
-    // Display the usage
     {
-        // This appears to be the simplest way to get rendered usage from Clap,
-        // it is complicated to render it manually. It's annoying that it
-        // requires a mutable reference but it doesn't really matter.
         let mut command = command.clone();
         output.push_str("<h3 class=\"cli-reference\">Usage</h3>\n\n");
         output.push_str(&format!(
@@ -138,7 +129,6 @@ fn generate_command<'a>(output: &mut String, command: &'a Command, parents: &mut
         return;
     }
 
-    // Display a list of child commands
     let mut subcommands = command.get_subcommands().peekable();
     let has_subcommands = subcommands.peek().is_some();
     if has_subcommands {
@@ -165,11 +155,9 @@ fn generate_command<'a>(output: &mut String, command: &'a Command, parents: &mut
         output.push_str("</dl>\n\n");
     }
 
-    // Do not display options for commands with children
     if !has_subcommands {
         let name_key = name.replace(' ', "-");
 
-        // Display positional arguments
         let mut arguments = command
             .get_positionals()
             .filter(|arg| !arg.is_hide_set())
@@ -197,7 +185,6 @@ fn generate_command<'a>(output: &mut String, command: &'a Command, parents: &mut
             output.push_str("</dl>\n\n");
         }
 
-        // Display options and flags
         let mut options = command
             .get_arguments()
             .filter(|arg| !arg.is_positional())
@@ -224,7 +211,6 @@ fn generate_command<'a>(output: &mut String, command: &'a Command, parents: &mut
                     output.push_str(&format!(", <code>-{short_alias}</code>"));
                 }
 
-                // Re-implements private `Arg::is_takes_value_set` used in `Command::get_opts`
                 if opt
                     .get_num_args()
                     .unwrap_or_else(|| 1.into())
@@ -258,7 +244,6 @@ fn generate_command<'a>(output: &mut String, command: &'a Command, parents: &mut
 
     parents.push(command);
 
-    // Recurse to all of the subcommands.
     for subcommand in command.get_subcommands() {
         generate_command(output, subcommand, parents);
     }

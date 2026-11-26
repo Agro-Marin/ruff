@@ -127,16 +127,12 @@ pub(crate) fn print_call(checker: &Checker, call: &ast::ExprCall, qualified_name
 
     let diagnostic = match qualified_name.segments() {
         ["" | "builtins", "print"] => {
-            // If the print call has a `file=` argument (that isn't `None`, `"sys.stdout"`,
-            // or `"sys.stderr"`), don't trigger T201.
             if has_non_default_output_target(semantic, call, "file") {
                 return;
             }
             checker.report_diagnostic_if_enabled(Print, call.func.range())
         }
         ["pprint", "pprint"] => {
-            // If the pprint call has a `stream=` argument (that isn't `None`,
-            // `"sys.stdout"`, or `"sys.stderr"`), don't trigger T203.
             if has_non_default_output_target(semantic, call, "stream") {
                 return;
             }
@@ -149,7 +145,6 @@ pub(crate) fn print_call(checker: &Checker, call: &ast::ExprCall, qualified_name
         return;
     };
 
-    // Remove the `print`, if it's a standalone statement.
     if semantic.current_expression_parent().is_none() {
         let statement = semantic.current_statement();
         let parent = semantic.current_statement_parent();

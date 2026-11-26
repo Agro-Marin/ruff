@@ -110,7 +110,6 @@ impl Violation for Airflow3SuggestedToMoveToProvider<'_> {
     }
 }
 
-// AIR312
 pub(crate) fn suggested_to_move_to_provider_in_3(checker: &Checker, expr: &Expr) {
     if !checker.semantic().seen_module(Modules::AIRFLOW) {
         return;
@@ -131,7 +130,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
     };
 
     let replacement = match qualified_name.segments() {
-        // apache-airflow-providers-standard
         ["airflow", "hooks", "filesystem", "FSHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.standard.hooks.filesystem",
             name: "FSHook",

@@ -98,7 +98,6 @@ impl Violation for MutableArgumentDefault {
 
 /// B006
 pub(crate) fn mutable_argument_default(checker: &Checker, function_def: &ast::StmtFunctionDef) {
-    // Skip stub files
     if checker.source_type.is_stub() {
         return;
     }
@@ -127,7 +126,6 @@ pub(crate) fn mutable_argument_default(checker: &Checker, function_def: &ast::St
         {
             let mut diagnostic = checker.report_diagnostic(MutableArgumentDefault, default.range());
 
-            // If the function body is on the same line as the function def, do not fix
             if let Some(fix) = move_initialization(function_def, parameter, default, checker) {
                 diagnostic.set_fix(fix);
             }
@@ -161,7 +159,6 @@ fn move_initialization(
 
     let mut body = function_def.body.iter().peekable();
 
-    // Avoid attempting to fix single-line functions.
     let statement = body.peek()?;
     if indexer.preceded_by_multi_statement_line(statement, locator.contents()) {
         return None;
@@ -171,15 +168,12 @@ fn move_initialization(
         Some(range) => range,
         None => default.range(),
     };
-    // Set the default argument value to `None`.
     let default_edit = Edit::range_replacement("None".to_string(), range);
 
-    // If the function is a stub, this is the only necessary edit.
     if is_stub(function_def, checker.semantic()) {
         return Some(Fix::unsafe_edit(default_edit));
     }
 
-    // Add an `if`, to set the argument to its original value if still `None`.
     let mut content = String::new();
     let _ = write!(&mut content, "if {} is None:", parameter.parameter.name());
     content.push_str(stylist.line_ending().as_str());
@@ -205,35 +199,26 @@ fn move_initialization(
 
     content.push_str(stylist.line_ending().as_str());
 
-    // Determine the indentation depth of the function body.
     let indentation = indentation_at_offset(statement.start(), locator.contents())?;
 
-    // Indent the edit to match the body indentation.
     let mut content = textwrap::indent(&content, indentation).to_string();
 
-    // Find the position to insert the initialization after docstring and imports
     let mut pos = locator.line_start(statement.start());
     while let Some(statement) = body.next() {
-        // If the statement is a docstring or an import, insert _after_ it.
         if is_docstring_stmt(statement)
             || statement.is_import_stmt()
             || statement.is_import_from_stmt()
         {
             if let Some(next) = body.peek() {
-                // If there's a second statement, insert _before_ it, but ensure this isn't a
-                // multi-statement line.
                 if indexer.in_multi_statement_line(statement, locator.contents()) {
                     continue;
                 }
                 pos = locator.line_start(next.start());
             } else if locator.full_line_end(statement.end()) == locator.text_len() {
-                // If the statement is at the end of the file, without a trailing newline, insert
-                // _after_ it with an extra newline.
                 content = format!("{}{}", stylist.line_ending().as_str(), content);
                 pos = locator.full_line_end(statement.end());
                 break;
             } else {
-                // If this is the only statement, insert _after_ it.
                 pos = locator.full_line_end(statement.end());
                 break;
             }

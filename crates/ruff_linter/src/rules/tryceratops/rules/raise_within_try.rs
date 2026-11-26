@@ -107,8 +107,6 @@ pub(crate) fn raise_within_try(checker: &Checker, body: &[Stmt], handlers: &[Exc
             continue;
         };
 
-        // We can't check exception sub-classes without a type-checker implementation, so let's
-        // just catch the blanket `Exception` for now.
         if comparables.contains(&ComparableExpr::from(map_callable(exception)))
             || handled_exceptions.iter().any(|expr| {
                 checker

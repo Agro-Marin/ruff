@@ -2,7 +2,6 @@
 
 """See CONTRIBUTING.md"""
 
-# %%
 from __future__ import annotations
 
 import re
@@ -15,8 +14,6 @@ def rustfmt(code: str) -> str:
     return check_output(["rustfmt", "--emit=stdout"], input=code, text=True)
 
 
-# %%
-# Read nodes
 
 root = Path(
     check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip(),
@@ -34,9 +31,6 @@ node_lines = (
 nodes = []
 for node_line in node_lines:
     node = node_line.split("(")[1].split(")")[0].split("::")[-1].removeprefix("&'a ")
-    # `FString` has a custom implementation while the formatting for
-    # `FStringLiteralElement`, `FStringFormatSpec` and `FStringExpressionElement` are
-    # handled by the `FString` implementation.
     if node in (
         "InterpolatedStringLiteralElement",
         "InterpolatedElement",
@@ -47,8 +41,6 @@ for node_line in node_lines:
     nodes.append(node)
 print(nodes)
 
-# %%
-# Generate newtypes with dummy FormatNodeRule implementations
 
 out = (
     root.joinpath("crates")
@@ -59,7 +51,6 @@ out = (
 src = root.joinpath("crates").joinpath("ruff_python_formatter").joinpath("src")
 
 nodes_grouped = defaultdict(list)
-# We rename because mod is a keyword in rust
 groups = {
     "mod": "module",
     "expr": "expression",
@@ -86,15 +77,8 @@ for node in nodes:
     nodes_grouped[group_for_node(node)].append(node)
 
 for group, group_nodes in nodes_grouped.items():
-    # These conflict with the manually content of the mod.rs files
-    # src.joinpath(groups[group]).mkdir(exist_ok=True)
-    # mod_section = "\n".join(
-    #     f"pub(crate) mod {to_camel_case(node)};" for node in group_nodes
-    # )
-    # src.joinpath(groups[group]).joinpath("mod.rs").write_text(rustfmt(mod_section))
     for node in group_nodes:
         node_path = src.joinpath(groups[group]).joinpath(f"{to_camel_case(node)}.rs")
-        # Don't override existing manual implementations
         if node_path.exists():
             continue
 
@@ -116,8 +100,6 @@ for group, group_nodes in nodes_grouped.items():
 
         node_path.write_text(rustfmt(code))
 
-# %%
-# Generate `FormatRule`, `AsFormat` and `IntoFormat`
 
 generated = """//! This is a generated file. Don't modify it by hand! Run `crates/ruff_python_formatter/generate.py` to re-generate the file.
 #![allow(unknown_lints, clippy::default_constructed_unit_structs)]

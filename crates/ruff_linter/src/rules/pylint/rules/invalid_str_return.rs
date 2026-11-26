@@ -60,15 +60,12 @@ pub(crate) fn invalid_str_return(checker: &Checker, function_def: &ast::StmtFunc
         return;
     }
 
-    // Determine the terminal behavior (i.e., implicit return, no return, etc.).
     let terminal = Terminal::from_function(function_def, checker.semantic());
 
-    // If every control flow path raises an exception, ignore the function.
     if terminal.is_always_raise() {
         return;
     }
 
-    // If there are no return statements, add a diagnostic.
     if terminal == Terminal::Implicit {
         checker.report_diagnostic(InvalidStrReturnType, function_def.identifier());
         return;
@@ -89,7 +86,6 @@ pub(crate) fn invalid_str_return(checker: &Checker, function_def: &ast::StmtFunc
                 checker.report_diagnostic(InvalidStrReturnType, value.range());
             }
         } else {
-            // Disallow implicit `None`.
             checker.report_diagnostic(InvalidStrReturnType, stmt.range());
         }
     }

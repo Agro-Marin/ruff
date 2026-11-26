@@ -54,9 +54,6 @@ impl FormatNodeRule<ExprIf> for FormatExprIf {
         let comments = f.context().comments().clone();
 
         let inner = format_with(|f: &mut PyFormatter| {
-            // We place `if test` and `else orelse` on a single line, so the `test` and `orelse` leading
-            // comments go on the line before the `if` or `else` instead of directly ahead `test` or
-            // `orelse`
             write!(
                 f,
                 [

@@ -1,8 +1,5 @@
 #!/usr/bin/env sh
 
-###
-# Benchmark the incremental performance of each subsequent plugin.
-###
 
 cargo build --release && hyperfine --warmup 10 \
   "./target/release/ruff check ./crates/ruff_linter/resources/test/cpython/ --no-cache --silent --exit-zero" \

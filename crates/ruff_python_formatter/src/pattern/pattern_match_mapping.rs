@@ -33,21 +33,6 @@ impl FormatNodeRule<PatternMatchMapping> for FormatPatternMatchMapping {
             return empty_parenthesized("{", dangling, "}").fmt(f);
         }
 
-        // This node supports three kinds of dangling comments. Most of the complexity originates
-        // with the rest pattern (`{**rest}`), since we can have comments around the `**`, but
-        // also, the `**rest` itself is not a node (it's an identifier), so comments that trail it
-        // are _also_ dangling.
-        //
-        // Specifically, we have these three sources of dangling comments:
-        // ```python
-        // {  # "open parenthesis comment"
-        //    key: pattern,
-        //    **  # end-of-line "double star comment"
-        //    # own-line "double star comment"
-        //    rest  # end-of-line "after rest comment"
-        //    # own-line "after rest comment"
-        // }
-        // ```
         let (open_parenthesis_comments, double_star_comments, after_rest_comments) =
             if let Some((double_star, rest)) = find_double_star(item, f.context().source()) {
                 let (open_parenthesis_comments, dangling) =
@@ -167,7 +152,6 @@ fn find_double_star(pattern: &PatternMatchMapping, source: &str) -> Option<(Text
         node_index: _,
     } = pattern;
 
-    // If there's no `rest` element, there's no `**`.
     let rest = rest.as_ref()?;
 
     let mut tokenizer =

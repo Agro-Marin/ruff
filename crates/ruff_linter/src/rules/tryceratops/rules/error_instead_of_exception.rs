@@ -93,8 +93,6 @@ pub(crate) fn error_instead_of_exception(checker: &Checker, handlers: &[ExceptHa
                         Expr::Attribute(ast::ExprAttribute { attr, .. }) => {
                             diagnostic.set_fix(Fix::applicable_edit(
                                 Edit::range_replacement("exception".to_string(), attr.range()),
-                                // When run against `logging.error`, the fix is safe; otherwise,
-                                // the object _may_ not be a logger.
                                 if checker.semantic().matches_qualified_name(
                                     expr.func.as_ref(),
                                     &["logging", "error"],
@@ -117,8 +115,6 @@ pub(crate) fn error_instead_of_exception(checker: &Checker, handlers: &[ExceptHa
                                 Ok(Fix::applicable_edits(
                                     import_edit,
                                     [name_edit],
-                                    // When run against `logging.error`, the fix is safe; otherwise,
-                                    // the object _may_ not be a logger.
                                     if checker.semantic().matches_qualified_name(
                                         expr.func.as_ref(),
                                         &["logging", "error"],

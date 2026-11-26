@@ -37,7 +37,6 @@ fn bit_box_size(bits: &RankBitBoxStorage) -> usize {
     std::mem::size_of_val(bits.as_raw_slice())
 }
 
-// bitvec does not support `u64` as a Store type on 32-bit platforms
 #[cfg(target_pointer_width = "64")]
 type Chunk = u64;
 #[cfg(not(target_pointer_width = "64"))]
@@ -94,9 +93,6 @@ impl RankBitBox {
             return chunk_rank;
         }
 
-        // To calculate the rank within the bit's chunk, we zero out the requested bit and every
-        // bit to the right, then count the number of 1s remaining (i.e., to the left of the
-        // requested bit).
         let chunk = self.bits.as_raw_slice()[chunk_index];
         let chunk_mask = Chunk::MAX << (CHUNK_SIZE - index_within_chunk);
         let rank_within_chunk = (chunk & chunk_mask).count_ones();

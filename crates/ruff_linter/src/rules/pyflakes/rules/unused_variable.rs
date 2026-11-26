@@ -98,7 +98,6 @@ fn match_token_after<F>(tokens: &Tokens, location: TextSize, f: F) -> Option<Tex
 where
     F: Fn(TokenKind) -> bool,
 {
-    // Track the bracket depth.
     let mut nesting = 0u32;
 
     for (current, next) in tokens.after(location).iter().tuple_windows() {
@@ -112,7 +111,6 @@ where
             _ => {}
         }
 
-        // If we're in nested brackets, continue.
         if nesting > 0 {
             continue;
         }
@@ -130,7 +128,6 @@ fn match_token_or_closing_brace<F>(tokens: &Tokens, location: TextSize, f: F) ->
 where
     F: Fn(TokenKind) -> bool,
 {
-    // Track the nesting level.
     let mut nesting = 0u32;
 
     for token in tokens.after(location) {
@@ -147,7 +144,6 @@ where
             _ => {}
         }
 
-        // If we're in nested brackets, continue.
         if nesting > 0 {
             continue;
         }
@@ -166,7 +162,6 @@ fn remove_unused_variable(binding: &Binding, checker: &Checker) -> Option<Fix> {
     let parent = checker.semantic().parent_statement(node_id);
     let isolation = Checker::isolation(checker.semantic().parent_statement_id(node_id));
 
-    // First case: simple assignment (`x = 1`)
     if let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = statement {
         if let Some(target) = targets
             .iter()
@@ -176,8 +171,6 @@ fn remove_unused_variable(binding: &Binding, checker: &Checker) -> Option<Fix> {
                 return if targets.len() > 1
                     || contains_effect(value, |id| checker.semantic().has_builtin_binding(id))
                 {
-                    // If the expression is complex (`x = foo()`), remove the assignment,
-                    // but preserve the right-hand side.
                     let start =
                         parenthesized_range(target.into(), statement.into(), checker.tokens())
                             .unwrap_or(target.range())
@@ -189,7 +182,6 @@ fn remove_unused_variable(binding: &Binding, checker: &Checker) -> Option<Fix> {
                     let edit = Edit::deletion(start, end);
                     Some(Fix::unsafe_edit(edit))
                 } else {
-                    // If (e.g.) assigning to a constant (`x = 1`), delete the entire statement.
                     let edit = delete_stmt(statement, parent, checker.locator(), checker.indexer());
                     Some(Fix::unsafe_edit(edit).isolate(isolation))
                 };
@@ -205,7 +197,6 @@ fn remove_unused_variable(binding: &Binding, checker: &Checker) -> Option<Fix> {
         }
     }
 
-    // Second case: simple annotated assignment (`x: int = 1`)
     if let Stmt::AnnAssign(ast::StmtAnnAssign {
         target,
         value: Some(value),
@@ -214,8 +205,6 @@ fn remove_unused_variable(binding: &Binding, checker: &Checker) -> Option<Fix> {
     {
         if target.is_name_expr() {
             return if contains_effect(value, |id| checker.semantic().has_builtin_binding(id)) {
-                // If the expression is complex (`x = foo()`), remove the assignment,
-                // but preserve the right-hand side.
                 let start = statement.start();
                 let end =
                     match_token_after(checker.tokens(), start, |token| token == TokenKind::Equal)?
@@ -223,28 +212,22 @@ fn remove_unused_variable(binding: &Binding, checker: &Checker) -> Option<Fix> {
                 let edit = Edit::deletion(start, end);
                 Some(Fix::unsafe_edit(edit))
             } else {
-                // If (e.g.) assigning to a constant (`x = 1`), delete the entire statement.
                 let edit = delete_stmt(statement, parent, checker.locator(), checker.indexer());
                 Some(Fix::unsafe_edit(edit).isolate(isolation))
             };
         }
     }
 
-    // Third case: with_item (`with foo() as x:`)
     if let Stmt::With(ast::StmtWith { items, .. }) = statement {
-        // Find the binding that matches the given `Range`.
-        // TODO(charlie): Store the `WithItem` in the `Binding`.
         for item in items {
             if let Some(optional_vars) = &item.optional_vars {
                 if optional_vars.range() == binding.range() {
-                    // Find the first token before the `as` keyword.
                     let start =
                         match_token_before(checker.tokens(), item.context_expr.start(), |token| {
                             token == TokenKind::As
                         })?
                         .end();
 
-                    // Find the first colon, comma, or closing bracket after the `as` keyword.
                     let end = match_token_or_closing_brace(checker.tokens(), start, |token| {
                         token == TokenKind::Colon || token == TokenKind::Comma
                     })?
@@ -275,6 +258,5 @@ pub(crate) fn unused_variable(checker: &Checker, name: &str, binding: &Binding) 
     if let Some(fix) = remove_unused_variable(binding, checker) {
         diagnostic.set_fix(fix);
     }
-    // Add Unnecessary tag for unused variables
     diagnostic.add_primary_tag(ruff_db::diagnostic::DiagnosticTag::Unnecessary);
 }

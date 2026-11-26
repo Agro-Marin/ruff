@@ -84,7 +84,6 @@ impl<K: std::hash::Hash + Eq, V> MultiMap<K, V> {
                 );
             }
 
-            // Has only *leading* parts and no elements have been pushed since
             Some(Entry::InOrder(entry))
                 if entry.trailing_start.is_none() && self.parts.len() == entry.range().end =>
             {
@@ -121,7 +120,6 @@ impl<K: std::hash::Hash + Eq, V> MultiMap<K, V> {
                 );
             }
 
-            // Has leading and dangling comments and no new parts have been inserted since.
             Some(Entry::InOrder(entry))
                 if entry.trailing_end.is_none() && self.parts.len() == entry.range().end =>
             {
@@ -158,7 +156,6 @@ impl<K: std::hash::Hash + Eq, V> MultiMap<K, V> {
                 );
             }
 
-            // No new parts have been inserted since
             Some(Entry::InOrder(entry)) if entry.range().end == self.parts.len() => {
                 self.parts.push(part);
                 entry.increment_trailing_range();
@@ -458,11 +455,8 @@ impl InOrderEntry {
 
     fn increment_trailing_range(&mut self) {
         match (self.trailing_start, &mut self.trailing_end) {
-            // Already has some trailing comments
             (Some(_), Some(end)) => end.increment(),
-            // Has dangling comments only
             (Some(start), None) => self.trailing_end = Some(start.incremented()),
-            // Has leading comments only
             (None, None) => {
                 self.trailing_start = Some(self.dangling_start);
                 self.trailing_end = Some(self.dangling_start.incremented());
@@ -489,7 +483,6 @@ impl InOrderEntry {
             (Some(trailing_start), Some(trailing_end)) => {
                 trailing_start.value()..trailing_end.value()
             }
-            // Only dangling comments
             (Some(trailing_start), None) => trailing_start.value()..trailing_start.value(),
             (None, Some(_)) => {
                 panic!("Trailing end shouldn't be set if trailing start is none");
@@ -544,9 +537,6 @@ struct PartIndex(NonZeroU32);
 impl PartIndex {
     fn from_len(value: usize) -> Self {
         assert!(value < u32::MAX as usize);
-        // OK because:
-        // * The `value < u32::MAX` guarantees that the add doesn't overflow.
-        // * The `+ 1` guarantees that the index is not zero
         #[expect(clippy::cast_possible_truncation)]
         Self(std::num::NonZeroU32::new((value as u32) + 1).expect("valid value"))
     }

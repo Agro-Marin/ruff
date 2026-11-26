@@ -66,21 +66,18 @@ pub(crate) fn duplicate_union_member<'a>(checker: &Checker, expr: &'a Expr) {
 
     let mut union_type = UnionKind::TypingUnion;
     let mut optional_present = false;
-    // Adds a member to `literal_exprs` if it is a `Literal` annotation
     let mut check_for_duplicate_members = |expr: &'a Expr, parent: &'a Expr| {
         if matches!(parent, Expr::BinOp(_)) {
             union_type = UnionKind::PEP604;
         }
 
         let virtual_expr = if is_optional_type(checker, expr) {
-            // If the union member is an `Optional`, add a virtual `None` literal.
             optional_present = true;
             &VIRTUAL_NONE_LITERAL
         } else {
             expr
         };
 
-        // If we've already seen this union member, raise a violation.
         if seen_nodes.insert(virtual_expr.into()) {
             unique_nodes.push(virtual_expr);
         } else {
@@ -88,43 +85,34 @@ pub(crate) fn duplicate_union_member<'a>(checker: &Checker, expr: &'a Expr) {
                 DuplicateUnionMember {
                     duplicate_name: checker.generator().expr(virtual_expr),
                 },
-                // Use the real expression's range for diagnostics.
                 expr.range(),
             ));
         }
     };
 
-    // Traverse the union, collect all diagnostic members
     traverse_union_and_optional(&mut check_for_duplicate_members, checker.semantic(), expr);
 
     if diagnostics.is_empty() {
         return;
     }
 
-    // Do not reduce `Union[None, ... None]` to avoid introducing a `TypeError` unintentionally
-    // e.g. `isinstance(None, Union[None, None])`, if reduced to `isinstance(None, None)`, causes
-    // `TypeError: isinstance() arg 2 must be a type, a tuple of types, or a union` to throw.
     if unique_nodes.iter().all(|expr| expr.is_none_literal_expr()) && !optional_present {
         return;
     }
 
-    // Mark [`Fix`] as unsafe when comments are in range.
     let applicability = if checker.comment_ranges().intersects(expr.range()) {
         Applicability::Unsafe
     } else {
         Applicability::Safe
     };
 
-    // Generate the flattened fix once.
     let fix = if let &[edit_expr] = unique_nodes.as_slice() {
-        // Generate a [`Fix`] for a single type expression, e.g. `int`.
         Some(Fix::applicable_edit(
             Edit::range_replacement(checker.generator().expr(edit_expr), expr.range()),
             applicability,
         ))
     } else {
         match union_type {
-            // See redundant numeric union
             UnionKind::PEP604 => Some(generate_pep604_fix(
                 checker,
                 unique_nodes,
@@ -132,7 +120,6 @@ pub(crate) fn duplicate_union_member<'a>(checker: &Checker, expr: &'a Expr) {
                 applicability,
             )),
             UnionKind::TypingUnion => {
-                // Request `typing.Union`
                 let Some(importer) = checker.typing_importer("Union", PythonVersion::lowest())
                 else {
                     return;

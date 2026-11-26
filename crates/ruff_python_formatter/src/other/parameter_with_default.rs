@@ -21,22 +21,6 @@ impl FormatNodeRule<ParameterWithDefault> for FormatParameterWithDefault {
 
         if let Some(default) = default {
             let space = parameter.annotation.is_some().then_some(space());
-            // ```python
-            // def f(
-            //     a = # parameter trailing comment; needs line break
-            //     1,
-            //     b =
-            //     # default leading comment; needs line break
-            //     2,
-            //     c = ( # the default leading can only be end-of-line with parentheses; no line break
-            //         3
-            //     ),
-            //     d = (
-            //         # own line leading comment with parentheses; no line break
-            //         4
-            //     )
-            // )
-            // ```
             let needs_line_break_trailing = f.context().comments().has_trailing(parameter);
             let default_first_comment = f.context().comments().leading(default.as_ref()).first();
             let needs_line_break_leading =

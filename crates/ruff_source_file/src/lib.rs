@@ -187,7 +187,6 @@ impl PartialOrd for SourceFile {
 
 impl Ord for SourceFile {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Short circuit if these are the same source files
         if Arc::ptr_eq(&self.inner, &other.inner) {
             Ordering::Equal
         } else {

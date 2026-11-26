@@ -117,8 +117,6 @@ pub(crate) fn invalid_pathlib_with_suffix(checker: &Checker, call: &ast::ExprCal
 
     let single_dot = string_value == ".";
 
-    // As of Python 3.14, a single dot is considered a valid suffix.
-    // https://docs.python.org/3.14/library/pathlib.html#pathlib.PurePath.with_suffix
     if single_dot && checker.target_version() >= PythonVersion::PY314 {
         return;
     }

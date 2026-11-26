@@ -92,7 +92,6 @@ pub(crate) fn unnecessary_generator_list(checker: &Checker, call: &ast::ExprCall
         return;
     }
 
-    // Short-circuit: given `list(x for x in y)`, generate `list(y)` (in lieu of `[x for x in y]`).
     if let [generator] = generators.as_slice() {
         if generator.ifs.is_empty() && !generator.is_async {
             if ComparableExpr::from(elt) == ComparableExpr::from(&generator.target) {
@@ -111,7 +110,6 @@ pub(crate) fn unnecessary_generator_list(checker: &Checker, call: &ast::ExprCall
         }
     }
 
-    // Convert `list(f(x) for x in y)` to `[f(x) for x in y]`.
     let mut diagnostic = checker.report_diagnostic(
         UnnecessaryGeneratorList {
             short_circuit: false,
@@ -119,15 +117,12 @@ pub(crate) fn unnecessary_generator_list(checker: &Checker, call: &ast::ExprCall
         call.range(),
     );
     let fix = {
-        // Replace `list(` with `[`.
         let call_start = Edit::replacement(
             "[".to_string(),
             call.start(),
             call.arguments.start() + TextSize::from(1),
         );
 
-        // Replace `)` with `]`.
-        // Place `]` at argument's end or at trailing comma if present
         let after_arg_tokens = checker
             .tokens()
             .in_range(TextRange::new(argument.end(), call.end()));
@@ -138,16 +133,11 @@ pub(crate) fn unnecessary_generator_list(checker: &Checker, call: &ast::ExprCall
             - TextSize::from(1);
         let call_end = Edit::replacement("]".to_string(), right_bracket_loc, call.end());
 
-        // Remove the inner parentheses, if the expression is a generator. The easiest way to do
-        // this reliably is to use the printer.
         if *parenthesized {
-            // The generator's range will include the innermost parentheses, but it could be
-            // surrounded by additional parentheses.
             let range =
                 parenthesized_range(argument.into(), (&call.arguments).into(), checker.tokens())
                     .unwrap_or(argument.range());
 
-            // The generator always parenthesizes the expression; trim the parentheses.
             let generator = checker.generator().expr(argument);
             let generator = generator[1..generator.len() - 1].to_string();
 

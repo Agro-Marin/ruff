@@ -15,7 +15,6 @@ pub struct RuleSet([u64; RULESET_SIZE]);
 
 impl RuleSet {
     const EMPTY: [u64; RULESET_SIZE] = [0; RULESET_SIZE];
-    // 64 fits into a u16 without truncation
     #[expect(clippy::cast_possible_truncation)]
     const SLICE_BITS: u16 = u64::BITS as u16;
 
@@ -35,9 +34,7 @@ impl RuleSet {
             "Rule index out of bounds. Increase the size of the bitset array."
         );
 
-        // The bit-position of this specific rule in the slice
         let shift = rule % Self::SLICE_BITS;
-        // Set the index for that rule to 1
         let mask = 1 << shift;
 
         let mut bits = Self::EMPTY;
@@ -52,7 +49,6 @@ impl RuleSet {
 
         let mut i = 0;
 
-        // Uses a while because for loops are not allowed in const functions.
         while i < rules.len() {
             set = set.union(&RuleSet::from_rule(rules[i]));
             i += 1;

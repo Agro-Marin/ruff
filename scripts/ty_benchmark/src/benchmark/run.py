@@ -91,7 +91,6 @@ def main() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # Validate arguments.
     if args.accept and not args.snapshot:
         parser.error("--accept can only be used with --snapshot")
 
@@ -102,7 +101,6 @@ def main() -> None:
     warmup = args.warmup
     min_runs = args.min_runs
 
-    # Determine the tools to benchmark, based on the user-provided arguments.
     suites: list[Tool] = []
 
     for tool_name in args.tool or TOOL_CHOICES:
@@ -174,7 +172,6 @@ def main() -> None:
             print()
 
             if args.snapshot:
-                # Get the directory where run.py is located to find snapshots directory.
                 script_dir = Path(__file__).parent.parent.parent
                 snapshot_dir = script_dir / "snapshots"
 

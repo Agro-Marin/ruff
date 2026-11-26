@@ -171,7 +171,6 @@ pub(crate) fn numpy_2_0_deprecation(checker: &Checker, expr: &Expr) {
     };
 
     let replacement = match qualified_name.segments() {
-        // NumPy's main namespace np.* members removed in 2.0
         ["numpy", "add_docstring"] => Replacement {
             existing: "add_docstring",
             details: Details::AutoImport {
@@ -684,7 +683,6 @@ pub(crate) fn numpy_2_0_deprecation(checker: &Checker, expr: &Expr) {
             compatibility,
         } => {
             diagnostic.try_set_fix(|| {
-                // `numpy.char` is not an importable module path on NumPy 1.x.
                 let (path, name, attribute) = if matches!(
                     (path, name),
                     ("numpy.char", "chararray" | "compare_chararrays")

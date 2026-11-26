@@ -80,10 +80,6 @@ fn is_timeout_error_alias(qualified_name: &QualifiedName, target_version: Python
             ["socket", "timeout"] | ["asyncio", "TimeoutError"]
         )
     } else {
-        // N.B. This lint is only invoked for Python 3.10+. We assume
-        // as much here since otherwise socket.timeout would be an unsafe
-        // fix in Python <3.10. We add an assert to make this assumption
-        // explicit.
         assert!(
             target_version >= PythonVersion::PY310,
             "lint should only be used for Python 3.10+",
@@ -126,7 +122,6 @@ fn tuple_diagnostic(checker: &Checker, tuple: &ast::ExprTuple, aliases: &[&Expr]
     let mut diagnostic = checker.report_diagnostic(TimeoutErrorAlias { name: None }, tuple.range());
     let semantic = checker.semantic();
     if semantic.has_builtin_binding("TimeoutError") {
-        // Filter out any `TimeoutErrors` aliases.
         let mut remaining: Vec<Expr> = tuple
             .iter()
             .filter_map(|element| {
@@ -138,7 +133,6 @@ fn tuple_diagnostic(checker: &Checker, tuple: &ast::ExprTuple, aliases: &[&Expr]
             })
             .collect();
 
-        // If `TimeoutError` itself isn't already in the tuple, add it.
         if tuple
             .iter()
             .all(|element| !semantic.match_builtin_expr(element, "TimeoutError"))
@@ -195,7 +189,6 @@ pub(crate) fn timeout_error_alias_handlers(checker: &Checker, handlers: &[Except
                 atom_diagnostic(checker, expr);
             }
             Expr::Tuple(tuple) => {
-                // List of aliases to replace with `TimeoutError`.
                 let mut aliases: Vec<&Expr> = vec![];
                 for element in tuple {
                     if is_alias(element, checker.semantic(), checker.target_version()) {

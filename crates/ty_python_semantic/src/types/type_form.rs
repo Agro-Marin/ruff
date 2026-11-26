@@ -17,7 +17,6 @@ pub(super) fn walk_typeform_type<'db, V: visitor::TypeVisitor<'db> + ?Sized>(
     visitor.visit_type(db, typeform_type.type_argument(db));
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for TypeFormType<'_> {}
 
 impl<'db> TypeFormType<'db> {
@@ -54,7 +53,6 @@ impl<'db> Type<'db> {
                 Type::TypeAlias(alias) => {
                     visitor.visit(db, ty, || project(db, env, alias.value_type(db), visitor))
                 }
-                // Recursive bodies can contain type forms; unfold them under the same guard.
                 Type::Recursive(recursive) => visitor.visit(db, ty, || {
                     project(db, env, recursive.unfold(db, env).into_type(), visitor)
                 }),
@@ -98,7 +96,6 @@ impl<'db> Type<'db> {
 }
 
 impl<'db> VarianceInferable<'db> for TypeFormType<'db> {
-    // `TypeForm` is covariant in its type argument.
     fn variance_of(
         self,
         db: &'db dyn Db,

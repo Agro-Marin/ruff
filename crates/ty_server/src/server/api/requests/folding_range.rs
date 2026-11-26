@@ -40,10 +40,6 @@ impl BackgroundDocumentRequestHandler for FoldingRangeRequestHandler {
             return Ok(None);
         };
 
-        // If this document is a notebook cell, only return folding ranges for this cell.
-        // Folding ranges are reported as local ranges, so returning notebook-wide ranges
-        // would produce invalid coordinates for every other cell. A cell without a range in the
-        // notebook's Python source, such as one that uses a cell magic, has no folding ranges.
         let cell_range = if snapshot.document().is_cell() {
             let Some(range) = cell_range(db, file, snapshot.document().uri()) else {
                 return Ok(None);

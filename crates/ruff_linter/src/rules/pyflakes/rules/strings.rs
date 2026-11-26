@@ -579,7 +579,6 @@ pub(crate) fn percent_format_expected_mapping(
     location: TextRange,
 ) {
     if !summary.keywords.is_empty() {
-        // Tuple, List, Set (+comprehensions)
         match right {
             Expr::List(_)
             | Expr::Tuple(_)
@@ -619,7 +618,6 @@ pub(crate) fn percent_format_extra_named_arguments(
     let Expr::Dict(dict) = &right else {
         return;
     };
-    // If any of the keys are spread, abort.
     if dict.iter_keys().any(|key| key.is_none()) {
         return;
     }
@@ -662,7 +660,6 @@ pub(crate) fn percent_format_extra_named_arguments(
         )?;
         Ok(Fix::applicable_edit(
             edit,
-            // Mark fix as unsafe if `dict` contains a call with side effect
             if contains_effect(right, |id| checker.semantic().has_builtin_binding(id)) {
                 Applicability::Unsafe
             } else {
@@ -688,7 +685,7 @@ pub(crate) fn percent_format_missing_arguments(
     };
 
     if dict.iter_keys().any(|key| key.is_none()) {
-        return; // contains **x splat
+        return;
     }
 
     let mut keywords = FxHashSet::default();
@@ -698,7 +695,7 @@ pub(crate) fn percent_format_missing_arguments(
                 keywords.insert(value.to_str());
             }
             _ => {
-                return; // Dynamic keys present
+                return;
             }
         }
     }
@@ -760,10 +757,6 @@ pub(crate) fn percent_format_positional_count_mismatch(
             );
         }
     } else if let ResolvedPythonType::Atom(resolved_type) = ResolvedPythonType::from(right) {
-        // If we can infer a concrete non-tuple type for the RHS, it's always
-        // a single positional argument. Variables, attribute accesses, calls,
-        // etc. resolve to `Unknown` and are not flagged because they could be
-        // tuples at runtime.
         if resolved_type != PythonType::Tuple && summary.num_positional != 1 {
             checker.report_diagnostic(
                 PercentFormatPositionalCountMismatch {
@@ -774,9 +767,6 @@ pub(crate) fn percent_format_positional_count_mismatch(
             );
         }
     } else if summary.num_positional == 0 {
-        // When the format string has no placeholders, only `()` or `{}` would
-        // succeed at runtime. The chance that this is intentional is very low,
-        // so flag any RHS that isn't an empty tuple or empty dict literal.
         checker.report_diagnostic(
             PercentFormatPositionalCountMismatch { wanted: 0, got: 1 },
             location,
@@ -808,7 +798,6 @@ pub(crate) fn string_dot_format_extra_named_arguments(
     summary: &FormatSummary,
     keywords: &[Keyword],
 ) {
-    // If there are any **kwargs, abort.
     if has_star_star_kwargs(keywords) {
         return;
     }
@@ -851,7 +840,6 @@ pub(crate) fn string_dot_format_extra_named_arguments(
 
         Ok(Fix::applicable_edit(
             edit,
-            // Mark fix as unsafe if the `format` call contains an argument with side effect
             if side_effects {
                 Applicability::Unsafe
             } else {
@@ -868,10 +856,6 @@ pub(crate) fn string_dot_format_extra_positional_arguments(
     summary: &FormatSummary,
     args: &[Expr],
 ) {
-    // We can only fix if the positional arguments we're removing don't require re-indexing
-    // the format string itself. For example, we can't fix `"{1}{2}".format(0, 1, 2)"`, since
-    // this requires changing the format string to `"{0}{1}"`. But we can fix
-    // `"{0}{1}".format(0, 1, 2)`, since this only requires modifying the call arguments.
     fn is_contiguous_from_end<T>(indexes: &[usize], target: &[T]) -> bool {
         if indexes.is_empty() {
             return true;
@@ -930,7 +914,6 @@ pub(crate) fn string_dot_format_extra_positional_arguments(
             )?;
             Ok(Fix::applicable_edit(
                 edit,
-                // Mark fix as unsafe if the `format` call contains an argument with side effect
                 if side_effects {
                     Applicability::Unsafe
                 } else {

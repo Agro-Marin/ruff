@@ -74,9 +74,6 @@ impl CliTest {
     ) -> Result<Self> {
         let temp_dir = TempDir::new()?;
 
-        // Canonicalize the tempdir path because macOS uses symlinks for tempdirs
-        // and that doesn't play well with our snapshot filtering.
-        // Simplify with dunce because otherwise we get UNC paths on Windows.
         let project_dir = dunce::simplified(
             &temp_dir
                 .path()
@@ -217,7 +214,6 @@ impl CliTest {
         let mut command = Command::new(get_cargo_bin(BIN_NAME));
         command.current_dir(&self.project_dir);
 
-        // Unset all environment variables because they can affect test behavior.
         command.env_clear();
 
         command

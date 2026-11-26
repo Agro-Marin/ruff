@@ -202,12 +202,6 @@ pub(crate) fn raises_call(checker: &Checker, call: &ast::ExprCall, qualified_nam
         }
 
         if checker.is_rule_enabled(Rule::PytestRaisesTooBroad) {
-            // Pytest.raises has two overloads
-            // ```py
-            // with raises(expected_exception: type[E] | tuple[type[E], ...], *, match: str | Pattern[str] | None = ...) → RaisesContext[E] as excinfo
-            // with raises(expected_exception: type[E] | tuple[type[E], ...], func: Callable[[...], Any], *args: Any, **kwargs: Any) → ExceptionInfo[E] as excinfo
-            // ```
-            // Don't raise this diagnostic if the call matches the second overload (has a second positional argument or an argument named `func`)
             if call.arguments.find_argument("func", 1).is_none() {
                 if let Some(exception) = call.arguments.find_argument_value("expected_exception", 0)
                 {
@@ -237,14 +231,11 @@ pub(crate) fn complex_raises(checker: &Checker, stmt: &Stmt, items: &[WithItem],
         _ => false,
     });
 
-    // Check body for `pytest.raises` context manager
     if raises_called {
         let is_too_complex = if let [stmt] = body {
             match stmt {
                 Stmt::With(ast::StmtWith { body, .. }) => is_non_trivial_with_body(body),
-                // Allow function and class definitions to test decorators.
                 Stmt::ClassDef(_) | Stmt::FunctionDef(_) => false,
-                // Allow empty `for` loops to test iterators.
                 Stmt::For(ast::StmtFor { body, .. }) => match &body[..] {
                     [Stmt::Pass(_)] => false,
                     [Stmt::Expr(ast::StmtExpr { value, .. })] => !value.is_ellipsis_literal_expr(),

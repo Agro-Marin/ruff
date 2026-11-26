@@ -131,10 +131,8 @@ pub(crate) fn suppressible_exception(
 
     let exception = if handler_names.is_empty() {
         if type_.is_none() {
-            // case where there are no handler names provided at all
             "BaseException".to_string()
         } else {
-            // case where handler names is an empty tuple
             String::new()
         }
     } else {

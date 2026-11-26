@@ -208,7 +208,6 @@ def foo():
     assert_cmd_snapshot!(test.format_command()
         .arg("--config")
         .arg("ruff.toml")
-        // This overrides the long line length set in the config file
         .args(["--config", "line-length=80"])
         .arg("-")
         .pass_stdin(fixture), @r#"
@@ -237,9 +236,7 @@ def foo():
     assert_cmd_snapshot!(test.format_command()
         .arg("--config")
         .arg("ruff.toml")
-        // This overrides the long line length set in the config file...
         .args(["--config", "line-length=80"])
-        // ...but this overrides them both:
         .args(["--line-length", "100"])
         .arg("-")
         .pass_stdin(fixture), @r#"
@@ -437,7 +434,6 @@ if __name__ == "__main__":
     say_hy("dear Ruff contributor")
 "#,
         ),
-        // Excluded file but passed to the CLI directly, should be formatted
         (
             "test.py",
             r#"
@@ -458,9 +454,7 @@ OTHER = "OTHER"
 
     assert_cmd_snapshot!(test.format_command()
         .args(["--check", "--config", "ruff.toml"])
-        // Explicitly pass test.py, should be formatted regardless of it being excluded by format.exclude
         .arg("test.py")
-        // Format all other files in the directory, should respect the `exclude` and `format.exclude` options
         .arg("."), @r#"
     success: false
     exit_code: 1
@@ -669,7 +663,6 @@ if __name__ == "__main__":
 "#;
 
     let test = CliTest::with_settings(|_project_dir, mut settings| {
-        // JSON double escapes backslashes
         settings.add_filter(r#""[^"]+\\?/?input.py"#, r#""[TMP]/input.py"#);
 
         settings
@@ -750,7 +743,6 @@ if __name__ == "__main__":
 
     test.write_file("main.py", contents)?;
 
-    // First format should exit with code 1 since the file needed formatting
     assert_cmd_snapshot!(test.format_command()
         .arg("--isolated")
         .arg("--exit-non-zero-on-format")
@@ -763,7 +755,6 @@ if __name__ == "__main__":
     ----- stderr -----
     ");
 
-    // Second format should exit with code 0 since no files needed formatting
     assert_cmd_snapshot!(test.format_command()
         .arg("--isolated")
         .arg("--exit-non-zero-on-format")
@@ -776,10 +767,8 @@ if __name__ == "__main__":
     ----- stderr -----
     ");
 
-    // Repeat the tests above with the --exit-non-zero-on-fix alias
     test.write_file("main.py", contents)?;
 
-    // First format should exit with code 1 since the file needed formatting
     assert_cmd_snapshot!(test.format_command()
         .arg("--isolated")
         .arg("--exit-non-zero-on-fix")
@@ -792,7 +781,6 @@ if __name__ == "__main__":
     ----- stderr -----
     ");
 
-    // Second format should exit with code 0 since no files needed formatting
     assert_cmd_snapshot!(test.format_command()
         .arg("--isolated")
         .arg("--exit-non-zero-on-fix")
@@ -810,8 +798,6 @@ if __name__ == "__main__":
 
 #[test]
 fn check_silent_mode_no_output() -> Result<()> {
-    // Write code that requires formatting,
-    // but there should be no "reformat" output in silent mode
     let test = CliTest::with_file("main.py", "def     foo():\n                pass\n")?;
 
     assert_cmd_snapshot!(test.format_command().args(["--check", "--silent"]), @"
@@ -826,7 +812,6 @@ fn check_silent_mode_no_output() -> Result<()> {
 
 #[test]
 fn check_quiet_mode_shows_diagnostics_only() -> Result<()> {
-    // should show diagnostics but not summary
     let test = CliTest::with_file("main.py", "def     foo():\n                pass\n")?;
 
     assert_cmd_snapshot!(test.format_command().args(["--check", "--quiet"]), @"
@@ -850,7 +835,6 @@ fn check_quiet_mode_shows_diagnostics_only() -> Result<()> {
 
 #[test]
 fn check_default_mode_shows_diagnostics_and_summary() -> Result<()> {
-    // default mode should show both diagnostics and summary
     let test = CliTest::with_file("main.py", "def     foo():\n                pass\n")?;
 
     assert_cmd_snapshot!(test.format_command().args(["--check"]), @"
@@ -914,7 +898,6 @@ if __name__ == "__main__":
     say_hy("dear Ruff contributor")
 "#,
         ),
-        // Excluded file but passed to the CLI directly, should be formatted
         (
             "test.py",
             r#"
@@ -935,9 +918,7 @@ OTHER = "OTHER"
 
     assert_cmd_snapshot!(test.format_command()
         .args(["--force-exclude", "--check", "--config", "ruff.toml"])
-        // Explicitly pass test.py, should not be formatted because of --force-exclude
         .arg("test.py")
-        // Format all other files in the directory, should respect the `exclude` and `format.exclude` options
         .arg("."), @"
     success: false
     exit_code: 1
@@ -2487,7 +2468,6 @@ fn range_formatting_notebook() -> Result<()> {
 #[test]
 fn per_file_target_version_formatter() -> Result<()> {
     let test = CliTest::new()?;
-    // without `per-file-target-version` this should not be reformatted in the same way
     assert_cmd_snapshot!(test.format_command()
         .args(["--isolated", "--stdin-filename", "test.py", "--target-version=py38"])
         .arg("-")
@@ -2534,10 +2514,6 @@ with open("a_really_long_foo") as foo, open("a_really_long_bar") as bar, open("a
 /// reproduction repo here: <https://github.com/lucasfijen/example_ruff_glob_bug>
 #[test]
 fn cookiecutter_globbing() -> Result<()> {
-    // This is a simplified directory structure from the repo linked above. The essence of the
-    // problem is this `{{cookiecutter.repo_name}}` directory containing a config file with a glob.
-    // The absolute path of the glob contains the glob metacharacters `{{` and `}}` even though the
-    // user's glob does not.
     let test = CliTest::with_files([
         (
             "{{cookiecutter.repo_name}}/pyproject.toml",

@@ -57,8 +57,6 @@ impl Uv {
 
         let directory = match target {
             MetadataTarget::Workspace(path) => {
-                // Use the environment selected by `uv check` without synchronizing it.
-                // Let uv apply its configured lockfile policy.
                 command.arg("--active");
                 Some(*path)
             }
@@ -94,7 +92,6 @@ impl Uv {
             error: Arc::new(error),
         })?;
 
-        // Before uv 0.12.3, `--quiet` suppresses the metadata JSON even on success.
         if (!output.status.success() || output.stdout.is_empty())
             && let Some(version) = self.version(executor, directory)
             && version < Version::new(MINIMUM_UV_VERSION)

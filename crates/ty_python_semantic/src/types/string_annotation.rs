@@ -71,8 +71,6 @@ pub(crate) fn parse_string_annotation(
                     inference_flags.type_expression_context()
                 ));
             }
-        // Compare the raw contents (without quotes) of the expression with the parsed contents
-        // contained in the string literal.
         } else if &source[string_literal.content_range()] == string_literal.as_str() {
             match parsed_string_annotation(source.as_str(), string_literal) {
                 Ok(parsed) => return Some(parsed),
@@ -111,8 +109,6 @@ pub(crate) fn parse_string_annotation(
         } else if let Some(builder) =
             context.report_lint(&ESCAPE_CHARACTER_IN_FORWARD_ANNOTATION, string_expr)
         {
-            // The raw contents of the string doesn't match the parsed content. This could be the
-            // case for annotations that contain escape sequences.
             builder.into_diagnostic(format_args!(
                 "Escape characters are not allowed in {}s",
                 inference_flags.type_expression_context()
@@ -121,7 +117,6 @@ pub(crate) fn parse_string_annotation(
     } else if let Some(builder) =
         context.report_lint(&IMPLICIT_STRING_CONCATENATION_IN_ANNOTATION, string_expr)
     {
-        // String is implicitly concatenated.
         builder.into_diagnostic("Type expressions cannot span multiple string literals");
     }
 

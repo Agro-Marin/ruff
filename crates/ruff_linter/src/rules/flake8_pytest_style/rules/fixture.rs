@@ -942,8 +942,6 @@ fn check_fixture_decorator_name(checker: &Checker, decorator: &Decorator) {
 
         let reference = map_callable(&decorator.expression);
 
-        // Mark the fix as unsafe when comments are in range, as replacing the
-        // reference would remove them.
         let applicability = if checker.comment_ranges().intersects(reference.range()) {
             Applicability::Unsafe
         } else {

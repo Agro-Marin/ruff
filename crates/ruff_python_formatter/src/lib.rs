@@ -68,9 +68,6 @@ where
 
         leading_comments(node_comments.leading).fmt(f)?;
 
-        // Emit source map information for nodes that are valid "narrowing" targets
-        // in range formatting. Never emit source map information if they're disabled
-        // for performance reasons.
         let emit_source_position = (is_logical_line(node_ref) || node_ref.is_mod_module())
             && f.options().source_map_generation().is_enabled();
 
@@ -260,25 +257,12 @@ class A: ...
 "#;
         let source_type = PySourceType::Python;
 
-        // Parse the AST.
         let source_path = "code_inline.py";
         let parsed = parse(source, ParseOptions::from(source_type)).unwrap();
         let trivia = TriviaRanges::from(parsed.tokens());
         let options = PyFormatOptions::from_extension(Path::new(source_path));
         let formatted = format_module_ast(&parsed, &trivia, source, options).unwrap();
 
-        // Uncomment the `dbg` to print the IR.
-        // Use `dbg_write!(f, []) instead of `write!(f, [])` in your formatting code to print some IR
-        // inside of a `Format` implementation
-        // use ruff_formatter::FormatContext;
-        // dbg!(formatted
-        //     .document()
-        //     .display(formatted.context().source_code()));
-        //
-        // dbg!(formatted
-        //     .context()
-        //     .comments()
-        //     .debug(formatted.context().source_code()));
 
         let printed = formatted.print().unwrap();
 
@@ -396,7 +380,6 @@ print ( "format me" )"#
             }
         }
 
-        // 77 after g group (leading quote)
         let fits =
             r"aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd eeeeeeeeee ffffffffff gggggggggg h";
         let breaks =

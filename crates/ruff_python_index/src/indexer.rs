@@ -37,7 +37,6 @@ impl Indexer {
         let mut continuation_lines = Vec::new();
         let mut comment_ranges = Vec::new();
 
-        // Token, end
         let mut prev_end = TextSize::default();
         let mut line_start = TextSize::default();
 
@@ -47,10 +46,6 @@ impl Indexer {
             if prev_end != token_start {
                 let trivia = &source[TextRange::new(prev_end, token_start)];
 
-                // Get the trivia between the previous and the current token and detect any
-                // newlines. This is necessary because `RustPython` doesn't emit `[Tok::Newline]`
-                // tokens between any two tokens that form a continuation. That's why we have to
-                // extract the newlines "manually".
                 for (index, text) in trivia.match_indices(['\n', '\r']) {
                     if text == "\r" && trivia.as_bytes().get(index + 1) == Some(&b'\n') {
                         continue;
@@ -72,8 +67,6 @@ impl Indexer {
                 TokenKind::Comment => {
                     comment_ranges.push(token.range());
                 }
-                // String-like tokens, including f/t-string start, middle, and end tokens, can span
-                // multiple lines.
                 TokenKind::FStringStart
                 | TokenKind::FStringEnd
                 | TokenKind::TStringStart
@@ -133,7 +126,6 @@ impl Indexer {
     fn find_continuation(&self, offset: TextSize, source: &str) -> Option<TextSize> {
         let newline_pos = usize::from(offset).saturating_sub(1);
 
-        // Skip the newline.
         let newline_len = match source.as_bytes()[newline_pos] {
             b'\n' => {
                 if source.as_bytes().get(newline_pos.saturating_sub(1)) == Some(&b'\r') {
@@ -143,7 +135,6 @@ impl Indexer {
                 }
             }
             b'\r' => 1,
-            // No preceding line.
             _ => return None,
         };
 
@@ -174,8 +165,6 @@ impl Indexer {
     /// When passed the offset of `y`, this function will again return the offset of the backslash at
     /// the end of the first line.
     pub fn preceded_by_continuations(&self, offset: TextSize, source: &str) -> Option<TextSize> {
-        // Find the first preceding continuation. If the offset isn't the first non-whitespace
-        // character on the line, then we can't have a continuation.
         let previous_line_end = source.line_start(offset);
         if !source[TextRange::new(previous_line_end, offset)]
             .chars()
@@ -186,8 +175,6 @@ impl Indexer {
 
         let mut continuation = self.find_continuation(previous_line_end, source)?;
 
-        // Continue searching for continuations, in the unlikely event that we have multiple
-        // continuations in a row.
         loop {
             let previous_line_end = source.line_start(continuation);
             if source[TextRange::new(previous_line_end, continuation)]
@@ -274,13 +261,9 @@ if True:
         assert_eq!(
             new_indexer(contents).continuation_line_starts(),
             [
-                // row 1
                 TextSize::from(0),
-                // row 5
                 TextSize::from(22),
-                // row 6
                 TextSize::from(32),
-                // row 11
                 TextSize::from(71),
             ]
         );
@@ -304,9 +287,7 @@ import os
         assert_eq!(
             new_indexer(contents).continuation_line_starts(),
             [
-                // row 9
                 TextSize::from(84),
-                // row 12
                 TextSize::from(116)
             ]
         );
@@ -325,11 +306,8 @@ f'foo { 'str1' \
         assert_eq!(
             new_indexer(contents).continuation_line_starts(),
             [
-                // row 1
                 TextSize::new(0),
-                // row 2
                 TextSize::new(17),
-                // row 5
                 TextSize::new(63),
             ]
         );
@@ -348,13 +326,9 @@ x = (
         assert_eq!(
             new_indexer(contents).continuation_line_starts(),
             [
-                // row 3
                 TextSize::new(12),
-                // row 4
                 TextSize::new(18),
-                // row 5
                 TextSize::new(24),
-                // row 7
                 TextSize::new(31),
             ]
         );
@@ -458,61 +432,48 @@ the end"""
         .trim();
         let indexer = new_indexer(contents);
 
-        // For reference, the ranges of the f-strings in the above code are as
-        // follows where the ones inside parentheses are nested f-strings:
-        //
-        // [0..21, (36..80, 45..72, 55..63), 108..120, 121..137, (139..198, 164..184), (200..260, 226..248)]
 
         for (offset, innermost_range, outermost_range) in [
-            // Inside a normal f-string
             (
                 TextSize::new(130),
                 TextRange::new(TextSize::new(121), TextSize::new(137)),
                 TextRange::new(TextSize::new(121), TextSize::new(137)),
             ),
-            // Left boundary
             (
                 TextSize::new(121),
                 TextRange::new(TextSize::new(121), TextSize::new(137)),
                 TextRange::new(TextSize::new(121), TextSize::new(137)),
             ),
-            // Right boundary
             (
-                TextSize::new(136), // End offsets are exclusive
+                TextSize::new(136),
                 TextRange::new(TextSize::new(121), TextSize::new(137)),
                 TextRange::new(TextSize::new(121), TextSize::new(137)),
             ),
-            // "first" left
             (
                 TextSize::new(40),
                 TextRange::new(TextSize::new(36), TextSize::new(80)),
                 TextRange::new(TextSize::new(36), TextSize::new(80)),
             ),
-            // "second" left
             (
                 TextSize::new(50),
                 TextRange::new(TextSize::new(45), TextSize::new(72)),
                 TextRange::new(TextSize::new(36), TextSize::new(80)),
             ),
-            // "third"
             (
                 TextSize::new(60),
                 TextRange::new(TextSize::new(55), TextSize::new(63)),
                 TextRange::new(TextSize::new(36), TextSize::new(80)),
             ),
-            // "second" right
             (
                 TextSize::new(70),
                 TextRange::new(TextSize::new(45), TextSize::new(72)),
                 TextRange::new(TextSize::new(36), TextSize::new(80)),
             ),
-            // "first" right
             (
                 TextSize::new(75),
                 TextRange::new(TextSize::new(36), TextSize::new(80)),
                 TextRange::new(TextSize::new(36), TextSize::new(80)),
             ),
-            // Single-quoted f-strings spanning across multiple lines
             (
                 TextSize::new(160),
                 TextRange::new(TextSize::new(139), TextSize::new(198)),
@@ -523,7 +484,6 @@ the end"""
                 TextRange::new(TextSize::new(164), TextSize::new(184)),
                 TextRange::new(TextSize::new(139), TextSize::new(198)),
             ),
-            // Multi-line f-strings
             (
                 TextSize::new(220),
                 TextRange::new(TextSize::new(200), TextSize::new(260)),

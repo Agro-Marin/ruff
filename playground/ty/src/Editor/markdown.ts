@@ -1,6 +1,3 @@
-/**
- * Get the appropriate markdown language tag for a file based on its extension.
- */
 function getLanguageTag(filename: string): string {
   const extension = filename.split(".").pop()?.toLowerCase();
   switch (extension) {

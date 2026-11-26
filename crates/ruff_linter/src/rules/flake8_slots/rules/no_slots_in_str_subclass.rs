@@ -52,7 +52,6 @@ impl Violation for NoSlotsInStrSubclass {
 
 /// SLOT000
 pub(crate) fn no_slots_in_str_subclass(checker: &Checker, stmt: &Stmt, class: &StmtClassDef) {
-    // https://github.com/astral-sh/ruff/issues/14535
     if checker.source_type.is_stub() {
         return;
     }
@@ -66,7 +65,6 @@ pub(crate) fn no_slots_in_str_subclass(checker: &Checker, stmt: &Stmt, class: &S
         return;
     }
 
-    // Ignore subclasses of `enum.Enum` et al.
     if is_enumeration(class, semantic) {
         return;
     }

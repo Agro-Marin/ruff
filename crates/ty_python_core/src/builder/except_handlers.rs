@@ -124,8 +124,6 @@ impl ExceptionContextStackManager {
             let scope_id = builder.scope_stack[scope_stack_index].file_scope_id;
             let use_def_map = &builder.use_def_maps[scope_id];
 
-            // Each scope has an independent flow state, so an enclosing scope can still be
-            // reachable while we analyze an unreachable nested scope.
             if use_def_map.reachability == ScopedReachabilityConstraintId::ALWAYS_FALSE {
                 break;
             }

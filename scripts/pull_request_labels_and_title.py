@@ -47,8 +47,6 @@ def main() -> None:
     pull = json.loads(gh_api(endpoint))
     if pull["state"] != "open" or pull["head"]["sha"] != args.head_sha:
         return
-    # An empty list would match every label, and GitHub's 3,000-file cap
-    # can hide a path that would rule out a label.
     if not files or len(files) != pull["changed_files"]:
         return
 

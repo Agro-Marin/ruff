@@ -454,8 +454,6 @@ impl<'ast> Format<PyFormatContext<'ast>> for FormatClauseHeader<'_, 'ast> {
         if has_skip_comment(self.trailing_colon_comment, f.context().source()) {
             write_suppressed_clause_header(self.header, f)?;
         } else {
-            // Write a source map entry for the colon for range formatting to support formatting the clause header without
-            // the clause body. Avoid computing `self.header.range()` otherwise because it's somewhat involved.
             let clause_end = if f.options().source_map_generation().is_enabled() {
                 Some(source_position(
                     self.header.range(f.context().source())?.end(),
@@ -494,8 +492,6 @@ fn clause_body<'a>(
 
 impl Format<PyFormatContext<'_>> for FormatClauseBody<'_> {
     fn fmt(&self, f: &mut Formatter<PyFormatContext<'_>>) -> FormatResult<()> {
-        // In stable, stubs are only collapsed in stub files, in preview stubs in functions
-        // or classes are collapsed too
         let should_collapse_stub = f.options().source_type().is_stub()
             || matches!(self.kind, SuiteKind::Function | SuiteKind::Class);
 
@@ -614,7 +610,6 @@ fn find_keyword(
 
             let mut token = tokenizer.next();
 
-            // If the last statement ends with a semi-colon, skip it.
             if matches!(
                 token,
                 Some(SimpleToken {
@@ -727,8 +722,6 @@ fn should_suppress_clause<'a>(
         return Ok(SuppressClauseHeader::No);
     };
 
-    // Early return if we don't have a skip comment
-    // to avoid computing header range in the common case
     if !has_skip_comment(
         f.context().comments().trailing(last_child_in_clause),
         source,
@@ -740,7 +733,6 @@ fn should_suppress_clause<'a>(
 
     let clause_range = TextRange::new(clause_start, last_child_in_clause.end());
 
-    // Only applies to clauses on a single line
     if source.contains_line_break(clause_range) {
         return Ok(SuppressClauseHeader::No);
     }
@@ -767,7 +759,6 @@ fn write_suppressed_clause(
 
     let clause_end = last_child_in_clause.end();
 
-    // Write the outer comments and format the node as verbatim
     write!(
         f,
         [
@@ -779,13 +770,7 @@ fn write_suppressed_clause(
         ]
     )?;
 
-    // We mark comments in the header as formatted as in
-    // the implementation of [`write_suppressed_clause_header`].
-    //
-    // Note that the header may be multi-line and contain
-    // various comments since we only require that the range
     // starting at the _colon_ and ending at the `# fmt: skip`
-    // fits on one line.
     header.visit(&mut |child| {
         for comment in comments.leading_trailing(child) {
             comment.mark_formatted();
@@ -793,9 +778,6 @@ fn write_suppressed_clause(
         comments.mark_verbatim_node_comments_formatted(child);
     });
 
-    // Similarly we mark the comments in the body as formatted.
-    // Note that the trailing comments for the last child in the
-    // body have already been handled above.
     for stmt in clause.body {
         comments.mark_verbatim_node_comments_formatted(stmt.into());
     }

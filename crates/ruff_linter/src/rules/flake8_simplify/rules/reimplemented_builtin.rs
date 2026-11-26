@@ -77,14 +77,10 @@ pub(crate) fn convert_for_loop_to_any_all(checker: &Checker, stmt: &Stmt) {
         return;
     }
 
-    // The `for` loop itself must consist of an `if` with a `return`.
     let Some(loop_) = match_loop(stmt) else {
         return;
     };
 
-    // Afterwards, there are two cases to consider:
-    // - `for` loop with an `else: return True` or `else: return False`.
-    // - `for` loop followed by `return True` or `return False`.
     let Some(terminal) = match_else_return(stmt).or_else(|| {
         let parent = checker.semantic().current_statement_parent()?;
         let sibling = traversal::suite(stmt, parent)?.next_sibling()?;
@@ -93,14 +89,11 @@ pub(crate) fn convert_for_loop_to_any_all(checker: &Checker, stmt: &Stmt) {
         return;
     };
 
-    // Check if any of the expressions contain an `await`, `yield`, or `yield from` expression.
-    // If so, turning the code into an any() or all() call would produce a SyntaxError.
     if contains_yield_like(loop_.target) || contains_yield_like(loop_.test) {
         return;
     }
 
     match (loop_.return_value, terminal.return_value) {
-        // Replace with `any`.
         (true, false) => {
             let contents = return_stmt(
                 Name::new_static("any"),
@@ -110,7 +103,6 @@ pub(crate) fn convert_for_loop_to_any_all(checker: &Checker, stmt: &Stmt) {
                 checker.generator(),
             );
 
-            // Don't flag if the resulting expression would exceed the maximum line length.
             if !fits(
                 &contents,
                 stmt.into(),
@@ -135,9 +127,7 @@ pub(crate) fn convert_for_loop_to_any_all(checker: &Checker, stmt: &Stmt) {
                 )));
             }
         }
-        // Replace with `all`.
         (false, true) => {
-            // Invert the condition.
             let test = {
                 if let Expr::UnaryOp(ast::ExprUnaryOp {
                     op: UnaryOp::Not,
@@ -175,7 +165,6 @@ pub(crate) fn convert_for_loop_to_any_all(checker: &Checker, stmt: &Stmt) {
                 checker.generator(),
             );
 
-            // Don't flag if the resulting expression would exceed the maximum line length.
             let line_start = checker.locator().line_start(stmt.start());
             if LineWidthBuilder::new(checker.settings().tab_size)
                 .add_str(
@@ -255,8 +244,6 @@ fn match_loop(stmt: &Stmt) -> Option<Loop<'_>> {
         return None;
     };
 
-    // The loop itself should contain a single `if` statement, with a single `return` statement in
-    // the body.
     let [
         Stmt::If(ast::StmtIf {
             body: nested_body,
@@ -309,7 +296,6 @@ fn match_else_return(stmt: &Stmt) -> Option<Terminal<'_>> {
         return None;
     };
 
-    // The `else` block has to contain a single `return True` or `return False`.
     let [
         Stmt::Return(ast::StmtReturn {
             value: Some(next_value),
@@ -349,12 +335,10 @@ fn match_sibling_return<'a>(stmt: &'a Stmt, sibling: &'a Stmt) -> Option<Termina
         return None;
     };
 
-    // The loop itself shouldn't have an `else` block.
     if !orelse.is_empty() {
         return None;
     }
 
-    // The next statement has to be a `return True` or `return False`.
     let Stmt::Return(ast::StmtReturn {
         value: Some(next_value),
         range: _,

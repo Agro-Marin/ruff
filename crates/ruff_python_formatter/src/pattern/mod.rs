@@ -65,14 +65,6 @@ impl FormatRule<Pattern, PyFormatContext<'_>> for FormatPattern {
         if parenthesize {
             let comments = f.context().comments().clone();
 
-            // Any comments on the open parenthesis.
-            //
-            // For example, `# comment` in:
-            // ```python
-            // (  # comment
-            //    1
-            // )
-            // ```
             let open_parenthesis_comment = comments
                 .leading(pattern)
                 .first()
@@ -110,7 +102,6 @@ fn is_pattern_parenthesized(
     comment_ranges: &CommentRanges,
     contents: &str,
 ) -> bool {
-    // First test if there's a closing parentheses because it tends to be cheaper.
     if matches!(
         first_non_trivia_token(pattern.end(), contents),
         Some(SimpleToken {
@@ -171,9 +162,6 @@ impl Format<PyFormatContext<'_>> for MaybeParenthesizePattern<'_> {
         let comments = f.context().comments();
         let pattern_comments = comments.leading_dangling_trailing(*pattern);
 
-        // If the pattern has comments, we always want to preserve the parentheses. This also
-        // ensures that we correctly handle parenthesized comments, and don't need to worry about
-        // them in the implementation below.
         if pattern_comments.has_leading() || pattern_comments.has_trailing_own_line() {
             return pattern.format().with_options(Parentheses::Always).fmt(f);
         }
@@ -197,7 +185,6 @@ impl Format<PyFormatContext<'_>> for MaybeParenthesizePattern<'_> {
                 if pattern_comments.has_trailing() {
                     pattern.format().with_options(Parentheses::Always).fmt(f)
                 } else {
-                    // The group id is necessary because the nested expressions may reference it.
                     let group_id = f.group_id("optional_parentheses");
                     let f = &mut WithNodeLevel::new(NodeLevel::Expression(Some(group_id)), f);
 
@@ -225,13 +212,10 @@ fn can_pattern_omit_optional_parentheses(pattern: &Pattern, context: &PyFormatCo
     visitor.visit_pattern(pattern, context);
 
     if !visitor.any_parenthesized_expressions {
-        // Only use the more complex IR if there's a parenthesized pattern that can be split before
-        // splitting other patterns. E.g. split the sequence pattern before the string literal `"a" "b" | [a, b, c, d]`.
         false
     } else if visitor.max_precedence_count > 1 {
         false
     } else {
-        // It's complicated
         fn has_parentheses_and_is_non_empty(pattern: &Pattern, context: &PyFormatContext) -> bool {
             let has_own_non_empty = match pattern {
                 Pattern::MatchValue(_)
@@ -254,7 +238,6 @@ fn can_pattern_omit_optional_parentheses(pattern: &Pattern, context: &PyFormatCo
             if has_own_non_empty {
                 true
             } else {
-                // If the pattern has no own parentheses or it is empty (e.g. ([])), check for surrounding parentheses (that should be preserved).
                 is_pattern_parenthesized(pattern, context.trivia().comments(), context.source())
             }
         }
@@ -292,16 +275,11 @@ impl<'a> CanOmitOptionalParenthesesVisitor<'a> {
                 | Expr::NumberLiteral(_)
                 | Expr::Attribute(_)
                 | Expr::UnaryOp(_) => {
-                    // require no state update other than visit_pattern does.
                 }
 
                 Expr::FString(_) => {
-                    // F-strings are allowed according to python's grammar but fail with a syntax error at runtime.
-                    // That's why we need to support them for formatting.
                 }
 
-                // `case 4+3j:` or `case 4-3j:
-                // Cannot contain arbitrary expressions. Limited to complex numbers.
                 Expr::BinOp(_) => {
                     self.update_max_precedence(OperatorPrecedence::Additive, 1);
                 }
@@ -317,7 +295,6 @@ impl<'a> CanOmitOptionalParenthesesVisitor<'a> {
             Pattern::MatchClass(_) => {
                 self.any_parenthesized_expressions = true;
 
-                // The pattern doesn't start with a parentheses pattern, but with the class's identifier.
                 self.first.set_if_none(First::Token);
             }
             Pattern::MatchAs(PatternMatchAs { pattern, .. }) => {
@@ -342,7 +319,6 @@ impl<'a> CanOmitOptionalParenthesesVisitor<'a> {
     fn visit_sub_pattern(&mut self, pattern: &'a Pattern, context: &PyFormatContext) {
         self.last = Some(pattern);
 
-        // Rule only applies for non-parenthesized patterns.
         if is_pattern_parenthesized(pattern, context.trivia().comments(), context.source()) {
             self.any_parenthesized_expressions = true;
         } else {

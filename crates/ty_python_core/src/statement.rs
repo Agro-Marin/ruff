@@ -53,7 +53,6 @@ pub struct StatementInner<'db> {
     pub node_ref: AstNodeRef<ast::Stmt>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for StatementInner<'_> {}
 
 impl<'db> StatementInner<'db> {

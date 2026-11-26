@@ -33,16 +33,12 @@ impl ResolvedPythonType {
                 }
             }
             (Self::Atom(a), Self::Union(mut b)) => {
-                // If `a` is a subtype of any of the types in `b`, then `a` is
-                // redundant.
                 if !b.iter().any(|b_element| a.is_subtype_of(*b_element)) {
                     b.insert(a);
                 }
                 Self::Union(b)
             }
             (Self::Union(mut a), Self::Atom(b)) => {
-                // If `b` is a subtype of any of the types in `a`, then `b` is
-                // redundant.
                 if !a.iter().any(|a_element| b.is_subtype_of(*a_element)) {
                     a.insert(b);
                 }
@@ -52,8 +48,6 @@ impl ResolvedPythonType {
                 let mut b = b.into_iter().collect::<Vec<_>>();
                 b.sort_unstable();
                 for b_element in b {
-                    // If `b_element` is a subtype of any of the types in `a`, then
-                    // `b_element` is redundant.
                     if !a
                         .iter()
                         .any(|a_element| b_element.is_subtype_of(*a_element))
@@ -70,7 +64,6 @@ impl ResolvedPythonType {
 impl From<&Expr> for ResolvedPythonType {
     fn from(expr: &Expr) -> Self {
         match expr {
-            // Primitives.
             Expr::Dict(_) => ResolvedPythonType::Atom(PythonType::Dict),
             Expr::DictComp(_) => ResolvedPythonType::Atom(PythonType::Dict),
             Expr::Set(_) => ResolvedPythonType::Atom(PythonType::Set),
@@ -99,7 +92,6 @@ impl From<&Expr> for ResolvedPythonType {
             }
             Expr::NoneLiteral(_) => ResolvedPythonType::Atom(PythonType::None),
             Expr::EllipsisLiteral(_) => ResolvedPythonType::Atom(PythonType::Ellipsis),
-            // Simple container expressions.
             Expr::Named(ast::ExprNamed { value, .. }) => ResolvedPythonType::from(value.as_ref()),
             Expr::If(ast::ExprIf { body, orelse, .. }) => {
                 let body = ResolvedPythonType::from(body.as_ref());
@@ -107,14 +99,12 @@ impl From<&Expr> for ResolvedPythonType {
                 body.union(orelse)
             }
 
-            // Boolean operators.
             Expr::BoolOp(ast::ExprBoolOp { values, .. }) => values
                 .iter()
                 .map(ResolvedPythonType::from)
                 .reduce(ResolvedPythonType::union)
                 .unwrap_or(ResolvedPythonType::Unknown),
 
-            // Unary operators.
             Expr::UnaryOp(ast::ExprUnaryOp { operand, op, .. }) => match op {
                 UnaryOp::Invert => match ResolvedPythonType::from(operand.as_ref()) {
                     ResolvedPythonType::Atom(PythonType::Number(
@@ -123,9 +113,7 @@ impl From<&Expr> for ResolvedPythonType {
                     ResolvedPythonType::Atom(_) => ResolvedPythonType::TypeError,
                     _ => ResolvedPythonType::Unknown,
                 },
-                // Ex) `not 1.0`
                 UnaryOp::Not => ResolvedPythonType::Atom(PythonType::Number(NumberLike::Bool)),
-                // Ex) `+1` or `-1`
                 UnaryOp::UAdd | UnaryOp::USub => match ResolvedPythonType::from(operand.as_ref()) {
                     ResolvedPythonType::Atom(PythonType::Number(number)) => {
                         ResolvedPythonType::Atom(PythonType::Number(
@@ -141,7 +129,6 @@ impl From<&Expr> for ResolvedPythonType {
                 },
             },
 
-            // Binary operators.
             Expr::BinOp(ast::ExprBinOp {
                 left, op, right, ..
             }) => {
@@ -151,27 +138,22 @@ impl From<&Expr> for ResolvedPythonType {
                             ResolvedPythonType::from(left.as_ref()),
                             ResolvedPythonType::from(right.as_ref()),
                         ) {
-                            // Ex) `"Hello" + "world"`
                             (
                                 ResolvedPythonType::Atom(PythonType::String),
                                 ResolvedPythonType::Atom(PythonType::String),
                             ) => return ResolvedPythonType::Atom(PythonType::String),
-                            // Ex) `b"Hello" + b"world"`
                             (
                                 ResolvedPythonType::Atom(PythonType::Bytes),
                                 ResolvedPythonType::Atom(PythonType::Bytes),
                             ) => return ResolvedPythonType::Atom(PythonType::Bytes),
-                            // Ex) `[1] + [2]`
                             (
                                 ResolvedPythonType::Atom(PythonType::List),
                                 ResolvedPythonType::Atom(PythonType::List),
                             ) => return ResolvedPythonType::Atom(PythonType::List),
-                            // Ex) `(1, 2) + (3, 4)`
                             (
                                 ResolvedPythonType::Atom(PythonType::Tuple),
                                 ResolvedPythonType::Atom(PythonType::Tuple),
                             ) => return ResolvedPythonType::Atom(PythonType::Tuple),
-                            // Ex) `1 + 1.0`
                             (
                                 ResolvedPythonType::Atom(PythonType::Number(left)),
                                 ResolvedPythonType::Atom(PythonType::Number(right)),
@@ -180,7 +162,6 @@ impl From<&Expr> for ResolvedPythonType {
                                     left.coerce(right),
                                 ));
                             }
-                            // Ex) `"a" + 1`
                             (ResolvedPythonType::Atom(_), ResolvedPythonType::Atom(_)) => {
                                 return ResolvedPythonType::TypeError;
                             }
@@ -192,7 +173,6 @@ impl From<&Expr> for ResolvedPythonType {
                             ResolvedPythonType::from(left.as_ref()),
                             ResolvedPythonType::from(right.as_ref()),
                         ) {
-                            // Ex) `1 - 1`
                             (
                                 ResolvedPythonType::Atom(PythonType::Number(left)),
                                 ResolvedPythonType::Atom(PythonType::Number(right)),
@@ -201,32 +181,26 @@ impl From<&Expr> for ResolvedPythonType {
                                     left.coerce(right),
                                 ));
                             }
-                            // Ex) `{1, 2} - {2}`
                             (
                                 ResolvedPythonType::Atom(PythonType::Set),
                                 ResolvedPythonType::Atom(PythonType::Set),
                             ) => return ResolvedPythonType::Atom(PythonType::Set),
-                            // Ex) `"a" - "b"`
                             (ResolvedPythonType::Atom(_), ResolvedPythonType::Atom(_)) => {
                                 return ResolvedPythonType::TypeError;
                             }
                             _ => {}
                         }
                     }
-                    // Ex) "a" % "b"
                     Operator::Mod => match (
                         ResolvedPythonType::from(left.as_ref()),
                         ResolvedPythonType::from(right.as_ref()),
                     ) {
-                        // Ex) `"Hello" % "world"`
                         (ResolvedPythonType::Atom(PythonType::String), _) => {
                             return ResolvedPythonType::Atom(PythonType::String);
                         }
-                        // Ex) `b"Hello" % b"world"`
                         (ResolvedPythonType::Atom(PythonType::Bytes), _) => {
                             return ResolvedPythonType::Atom(PythonType::Bytes);
                         }
-                        // Ex) `1 % 2`
                         (
                             ResolvedPythonType::Atom(PythonType::Number(left)),
                             ResolvedPythonType::Atom(PythonType::Number(right)),
@@ -241,7 +215,6 @@ impl From<&Expr> for ResolvedPythonType {
                         ResolvedPythonType::from(left.as_ref()),
                         ResolvedPythonType::from(right.as_ref()),
                     ) {
-                        // Ex) `2 * 4`
                         (
                             ResolvedPythonType::Atom(PythonType::Number(left)),
                             ResolvedPythonType::Atom(PythonType::Number(right)),
@@ -250,7 +223,6 @@ impl From<&Expr> for ResolvedPythonType {
                                 left.coerce(right),
                             ));
                         }
-                        // Ex) `"1" * 2` or `2 * "1"`
                         (
                             ResolvedPythonType::Atom(PythonType::String),
                             ResolvedPythonType::Atom(PythonType::Number(NumberLike::Integer)),
@@ -264,12 +236,10 @@ impl From<&Expr> for ResolvedPythonType {
                         }
                         _ => {}
                     },
-                    // Standard arithmetic operators, which coerce to the "highest" number type.
                     Operator::FloorDiv | Operator::Pow => match (
                         ResolvedPythonType::from(left.as_ref()),
                         ResolvedPythonType::from(right.as_ref()),
                     ) {
-                        // Ex) `2 ** 4`
                         (
                             ResolvedPythonType::Atom(PythonType::Number(left)),
                             ResolvedPythonType::Atom(PythonType::Number(right)),
@@ -283,12 +253,10 @@ impl From<&Expr> for ResolvedPythonType {
                         }
                         _ => {}
                     },
-                    // Division, which returns at least `float`.
                     Operator::Div => match (
                         ResolvedPythonType::from(left.as_ref()),
                         ResolvedPythonType::from(right.as_ref()),
                     ) {
-                        // Ex) `1 / 2`
                         (
                             ResolvedPythonType::Atom(PythonType::Number(left)),
                             ResolvedPythonType::Atom(PythonType::Number(right)),
@@ -307,7 +275,6 @@ impl From<&Expr> for ResolvedPythonType {
                         }
                         _ => {}
                     },
-                    // Bitwise operators, which only work on `int` and `bool`.
                     Operator::BitAnd
                     | Operator::BitOr
                     | Operator::BitXor
@@ -317,7 +284,6 @@ impl From<&Expr> for ResolvedPythonType {
                             ResolvedPythonType::from(left.as_ref()),
                             ResolvedPythonType::from(right.as_ref()),
                         ) {
-                            // Ex) `1 & 2`
                             (
                                 ResolvedPythonType::Atom(PythonType::Number(left)),
                                 ResolvedPythonType::Atom(PythonType::Number(right)),
@@ -395,7 +361,6 @@ impl PythonType {
             (PythonType::Bytes, PythonType::Bytes) => true,
             (PythonType::None, PythonType::None) => true,
             (PythonType::Ellipsis, PythonType::Ellipsis) => true,
-            // The Numeric Tower (https://peps.python.org/pep-3141/)
             (PythonType::Number(NumberLike::Bool), PythonType::Number(NumberLike::Bool)) => true,
             (PythonType::Number(NumberLike::Integer), PythonType::Number(NumberLike::Integer)) => {
                 true
@@ -416,7 +381,6 @@ impl PythonType {
             (PythonType::Number(NumberLike::Float), PythonType::Number(NumberLike::Complex)) => {
                 true
             }
-            // This simple type hierarchy doesn't support generics.
             (PythonType::Dict, PythonType::Dict) => true,
             (PythonType::List, PythonType::List) => true,
             (PythonType::Set, PythonType::Set) => true,
@@ -465,7 +429,6 @@ mod tests {
 
     #[test]
     fn type_inference() {
-        // Atoms.
         assert_eq!(
             ResolvedPythonType::from(parse("1").expr()),
             ResolvedPythonType::Atom(PythonType::Number(NumberLike::Integer))
@@ -483,7 +446,6 @@ mod tests {
             ResolvedPythonType::Atom(PythonType::String)
         );
 
-        // Boolean operators.
         assert_eq!(
             ResolvedPythonType::from(parse("1 and 2").expr()),
             ResolvedPythonType::Atom(PythonType::Number(NumberLike::Integer))
@@ -493,7 +455,6 @@ mod tests {
             ResolvedPythonType::Atom(PythonType::Number(NumberLike::Integer))
         );
 
-        // Binary operators.
         assert_eq!(
             ResolvedPythonType::from(parse("1.0 * 2").expr()),
             ResolvedPythonType::Atom(PythonType::Number(NumberLike::Float))
@@ -527,7 +488,6 @@ mod tests {
             ResolvedPythonType::Atom(PythonType::Set)
         );
 
-        // Unary operators.
         assert_eq!(
             ResolvedPythonType::from(parse("-1").expr()),
             ResolvedPythonType::Atom(PythonType::Number(NumberLike::Integer))
@@ -553,7 +513,6 @@ mod tests {
             ResolvedPythonType::Atom(PythonType::Number(NumberLike::Bool))
         );
 
-        // Conditional expressions.
         assert_eq!(
             ResolvedPythonType::from(parse("1 if True else 2").expr()),
             ResolvedPythonType::Atom(PythonType::Number(NumberLike::Integer))

@@ -14,27 +14,19 @@ def find_ruff_bin() -> str:
     ruff_exe = "ruff" + sysconfig.get_config_var("EXE")
 
     targets = [
-        # The scripts directory for the current Python
         sysconfig.get_path("scripts"),
-        # The scripts directory for the base prefix
         sysconfig.get_path("scripts", vars={"base": sys.base_prefix}),
-        # Above the package root, e.g., from `pip install --prefix` or `uv run --with`
         (
-            # On Windows, with module path `<prefix>/Lib/site-packages/ruff`
             _join(
                 _matching_parents(_module_path(), "Lib/site-packages/ruff"), "Scripts"
             )
             if sys.platform == "win32"
-            # On Unix,  with module path `<prefix>/lib/python3.13/site-packages/ruff`
             else _join(
                 _matching_parents(_module_path(), "lib/python*/site-packages/ruff"),
                 "bin",
             )
         ),
-        # Adjacent to the package root, e.g., from `pip install --target`
-        # with module path `<target>/ruff`
         _join(_matching_parents(_module_path(), "ruff"), "bin"),
-        # The user scheme scripts directory, e.g., `~/.local/bin`
         sysconfig.get_path("scripts", scheme=_user_scheme()),
     ]
 

@@ -56,7 +56,6 @@ fn run_test(
     snapshot_path: &Utf8Path,
     test: &parser::MarkdownTest<Options>,
 ) -> Result<(TestOutcome, Vec<MarkdownEdit>), Failures> {
-    // Initialize the system and remove all files and directories to reset the system to a clean state.
     db.use_in_memory_system();
 
     let project_root = SystemPathBuf::from("/src");
@@ -100,7 +99,6 @@ fn run_test(
 
     let mut all_diagnostics = vec![];
 
-    // Edits for updating changed inline snapshots.
     let mut markdown_edits = vec![];
 
     let mut panic_info = None;

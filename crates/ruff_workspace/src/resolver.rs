@@ -106,8 +106,6 @@ impl<'a> Resolver<'a> {
     fn add(&mut self, path: &Path, settings: ResolvedSettings) {
         self.settings.push(settings);
 
-        // Normalize the path to use `/` separators and escape the '{' and '}' characters,
-        // which matchit uses for routing parameters.
         let path = path.to_slash_lossy().replace('{', "{{").replace('}', "}}");
 
         match self
@@ -121,9 +119,6 @@ impl<'a> Resolver<'a> {
             Err(_) => unreachable!("file paths are escaped before being inserted in the router"),
         }
 
-        // Insert a mapping that matches the directory itself (without a trailing slash).
-        // Inserting should always succeed because conflicts are resolved above and the above insertion guarantees
-        // that the path is correctly escaped.
         self.router.insert(path, self.settings.len() - 1).unwrap();
     }
 
@@ -149,8 +144,6 @@ impl<'a> Resolver<'a> {
         &'a self,
         files: &[&'a Path],
     ) -> FxHashMap<&'a Path, Option<PackageRoot<'a>>> {
-        // Pre-populate the module cache, since the list of files could (but isn't
-        // required to) contain some `__init__.py` files.
         let mut package_cache: FxHashMap<&Path, bool> = FxHashMap::default();
         for file in files {
             if file.ends_with("__init__.py") {
@@ -160,13 +153,10 @@ impl<'a> Resolver<'a> {
             }
         }
 
-        // Determine whether any of the settings require namespace packages. If not, we can save
-        // a lookup for every file.
         let has_namespace_packages = self
             .settings()
             .any(|settings| !settings.linter.namespace_packages.is_empty());
 
-        // Search for the package root for each file.
         let mut package_roots: FxHashMap<&Path, Option<PackageRoot<'_>>> = FxHashMap::default();
         for file in files {
             if let Some(package) = file.parent() {
@@ -182,11 +172,6 @@ impl<'a> Resolver<'a> {
             }
         }
 
-        // Discard any nested roots.
-        //
-        // For example, if `./foo/__init__.py` is a root, and then `./foo/bar` is empty, and
-        // `./foo/bar/baz/__init__.py` was detected as a root, we should only consider
-        // `./foo/__init__.py`.
         let mut router: Router<&Path> = Router::new();
         for root in package_roots
             .values()
@@ -195,8 +180,6 @@ impl<'a> Resolver<'a> {
             .map(PackageRoot::path)
             .collect::<BTreeSet<_>>()
         {
-            // Normalize the path to use `/` separators and escape the '{' and '}' characters,
-            // which matchit uses for routing parameters.
             let path = root.to_slash_lossy().replace('{', "{{").replace('}', "}}");
             if let Ok(matched) = router.at_mut(&path) {
                 debug!(
@@ -308,8 +291,6 @@ impl ConfigurationCache {
             return Ok((*configuration).clone());
         }
 
-        // Parsing, conversion, and cloning stay outside the lock so unrelated
-        // configurations can load in parallel.
         let configuration = Arc::new(load()?);
         let shared = self
             .configurations
@@ -379,7 +360,6 @@ fn resolve_configuration_with_cache(
             load()?
         };
 
-        // If extending, continue to collect.
         next = configuration.extend.as_ref().map(|extend| {
             fs::normalize_path_to(
                 extend,
@@ -388,12 +368,9 @@ fn resolve_configuration_with_cache(
             )
         });
 
-        // Keep track of (1) the paths we've already resolved (to avoid cycles), and (2)
-        // the base configuration for every path.
         configurations.insert(path, configuration);
     }
 
-    // Merge the configurations, in order.
     let mut configurations = configurations.into_iter();
     let (config_path, mut configuration) = configurations.next().unwrap();
     for (_, extend) in configurations {
@@ -464,15 +441,12 @@ pub fn project_files_in_path<'a>(
     root_settings: &'a RootSettings,
     transformer: &(dyn ConfigurationTransformer + Sync),
 ) -> Result<(Vec<Result<ResolvedFile, ignore::Error>>, Resolver<'a>)> {
-    // Normalize every path (e.g., convert from relative to absolute).
     let mut paths: Vec<PathBuf> = paths.iter().map(fs::normalize_path).unique().collect();
 
-    // Search for `pyproject.toml` files in all parent directories.
     let mut resolver = Resolver::new(root_settings);
     let mut seen = FxHashSet::default();
     let configuration_cache = ConfigurationCache::default();
 
-    // Insert the directory of the root configuration to avoid parsing the configuration a second time.
     if let Some(config_path) = &root_settings.resolved.config_path {
         seen.insert(config_path.parent().unwrap());
     }
@@ -489,18 +463,15 @@ pub fn project_files_in_path<'a>(
                             Some(&configuration_cache),
                         )?;
                         resolver.add(ancestor, settings);
-                        // We found the closest configuration.
                         break;
                     }
                 } else {
-                    // We already visited this ancestor, we can stop here.
                     break;
                 }
             }
         }
     }
 
-    // Check if the paths themselves are excluded.
     if resolver.force_exclude() {
         paths.retain(|path| !is_file_excluded(path, &resolver));
         if paths.is_empty() {
@@ -511,7 +482,6 @@ pub fn project_files_in_path<'a>(
     let (first_path, rest_paths) = paths
         .split_first()
         .ok_or_else(|| anyhow!("Expected at least one path to search for Python files"))?;
-    // Create the `WalkBuilder`.
     let mut builder = WalkBuilder::new(first_path);
 
     if let Ok(cwd) = std::env::current_dir() {
@@ -528,7 +498,6 @@ pub fn project_files_in_path<'a>(
 
     let walker = builder.build_parallel();
 
-    // Run the `WalkParallel` to collect all files.
     let state = WalkPythonFilesState::new(resolver, configuration_cache);
     let mut visitor = PythonFilesVisitorBuilder::new(transformer, &state);
     walker.visit(&mut visitor);
@@ -579,7 +548,6 @@ impl<'config> WalkPythonFilesState<'config> {
 /// we must keep `Root(foo.py)` and drop `Nested(foo.py)` so `foo.py` is
 /// linted as the user requested.
 fn deduplicate_files(mut files: ResolvedFiles) -> ResolvedFiles {
-    // Sort by path; for identical paths, prefer Root over Nested; place errors after files
     files.sort_by(|a, b| match (a, b) {
         (Ok(a_file), Ok(b_file)) => a_file.cmp(b_file),
         (Ok(_), Err(_)) => Ordering::Less,
@@ -632,7 +600,6 @@ where
 
 impl ParallelVisitor for PythonFilesVisitor<'_, '_> {
     fn visit(&mut self, result: std::result::Result<DirEntry, Error>) -> WalkState {
-        // Respect our own exclusion behavior.
         if let Ok(entry) = &result {
             if entry.depth() > 0 {
                 let path = entry.path();
@@ -663,8 +630,6 @@ impl ParallelVisitor for PythonFilesVisitor<'_, '_> {
             }
         }
 
-        // Search for the `pyproject.toml` file in this directory, before we visit any
-        // of its contents.
         if self.global.is_hierarchical {
             if let Ok(entry) = &result {
                 if entry
@@ -702,14 +667,11 @@ impl ParallelVisitor for PythonFilesVisitor<'_, '_> {
 
         match result {
             Ok(entry) => {
-                // Ignore directories
                 let resolved = if entry.file_type().is_none_or(|ft| ft.is_dir()) {
                     None
                 } else if entry.depth() == 0 {
-                    // Accept all files that are passed-in directly.
                     Some(ResolvedFile::Root(entry.into_path()))
                 } else {
-                    // Otherwise, check if the file is included.
                     let path = entry.path();
                     let resolver = self.global.resolver.read().unwrap();
                     let settings = resolver.resolve(path);
@@ -794,10 +756,8 @@ pub fn project_file_at_path(
     resolver: &mut Resolver,
     transformer: &dyn ConfigurationTransformer,
 ) -> Result<bool> {
-    // Normalize the path (e.g., convert from relative to absolute).
     let path = fs::normalize_path(path);
 
-    // Search for `pyproject.toml` files in all parent directories.
     if resolver.is_hierarchical() {
         for ancestor in path.ancestors() {
             if let Some(pyproject) = settings_toml(ancestor)? {
@@ -813,13 +773,11 @@ pub fn project_file_at_path(
         }
     }
 
-    // Check exclusions.
     Ok(!is_file_excluded(&path, resolver))
 }
 
 /// Return `true` if the given top-level [`Path`] should be excluded.
 fn is_file_excluded(path: &Path, resolver: &Resolver) -> bool {
-    // TODO(charlie): Respect gitignore.
     for path in path.ancestors() {
         let settings = resolver.resolve(path);
         if let Some(file_name) = path.file_name() {
@@ -844,8 +802,6 @@ fn is_file_excluded(path: &Path, resolver: &Resolver) -> bool {
             break;
         }
         if path == settings.file_resolver.project_root {
-            // Bail out; we'd end up past the project root on the next iteration
-            // (excludes etc. are thus "rooted" to the project).
             break;
         }
     }
@@ -933,8 +889,6 @@ pub fn match_any_exclusion(
             }
         }
         if path == resolver_settings.project_root {
-            // Bail out; we'd end up past the project root on the next iteration
-            // (excludes etc. are thus "rooted" to the project).
             break;
         }
     }
@@ -1032,15 +986,10 @@ mod tests {
             )?,
         };
         let resolver = Resolver::new(&root_settings);
-        // src/app.py should not be excluded even if it lives in a hierarchy that should
-        // be excluded by virtue of the pyproject.toml having `resources/*` in
-        // it.
         assert!(!is_file_excluded(
             &package_root.join("src/app.py"),
             &resolver,
         ));
-        // However, resources/ignored.py should be ignored, since that `resources` is
-        // beneath the package root.
         assert!(is_file_excluded(
             &package_root.join("resources/ignored.py"),
             &resolver,
@@ -1050,12 +999,6 @@ mod tests {
 
     #[test]
     fn find_python_files() -> Result<()> {
-        // Initialize the filesystem:
-        //   root
-        //   ├── file1.py
-        //   ├── dir1.py
-        //   │   └── file2.py
-        //   └── dir2.py
         let tmp_dir = TempDir::new()?;
         let root = tmp_dir.path();
         let file1 = root.join("file1.py");

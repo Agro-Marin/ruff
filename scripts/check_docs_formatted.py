@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-#
 # /// script
 # requires-python = ">=3.12"
 # dependencies = ["ruff"]
@@ -35,12 +34,6 @@ SNIPPED_RE = re.compile(
     re.DOTALL | re.MULTILINE,
 )
 
-# Long explanation: https://www.rexegg.com/regex-best-trick.html
-#
-# Short explanation:
-# Match both code blocks and shortcut links, then discard the former.
-# Whatever matched by the second branch is guaranteed to never be
-# part of a code block, as that would already be caught by the first.
 BACKTICKED_SHORTCUT_LINK_RE = re.compile(
     rf"""(?msx)
     (?:{SNIPPED_RE}
@@ -49,8 +42,6 @@ BACKTICKED_SHORTCUT_LINK_RE = re.compile(
     """
 )
 
-# For some rules, we don't want Ruff to fix the formatting as this would "fix" the
-# example.
 KNOWN_FORMATTING_VIOLATIONS = [
     "avoidable-escaped-quote",
     "bad-quotes-docstring",
@@ -121,19 +112,18 @@ KNOWN_FORMATTING_VIOLATIONS = [
     "whitespace-before-punctuation",
 ]
 
-# For some docs, Ruff is unable to parse the example code.
 KNOWN_PARSE_ERRORS = [
-    "ban-lazy",  # requires Python 3.15
+    "ban-lazy",
     "blank-line-with-whitespace",
     "indented-form-feed",
-    "lazy-import-immediately-resolved",  # requires Python 3.15
-    "lazy-import-mismatch",  # requires Python 3.15
+    "lazy-import-immediately-resolved",
+    "lazy-import-mismatch",
     "missing-newline-at-end-of-file",
     "mixed-spaces-and-tabs",
     "no-indented-block",
-    "non-pep695-type-alias",  # requires Python 3.12
-    "quadratic-list-summation",  # requires Python 3.15
-    "require-lazy",  # requires Python 3.15
+    "non-pep695-type-alias",
+    "quadratic-list-summation",
+    "require-lazy",
     "syntax-error",
     "tab-after-comma",
     "tab-after-keyword",
@@ -156,7 +146,6 @@ class InvalidInput(ValueError):
 
 def format_str(code: str, extension: Literal["py", "pyi"]) -> str:
     """Format a code block with ruff by writing to a temporary file."""
-    # Run ruff to format the tmp file
     try:
         completed_process = subprocess.run(
             ["ruff", "format", "--stdin-filename", f"file.{extension}", "-"],
@@ -191,8 +180,6 @@ def format_contents(src: str) -> tuple[str, Sequence[CodeBlockError]]:
             case "pyi":
                 extension = "pyi"
             case _:
-                # We are only interested in checking the formatting of py or pyi code
-                # blocks so we can return early if the language is not one of these.
                 return f"{match['before']}{match['code']}{match['after']}"
 
         code = textwrap.dedent(match["code"])
@@ -219,20 +206,16 @@ def format_file(file: Path, error_known: bool, args: argparse.Namespace) -> int:
         contents = f.read()
 
     if file.parent.name == "rules":
-        # Check contents contains "What it does" section
         if "## What it does" not in contents:
             print(f"Docs for `{file.name}` are missing the `What it does` section.")
             return 1
 
-        # Check contents contains "Why is this bad?" section
         if "## Why is this bad?" not in contents:
             print(f"Docs for `{file.name}` are missing the `Why is this bad?` section.")
             return 1
 
-    # Remove everything before the first example
     contents = contents[contents.find("## Example") :]
 
-    # Remove everything after the last example
     contents = contents[: contents.rfind("```")] + "```"
 
     new_contents, errors = format_contents(contents)
@@ -255,7 +238,6 @@ def format_file(file: Path, error_known: bool, args: argparse.Namespace) -> int:
             f"rewritten to:",
         )
 
-        # Add indentation so that snipped can be copied directly to docs
         for line in new_contents.splitlines():
             output_line = "///"
             if len(line) > 0:
@@ -300,7 +282,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--skip-errors", action="store_true")
     args = parser.parse_args(argv)
 
-    # Get static docs
     static_docs = [Path("docs") / f for f in os.listdir("docs") if f.endswith(".md")]
 
     # Check rules generated
@@ -317,8 +298,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("Please generate rules first.")
         return 1
 
-    # Check known formatting violations and parse errors are sorted alphabetically and
-    # have no duplicates. This will reduce the diff when adding new violations
 
     for known_list, file_string in [
         (KNOWN_FORMATTING_VIOLATIONS, "formatting violations"),

@@ -83,20 +83,15 @@ impl Violation for YieldInContextManagerInAsyncGenerator {
 
 /// ASYNC119
 pub(crate) fn yield_in_context_manager_in_async_generator(checker: &Checker, expr: &Expr) {
-    // Check that the enclosing scope is an async function.
     let Some(function_def) = enclosing_async_function(checker) else {
         return;
     };
 
-    // If the function is decorated with a known-safe decorator
     // (`@asynccontextmanager`, `@pytest.fixture`, or `@trio.as_safe_channel`),
-    // the yield is safe.
     if has_safe_decorator(checker, function_def) {
         return;
     }
 
-    // Walk up the statement hierarchy to check if this yield is inside a `with` block.
-    // Stop at function/class boundaries, since nested definitions create a new scope.
     for stmt in checker.semantic().current_statements() {
         match stmt {
             Stmt::With(_) => {
@@ -116,7 +111,6 @@ fn enclosing_async_function<'a>(checker: &Checker<'a>) -> Option<&'a ast::StmtFu
             ScopeKind::Function(function_def) if function_def.is_async => {
                 return Some(function_def);
             }
-            // Nested functions, lambdas, and classes break the chain.
             ScopeKind::Function(_) | ScopeKind::Lambda(_) | ScopeKind::Class(_) => return None,
             _ => {}
         }

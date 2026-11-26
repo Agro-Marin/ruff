@@ -25,7 +25,6 @@ use ruff_python_ast::PythonVersion;
 pub(crate) fn expression(expr: &Expr, checker: &Checker) {
     match expr {
         Expr::Subscript(subscript @ ast::ExprSubscript { value, slice, .. }) => {
-            // Ex) Optional[...], Union[...]
             if checker.any_rule_enabled(&[
                 Rule::FutureRewritableTypeAnnotation,
                 Rule::NonPEP604AnnotationUnion,
@@ -70,7 +69,6 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                 }
             }
 
-            // Ex) list[...]
             if checker.is_rule_enabled(Rule::FutureRequiredTypeAnnotation) {
                 if !checker.semantic.future_annotations_or_stub()
                     && checker.target_version() < PythonVersion::PY39
@@ -87,7 +85,6 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                 }
             }
 
-            // Ex) Union[...]
             if checker.any_rule_enabled(&[
                 Rule::UnnecessaryLiteralUnion,
                 Rule::DuplicateUnionMember,
@@ -95,13 +92,10 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                 Rule::UnnecessaryTypeUnion,
                 Rule::NoneNotAtEndOfUnion,
             ]) {
-                // Avoid duplicate checks if the parent is a union, since these rules already
-                // traverse nested unions.
                 if !checker.semantic.in_nested_union() {
                     if checker.is_rule_enabled(Rule::UnnecessaryLiteralUnion) {
                         flake8_pyi::rules::unnecessary_literal_union(checker, expr);
                     }
-                    // Avoid duplicate checks inside `Optional`.
                     if checker.is_rule_enabled(Rule::DuplicateUnionMember)
                         && !checker.semantic.inside_optional()
                     {
@@ -119,7 +113,6 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                 }
             }
 
-            // Ex) Literal[...]
             if checker.any_rule_enabled(&[
                 Rule::DuplicateLiteralMember,
                 Rule::RedundantBoolLiteral,
@@ -305,7 +298,6 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                         flake8_bandit::rules::suspicious_function_reference(checker, expr);
                     }
 
-                    // Ex) List[...]
                     if checker.any_rule_enabled(&[
                         Rule::FutureRewritableTypeAnnotation,
                         Rule::NonPEP585Annotation,
@@ -435,7 +427,6 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                 }
             }
 
-            // Ex) typing.List[...]
             if checker.any_rule_enabled(&[
                 Rule::FutureRewritableTypeAnnotation,
                 Rule::NonPEP585Annotation,
@@ -579,22 +570,16 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                 odoo::rules::gettext(checker, call);
             }
             if checker.any_rule_enabled(&[
-                // pylint
                 Rule::BadStringFormatCharacter,
-                // pyflakes
                 Rule::StringDotFormatInvalidFormat,
                 Rule::StringDotFormatExtraNamedArguments,
                 Rule::StringDotFormatExtraPositionalArguments,
                 Rule::StringDotFormatMissingArguments,
                 Rule::StringDotFormatMixingAutomatic,
-                // pyupgrade
                 Rule::FormatLiterals,
                 Rule::FString,
-                // flynt
                 Rule::StaticJoinToFString,
-                // refurb
                 Rule::HashlibDigestHex,
-                // flake8-simplify
                 Rule::SplitStaticString,
             ]) {
                 if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = func.as_ref() {
@@ -605,7 +590,6 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                     }) = value.as_ref()
                     {
                         if attr == "join" {
-                            // "...".join(...) call
                             if checker.is_rule_enabled(Rule::StaticJoinToFString) {
                                 flynt::rules::static_join_to_fstring(
                                     checker,
@@ -614,7 +598,6 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                                 );
                             }
                         } else if matches!(attr, "split" | "rsplit") {
-                            // "...".split(...) call
                             if checker.is_rule_enabled(Rule::SplitStaticString) {
                                 flake8_simplify::rules::split_static_string(
                                     checker,
@@ -624,11 +607,9 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                                 );
                             }
                         } else if attr == "format" {
-                            // "...".format(...) call
                             let location = expr.range();
                             match pyflakes::format::FormatSummary::try_from(string_value.to_str()) {
                                 Err(e) => {
-                                    // F521
                                     checker.report_diagnostic_if_enabled(
                                         pyflakes::rules::StringDotFormatInvalidFormat {
                                             message: pyflakes::format::error_to_string(&e),
@@ -1271,21 +1252,18 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                             typ: CFormatErrorType::UnsupportedFormatChar(c),
                             ..
                         }) => {
-                            // F509
                             checker.report_diagnostic_if_enabled(
                                 pyflakes::rules::PercentFormatUnsupportedFormatCharacter {
                                     char: c,
                                 },
                                 location,
                             );
-                            // PLE1300
                             checker.report_diagnostic_if_enabled(
                                 pylint::rules::BadStringFormatCharacter { format_char: c },
                                 location,
                             );
                         }
                         Err(e) => {
-                            // F501
                             checker.report_diagnostic_if_enabled(
                                 pyflakes::rules::PercentFormatInvalidFormat {
                                     message: e.to_string(),
@@ -1363,7 +1341,6 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
             op: Operator::BitOr,
             ..
         }) => {
-            // Ex) `str | None`
             if checker.is_rule_enabled(Rule::FutureRequiredTypeAnnotation) {
                 if !checker.semantic.future_annotations_or_stub()
                     && checker.target_version() < PythonVersion::PY310
@@ -1383,10 +1360,7 @@ pub(crate) fn expression(expr: &Expr, checker: &Checker) {
                 ruff::rules::never_union(checker, expr);
             }
 
-            // Avoid duplicate checks if the parent is a union, since these rules already
-            // traverse nested unions.
             if !checker.semantic.in_nested_union() {
-                // Avoid duplicate checks inside `Optional`.
                 if checker.is_rule_enabled(Rule::DuplicateUnionMember)
                     && checker.semantic.in_type_definition()
                     && !checker.semantic.inside_optional()

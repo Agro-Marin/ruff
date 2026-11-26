@@ -255,7 +255,6 @@ pub(crate) fn twisted_arms_in_ifexpr(
         return;
     }
 
-    // Check if the test operand and else branch use the same variable.
     let Expr::Name(ast::ExprName { id: test_id, .. }) = operand.as_ref() else {
         return;
     };

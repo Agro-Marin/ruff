@@ -38,11 +38,6 @@ impl QueryPattern {
             pattern.push_str(&regex::escape(ch.encode_utf8(&mut [0; 4])));
             pattern.push_str(".*");
         }
-        // In theory regex compilation could fail if the pattern string
-        // was long enough to exceed the default regex compilation size
-        // limit. But this length would be approaching ~10MB or so. If
-        // is does somehow fail, we'll just fall back to simple substring
-        // search using `original`.
         QueryPattern {
             re: Regex::new(&pattern).ok(),
             original: literal_query_string.to_string(),
@@ -78,10 +73,6 @@ impl QueryPattern {
         } else if self.original_is_exact {
             symbol_name == self.original
         } else {
-            // This is a degenerate case. The only way
-            // we should get here is if the query string
-            // was thousands (or more) characters long.
-            // ... or, if "typed" text could not be found.
             symbol_name.contains(&self.original)
         }
     }
@@ -166,14 +157,10 @@ impl FlatSymbols {
             let Some(parent_id) = symbol.parent else {
                 continue;
             };
-            // OK because the symbol visitor guarantees that
-            // all parents are ordered before their children.
             assert!(parent_id.index() < id.index());
             children_ids[parent_id].push(id);
         }
 
-        // Now flatten our map of symbol ID to its children
-        // IDs into a single vec that doesn't nest allocations.
         let mut symbols = IndexVec::new();
         let mut children: Vec<SymbolId> = vec![];
         let mut last_end: usize = 0;
@@ -293,13 +280,6 @@ impl<'a> From<&'a SymbolTree> for SymbolInfo<'a> {
             name: Cow::Borrowed(&symbol.name),
             kind: symbol.kind,
             deprecated: symbol.deprecated,
-            // The clone here isn't great, but doing actual work here
-            // probably isn't the super common case. Namely, most
-            // imports aren't re-exports and get filtered out before
-            // we construct a `SymbolInfo`. This should only do actual
-            // work (like cloning a `ModuleName`) when this symbol
-            // is both imported from another module *and* determined
-            // to be a re-export. ---AG
             imported_from: symbol.imported_from.clone(),
             name_range: symbol.name_range,
             full_range: symbol.full_range,
@@ -379,9 +359,6 @@ impl SymbolKind {
             SymbolKind::Constructor => CompletionKind::Constructor,
             SymbolKind::Parameter => CompletionKind::Variable,
             SymbolKind::TypeParameter => CompletionKind::TypeParameter,
-            // Not quite sure what to do with this one. I guess
-            // in theory the import should be "resolved" to its
-            // underlying kind, but that seems expensive.
             SymbolKind::Import => return None,
         })
     }
@@ -394,7 +371,6 @@ impl SymbolKind {
 #[salsa::tracked(returns(ref), heap_size=ruff_memory_usage::heap_size)]
 pub(crate) fn symbols_for_file(db: &dyn Db, file: ProgramFile<'_>) -> FlatSymbols {
     let parsed = parsed_module(db, file.python_file(db));
-    // Workspace symbol searches scan every project file, so release closed files' ASTs as we go.
     let module = parsed.load_then_clear_on_drop(db);
 
     let mut visitor = SymbolVisitor::tree(db, file);
@@ -414,7 +390,6 @@ pub(crate) fn symbols_for_file(db: &dyn Db, file: ProgramFile<'_>) -> FlatSymbol
 )]
 pub(crate) fn symbols_for_file_global_only(db: &dyn Db, file: ProgramFile<'_>) -> FlatSymbols {
     let parsed = parsed_module(db, file.python_file(db));
-    // Auto-imports scan every module, so release closed files' ASTs as we go.
     let module = parsed.load_then_clear_on_drop(db);
 
     let mut visitor = SymbolVisitor::globals(db, file);
@@ -560,11 +535,6 @@ impl<'db> Imports<'db> {
     fn add_import_from(&mut self, import_from: &'db ast::StmtImportFrom) {
         for alias in &import_from.names {
             if &alias.name == "*" {
-                // FIXME: We'd ideally include the names
-                // imported from the module, but we don't
-                // want to do this eagerly. So supporting
-                // this requires more infrastructure in
-                // `Imports`.
                 continue;
             }
 
@@ -760,39 +730,16 @@ impl<'db> SymbolVisitor<'db> {
     }
 
     fn into_flat_symbols(mut self) -> FlatSymbols {
-        // If `__all__` was found but wasn't recognized,
-        // then we emit a diagnostic message indicating as such.
         if self.all_invalid {
             tracing::debug!(
                 "Invalid `__all__` in `{}`",
                 self.file.file(self.db).path(self.db)
             );
         }
-        // We want to filter out some of the symbols we collected.
-        // Specifically, to respect conventions around library
-        // interface.
-        //
-        // But, we always assigned IDs to each symbol based on
-        // their position in a sequence. So when we filter some
-        // out, we need to remap the identifiers.
-        //
-        // We also want to deduplicate when `exports_only` is
-        // `true`. In particular, dealing with `__all__` can
-        // result in cycles, and we need to make sure our output
-        // is stable for that reason.
-        //
-        // N.B. The remapping could be skipped when `exports_only` is
-        // true, since in that case, none of the symbols have a parent
-        // ID by construction.
         let mut remap = IndexVec::with_capacity(self.symbols.len());
         let mut seen = self.exports_only.then(FxHashSet::default);
         let mut new = IndexVec::with_capacity(self.symbols.len());
         for mut symbol in std::mem::take(&mut self.symbols) {
-            // If we're deduplicating and we've already seen
-            // this symbol, then skip it.
-            //
-            // FIXME: We should do this without copying every
-            // symbol name. ---AG
             if let Some(ref mut seen) = seen {
                 if !seen.insert(symbol.name.clone()) {
                     continue;
@@ -804,16 +751,9 @@ impl<'db> SymbolVisitor<'db> {
             }
 
             if let Some(ref mut parent) = symbol.parent {
-                // OK because the visitor guarantees that
-                // all parents have IDs less than their
-                // children. So its ID has already been
-                // remapped.
                 if let Some(new_parent) = remap[*parent] {
                     *parent = new_parent;
                 } else {
-                    // The parent symbol was dropped, so
-                    // all of its children should be as
-                    // well.
                     remap.push(None);
                     continue;
                 }
@@ -851,10 +791,6 @@ impl<'db> SymbolVisitor<'db> {
         if let Some(&parent_id) = self.symbol_stack.last() {
             symbol.parent = Some(parent_id);
         }
-        // It's important that we push the symbol and allocate
-        // an ID before visiting its child. This preserves the
-        // guarantee that parent IDs are always less than their
-        // children IDs.
         let symbol_id = self.symbols.next_index();
         self.symbols.push(symbol);
         symbol_id
@@ -956,7 +892,6 @@ impl<'db> SymbolVisitor<'db> {
     ///
     /// If the assignment isn't for `__all__`, then this is a no-op.
     fn add_all_assignment(&mut self, targets: &[ast::Expr], value: Option<&ast::Expr>) {
-        // We don't care about `__all__` unless we're
         // specifically looking for exported symbols.
         if !self.exports_only {
             return;
@@ -973,8 +908,6 @@ impl<'db> SymbolVisitor<'db> {
 
         let Some(value) = value else { return };
         match *value {
-            // `__all__ = [...]`
-            // `__all__ = (...)`
             ast::Expr::List(ast::ExprList { ref elts, .. })
             | ast::Expr::Tuple(ast::ExprTuple { ref elts, .. }) => {
                 self.update_all_origin(DunderAllOrigin::CurrentModule);
@@ -1005,14 +938,9 @@ impl<'db> SymbolVisitor<'db> {
     /// ceremony. ---AG
     fn extend_all(&mut self, expr: &ast::Expr) -> bool {
         match expr {
-            // `__all__ += [...]`
-            // `__all__ += (...)`
-            // `__all__ += {...}`
             ast::Expr::List(ast::ExprList { elts, .. })
             | ast::Expr::Tuple(ast::ExprTuple { elts, .. })
             | ast::Expr::Set(ast::ExprSet { elts, .. }) => self.add_all_names(elts),
-            // `__all__ += module.__all__`
-            // `__all__.extend(module.__all__)`
             ast::Expr::Attribute(ast::ExprAttribute { .. }) => {
                 let Some(unqualified) = UnqualifiedName::from_expr(expr) else {
                     return false;
@@ -1060,21 +988,17 @@ impl<'db> SymbolVisitor<'db> {
             return false;
         };
         match function_name.as_str() {
-            // `__all__.extend([...])`
-            // `__all__.extend(module.__all__)`
             "extend" => {
                 if !self.extend_all(argument) {
                     return false;
                 }
             }
-            // `__all__.append(...)`
             "append" => {
                 let Some(name) = create_all_name(argument) else {
                     return false;
                 };
                 self.all_names.insert(name);
             }
-            // `__all__.remove(...)`
             "remove" => {
                 let Some(name) = create_all_name(argument) else {
                     return false;
@@ -1105,9 +1029,6 @@ impl<'db> SymbolVisitor<'db> {
         );
         self.symbols
             .extend(symbols.symbols.iter().filter_map(|symbol| {
-                // If there's no `__all__`, then names with an underscore
-                // are never pulled in via a wildcard import. Otherwise,
-                // we defer to `__all__` filtering.
                 if symbols.all_names.is_none() && symbol.name.starts_with('_') {
                     return None;
                 }
@@ -1132,8 +1053,6 @@ impl<'db> SymbolVisitor<'db> {
                 symbol.imported_from = Some(imported_from);
                 Some(symbol)
             }));
-        // If the imported module defines an `__all__` AND `__all__` is
-        // in `__all__`, then the importer gets it too.
         if let Some(ref all) = symbols.all_names
             && all.contains("__all__")
         {
@@ -1149,8 +1068,6 @@ impl<'db> SymbolVisitor<'db> {
             self.all_invalid = true;
             return;
         };
-        // If the imported module defines an `__all__`,
-        // then the importer gets it too.
         if let Some(ref all) = symbols.all_names {
             self.update_all_origin(DunderAllOrigin::ExternalModule);
             self.all_names.extend(all.iter().cloned());
@@ -1192,26 +1109,6 @@ impl<'db> SymbolVisitor<'db> {
 
     /// Updates the origin of `__all__` in the current module.
     fn update_all_origin(&mut self, origin: DunderAllOrigin) {
-        // N.B. This used to clear `all_names` whenever there
-        // was *any* previous origin set. Now we skip clearing
-        // it if the previous origin and the new origin are
-        // both "current module." This tends to arise in situation
-        // like this:
-        //
-        //     if sys.version > ...:
-        //         __all__ = ['SomeFancyNewSymbol']
-        //     else:
-        //         __all__ = []
-        //
-        // Clearing is arguably correct here, but auto-import
-        // (unlike ty's own __all__ handling) doesn't yet know
-        // how to evaluate conditionals. So instead of over-writing
-        // __all__, we union it. This will produce incorrect
-        // results in some cases, but the failure mode will be
-        // "suggests symbol that doesn't exist" instead of
-        // "doesn't suggest symbol that does exist." The former
-        // seems preferable (until we know how to evaluate at
-        // least some rudimentary conditionals).
         if !(matches!(self.all_origin, Some(DunderAllOrigin::CurrentModule))
             && matches!(origin, DunderAllOrigin::CurrentModule))
         {
@@ -1252,47 +1149,26 @@ impl<'db> SymbolVisitor<'db> {
     ///
     /// See: <https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols>
     fn is_part_of_library_interface(&self, symbol: &SymbolTree) -> bool {
-        // If this is a child of something else, then we always
-        // defer its visibility to the parent.
         if symbol.parent.is_some() {
             return true;
         }
 
-        // When there's no `__all__`, we use conventions to determine
         // if a name should be part of the exported API of a module
-        // or not. When there is `__all__`, we currently follow it
-        // strictly.
-        //
-        // If `__all__` is somehow invalid, ignore it and fall
-        // through as-if `__all__` didn't exist.
         if self.all_origin.is_some() && !self.all_invalid {
             return self.all_names.contains(&*symbol.name);
         }
 
-        // "Imported symbols are considered private by default. A fixed
-        // set of import forms re-export imported symbols." Specifically:
-        //
-        // * `import X as X`
-        // * `from Y import X as X`
-        // * `from Y import *`
         if let Some(ref imported_from) = symbol.imported_from {
             return match imported_from.kind {
                 ImportKind::RedundantAlias | ImportKind::Wildcard => true,
                 ImportKind::Normal => false,
             };
         }
-        // "Symbols whose names begin with an underscore (but are not
-        // dunder names) are considered private."
-        //
-        // ... however, we currently include these as part of the public
-        // API. The only extant (2025-12-03) consumer is completions, and
-        // completions will rank these names lower than others.
         if symbol.name.starts_with('_')
             && !(symbol.name.starts_with("__") && symbol.name.ends_with("__"))
         {
             return true;
         }
-        // ... otherwise, it's exported!
         true
     }
 
@@ -1331,19 +1207,16 @@ impl<'db> SymbolVisitor<'db> {
                 }
 
                 if self.exports_only {
-                    // If global_only, don't walk function bodies
                     return;
                 }
 
                 self.symbol_stack.push(symbol_id);
 
-                // Mark that we're entering a function scope
                 let was_in_function = self.in_function;
                 self.in_function = true;
 
                 self.visit_body(&func_def.body);
 
-                // Restore the previous function scope state
                 self.in_function = was_in_function;
 
                 self.pop_symbol();
@@ -1373,11 +1246,9 @@ impl<'db> SymbolVisitor<'db> {
                 }
 
                 if self.exports_only {
-                    // If global_only, don't walk class bodies
                     return;
                 }
 
-                // Mark that we're entering a class scope
                 let was_in_class = self.in_class;
                 self.in_class = true;
 
@@ -1385,7 +1256,6 @@ impl<'db> SymbolVisitor<'db> {
                 self.visit_body(&class_def.body);
                 self.pop_symbol();
 
-                // Restore the previous class scope state
                 self.in_class = was_in_class;
             }
             ast::Stmt::TypeAlias(type_alias) => {
@@ -1417,21 +1287,17 @@ impl<'db> SymbolVisitor<'db> {
                 }
                 self.visit_expr(value);
 
-                // We don't care about `__all__` unless we're
                 // specifically looking for exported symbols.
                 if !self.exports_only {
                     return;
                 }
 
                 if self.all_origin.is_none() {
-                    // We can't update `__all__` if it doesn't already
-                    // exist.
                     return;
                 }
                 if !is_dunder_all(target) {
                     return;
                 }
-                // Anything other than `+=` is not valid.
                 if !matches!(op, ast::Operator::Add) {
                     self.all_invalid = true;
                     return;
@@ -1443,14 +1309,12 @@ impl<'db> SymbolVisitor<'db> {
             ast::Stmt::Expr(expr) => {
                 source_order::walk_stmt(self, stmt);
 
-                // We don't care about `__all__` unless we're
                 // specifically looking for exported symbols.
                 if !self.exports_only {
                     return;
                 }
 
                 if self.all_origin.is_none() {
-                    // We can't update `__all__` if it doesn't already exist.
                     return;
                 }
                 let Some(ast::ExprCall {
@@ -1476,8 +1340,6 @@ impl<'db> SymbolVisitor<'db> {
                 }
             }
             ast::Stmt::Import(import) => {
-                // We ignore any names introduced by imports
-                // unless we're specifically looking for the
                 // set of exported symbols.
                 if !self.exports_only {
                     return;
@@ -1492,8 +1354,6 @@ impl<'db> SymbolVisitor<'db> {
                 }
             }
             ast::Stmt::ImportFrom(import_from) => {
-                // We ignore any names introduced by imports
-                // unless we're specifically looking for the
                 // set of exported symbols.
                 if !self.exports_only {
                     return;
@@ -1519,10 +1379,6 @@ impl<'db> SymbolVisitor<'db> {
                     }
                 }
             }
-            // FIXME: We don't currently try to evaluate `if`
-            // statements. We just assume that all `if` statements are
-            // always `True`. This applies to symbols in general but
-            // also `__all__`.
             _ => source_order::walk_stmt(self, stmt),
         }
     }
@@ -1552,13 +1408,11 @@ impl<'db> SourceOrderVisitor<'db> for SymbolVisitor<'db> {
                     return;
                 }
 
-                // We don't care about `__all__` unless we're
                 // specifically looking for exported symbols.
                 if !self.exports_only {
                     return;
                 }
 
-                // We can't update `__all__` if it doesn't already exist.
                 if self.all_origin.is_none() {
                     return;
                 }
@@ -1951,7 +1805,6 @@ if True:
 
     #[test]
     fn exports_conditional_false() {
-        // FIXME: This shouldn't include `bar`.
         insta::assert_snapshot!(
             public_test("\
 foo = 1
@@ -1967,7 +1820,6 @@ if False:
 
     #[test]
     fn exports_conditional_sys_version() {
-        // FIXME: This shouldn't include `bar`.
         insta::assert_snapshot!(
             public_test("\
 import sys
@@ -2002,7 +1854,6 @@ if TYPE_CHECKING:
 
     #[test]
     fn exports_conditional_always_else() {
-        // FIXME: This shouldn't include `bar`.
         insta::assert_snapshot!(
             public_test("\
 foo = 1
@@ -2223,11 +2074,6 @@ __all__ += ['defaultdict']
 
     #[test]
     fn exports_from_import_all_reexport_star_equals() {
-        // Confirm that this doesn't work. Only `__all__ += ...` should
-        // be recognized. This makes the symbol visitor consider
-        // `__all__` invalid and thus ignore it. And this in turn lets
-        // `__all__` be exported. This seems like a somewhat degenerate
-        // case, but is a consequence of us treating sunder and dunder
         // symbols as exported when `__all__` isn't present.
         insta::assert_snapshot!(
             public_test("\
@@ -2288,10 +2134,6 @@ class X:
             .source("foo.py", "_ZQZQZQ = 1")
             .source("test.py", "from foo import *")
             .build();
-        // Without `__all__` present, a wildcard import won't include
-        // names starting with an underscore at runtime. So `_ZQZQZQ`
-        // should not be present here.
-        // See: <https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers>
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"",
@@ -2304,10 +2146,6 @@ class X:
             .source("foo.py", "__ZQZQZQ = 1")
             .source("test.py", "from foo import *")
             .build();
-        // Without `__all__` present, a wildcard import won't include
-        // names starting with an underscore at runtime. So `__ZQZQZQ`
-        // should not be present here.
-        // See: <https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers>
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"",
@@ -2320,9 +2158,6 @@ class X:
             .source("foo.py", "import collections")
             .source("test.py", "from foo import *")
             .build();
-        // We specifically test for the absence of `collections`
-        // here. That is, `from foo import *` will import
-        // `collections` at runtime, but we don't consider it part
         // of the exported interface of `foo`.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
@@ -2348,9 +2183,6 @@ class X:
             .source("foo.py", "from collections import defaultdict")
             .source("test.py", "from foo import *")
             .build();
-        // We specifically test for the absence of `defaultdict`
-        // here. That is, `from foo import *` will import
-        // `defaultdict` at runtime, but we don't consider it part
         // of the exported interface of `foo`.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
@@ -2425,7 +2257,6 @@ class X:
             .source("test.py", "from foo import *")
             .build();
         // Nothing is exported because `__all__` is defined
-        // and also empty.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"",
@@ -2470,9 +2301,6 @@ class X:
                  TRICKSY = 1",
             )
             .build();
-        // TRICKSY should specifically be absent because
-        // `__all__` is defined in `test.py` (via a wildcard
-        // import) and does not itself include `TRICKSY`.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"__all__ :: Variable :: Re-exported from `foo`",
@@ -2594,9 +2422,6 @@ class X:
             )
             .source("test.py", "from foo import *")
             .build();
-        // `TRICKSY` isn't actually a valid symbol,
-        // and `ZQZQZQ` isn't in `__all__`, so we get
-        // no symbols here.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"",
@@ -2615,9 +2440,6 @@ class X:
             )
             .source("test.py", "from foo import *")
             .build();
-        // Note that this example will actually result in a runtime
-        // error since `TRICKSY` doesn't exist in `foo.py` and
-        // `from foo import *` will try to import it anyway.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"__all__ :: Variable :: Re-exported from `foo`",
@@ -2640,9 +2462,6 @@ class X:
                  TRICKSY = 1",
             )
             .build();
-        // Note that this example will actually result in a runtime
-        // error since `TRICKSY` doesn't exist in `foo.py` and
-        // `from foo import *` will try to import it anyway.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"TRICKSY :: Constant",
@@ -2665,9 +2484,6 @@ class X:
                  TRICKSY = 1",
             )
             .build();
-        // Note that this example will actually result in a runtime
-        // error since `TRICKSY` doesn't exist in `foo.py` and
-        // `from foo import *` will try to import it anyway.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"
@@ -2693,9 +2509,6 @@ class X:
                  TRICKSY = 1",
             )
             .build();
-        // `__all__` is imported from `foo.py` but it's
-        // empty, so `TRICKSY` is not part of the exported
-        // API.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"",
@@ -2737,8 +2550,6 @@ class X:
             )
             .source("test.py", "from foo import __all__ as __all__")
             .build();
-        // `TRICKSY` is not a valid symbol, so it's not considered
-        // part of the exports of `test`.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"",
@@ -3067,11 +2878,6 @@ class X:
                 ",
             )
             .build();
-        // In this test, we resolve `foo.__all__` to the `__all__`
-        // attribute in module `foo` instead of in `bar`. This is
-        // because we don't track redefinitions of imports (as of
-        // 2025-12-11). Handling this correctly would mean exporting
-        // `_ZBZBZB` instead of `_ZFZFZF`.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"
@@ -3108,11 +2914,6 @@ class X:
                 ",
             )
             .build();
-        // This is not quite right either because we end up
-        // considering the `__all__` in `test.py` to be invalid.
-        // Namely, we don't pick up the `foo` that is in scope
-        // from the `from parent import *` import. The correct
-        // answer should just be `_ZFZFZF` and `_ZYZYZY`.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"
@@ -3154,7 +2955,6 @@ class X:
                 ",
             )
             .build();
-        // Ideally this would only have `ZQZQZQ`.
         insta::assert_snapshot!(
             test.exports(),
             @"
@@ -3187,7 +2987,6 @@ class X:
                 ",
             )
             .build();
-        // Ideally this would only have `ZYZYZY`.
         insta::assert_snapshot!(
             test.exports(),
             @"
@@ -3354,7 +3153,6 @@ class C: ...
                 db.write_file(path, contents)
                     .expect("write to memory file system to be successful");
 
-                // Add a root for the top-most component.
                 let top = path.components().find_map(|c| match c {
                     Utf8Component::Normal(c) => Some(c),
                     _ => None,
@@ -3367,8 +3165,6 @@ class C: ...
                 }
             }
 
-            // N.B. We don't set anything custom yet, but we leave
-            // this here for when we invevitable add a filter.
             let insta_settings = insta::Settings::clone_current();
             let insta_settings_guard = insta_settings.bind_to_scope();
             PublicTest {

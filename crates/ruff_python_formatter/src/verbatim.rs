@@ -29,7 +29,6 @@ pub(crate) fn starts_suppression(
     source: &str,
 ) -> bool {
     let mut iter = CommentRangeIter::outside_suppression(leading_or_trailing_comments, source);
-    // Move the iter to the last element.
     let _ = iter.by_ref().last();
 
     matches!(iter.in_suppression, InSuppression::Yes)
@@ -46,7 +45,6 @@ pub(crate) fn ends_suppression(
     source: &str,
 ) -> bool {
     let mut iter = CommentRangeIter::in_suppression(leading_or_trailing_comments, source);
-    // Move the iter to the last element.
     let _ = iter.by_ref().last();
 
     !matches!(iter.in_suppression, InSuppression::Yes)
@@ -61,7 +59,6 @@ pub(crate) fn ends_suppression(
 /// If `first_suppressed` has no leading suppression comment.
 #[cold]
 pub(crate) fn write_suppressed_statements_starting_with_leading_comment<'a>(
-    // The first suppressed statement
     first_suppressed: SuiteChildStatement<'a>,
     statements: &mut std::slice::Iter<'a, Stmt>,
     f: &mut PyFormatter,
@@ -78,24 +75,17 @@ pub(crate) fn write_suppressed_statements_starting_with_leading_comment<'a>(
 
     let (formatted_comments, format_off_comment) = before_format_off.unwrap_suppression_starts();
 
-    // Format the leading comments before the fmt off
-    // ```python
-    // # leading comment that gets formatted
     // # fmt: off
-    // statement
-    // ```
     write!(
         f,
         [
             leading_comments(formatted_comments),
-            // Format the off comment without adding any trailing new lines
             format_comment(format_off_comment)
         ]
     )?;
 
     format_off_comment.mark_formatted();
 
-    // Now inside a suppressed range
     write_suppressed_statements(
         format_off_comment,
         first_suppressed,
@@ -126,7 +116,6 @@ pub(crate) fn write_suppressed_statements_starting_with_trailing_comment<'a>(
     let mut trailing_comment_ranges =
         CommentRangeIter::outside_suppression(trailing_node_comments, source);
 
-    // Formatted comments gets formatted as part of the statement.
     let (_, mut format_off_comment) = trailing_comment_ranges
         .next()
         .expect("Suppressed statement to have trailing comments")
@@ -134,13 +123,11 @@ pub(crate) fn write_suppressed_statements_starting_with_trailing_comment<'a>(
 
     let maybe_suppressed = trailing_comment_ranges.as_slice();
 
-    // Mark them as formatted so that calling the node's formatting doesn't format the comments.
     for comment in maybe_suppressed {
         comment.mark_formatted();
     }
     format_off_comment.mark_formatted();
 
-    // Format the leading comments, the node, and the trailing comments up to the `fmt: off` comment.
     last_formatted.fmt(f)?;
 
     format_off_comment.mark_unformatted();
@@ -148,15 +135,9 @@ pub(crate) fn write_suppressed_statements_starting_with_trailing_comment<'a>(
 
     for range in trailing_comment_ranges {
         match range {
-            // A `fmt: off`..`fmt: on` sequence. Disable formatting for the in-between comments.
-            // ```python
-            // def test():
-            //      pass
             //      # fmt: off
-            //          # haha
             //      # fmt: on
             //      # fmt: off (maybe)
-            // ```
             SuppressionComments::SuppressionEnds {
                 suppressed_comments: _,
                 format_on_comment,
@@ -184,15 +165,9 @@ pub(crate) fn write_suppressed_statements_starting_with_trailing_comment<'a>(
                     ]
                 )?;
 
-                // `fmt: off`..`fmt:on`..`fmt:off` sequence
-                // ```python
-                // def test():
-                //      pass
                 //      # fmt: off
-                //          # haha
                 //      # fmt: on
                 //      # fmt: off
-                // ```
                 if let Some(new_format_off_comment) = new_format_off_comment {
                     new_format_off_comment.mark_unformatted();
 
@@ -200,12 +175,10 @@ pub(crate) fn write_suppressed_statements_starting_with_trailing_comment<'a>(
 
                     format_off_comment = new_format_off_comment;
                 } else {
-                    // `fmt: off`..`fmt:on` sequence. The suppression ends here. Start formatting the nodes again.
                     return Ok(last_formatted.statement());
                 }
             }
 
-            // All comments in this range are suppressed
             SuppressionComments::Suppressed { comments: _ } => {}
             // SAFETY: Unreachable because the function returns as soon as it reaches the end of the suppressed range
             SuppressionComments::SuppressionStarts { .. }
@@ -213,15 +186,7 @@ pub(crate) fn write_suppressed_statements_starting_with_trailing_comment<'a>(
         }
     }
 
-    // The statement with the suppression comment isn't the last statement in the suite.
-    // Format the statements up to the first `fmt: on` comment (or end of the suite) as verbatim/suppressed.
-    // ```python
-    // a + b
     // # fmt: off
-    //
-    // def a():
-    //  pass
-    // ```
     if let Some(first_suppressed) = statements.next() {
         write_suppressed_statements(
             format_off_comment,
@@ -231,13 +196,7 @@ pub(crate) fn write_suppressed_statements_starting_with_trailing_comment<'a>(
             f,
         )
     }
-    // The suppression comment is the block's last node. Format any trailing comments as suppressed
-    // ```python
-    // def test():
-    //      pass
     //      # fmt: off
-    //      # a trailing comment
-    // ```
     else if let Some(last_comment) = trailing_node_comments.last() {
         FormatVerbatimStatementRange {
             verbatim_range: TextRange::new(format_off_comment.end(), last_comment.end()),
@@ -246,12 +205,7 @@ pub(crate) fn write_suppressed_statements_starting_with_trailing_comment<'a>(
         .fmt(f)?;
         Ok(last_formatted.statement())
     }
-    // The suppression comment is the very last code in the block. There's nothing more to format.
-    // ```python
-    // def test():
-    //      pass
     //      # fmt: off
-    // ```
     else {
         Ok(last_formatted.statement())
     }
@@ -260,14 +214,9 @@ pub(crate) fn write_suppressed_statements_starting_with_trailing_comment<'a>(
 /// Formats the statements from `first_suppressed` until the suppression ends (by a `fmt: on` comment)
 /// as they appear in the source code.
 fn write_suppressed_statements<'a>(
-    // The `fmt: off` comment that starts the suppressed range. Can be a leading comment of `first_suppressed` or
-    // a trailing comment of the previous node.
     format_off_comment: &SourceComment,
-    // The first suppressed statement
     first_suppressed: SuiteChildStatement<'a>,
-    // The leading comments of `first_suppressed` that come after the `format_off_comment`
     first_suppressed_leading_comments: &[SourceComment],
-    // The remaining statements
     statements: &mut std::slice::Iter<'a, Stmt>,
     f: &mut PyFormatter,
 ) -> FormatResult<&'a Stmt> {
@@ -282,25 +231,14 @@ fn write_suppressed_statements<'a>(
     loop {
         for range in CommentRangeIter::in_suppression(leading_node_comments, source) {
             match range {
-                // All leading comments are suppressed
-                // ```python
-                // # suppressed comment
-                // statement
-                // ```
                 SuppressionComments::Suppressed { comments } => {
                     for comment in comments {
                         comment.mark_formatted();
                     }
                 }
 
-                // Node has a leading `fmt: on` comment and maybe another `fmt: off` comment
-                // ```python
-                // # suppressed comment (optional)
                 // # fmt: on
-                // # formatted comment (optional)
                 // # fmt: off (optional)
-                // statement
-                // ```
                 SuppressionComments::SuppressionEnds {
                     suppressed_comments,
                     format_on_comment,
@@ -331,27 +269,21 @@ fn write_suppressed_statements<'a>(
                         format_comment(format_off_comment).fmt(f)?;
                         format_off_comment.mark_formatted();
                     } else {
-                        // Suppression ends here. Test if the node has a trailing suppression comment and, if so,
-                        // recurse and format the trailing comments and the following statements as suppressed.
                         return if comments
                             .trailing(statement)
                             .iter()
                             .any(|comment| comment.is_suppression_off_comment(source))
                         {
-                            // Node has a trailing suppression comment, hell yeah, start all over again.
                             write_suppressed_statements_starting_with_trailing_comment(
                                 statement, statements, f,
                             )
                         } else {
-                            // Formats the trailing comments
                             statement.fmt(f)?;
                             Ok(statement.statement())
                         };
                     }
                 }
 
-                // Unreachable because the function exits as soon as it reaches the end of the suppression
-                // and it already starts in a suppressed range.
                 SuppressionComments::SuppressionStarts { .. } => unreachable!(),
                 SuppressionComments::Formatted { .. } => unreachable!(),
             }
@@ -361,25 +293,14 @@ fn write_suppressed_statements<'a>(
 
         for range in CommentRangeIter::in_suppression(comments.trailing(statement), source) {
             match range {
-                // All trailing comments are suppressed
-                // ```python
-                // statement
-                // # suppressed
-                // ```
                 SuppressionComments::Suppressed { comments } => {
                     for comment in comments {
                         comment.mark_formatted();
                     }
                 }
 
-                // Node has a trailing `fmt: on` comment and maybe another `fmt: off` comment
-                // ```python
-                // statement
-                // # suppressed comment (optional)
                 // # fmt: on
-                // # formatted comment (optional)
                 // # fmt: off (optional)
-                // ```
                 SuppressionComments::SuppressionEnds {
                     suppressed_comments,
                     format_on_comment,
@@ -417,8 +338,6 @@ fn write_suppressed_statements<'a>(
                     }
                 }
 
-                // Unreachable because the function exits as soon as it reaches the end of the suppression
-                // and it already starts in a suppressed range.
                 SuppressionComments::SuppressionStarts { .. } => unreachable!(),
                 SuppressionComments::Formatted { .. } => unreachable!(),
             }
@@ -429,7 +348,6 @@ fn write_suppressed_statements<'a>(
             leading_node_comments = comments.leading(next_statement);
         } else {
             let mut current = AnyNodeRef::from(statement.statement());
-            // Expand the range of the statement to include any trailing comments or semicolons.
             let end = loop {
                 if let Some(comment) = comments.trailing(current).last() {
                     break comment.end();
@@ -472,7 +390,6 @@ pub(crate) fn write_skipped_statements<'a>(
     let first_leading = comments.leading(first_skipped);
     let preceding_trailing = comments.trailing(preceding);
 
-    // Write the outer comments and format the node as verbatim
     write!(
         f,
         [
@@ -579,7 +496,6 @@ impl<'a> Iterator for CommentRangeIter<'a> {
         }
 
         Some(match self.in_suppression {
-            // Inside of a suppressed range
             InSuppression::Yes => {
                 if let Some(format_on_position) = self
                     .comments
@@ -623,7 +539,6 @@ impl<'a> Iterator for CommentRangeIter<'a> {
                 }
             }
 
-            // Outside of a suppression
             InSuppression::No => {
                 if let Some(format_off_position) = self
                     .comments
@@ -772,7 +687,6 @@ impl Format<PyFormatContext<'_>> for FormatVerbatimStatementRange {
                 .indentation
                 .trim_indent(&logical_line, f.context().source());
 
-            // A line without any content, write an empty line, except for the first or last (indent only) line.
             if trimmed_line_range.is_empty() {
                 if logical_line.has_trailing_newline {
                     if first {
@@ -782,7 +696,6 @@ impl Format<PyFormatContext<'_>> for FormatVerbatimStatementRange {
                     }
                 }
             } else {
-                // Non empty line, write the text of the line
                 write!(
                     f,
                     [
@@ -792,7 +705,6 @@ impl Format<PyFormatContext<'_>> for FormatVerbatimStatementRange {
                     ]
                 )?;
 
-                // Write the line separator that terminates the line, except if it is the last line (that isn't separated by a hard line break).
                 if logical_line.has_trailing_newline {
                     hard_line_break().fmt(f)?;
                 }
@@ -807,9 +719,7 @@ impl Format<PyFormatContext<'_>> for FormatVerbatimStatementRange {
 
 struct LogicalLinesIter<'a> {
     tokens: Iter<'a, AstToken>,
-    // The end of the last logical line
     last_line_end: TextSize,
-    // The position where the content to lex ends.
     content_end: TextSize,
 }
 
@@ -838,7 +748,6 @@ impl Iterator for LogicalLinesIter<'_> {
                 }
                 Some(token) => match token.kind() {
                     TokenKind::Newline => break (token.start(), token.end()),
-                    // Ignore if inside an expression
                     TokenKind::NonLogicalNewline if parens == 0 => {
                         break (token.start(), token.end());
                     }
@@ -851,8 +760,6 @@ impl Iterator for LogicalLinesIter<'_> {
                     _ => {}
                 },
                 None => {
-                    // Returns any content that comes after the last newline. This is mainly whitespace
-                    // or characters that the `Lexer` skips, like a form-feed character.
                     return if self.last_line_end < self.content_end {
                         let content_start = self.last_line_end;
                         self.last_line_end = self.content_end;
@@ -935,7 +842,6 @@ pub(crate) fn write_suppressed_clause_header(
 ) -> FormatResult<()> {
     let range = header.range(f.context().source())?;
 
-    // Write the outer comments and format the node as verbatim
     write!(
         f,
         [

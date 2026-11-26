@@ -14,7 +14,6 @@ use {
 #[derive(Default, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "get-size", derive(get_size2::GetSize))]
 pub struct TextRange {
-    // Invariant: start <= end
     start: TextSize,
     end: TextSize,
 }
@@ -131,7 +130,6 @@ impl TextRange {
     /// The size of this range.
     #[inline]
     pub const fn len(self) -> TextSize {
-        // HACK for const fn: math on primitives only
         TextSize {
             raw: self.end().raw - self.start().raw,
         }
@@ -140,7 +138,6 @@ impl TextRange {
     /// Check if this range is empty.
     #[inline]
     pub const fn is_empty(self) -> bool {
-        // HACK for const fn: math on primitives only
         self.start().raw == self.end().raw
     }
 }

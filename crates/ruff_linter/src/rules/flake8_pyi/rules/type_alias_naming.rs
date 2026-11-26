@@ -96,12 +96,10 @@ fn is_snake_case_type_alias(name: &str) -> bool {
 /// any name that begins with an underscore, and ends in a lowercase letter, followed by `T`,
 /// followed by an optional digit.
 fn is_t_suffixed_type_alias(name: &str) -> bool {
-    // A T-suffixed, private type alias must begin with an underscore.
     if !name.starts_with('_') {
         return false;
     }
 
-    // It must end in a lowercase letter, followed by `T`, and (optionally) a digit.
     let mut chars = name.chars().rev();
     matches!(
         (chars.next(), chars.next(), chars.next()),

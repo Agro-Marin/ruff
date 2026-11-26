@@ -103,8 +103,6 @@ pub(crate) fn unnecessary_double_cast_or_process(
         return;
     };
 
-    // Avoid collapsing nested `sorted` calls with non-identical keyword arguments
-    // (i.e., `key`, `reverse`).
     if inner_func_name == "sorted" && outer_func_name == "sorted" {
         if inner_kw.len() != outer_kw.len() {
             return;
@@ -118,9 +116,6 @@ pub(crate) fn unnecessary_double_cast_or_process(
         }
     }
 
-    // Ex) `set(tuple(...))`
-    // Ex) `list(tuple(...))`
-    // Ex) `set(set(...))`
     if matches!(
         (outer_func_name, inner_func_name),
         ("set" | "sorted", "list" | "tuple" | "reversed" | "sorted")

@@ -105,20 +105,16 @@ enum EncodingArg<'a> {
 /// UTF-8-equivalent encoding.
 fn match_encoding_arg(arguments: &Arguments) -> Option<EncodingArg<'_>> {
     match (&*arguments.args, &*arguments.keywords) {
-        // Ex `"".encode()`
         ([], []) => return Some(EncodingArg::Empty),
-        // Ex `"".encode(encoding)`
         ([arg], []) if is_utf8_encoding_arg(arg) => {
             return Some(EncodingArg::Positional(arg));
         }
-        // Ex `"".encode(kwarg=kwarg)`
         ([], [keyword])
             if keyword.arg.as_ref().is_some_and(|arg| arg == "encoding")
                 && is_utf8_encoding_arg(&keyword.value) =>
         {
             return Some(EncodingArg::Keyword(keyword));
         }
-        // Ex `"".encode(*args, **kwargs)`
         _ => {}
     }
     None
@@ -126,7 +122,6 @@ fn match_encoding_arg(arguments: &Arguments) -> Option<EncodingArg<'_>> {
 
 /// Return a [`Fix`] replacing the call to encode with a byte string.
 fn replace_with_bytes_literal(locator: &Locator, call: &ast::ExprCall, tokens: &Tokens) -> Fix {
-    // Build up a replacement string by prefixing all string tokens with `b`.
     let mut replacement = String::with_capacity(call.range().len().to_usize() + 1);
     let mut prev = call.start();
     for token in tokens.in_range(call.range()) {
@@ -165,10 +160,8 @@ pub(crate) fn unnecessary_encode_utf8(checker: &Checker, call: &ast::ExprCall) {
                 return;
             }
 
-            // Ex) `"str".encode()`, `"str".encode("utf-8")`
             if let Some(encoding_arg) = match_encoding_arg(&call.arguments) {
                 if literal.to_str().is_ascii() {
-                    // Ex) Convert `"foo".encode()` to `b"foo"`.
                     let mut diagnostic = checker.report_diagnostic(
                         UnnecessaryEncodeUTF8 {
                             reason: Reason::BytesLiteral,
@@ -182,7 +175,6 @@ pub(crate) fn unnecessary_encode_utf8(checker: &Checker, call: &ast::ExprCall) {
                     ));
                 } else if let EncodingArg::Keyword(kwarg) = encoding_arg {
                     // Ex) Convert `"unicode text©".encode(encoding="utf-8")` to
-                    // `"unicode text©".encode()`.
                     let mut diagnostic = checker.report_diagnostic(
                         UnnecessaryEncodeUTF8 {
                             reason: Reason::DefaultArgument,
@@ -200,7 +192,6 @@ pub(crate) fn unnecessary_encode_utf8(checker: &Checker, call: &ast::ExprCall) {
                         .map(Fix::safe_edit)
                     });
                 } else if let EncodingArg::Positional(arg) = encoding_arg {
-                    // Ex) Convert `"unicode text©".encode("utf-8")` to `"unicode text©".encode()`.
                     let mut diagnostic = checker.report_diagnostic(
                         UnnecessaryEncodeUTF8 {
                             reason: Reason::DefaultArgument,
@@ -220,12 +211,10 @@ pub(crate) fn unnecessary_encode_utf8(checker: &Checker, call: &ast::ExprCall) {
                 }
             }
         }
-        // Ex) `f"foo{bar}".encode("utf-8")`
         Expr::FString(_) => {
             if let Some(encoding_arg) = match_encoding_arg(&call.arguments) {
                 if let EncodingArg::Keyword(kwarg) = encoding_arg {
                     // Ex) Convert `f"unicode text©".encode(encoding="utf-8")` to
-                    // `f"unicode text©".encode()`.
                     let mut diagnostic = checker.report_diagnostic(
                         UnnecessaryEncodeUTF8 {
                             reason: Reason::DefaultArgument,
@@ -243,7 +232,6 @@ pub(crate) fn unnecessary_encode_utf8(checker: &Checker, call: &ast::ExprCall) {
                         .map(Fix::safe_edit)
                     });
                 } else if let EncodingArg::Positional(arg) = encoding_arg {
-                    // Ex) Convert `f"unicode text©".encode("utf-8")` to `f"unicode text©".encode()`.
                     let mut diagnostic = checker.report_diagnostic(
                         UnnecessaryEncodeUTF8 {
                             reason: Reason::DefaultArgument,
@@ -333,8 +321,6 @@ fn literal_contains_string_only_escapes(literal: &StringLiteral, locator: &Locat
                     return true;
                 }
 
-                // Cursor is currently at first octal digit, so we just
-                // skip the remaining.
                 cursor.skip_bytes(octal_codepoint.len().saturating_sub(1));
             }
             _ => {}

@@ -139,7 +139,6 @@ pub(crate) fn custom_type_var_instead_of_self(checker: &Checker, binding: &Bindi
 
     let type_params = type_params.as_deref();
 
-    // Given, e.g., `def foo(self: _S, arg: bytes)`, extract `_S`.
     let Some(self_or_cls_parameter) = parameters.posonlyargs.iter().chain(&parameters.args).next()
     else {
         return;
@@ -161,8 +160,6 @@ pub(crate) fn custom_type_var_instead_of_self(checker: &Checker, binding: &Bindi
         return;
     };
 
-    // Skip any abstract/static/overloaded methods,
-    // and any methods in metaclasses
     if is_abstract(decorator_list, semantic)
         || is_overload(decorator_list, semantic)
         || is_metaclass(parent_class, semantic).is_yes()
@@ -300,11 +297,6 @@ fn custom_typevar<'a>(
         .resolve_name(typevar_expr)
         .map(|binding_id| semantic.binding(binding_id))?;
 
-    // Example:
-    // ```py
-    // class Foo:
-    //     def m[S](self: S) -> S: ...
-    // ```
     if binding.kind.is_type_param() {
         return type_params?
             .iter()
@@ -313,15 +305,6 @@ fn custom_typevar<'a>(
             .then_some(TypeVar(binding));
     }
 
-    // Example:
-    // ```py
-    // from typing import TypeVar
-    //
-    // S = TypeVar("S", bound="Foo")
-    //
-    // class Foo:
-    //     def m(self: S) -> S: ...
-    // ```
     if !semantic.seen_typing() {
         return None;
     }
@@ -347,16 +330,13 @@ fn replace_custom_typevar_with_self(
     self_or_cls_parameter: &ast::ParameterWithDefault,
     self_or_cls_annotation: &ast::Expr,
 ) -> anyhow::Result<Fix> {
-    // (1) Import `Self` (if necessary)
     let (import_edit, self_symbol_binding) = importer.import(function_def.start())?;
 
-    // (2) Remove the first parameter's annotation
     let mut other_edits = vec![Edit::deletion(
         self_or_cls_parameter.name().end(),
         self_or_cls_annotation.end(),
     )];
 
-    // (3) If it was a PEP-695 type variable, remove that `TypeVar` from the PEP-695 type-parameter list
     if custom_typevar.is_pep695_typevar() {
         let type_params = function_def.type_params.as_deref().context(
             "Should not be possible to have a type parameter without a type parameter list",
@@ -366,7 +346,6 @@ fn replace_custom_typevar_with_self(
         other_edits.push(deletion_edit);
     }
 
-    // (4) Replace all other references to the original type variable elsewhere in the function with `Self`
     let replace_references_range = TextRange::new(self_or_cls_annotation.end(), function_def.end());
 
     replace_typevar_usages_with_self(
@@ -379,7 +358,6 @@ fn replace_custom_typevar_with_self(
         &mut other_edits,
     )?;
 
-    // (5) Determine the safety of the fixes as a whole
     let comment_ranges = checker.comment_ranges();
 
     let applicability = if other_edits
@@ -447,9 +425,6 @@ fn remove_pep695_typevar_declaration(
             .then(|| Edit::range_deletion(type_params.range));
     }
 
-    // `custom_typevar.range()` will return the range of the name of the typevar binding.
-    // We need the full range of the `TypeVar` declaration (including any constraints or bounds)
-    // to determine the correct deletion range.
     let (tvar_index, tvar_declaration) = type_params
         .iter()
         .find_position(|param| param.name().range() == custom_typevar.range())?;
@@ -457,15 +432,11 @@ fn remove_pep695_typevar_declaration(
     let last_index = type_params.len() - 1;
 
     let deletion_range = if tvar_index < last_index {
-        // def f[A, B, C](): ...
-        //       ^^^ Remove this
         TextRange::new(
             tvar_declaration.start(),
             type_params[tvar_index + 1].start(),
         )
     } else {
-        // def f[A, B, C](): ...
-        //           ^^^ Remove this
         TextRange::new(type_params[tvar_index - 1].end(), tvar_declaration.end())
     };
 

@@ -42,8 +42,6 @@ impl fmt::Display for Project {
     }
 }
 
-// A large tree of already-formatted Python packages. Most modules define
-// async functions, and the project enables Ruff's `ASYNC` lint rules.
 const HOME_ASSISTANT: Project = Project {
     name: "home-assistant",
     repository: "https://github.com/home-assistant/core",
@@ -51,7 +49,6 @@ const HOME_ASSISTANT: Project = Project {
     path: "homeassistant/components",
 };
 
-// The Python files are ASCII-only and mostly unformatted (58 of 66 needed formatting on 2026-11-05).
 const DOCKER_PY: Project = Project {
     name: "docker-py",
     repository: "https://github.com/docker/docker-py",
@@ -59,7 +56,6 @@ const DOCKER_PY: Project = Project {
     path: "docker",
 };
 
-// Lints `.pyi` files with typeshed's selected `PYI` rules.
 const TYPESHED: Project = Project {
     name: "typeshed",
     repository: "https://github.com/python/typeshed",
@@ -77,8 +73,6 @@ fn format_cached(bencher: Bencher, project: &Project) {
     benchmark(bencher, project, &["format", "--check"], true).unwrap();
 }
 
-// typeshed sets `fix = true`. Both lint benchmarks pass `--no-fix` so the
-// cache warm-up and every measured iteration see the original source text.
 #[divan::bench(args = [HOME_ASSISTANT, TYPESHED], sample_count = 8, sample_size = 1)]
 fn lint_uncached(bencher: Bencher, project: &Project) {
     benchmark(bencher, project, &["check", "--no-fix"], false).unwrap();

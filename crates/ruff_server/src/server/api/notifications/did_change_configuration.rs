@@ -14,7 +14,6 @@ impl super::SyncNotificationHandler for DidChangeConfiguration {
         _client: &Client,
         _params: types::DidChangeConfigurationParams,
     ) -> Result<()> {
-        // TODO(jane): get this wired up after the pre-release
         Ok(())
     }
 }

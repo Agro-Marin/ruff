@@ -6,7 +6,6 @@ use crate::CliTest;
 fn cli_config_args_toml_string_basic() -> anyhow::Result<()> {
     let case = CliTest::with_file("test.py", r"print(x)  # [unresolved-reference]")?;
 
-    // Long flag
     assert_cmd_snapshot!(case.command().arg("--warn").arg("unresolved-reference").arg("--config").arg("terminal.error-on-warning=false"), @"
     success: true
     exit_code: 0
@@ -22,7 +21,6 @@ fn cli_config_args_toml_string_basic() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Short flag
     assert_cmd_snapshot!(case.command().arg("--warn").arg("unresolved-reference").arg("-c").arg("terminal.error-on-warning=false"), @"
     success: true
     exit_code: 0
@@ -54,7 +52,6 @@ fn cli_config_args_overrides_ty_toml() -> anyhow::Result<()> {
         ("test.py", r"print(x)  # [unresolved-reference]"),
     ])?;
 
-    // Exit code of 0 due to the setting in `ty.toml`
     assert_cmd_snapshot!(case.command().arg("--warn").arg("unresolved-reference"), @"
     success: true
     exit_code: 0
@@ -70,7 +67,6 @@ fn cli_config_args_overrides_ty_toml() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Exit code of 1 because the `ty.toml` setting is overwritten by `--config`
     assert_cmd_snapshot!(case.command().arg("--warn").arg("unresolved-reference").arg("--config").arg("terminal.error-on-warning=true"), @"
     success: false
     exit_code: 1
@@ -136,8 +132,6 @@ fn cli_config_args_invalid_option() -> anyhow::Result<()> {
 
 #[test]
 fn config_file_override() -> anyhow::Result<()> {
-    // Set `error-on-warning` to false in the configuration file
-    // Explicitly set `--warn unresolved-reference` to ensure the rule warns instead of errors
     let case = CliTest::with_files(vec![
         ("test.py", r"print(x)  # [unresolved-reference]"),
         (
@@ -149,7 +143,6 @@ fn config_file_override() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // Ensure the configuration file is loaded via the CLI argument
     assert_cmd_snapshot!(case.command().arg("--warn").arg("unresolved-reference").arg("--config-file").arg("ty-override.toml"), @"
     success: true
     exit_code: 0
@@ -165,7 +158,6 @@ fn config_file_override() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Ensure the configuration file is loaded via the environment variable
     assert_cmd_snapshot!(case.command().arg("--warn").arg("unresolved-reference").env("TY_CONFIG_FILE", "ty-override.toml"), @"
     success: true
     exit_code: 0

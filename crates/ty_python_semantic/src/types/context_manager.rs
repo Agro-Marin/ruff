@@ -239,7 +239,6 @@ impl<'db> Type<'db> {
             None
         };
 
-        // TODO: Make use of Protocols when we support it (the manager be assignable to `contextlib.AbstractContextManager`).
         match (enter, exit) {
             (Ok(enter), Ok(_)) => {
                 let return_type = enter.return_type(db, env);
@@ -261,7 +260,6 @@ impl<'db> Type<'db> {
                     mode,
                 })
             }
-            // TODO: Use the `exit_ty` to determine if any raised exception is suppressed.
             (Err(enter_error), Ok(_)) => Err(ContextManagerError::Enter(enter_error, mode)),
             (Err(enter_error), Err(exit_error)) => Err(ContextManagerError::EnterAndExit {
                 enter_error,
@@ -407,7 +405,6 @@ impl<'db> ContextManagerError<'db> {
             Self::Exit { mode, .. } | Self::Enter(_, mode) | Self::EnterAndExit { mode, .. } => {
                 *mode
             }
-            // `NotAwaitable` is only ever constructed for `async with`.
             Self::NotAwaitable { .. } => EvaluationMode::Async,
         };
 
@@ -422,8 +419,6 @@ impl<'db> ContextManagerError<'db> {
                 CallDunderError::PossiblyUnbound { .. } => {
                     format!("the method `{name}` may be missing")
                 }
-                // TODO: Use more specific error messages for the different error cases.
-                //  E.g. distinguish between a not callable `__enter__` attribute and a wrong signature.
                 CallDunderError::CallError(_, _, _) => {
                     format!("it does not correctly implement `{name}`")
                 }
@@ -516,8 +511,6 @@ impl<'db> ContextManagerError<'db> {
             }
         };
 
-        // Suggest using `async with` if only async methods are available in a sync context,
-        // or suggest using `with` if only sync methods are available in an async context.
         let with_kw = match mode {
             EvaluationMode::Sync => "with",
             EvaluationMode::Async => "async with",
@@ -628,7 +621,6 @@ impl<'db> ContextManagerError<'db> {
             }
         }
 
-        // Do not suggest switching between `with` and `async with` for a non-awaitable return.
         if matches!(self, Self::NotAwaitable { .. }) {
             return;
         }

@@ -114,19 +114,15 @@ pub(crate) fn if_stmt_min_max(checker: &Checker, stmt_if: &ast::StmtIf) {
         return;
     };
 
-    // Ignore, e.g., `foo < bar < baz`.
     let Some((left, op, right)) = compare.as_single() else {
         return;
     };
 
-    // extract helpful info from expression of the form
-    // `if cmp_left op cmp_right: target = assignment_value`
     let cmp_left = ComparableExpr::from(left);
     let cmp_right = ComparableExpr::from(right);
     let target = ComparableExpr::from(body_target);
     let assignment_value = ComparableExpr::from(body_value);
 
-    // Ex): if a < b: a = b
     let (min_max, flip_args) = if cmp_left == target && cmp_right == assignment_value {
         match op {
             CmpOp::Lt => (MinMax::Max, false),
@@ -136,7 +132,6 @@ pub(crate) fn if_stmt_min_max(checker: &Checker, stmt_if: &ast::StmtIf) {
             _ => return,
         }
     }
-    // Ex): `if a < b: b = a`
     else if cmp_left == assignment_value && cmp_right == target {
         match op {
             CmpOp::Lt => (MinMax::Min, true),

@@ -115,7 +115,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
     };
 
     let replacement = match qualified_name.segments() {
-        // apache-airflow-providers-amazon
         [
             "airflow",
             "hooks",
@@ -184,7 +183,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-celery
         [
             "airflow",
             "config_templates",
@@ -223,7 +221,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "3.3.0",
         },
 
-        // apache-airflow-providers-common-sql
         [
             "airflow",
             "hooks",
@@ -393,7 +390,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             }
         }
 
-        // apache-airflow-providers-daskexecutor
         ["airflow", "executors", "dask_executor", "DaskExecutor"] => ProviderReplacement::Rename {
             module: "airflow.providers.daskexecutor.executors.dask_executor",
             name: "DaskExecutor",
@@ -401,7 +397,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-docker
         ["airflow", "hooks", "docker_hook", "DockerHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.docker.hooks.docker",
             name: "DockerHook",
@@ -417,7 +412,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             }
         }
 
-        // apache-airflow-providers-apache-druid
         [
             "airflow",
             "hooks",
@@ -441,7 +435,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-fab
         [
             "airflow",
             "api",
@@ -532,7 +525,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-apache-hdfs
         ["airflow", "hooks", "webhdfs_hook", "WebHDFSHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.apache.hdfs.hooks.webhdfs",
             name: "WebHDFSHook",
@@ -546,7 +538,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-apache-hive
         [
             "airflow",
             "hooks",
@@ -678,7 +669,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-http
         ["airflow", "hooks", "http_hook", "HttpHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.http.hooks.http",
             name: "HttpHook",
@@ -703,7 +693,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-jdbc
         [
             "airflow",
             "hooks",
@@ -716,7 +705,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-cncf-kubernetes
         [
             "airflow",
             "executors",
@@ -933,7 +921,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "7.4.0",
         },
 
-        // apache-airflow-providers-microsoft-mssql
         ["airflow", "hooks", "mssql_hook", "MsSqlHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.microsoft.mssql.hooks.mssql",
             name: "MsSqlHook",
@@ -941,7 +928,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-mysql
         ["airflow", "hooks", "mysql_hook", "MySqlHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.mysql.hooks.mysql",
             name: "MySqlHook",
@@ -960,7 +946,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-oracle
         ["airflow", "hooks", "oracle_hook", "OracleHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.oracle.hooks.oracle",
             name: "OracleHook",
@@ -968,7 +953,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-papermill
         [
             "airflow",
             "operators",
@@ -981,7 +965,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-apache-pig
         ["airflow", "hooks", "pig_hook", "PigCliHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.apache.pig.hooks.pig",
             name: "PigCliHook",
@@ -995,7 +978,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-postgres
         ["airflow", "hooks", "postgres_hook", "PostgresHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.postgres.hooks.postgres",
             name: "PostgresHook",
@@ -1003,7 +985,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-presto
         ["airflow", "hooks", "presto_hook", "PrestoHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.presto.hooks.presto",
             name: "PrestoHook",
@@ -1011,7 +992,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-samba
         ["airflow", "hooks", "samba_hook", "SambaHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.samba.hooks.samba",
             name: "SambaHook",
@@ -1019,7 +999,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-slack
         ["airflow", "hooks", "slack_hook", "SlackHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.slack.hooks.slack",
             name: "SlackHook",
@@ -1038,7 +1017,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-smtp
         [
             "airflow",
             "operators",
@@ -1051,7 +1029,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-sqlite
         ["airflow", "hooks", "sqlite_hook", "SqliteHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.sqlite.hooks.sqlite",
             name: "SqliteHook",
@@ -1059,7 +1036,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-zendesk
         ["airflow", "hooks", "zendesk_hook", "ZendeskHook"] => ProviderReplacement::Rename {
             module: "airflow.providers.zendesk.hooks.zendesk",
             name: "ZendeskHook",
@@ -1067,7 +1043,6 @@ fn check_names_moved_to_provider(checker: &Checker, expr: &Expr, ranged: TextRan
             version: "1.0.0",
         },
 
-        // apache-airflow-providers-standard
         [
             "airflow",
             "hooks",

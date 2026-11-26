@@ -52,13 +52,6 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Any, Literal, Self, assert_never
 
-# The conformance tests include 4 types of errors:
-# 1. Required errors (E): The type checker must raise an error on this line
-# 2. Optional errors (E?): The type checker may raise an error on this line
-# 3. Tagged errors (E[tag]): The type checker must raise at most one error
-#    on a set of lines with a matching tag
-# 4. Tagged multi-errors (E[tag+]): The type checker should raise one or
-#    more errors on a set of lines with a matching tag
 CONFORMANCE_ERROR_PATTERN = re.compile(
     r"""
     \#\s*E                  # "# E" begins each error
@@ -100,7 +93,6 @@ SUMMARY_NOTE = """
     of the tagged lines; tagged multi-annotations (`E[tag+]`) allow any number up to
     the tag count. Flagging unexpected locations counts as a false positive.
 """
-# Priority order for section headings: improvements first, regressions last.
 TITLE_PRIORITY: dict[str, int] = {
     "True positives added": 0,
     "False positives removed": 1,
@@ -189,7 +181,6 @@ class TyDiagnostic:
     source: Source
 
     def __post_init__(self) -> None:
-        # Remove check name prefix from description
         self.description = self.description.replace(f"{self.check_name}: ", "")
 
     def __str__(self) -> str:
@@ -240,9 +231,7 @@ class ExpectedError:
     description: str
     location: Location
     optional: bool
-    # tag identifying an error that can occur on multiple lines
     tag: str | None
-    # True if one or more errors can occur on lines with the same tag
     multi: bool
 
     @property
@@ -426,7 +415,6 @@ class DiagnosticEntry:
 
     title: str
     test_case: TestCase
-    # None means show both old (removed) and new (added) in a single "changed" section.
     source: Source | None
 
 
@@ -539,8 +527,6 @@ def group_diagnostics_by_key(
     new: list[TyDiagnostic],
     expected: list[ExpectedError],
 ) -> list[TestCase]:
-    # Build a lookup from (filename, line) to tag so ty diagnostics on a tagged
-    # line can be grouped with all other expected errors sharing that tag.
     tagged_lines: dict[tuple[str, int], str] = {
         (e.location.path.name, e.location.positions.begin.line): e.tag
         for e in expected
@@ -651,7 +637,6 @@ def collect_diagnostic_entries(test_cases: list[TestCase]) -> list[DiagnosticEnt
                 old_class = tc.classify(Source.OLD)
                 new_class = tc.classify(Source.NEW)
                 if old_class == new_class:
-                    # Same classification but different diagnostics: one "changed" section.
                     entries.append(
                         DiagnosticEntry(
                             title=new_class.into_title(verb="changed"),
@@ -660,7 +645,6 @@ def collect_diagnostic_entries(test_cases: list[TestCase]) -> list[DiagnosticEnt
                         )
                     )
                 else:
-                    # Classification changed: split into separate removed/added sections.
                     entries.append(
                         DiagnosticEntry(
                             title=old_class.into_title(verb="removed"),
@@ -744,8 +728,6 @@ def render_test_cases(
 def collect_file_stats(
     test_cases: list[TestCase], test_files: Sequence[Path]
 ) -> list[FileStats]:
-    # `test_cases` only contain files where `ty` generates a diagnostic
-    # We expand this with the full set of `test_files` to ensure we don't undercount
     path_to_cases: dict[Path, list[TestCase]] = {
         path.resolve(): [] for path in test_files
     }
@@ -772,7 +754,6 @@ def render_file_stats_table(file_stats: list[FileStats]) -> str:
         indicator = " ✅" if improved else " ❌"
         return f"{new} ({diff:+}){indicator}"
 
-    # Collect totals across all files regardless of change.
     old_totals = Statistics()
     new_totals = Statistics()
     passing = 0
@@ -1000,8 +981,6 @@ def render_summary(
 
 def get_test_groups(root_dir: Path) -> AbstractSet[str]:
     """Adapted from typing/conformance/test_groups.py."""
-    # Read the TOML file that defines the test groups. Each test
-    # group has a name that associated test cases must start with.
     test_group_file = root_dir / "src" / "test_groups.toml"
     with open(test_group_file, "rb") as f:
         return tomllib.load(f).keys()
@@ -1011,9 +990,6 @@ def get_test_cases(
     test_group_names: AbstractSet[str], tests_dir: Path
 ) -> Sequence[Path]:
     """Adapted from typing/conformance/test_groups.py."""
-    # Filter test cases based on test group names. Files that do
-    # not begin with a known test group name are assumed to be
-    # files that support one or more tests.
     return [
         p
         for p in chain(tests_dir.glob("*.py"), tests_dir.glob("*.pyi"))

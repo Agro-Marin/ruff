@@ -9,17 +9,14 @@ use similar::TextDiff;
 use ruff_python_formatter::{PyFormatOptions, format_module_source};
 
 fn do_fuzz(case: &[u8]) -> Corpus {
-    // Throw away inputs which aren't utf-8
     let Ok(code) = std::str::from_utf8(case) else {
         return Corpus::Reject;
     };
 
     let options = PyFormatOptions::default();
-    // format the code once
     if let Ok(formatted) = format_module_source(code, options.clone()) {
         let formatted = formatted.as_code();
 
-        // reformat the code second time
         if let Ok(reformatted) = format_module_source(formatted, options.clone()) {
             let reformatted = reformatted.as_code();
 

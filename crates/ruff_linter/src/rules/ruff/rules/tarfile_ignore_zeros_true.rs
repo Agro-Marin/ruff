@@ -60,8 +60,6 @@ pub(crate) fn tarfile_ignore_zeros_true(
     call: &ast::ExprCall,
     qualified_name: &QualifiedName,
 ) {
-    // Keyword-only on the openers, but the `TarFile` constructor also takes it
-    // positionally, after `name, mode, fileobj, format, tarinfo, dereference`.
     let argument = match qualified_name.segments() {
         ["tarfile", "TarFile"] => call.arguments.find_argument("ignore_zeros", 6),
         ["tarfile", "open"] | ["tarfile", "TarFile", "open"] => call

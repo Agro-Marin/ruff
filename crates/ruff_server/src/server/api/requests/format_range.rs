@@ -63,7 +63,6 @@ fn format_text_document_range(
     let file_path = query.virtual_file_path();
     let source_type = query.source_type_for_format();
 
-    // If the document is excluded, return early.
     if is_document_excluded_for_formatting(
         &file_path,
         &settings.file_resolver,

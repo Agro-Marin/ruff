@@ -66,7 +66,6 @@ impl SourceMap {
         if edit.is_insertion() {
             self.push_marker(edit.start(), output_length);
         } else {
-            // Deletion or replacement
             self.push_marker(edit.end(), output_length);
         }
     }

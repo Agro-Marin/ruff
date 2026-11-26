@@ -172,12 +172,6 @@ pub(crate) fn unquoted_type_alias(checker: &Checker, binding: &Binding) {
         return;
     }
 
-    // We generate a diagnostic for every name that needs to be quoted
-    // but we currently emit a single shared fix that quotes the entire
-    // expression.
-    //
-    // Eventually we may try to be more clever and come up with the
-    // minimal set of subexpressions that need to be quoted.
     let parent = expr.range().start();
     let edit = quote_type_expression(
         expr,
@@ -221,8 +215,6 @@ fn collect_typing_references<'a>(
                     return;
                 }
                 if is_pep_593_generic_type(qualified_name.segments()) {
-                    // First argument is a type (including forward references); the
-                    // rest are arbitrary Python objects.
                     if let Expr::Tuple(ast::ExprTuple { elts, .. }) = slice.as_ref() {
                         let mut iter = elts.iter();
                         if let Some(expr) = iter.next() {
@@ -251,9 +243,6 @@ fn collect_typing_references<'a>(
                 return;
             }
 
-            // if TC004 is enabled we shouldn't emit a TC007 for a reference to
-            // a binding that would emit a TC004, otherwise the fixes will never
-            // stabilize and keep going in circles
             if checker.is_rule_enabled(Rule::RuntimeImportInTypeCheckingBlock)
                 && checker
                     .semantic()
@@ -276,7 +265,6 @@ pub(crate) fn quoted_type_alias(
     annotation_expr: &ast::ExprStringLiteral,
 ) {
     if checker.is_rule_enabled(Rule::RuntimeStringUnion) {
-        // this should return a TC010 error instead
         if let Some(Expr::BinOp(ast::ExprBinOp {
             op: Operator::BitOr,
             ..
@@ -286,7 +274,6 @@ pub(crate) fn quoted_type_alias(
         }
     }
 
-    // explicit type aliases require some additional checks to avoid false positives
     if checker.semantic().in_annotated_type_alias_value()
         && quotes_are_unremovable(checker.semantic(), expr, checker.target_version())
     {

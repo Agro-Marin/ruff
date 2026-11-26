@@ -43,7 +43,6 @@ pub(crate) const fn choose_quote(
         Quote::Double => (double_count, single_count),
     };
 
-    // always use primary unless we have primary but no secondary
     let use_secondary = primary_count > 0 && secondary_count == 0;
     if use_secondary {
         (preferred_quote.opposite(), secondary_count)
@@ -153,7 +152,7 @@ impl std::fmt::Display for StrRepr<'_, '_> {
 }
 
 impl UnicodeEscape<'_> {
-    const REPR_RESERVED_LEN: usize = 2; // for quotes
+    const REPR_RESERVED_LEN: usize = 2;
 
     #[expect(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
     pub fn repr_layout(source: &str, preferred_quote: Quote) -> EscapeLayout {
@@ -201,7 +200,6 @@ impl UnicodeEscape<'_> {
         }
 
         let (quote, num_escaped_quotes) = choose_quote(single_count, double_count, preferred_quote);
-        // we'll be adding backslashes in front of the existing inner quotes
         let Some(out_len) = length_add(out_len, num_escaped_quotes) else {
             return EscapeLayout { quote, len: None };
         };
@@ -215,10 +213,9 @@ impl UnicodeEscape<'_> {
     fn escaped_char_len(ch: char) -> usize {
         match ch {
             '\\' | '\t' | '\r' | '\n' => 2,
-            ch if ch < ' ' || ch as u32 == 0x7f => 4, // \xHH
+            ch if ch < ' ' || ch as u32 == 0x7f => 4,
             ch if ch.is_ascii() => 1,
             ch if crate::char::is_printable(ch) => {
-                // max = std::cmp::max(ch, max);
                 ch.len_utf8()
             }
             ch => Self::escaped_codepoint_len(ch),
@@ -228,9 +225,9 @@ impl UnicodeEscape<'_> {
     /// Returns the length of a hexadecimal Python escape for the character.
     const fn escaped_codepoint_len(ch: char) -> usize {
         match ch as u32 {
-            0..=0xff => 4,       // \xHH
-            0x100..=0xffff => 6, // \uHHHH
-            _ => 10,             // \UHHHHHHHH
+            0..=0xff => 4,
+            0x100..=0xffff => 6,
+            _ => 10,
         }
     }
 
@@ -245,11 +242,8 @@ impl UnicodeEscape<'_> {
         let check_normalization = !normalizer.is_normalized(source);
         let default_ignorables = CodePointSetData::new::<DefaultIgnorableCodePoint>();
 
-        // The braille blank is printable but often looks like an ordinary space.
         let invisible = |ch| ch == '\u{2800}' || default_ignorables.contains(ch);
 
-        // Characters escaped by the ordinary Python representation and invisible characters end a
-        // run regardless of whether it is in NFC.
         let always_escaped = |ch: char| {
             ch == quote.as_char()
                 || Self::escaped_char_len(ch) != ch.len_utf8()
@@ -259,8 +253,6 @@ impl UnicodeEscape<'_> {
         let mut escapes = Vec::new();
         let mut position = 0;
 
-        // The first character follows the opening quote. After an escape, the next character can
-        // likewise attach to the escape's final character rather than to a character in the string.
         let mut follows_syntax = true;
 
         while let Some(ch) = source[position..].chars().next() {
@@ -273,8 +265,6 @@ impl UnicodeEscape<'_> {
             if additional || always_escaped(ch) {
                 Self::escape_preceding_prepends(source, position, &mut escapes);
 
-                // The writer handles ordinary Python escapes. Record only the additional escapes
-                // needed for display, so their lengths can be accounted for separately.
                 if additional {
                     escapes.push(position);
                 }
@@ -290,16 +280,12 @@ impl UnicodeEscape<'_> {
                 .map(|(index, _)| position + index)
                 .unwrap_or(source.len());
 
-            // A substring of an NFC string is also NFC, so an NFC source cannot contain a run
-            // that needs an escape for normalization.
             if !check_normalization {
                 position = run_end;
                 follows_syntax = false;
                 continue;
             }
 
-            // In the Rust string `"e\u{301}x"`, `e` is NFC but adding the accent is not. Escaping
-            // the accent leaves `e` visible, so with double quotes the display is `"e\u0301x"`.
             while position < run_end {
                 let run = &source[position..run_end];
 
@@ -318,8 +304,6 @@ impl UnicodeEscape<'_> {
                     follows_syntax = true;
                 }
 
-                // A character immediately following the new escape could attach to the escape's
-                // final ASCII character. Escape it as well if it can do so.
                 while let Some(ch) = source[position..run_end].chars().next() {
                     if !Self::attaches_to_syntax(ch) {
                         break;
@@ -330,19 +314,12 @@ impl UnicodeEscape<'_> {
             }
         }
 
-        // A trailing Prepend character could attach to the closing quote, even if the final run
-        // is already NFC.
         Self::escape_preceding_prepends(source, source.len(), &mut escapes);
         escapes
     }
 
     /// Records offsets of characters that would attach to the following escape or closing quote.
     fn escape_preceding_prepends(source: &str, end: usize, escapes: &mut Vec<usize>) {
-        // `GraphemeClusterBreak::Prepend` characters can join the following character. Once one is
-        // escaped, a preceding `Prepend` would join the escape's backslash, so escape that too.
-        //
-        // See Unicode's grapheme cluster boundary rules:
-        // https://www.unicode.org/reports/tr29/#Grapheme_Cluster_Boundary_Rules
         let start = source[..end]
             .char_indices()
             .rev()
@@ -381,8 +358,6 @@ impl UnicodeEscape<'_> {
             return None;
         }
 
-        // NFC is closed under substringing, so every prefix after the first non-NFC prefix is
-        // also non-NFC. Search at character boundaries to identify the character that changes it.
         let mut normalized = 0;
         let mut not_normalized = source.len();
 
@@ -411,10 +386,7 @@ impl UnicodeEscape<'_> {
             '\n' => formatter.write_str("\\n"),
             '\t' => formatter.write_str("\\t"),
             '\r' => formatter.write_str("\\r"),
-            // these 2 branches *would* be handled below, but we shouldn't have to do a
-            // unicodedata lookup just for ascii characters
             '\x20'..='\x7e' => {
-                // printable ascii range
                 if ch == quote.as_char() || ch == '\\' {
                     formatter.write_char('\\')?;
                 }
@@ -549,7 +521,6 @@ impl AsciiEscape<'_> {
         }
 
         let (quote, num_escaped_quotes) = choose_quote(single_count, double_count, preferred_quote);
-        // we'll be adding backslashes in front of the existing inner quotes
         let Some(out_len) = length_add(out_len, num_escaped_quotes) else {
             return EscapeLayout { quote, len: None };
         };
@@ -564,7 +535,7 @@ impl AsciiEscape<'_> {
         match ch {
             b'\\' | b'\t' | b'\r' | b'\n' => 2,
             0x20..=0x7e => 1,
-            _ => 4, // \xHH
+            _ => 4,
         }
     }
 
@@ -574,7 +545,6 @@ impl AsciiEscape<'_> {
             b'\n' => formatter.write_str("\\n"),
             b'\r' => formatter.write_str("\\r"),
             0x20..=0x7e => {
-                // printable ascii range
                 if ch == quote.as_byte() || ch == b'\\' {
                     formatter.write_char('\\')?;
                 }
@@ -594,7 +564,6 @@ impl Escape for AsciiEscape<'_> {
         &self.layout
     }
     fn write_source(&self, formatter: &mut impl std::fmt::Write) -> std::fmt::Result {
-        // OK because function must be called only when source is printable ascii characters.
         let string = std::str::from_utf8(self.source).expect("ASCII bytes");
         formatter.write_str(string)
     }
@@ -746,8 +715,6 @@ mod unicode_escape_tests {
 
     #[test]
     fn display_representations_are_normalized() {
-        // Check that every scalar has an NFC display both after `e` and before `e` followed by a
-        // combining acute accent, which must be escaped.
         let nfc = icu_normalizer::ComposingNormalizer::new_nfc();
         for codepoint in 0..=0x0010_ffff {
             let Some(ch) = char::from_u32(codepoint) else {

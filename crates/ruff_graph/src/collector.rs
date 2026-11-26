@@ -56,15 +56,12 @@ impl<'ast> SourceOrderVisitor<'ast> for Collector<'_> {
                     let mut components = vec![];
 
                     if level > 0 {
-                        // If we're resolving a relative import, we must have a module path.
                         let Some(module_path) = self.module_path else {
                             return;
                         };
 
-                        // Start with the containing module.
                         components.extend(module_path.iter().map(String::as_str));
 
-                        // Remove segments based on the number of dots.
                         for _ in 0..level {
                             if components.is_empty() {
                                 return;
@@ -73,12 +70,10 @@ impl<'ast> SourceOrderVisitor<'ast> for Collector<'_> {
                         }
                     }
 
-                    // Add the module path.
                     if let Some(module) = module {
                         components.extend(module.split('.'));
                     }
 
-                    // Add the alias name, unless it's a wildcard import.
                     if alias.name.as_str() != "*" {
                         components.push(alias.name.as_str());
                     }
@@ -107,7 +102,6 @@ impl<'ast> SourceOrderVisitor<'ast> for Collector<'_> {
                 range: _,
                 node_index: _,
             }) => {
-                // Skip TYPE_CHECKING blocks if not requested
                 if self.type_checking_imports || !is_type_checking_condition(test) {
                     self.visit_body(body);
                 }
@@ -123,7 +117,6 @@ impl<'ast> SourceOrderVisitor<'ast> for Collector<'_> {
             | Stmt::Match(_)
             | Stmt::Try(_)
             | Stmt::For(_) => {
-                // Always traverse into compound statements.
                 walk_stmt(self, stmt);
             }
 
@@ -142,7 +135,6 @@ impl<'ast> SourceOrderVisitor<'ast> for Collector<'_> {
             | Stmt::Break(_)
             | Stmt::Continue(_)
             | Stmt::IpyEscapeCommand(_) => {
-                // Only traverse simple statements when string imports is enabled.
                 if self.string_imports.enabled {
                     walk_stmt(self, stmt);
                 }
@@ -159,8 +151,6 @@ impl<'ast> SourceOrderVisitor<'ast> for Collector<'_> {
             }) = expr
             {
                 let value = value.to_str();
-                // Determine whether the string literal "looks like" an import statement: contains
-                // the requisite number of dots, and consists solely of valid Python identifiers.
                 if self.string_imports.min_dots == 0
                     || memchr::memchr_iter(b'.', value.as_bytes()).count()
                         >= self.string_imports.min_dots
@@ -189,9 +179,7 @@ impl<'ast> SourceOrderVisitor<'ast> for Collector<'_> {
 /// will not be detected!
 fn is_type_checking_condition(expr: &Expr) -> bool {
     match expr {
-        // `if TYPE_CHECKING:`
         Expr::Name(ast::ExprName { id, .. }) => id.as_str() == "TYPE_CHECKING",
-        // `if typing.TYPE_CHECKING:`
         Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
             attr.as_str() == "TYPE_CHECKING"
                 && matches!(

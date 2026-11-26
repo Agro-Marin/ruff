@@ -33,7 +33,6 @@ impl ModuleImports {
         string_imports: StringImports,
         type_checking_imports: bool,
     ) -> Result<Self> {
-        // Parse the source code.
         let parse_options = ParseOptions::from(source.py_source_type())
             .with_target_version(environment.python_version(db));
         let parsed = parse(source.source_code(), parse_options)?;
@@ -41,7 +40,6 @@ impl ModuleImports {
         let module_path =
             package.and_then(|package| to_module_path(package.as_std_path(), path.as_std_path()));
 
-        // Collect the imports.
         let imports = Collector::new(
             module_path.as_deref(),
             string_imports,
@@ -49,7 +47,6 @@ impl ModuleImports {
         )
         .collect(parsed.syntax());
 
-        // Resolve the imports.
         let mut resolved_imports = ModuleImports::default();
         let resolver = Resolver::new(db, path, environment);
         for import in imports {

@@ -98,8 +98,6 @@ impl Renderer {
         mut pending_link: PendingLink,
         mut line: Line<'_>,
     ) {
-        // A dedent or implausible continuation ends the link candidate.
-        // Emit its buffered fallback, then render the current line normally.
         if line.source_indentation < pending_link.minimum_indentation
             || !pending_link.can_continue_with(line.text)
         {
@@ -108,30 +106,20 @@ impl Renderer {
             return;
         }
 
-        // Record where the current line begins in the buffered source. A
-        // completed link's `len` is its end offset in that same source, so
-        // `link.len - line_start` is where rendering resumes within `line`.
         let line_start = pending_link.source.len() + 1;
 
         pending_link.target_started |= line.text.contains('<');
         pending_link.source.push('\n');
         pending_link.source.push_str(line.text);
 
-        // Buffer ordinary continuation lines without reparsing the entire
-        // source, which would make long wrapped links increasingly expensive.
         if !line.text.contains(['`', '\\']) {
             pending_link.push_fallback_line(line);
             self.pending_link = Some(pending_link);
             return;
         }
 
-        // Reaching this point means the line contains either a possible closing
-        // backtick or a disallowed backslash. Reparse now to complete or reject
-        // the candidate.
         match parse_candidate(&pending_link.source) {
             Some(Candidate::Complete(link)) if link.len >= line_start => {
-                // Replace the speculative source with the rendered link, then
-                // scan the rest of this line for additional links.
                 output.push_str(&pending_link.rendered_before);
                 link.render_markdown(output);
                 line.rendered_prefix = "";
@@ -139,14 +127,10 @@ impl Renderer {
                 self.render_line_with_no_link_pending(output, line);
             }
             Some(Candidate::Pending) => {
-                // Keep the parsed source and fallback rendering in sync while
-                // the candidate remains unresolved.
                 pending_link.push_fallback_line(line);
                 self.pending_link = Some(pending_link);
             }
             Some(Candidate::Complete(_)) | None => {
-                // Abandon the candidate, emit its buffered fallback, and
-                // process the current line from scratch.
                 output.push_str(&pending_link.fallback);
                 self.render_line_with_no_link_pending(output, line);
             }
@@ -245,15 +229,10 @@ impl PendingLink {
             return false;
         }
 
-        // Once the target has begun, its contents may wrap anywhere. The full
-        // parser validates the completed URI before rendering it as a link.
         if self.target_started {
             return true;
         }
 
-        // Before the target begins, remain conservative about what can extend
-        // a label. If this line also opens the target, require the text seen so
-        // far to be a possible HTTP(S) scheme.
         let Some((label, uri)) = line.split_once('<') else {
             return is_label_continuation(line);
         };
@@ -278,23 +257,19 @@ enum Candidate<'a> {
 fn find_link(input: &str) -> Option<(usize, Candidate<'_>)> {
     let mut scanner = BacktickScanner::new(input);
 
-    // Visit each backtick run that could delimit inline markup.
     while let Some(run) = scanner.next() {
         let index = run.start().to_usize();
 
-        // An escaped run is literal text, so continue immediately after it.
         if run.is_escaped() {
             continue;
         }
 
-        // Try parsing a link only when the backtick run has valid surrounding characters.
         if is_link_start(input, index)
             && let Some(candidate) = parse_candidate(&input[index..])
         {
             return Some((index, candidate));
         }
 
-        // Skip other backtick-delimited spans rather than searching inside them.
         scanner.eat_span(run)?;
     }
 
@@ -326,10 +301,6 @@ fn parse_candidate(input: &str) -> Option<Candidate<'_>> {
             return None;
         }
 
-        // Eliminate candidates whose content already contains a disallowed
-        // backslash or closing `>`, or whose target cannot become HTTP(S). A
-        // partial URI scheme remains valid so it can wrap immediately after
-        // `<` or anywhere within `http://` or `https://`.
         if after_opening.contains(['\\', '>'])
             || after_opening
                 .rsplit_once('<')
@@ -400,14 +371,10 @@ impl<'a> Hyperlink<'a> {
 }
 
 fn normalize_uri(uri: &str) -> Option<Cow<'_, str>> {
-    // Keep the common case borrowed. This also ensures that whitespace within
-    // a single physical line remains invalid rather than being normalized.
     if !uri.contains('\n') {
         return is_supported_uri(uri).then_some(Cow::Borrowed(uri));
     }
 
-    // Whitespace at a physical line boundary comes from wrapping rather than
-    // the destination itself, so remove it while joining the URI lines.
     let mut normalized = String::with_capacity(uri.len());
     for line in uri.lines() {
         normalized.push_str(line.trim_ascii());
@@ -541,56 +508,39 @@ fn render_inline_text(output: &mut String, text: &str) {
     let mut current_tick_count = 0;
 
     for chunk in text.split('`') {
-        // First chunk is definitionally not in inline-code and so always plaintext.
         if first_chunk {
             first_chunk = false;
             push_escaped_markdown_text(output, chunk);
             continue;
         }
 
-        // Not in first chunk, emit the ` between the last chunk and this one.
         output.push('`');
         current_tick_count += 1;
 
-        // If we're in an inline block and have enough close-ticks to terminate it, do so.
-        // TODO: we parse ``hello```there` as (hello)(there) which probably isn't correct
-        // (definitely not for Markdown) but it's close enough for horse grenades in this
-        // MVP impl. Notably we're verbatim emitting all the backticks so as long as reST and
-        // Markdown agree we're *fine*. The accuracy of this parsing only affects the
-        // accuracy of where we apply escaping (so we need to misparse and see escapables
-        // for any of this to matter).
         if opening_tick_count > 0 && current_tick_count >= opening_tick_count {
             opening_tick_count = 0;
             current_tick_count = 0;
             in_inline_code = false;
         }
 
-        // If this chunk is completely empty we're just in a run of ticks.
         if chunk.is_empty() {
             continue;
         }
 
-        // Ok the chunk is non-empty, our run of ticks is complete.
         if in_inline_code {
-            // The previous check for >= opening_tick_count didn't trip, so these can't close
-            // and these ticks will be verbatim rendered in the content.
             current_tick_count = 0;
         } else if current_tick_count > 0 {
-            // Ok we're now in inline code.
             opening_tick_count = current_tick_count;
             current_tick_count = 0;
             in_inline_code = true;
         }
 
-        // Finally include the content either escaped or not.
         if in_inline_code {
             output.push_str(chunk);
         } else {
             push_escaped_markdown_text(output, chunk);
         }
     }
-    // NOTE: explicitly not "flushing" the ticks here.
-    // We respect however the user closed their inline code.
 }
 
 fn push_escaped_markdown_text(output: &mut String, input: &str) {
@@ -837,8 +787,6 @@ localization
 
     #[test]
     fn does_not_convert_representative_links_outside_the_supported_subset() {
-        // These are representative fallbacks, not an exhaustive list. The
-        // `Renderer` contract defines the complete supported subset.
         for source in [
             "`label\n- list item\n<https://example.com>`_",
             "  `docs\n<https://example.com>`_",

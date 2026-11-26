@@ -18,13 +18,11 @@ pub(crate) fn setup_venv(
     dest_venv_path: &SystemPath,
     lockfile_path: &Utf8Path,
 ) -> Result<()> {
-    // Create a temporary directory for the project
     let temp_dir = tempfile::Builder::new()
         .prefix("mdtest-venv-")
         .tempdir()
         .context("Failed to create temporary directory for mdtest virtual environment")?;
 
-    // Canonicalize here to fix problems with `.strip_prefix()` later on Windows
     let temp_dir_path = dunce::canonicalize(temp_dir.path())
         .context("Failed to canonicalize temporary directory path")?;
 
@@ -37,7 +35,6 @@ pub(crate) fn setup_venv(
         })?
         .to_path_buf();
 
-    // Generate a minimal pyproject.toml
     let pyproject_toml = format!(
         r#"[project]
 name = "mdtest-deps"
@@ -61,7 +58,6 @@ dependencies = [
     )
     .context("Failed to write pyproject.toml")?;
 
-    // Convert PythonPlatform to uv's platform format
     let uv_platform = match python_platform {
         PythonPlatform::Identifier(id) => match id.as_str() {
             "win32" => "windows",
@@ -76,22 +72,18 @@ dependencies = [
 
     let upgrade_lockfile = std::env::var("MDTEST_UPGRADE_LOCKFILES").is_ok_and(|v| v == "1");
     let use_locked = if upgrade_lockfile {
-        // In upgrade mode, we'll generate a new lockfile
         false
     } else if lockfile_path.exists() {
-        // Copy existing lockfile to temp directory
         let temp_lockfile = temp_path.join("uv.lock");
         std::fs::copy(lockfile_path, temp_lockfile.as_std_path())
             .with_context(|| format!("Failed to copy lockfile from '{lockfile_path}'"))?;
         true
     } else {
-        // No existing lockfile - error in normal mode
         bail!(
             "Lockfile not found at '{lockfile_path}'. Run with `MDTEST_UPGRADE_LOCKFILES=1` to generate it.",
         );
     };
 
-    // Run `uv sync` to install dependencies
     let mut uv_sync = std::process::Command::new("uv");
     uv_sync
         .args(["sync", "--python-platform", uv_platform])
@@ -158,7 +150,6 @@ fn copy_site_packages_to_db(
     dest_venv_path: &SystemPath,
     _python_version: PythonVersion,
 ) -> Result<()> {
-    // Discover the site-packages directory in the virtual environment
     let system = OsSystem::new(venv_path);
     let env = PythonEnvironment::new(venv_path, SysPrefixPathOrigin::LocalVenv, &system)
         .context("Failed to create Python environment for temporary virtual environment")?;
@@ -172,7 +163,6 @@ fn copy_site_packages_to_db(
         .next()
         .ok_or_else(|| anyhow!("No site-packages directory found in '{venv_path}'"))?;
 
-    // Create the destination directory structure
     let relative_site_packages = site_packages_path.strip_prefix(venv_path).map_err(|_| {
         anyhow!("site-packages path '{site_packages_path}' is not under venv path '{venv_path}'")
     })?;
@@ -180,7 +170,6 @@ fn copy_site_packages_to_db(
     db.create_directory_all(&dest_site_packages)
         .context("Failed to create site-packages directory in database")?;
 
-    // Recursively copy all files from site-packages
     copy_directory_recursive(db, &site_packages_path, &dest_site_packages)?;
 
     File::sync_path(db, &dest_site_packages);
@@ -214,7 +203,6 @@ fn copy_directory_recursive(db: &mut Db, src: &SystemPath, dest: &SystemPath) ->
         let dest_path = dest.join(file_name_str);
 
         if file_type.is_dir() {
-            // Skip __pycache__ directories and other unnecessary directories
             if file_name_str == "__pycache__" || file_name_str.ends_with(".dist-info") {
                 continue;
             }
@@ -229,7 +217,6 @@ fn copy_directory_recursive(db: &mut Db, src: &SystemPath, dest: &SystemPath) ->
             });
 
             if !is_python_source {
-                // Skip all non-Python files (binaries, data files, etc.)
                 continue;
             }
 

@@ -25,7 +25,6 @@ pub(crate) fn negate<'a>(expression: &Expression<'a>) -> Expression<'a> {
         }
     }
 
-    // If the expression is `True` or `False`, return the opposite.
     if let Expression::Name(expression) = expression {
         match expression.value {
             "True" => {
@@ -46,12 +45,6 @@ pub(crate) fn negate<'a>(expression: &Expression<'a>) -> Expression<'a> {
         }
     }
 
-    // If the expression is higher precedence than the unary `not`, we need to wrap it in
-    // parentheses.
-    //
-    // For example: given `a and b`, we need to return `not (a and b)`, rather than `not a and b`.
-    //
-    // See: <https://docs.python.org/3/reference/expressions.html#operator-precedence>
     let needs_parens = matches!(
         expression,
         Expression::BooleanOperation(_)
@@ -60,7 +53,6 @@ pub(crate) fn negate<'a>(expression: &Expression<'a>) -> Expression<'a> {
             | Expression::NamedExpr(_)
     );
     let has_parens = !expression.lpar().is_empty() && !expression.rpar().is_empty();
-    // Otherwise, wrap in a `not` operator.
     Expression::UnaryOperation(Box::new(UnaryOperation {
         operator: libcst_native::UnaryOp::Not {
             whitespace_after: space(),

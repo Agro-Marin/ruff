@@ -461,7 +461,6 @@ pub fn is_iterator(name: &str) -> bool {
 ///
 /// Intended to be kept in sync with [`IPYTHON_BUILTINS`].
 fn is_ipython_builtin(name: &str) -> bool {
-    // Constructed by converting the `IPYTHON_BUILTINS` slice to a `match` expression.
     matches!(name, "__IPYTHON__" | "display" | "get_ipython")
 }
 

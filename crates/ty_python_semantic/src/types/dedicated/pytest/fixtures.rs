@@ -136,14 +136,10 @@ pub fn fixture_bindings_for_parameter<'db>(
         return Box::default();
     };
 
-    // pytest creates the special `request` fixture on demand, so there is no decorated fixture
-    // declaration to return as a `FixtureBinding`.
-    // https://docs.pytest.org/en/stable/reference/reference.html#request
     if request.name == "request" {
         return Box::default();
     }
 
-    // First, resolve bindings from the containing class scope, if any.
     let containing_scope = request.function_definition.scope(db);
     let class_scope = containing_scope
         .node(db)
@@ -168,7 +164,6 @@ pub fn fixture_bindings_for_parameter<'db>(
         }
     }
 
-    // Second, resolve bindings from the module scope.
     let request_file = parameter.program_file(db);
     let bindings = bindings_in_search_scope(
         db,
@@ -179,7 +174,6 @@ pub fn fixture_bindings_for_parameter<'db>(
         return bindings;
     }
 
-    // Third, resolve bindings from the conftest hierarchy.
     for conftest in conftest_files(db, request_file) {
         let bindings = bindings_in_search_scope(
             db,
@@ -191,11 +185,6 @@ pub fn fixture_bindings_for_parameter<'db>(
         }
     }
 
-    // Fourth, search the legacy temporary-directory plugin. Pytest registers it during
-    // configuration, after the default plugins and the plugins named by initial conftests, so it
-    // takes precedence over both. Plugins registered later during collection, such as those named
-    // by test modules, take precedence over it. As an approximation, we search it before all
-    // plugins named through `pytest_plugins`.
     if let Some(plugin) = pytest_legacy_tmpdir_plugin(db, request_file.program(db)) {
         let bindings = bindings_in_search_scope(db, &request, FixtureSearchScope::Class(plugin));
         if !bindings.is_empty() {
@@ -203,9 +192,6 @@ pub fn fixture_bindings_for_parameter<'db>(
         }
     }
 
-    // Fifth, search plugins registered through `pytest_plugins` in reverse registration order.
-    // Their fixtures are visible to the whole session, so conftest fixtures take precedence.
-    // https://github.com/pytest-dev/pytest/blob/9.1.1/src/_pytest/fixtures.py#L1776-L1792
     for plugin in pytest_registered_plugin_files(db, request_file)
         .iter()
         .rev()
@@ -220,7 +206,6 @@ pub fn fixture_bindings_for_parameter<'db>(
         }
     }
 
-    // Finally, search installed core plugins in reverse registration order.
     for plugin in pytest_global_plugin_files(db, request_file.program(db))
         .iter()
         .rev()
@@ -333,9 +318,6 @@ pub fn pytest_registered_plugin_files<'db>(
     db: &'db dyn Db,
     request_file: ProgramFile<'db>,
 ) -> &'db [ProgramFile<'db>] {
-    // A file without registrations of its own sees the same plugins as its nearest conftest.
-    // Selecting that conftest before entering the tracked query lets the test modules that share a
-    // conftest also share its cached registrations.
     let registration_file = if pytest_plugin_names(db, request_file).is_empty() {
         conftest_files(db, request_file).into_iter().next()
     } else {
@@ -372,7 +354,6 @@ impl<'db> PytestPluginRegistry<'db> {
     fn new(db: &'db dyn Db, program: Program<'db>) -> Self {
         Self {
             builtin_names: pytest_builtin_plugin_names(db, program),
-            // Pytest registers its default plugins before importing any conftest.
             registered_files: pytest_global_plugin_files(db, program)
                 .iter()
                 .copied()
@@ -391,8 +372,6 @@ impl<'db> PytestPluginRegistry<'db> {
     ) {
         let mut modules = conftest_files(db, registration_file);
         modules.reverse();
-        // Pytest reads `registration_file`'s own registrations when it loads the file as a
-        // conftest, test module, or plugin. As an approximation, we always read them.
         modules.push(registration_file);
 
         for module in modules {
@@ -421,14 +400,10 @@ impl<'db> PytestPluginRegistry<'db> {
         module: ProgramFile<'db>,
         name: &'db str,
     ) {
-        // Pytest skips names that are already registered.
-        // https://github.com/pytest-dev/pytest/blob/9.1.1/src/_pytest/config/__init__.py#L900-L903
         if self.registered_names.contains(name) {
             return;
         }
 
-        // Pytest imports built-in plugins such as `pytester` from `_pytest`, even when a project
-        // module has the same name.
         let module_name = if self.builtin_names.iter().any(|builtin| builtin == name) {
             ModuleName::new(&format!("_pytest.{name}"))
         } else {
@@ -438,9 +413,6 @@ impl<'db> PytestPluginRegistry<'db> {
             return;
         };
 
-        // Resolve the plugin like an import in the registering module. For conftests and test
-        // modules, the fallback search of the importing file's ancestor directories approximates
-        // the directories that pytest adds to `sys.path`.
         let importing_file = ImportingFile::File(module.file(db), module.resolver_environment(db));
         let Some(plugin) = resolve_real_module(db, importing_file, &module_name)
             .and_then(|plugin| plugin.file(db))
@@ -487,12 +459,10 @@ fn pytest_plugin_names_from_definition<'db>(
         return names.value(db).split(',').map(str::to_owned).collect();
     }
 
-    // A list display is inferred as `list[str]`, so read its elements from the assignment.
     if let Some(names) = static_string_sequence_for_definition(db, definition) {
         return names;
     }
 
-    // An imported tuple has no local value, but its type preserves its literal elements.
     let environment = ProgramEnvironment::from_definition(definition);
     value_type
         .tuple_instance_spec(db, &environment)
@@ -557,7 +527,6 @@ fn pytest_builtin_plugin_names<'db>(db: &'db dyn Db, program: Program<'db>) -> B
         }
     }
 
-    // Before pytest 9, optional plugins are added after creating the set.
     for statement in module.suite() {
         if let Some(call) = statement
             .as_expr_stmt()
@@ -657,8 +626,6 @@ fn pytest_legacy_tmpdir_plugin<'db>(
         }
     }
 
-    // pytest registers this class during `pytest_configure` only when both plugins are active.
-    // https://github.com/pytest-dev/pytest/blob/9.1.1/src/_pytest/legacypath.py#L439-L459
     if has_tmpdir && let Some(file) = legacypath_file {
         original_class_type(db, end_of_scope_definition(db, file, "LegacyTmpdirPlugin")?)
     } else {
@@ -699,20 +666,11 @@ impl<'db, 'ast> FixtureRequestContext<'db, 'ast> {
         let function_definition = index.expect_single_definition(function_ref);
         let function = function_ref.node(module);
 
-        // Parameters on fixture declarations request their values from other fixtures:
-        //
-        // ```py
         // @pytest.fixture
-        // def database(): ...
-        //
         // @pytest.fixture
-        // def service(database): ...  # `database` is a fixture request.
-        // ```
         let is_fixture_dependency = !function.decorator_list.is_empty()
             && fixture_declaration(db, function_definition).is_some();
 
-        // Pytest collects `unittest.TestCase` methods but does not inject fixtures into them.
-        // https://docs.pytest.org/en/9.0.x/how-to/unittest.html#pytest-features-in-unittest-testcase-subclasses
         if !is_fixture_dependency
             && pytest_test_for_binding(db, function_definition)
                 .is_none_or(|test| test.kind() != PytestTestKind::Pytest)
@@ -763,10 +721,6 @@ impl<'db, 'ast> FixtureRequestContext<'db, 'ast> {
             .find(|parameter| parameter.definition() == Some(definition))?;
         let parameter_name = parameter.keyword_name()?;
 
-        // Match pytest's logic for only injecting fixtures for required
-        // parameters and by keyword:
-        // https://docs.pytest.org/en/9.0.x/how-to/fixtures.html#requesting-fixtures
-        // https://github.com/pytest-dev/pytest/blob/9.0.1/src/_pytest/compat.py#L145-L153
         if parameter.has_default() {
             return None;
         }
@@ -808,8 +762,6 @@ impl<'db, 'ast> FixtureRequestContext<'db, 'ast> {
         let parameters = signature.parameters();
         let is_source_keyword_parameter = |parameter: &SignatureParameter<'db>| {
             parameter.keyword_name().is_some()
-                // ty applies PEP 484's legacy positional-only convention to leading `__name`
-                // parameters, but Python and pytest still inspect them as positional-or-keyword.
                 || (self.function.parameters.posonlyargs.is_empty()
                     && parameter.is_positional_only())
         };
@@ -947,8 +899,6 @@ fn mock_patch_count<'db>(
             call.arguments
                 .find_argument_value("new", new_position)
                 .is_none_or(|new| {
-                    // Typeshed exposes `DEFAULT` as `Any`, so any dynamic value may enable
-                    // positional injection.
                     matches!(decorators.expression_type(new), Some(Type::Dynamic(_)))
                 })
         })
@@ -958,9 +908,7 @@ fn mock_patch_count<'db>(
 /// A decorated fixture function.
 #[derive(Debug, Eq, PartialEq, get_size2::GetSize, salsa::SalsaValue)]
 pub(super) struct FixtureDeclaration<'db> {
-    // The definition for the fixture function.
     definition: Definition<'db>,
-    // The way in which the fixture exposes a name.
     name: FixtureName,
 }
 
@@ -1147,8 +1095,6 @@ fn fixture_name_candidates<'db>(
         let exposures =
             fixture_exposures_from_symbol_definitions(db, name, resolution.definitions());
 
-        // Reject names that neither expose a fixture nor bind a runtime class attribute that
-        // can shadow an inherited fixture.
         if exposures.is_empty()
             && !(is_class_scope
                 && symbol.is_bound()
@@ -1216,29 +1162,17 @@ fn bindings_in_search_scope<'db>(
     for scope in search_scopes {
         for name_candidate in fixture_name_candidates(db, scope) {
             let symbol_name = &name_candidate.name;
-            // A name supplied by an earlier scope shadows the same name here.
             if !seen_names.insert(symbol_name) {
                 continue;
             }
 
             for exposure in &name_candidate.exposures {
-                // Request must match public name of the fixture
                 if request.name != exposure.name
-                    // A fixture definition cannot fulfill a request for itself
                     || request.function_definition == exposure.fixture
                 {
                     continue;
                 }
 
-                // Semantic-index traversal is unordered. Pytest registers fixture attributes in
-                // sorted `dir()` order and selects the last registration, so retain bindings for
-                // the lexicographically last matching attribute. Thus, if `first_fixture` and
-                // `second_fixture` both expose `resource`, `second_fixture` wins.
-                //
-                // `dir()` ordering: https://docs.python.org/3/library/functions.html#dir
-                // Fixture discovery: https://github.com/pytest-dev/pytest/blob/9.0.1/src/_pytest/fixtures.py#L1852-L1880
-                // Registration order: https://github.com/pytest-dev/pytest/blob/9.0.1/src/_pytest/fixtures.py#L1788-L1797
-                // Fixture selection: https://github.com/pytest-dev/pytest/blob/9.0.1/src/_pytest/fixtures.py#L583-L599
                 match winning_name.map(|winner| winner.cmp(symbol_name)) {
                     Some(Ordering::Greater) => continue,
                     Some(Ordering::Less) | None => {
@@ -1285,9 +1219,6 @@ fn conftest_files<'db>(db: &'db dyn Db, request_file: ProgramFile<'db>) -> Vec<P
     };
 
     let start_directory = if path.file_name() == Some("conftest.py") {
-        // The caller already searched the request file as a module search scope.
-        // Start in its parent when it is itself a conftest to avoid searching
-        // the same search scope twice.
         request_directory.parent()
     } else {
         Some(request_directory)
@@ -1322,18 +1253,9 @@ pub(super) fn fixture_declaration<'db>(
             inference.expression_type(first_decorator),
             Some(Type::ClassLiteral(class)) if class.is_known(db, KnownClass::Staticmethod)
         ) {
-        // Pytest discovers fixtures on plugin classes through class attribute access. For
-        // example:
-        //
-        // ```py
-        // class LegacyTmpdirPlugin:
         //     @staticmethod
         //     @fixture
-        //     def tmpdir(): ...
-        // ```
-        //
         // Accessing `LegacyTmpdirPlugin.tmpdir` invokes the `@staticmethod` descriptor and exposes
-        // the fixture wrapper beneath it. Inspect the inner decorator to match that lookup.
         let fixture_decorator = function.decorator_list.get(1)?;
         &fixture_decorator.expression
     } else {
@@ -1384,10 +1306,6 @@ fn exposures_contributed_by_definition<'db>(
             .to_vec()
         };
 
-        // The stub is the binding visible to callers. Keep the runtime fixture as the canonical
-        // declaration, but don't link the stub's exposure to the runtime binding, so their
-        // references remain in separate families. This matches reference behavior for ordinary
-        // Python symbols.
         return source_exposures
             .into_iter()
             .map(|exposure| FixtureExposure {
@@ -2583,8 +2501,6 @@ import pytest
 def star_fixture(): ...
 "#,
                 ),
-                // Import the same explicitly named fixture twice to verify that its exposures are
-                // deduplicated.
                 (
                     "/src/test_example.py",
                     r#"
@@ -2703,8 +2619,6 @@ def test_use(resource): ...
         let test = PytestTestCase::with_files(
             "/src/test_example.py",
             &[
-                // Use the same symbol and fixture name at module and class scope so
-                // stub mapping must preserve the class path.
                 (
                     "/src/fixtures.py",
                     r#"
@@ -2718,8 +2632,6 @@ class Base:
     def implementation(self): ...
 "#,
                 ),
-                // Expose `implementation` only through a synthetic lazy binding in the stub.
-                // The binding must survive long enough for fixture discovery to inspect the source.
                 (
                     "/src/fixtures.pyi",
                     r#"
@@ -3256,7 +3168,6 @@ def test_use(outer_fixture): ...
 "#,
                 ),
             ],
-            // The relative environment roots `["src", "."]` resolve to these absolute paths.
             vec![SystemPathBuf::from("/src"), SystemPathBuf::from("/")],
         );
 
@@ -3482,8 +3393,6 @@ def resource(): ...
         let test = PytestTestCase::with_files(
             "/src/tests/unit/test_example.py",
             &[
-                // `tests` is not a package, so pytest adds it to `sys.path` when importing its
-                // conftest.
                 (
                     "/src/tests/conftest.py",
                     r#"pytest_plugins = ["fixtures.resources"]"#,
@@ -3531,7 +3440,6 @@ def resource(): ...
                     def resource(): ...
                     "#,
                 ),
-                // `first` is already registered, so pytest skips it here.
                 (
                     "/src/nested.py",
                     r#"
@@ -3556,8 +3464,6 @@ def resource(): ...
             ],
         );
 
-        // Pytest registers `nested` while registering `first`, so `second` is registered last and
-        // its fixture takes precedence.
         test.function("test_use")
             .assert_fixture("resource", "/src/second.py", "resource");
     }
@@ -3586,7 +3492,6 @@ def resource(): ...
                     def resource(): ...
                     "#,
                 ),
-                // The conftest already registered `helper`, so pytest skips this registration.
                 (
                     "/src/tests/unit/test_example.py",
                     r#"
@@ -3714,7 +3619,6 @@ def resource(): ...
             "/src/tests/test_example.py",
             "module_override",
         );
-        // The installed core plugins also define `core_value`.
         test_use.assert_fixture("core_value", "/src/custom_fixtures.py", "core_value");
     }
 
@@ -3825,8 +3729,6 @@ def resource(): ...
             "/.venv/lib/python3.13/site-packages/_pytest/pytester_assertions.py",
             "assertions",
         );
-        // `baseplugin` names the default plugin that pytest already registered, so the project
-        // module with the same name is not registered.
         test_use.assert_fixture("core_value", "/src/custom_fixtures.py", "core_value");
     }
 

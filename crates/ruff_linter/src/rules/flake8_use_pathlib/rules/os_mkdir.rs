@@ -73,12 +73,6 @@ pub(crate) fn os_mkdir(checker: &Checker, call: &ExprCall, segments: &[&str]) {
     if segments != ["os", "mkdir"] {
         return;
     }
-    // `dir_fd` is not supported by pathlib, so check if it's set to non-default values.
-    // Signature as of Python 3.13 (https://docs.python.org/3/library/os.html#os.mkdir)
-    // ```text
-    //           0     1                2
-    // os.mkdir(path, mode=0o777, *, dir_fd=None)
-    // ```
     if is_keyword_only_argument_non_default(&call.arguments, "dir_fd") {
         return;
     }

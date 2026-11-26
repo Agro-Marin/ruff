@@ -63,9 +63,7 @@ pub(crate) fn blanket_type_ignore(
         let line = locator.slice(range);
 
         // Match, e.g., `# type: ignore` or `# type: ignore[attr-defined]`.
-        // See: https://github.com/python/mypy/blob/b43e0d34247a6d1b3b9d9094d184bbfcb9808bb9/mypy/fastparse.py#L248
         for start in memchr_iter(b'#', line.as_bytes()) {
-            // Strip the `#` and any trailing whitespace.
             let comment = &line[start + 1..].trim_start();
 
             // Match the `type` or `pyright` prefixes (in, e.g., `# type: ignore`).
@@ -76,23 +74,18 @@ pub(crate) fn blanket_type_ignore(
                 continue;
             };
 
-            // Next character must be a colon.
             if !comment.starts_with(':') {
                 continue;
             }
 
-            // Strip the colon and any trailing whitespace.
             let comment = &comment[1..].trim_start();
 
-            // Match the `ignore`.
             let Some(comment) = comment.strip_prefix("ignore") else {
                 continue;
             };
 
-            // Strip any trailing whitespace.
             let comment = comment.trim_start();
 
-            // Match the optional `[...]` tag.
             if let Ok(codes) = parse_type_ignore_tag(comment) {
                 if codes.is_empty() {
                     context.report_diagnostic_if_enabled(
@@ -105,8 +98,6 @@ pub(crate) fn blanket_type_ignore(
     }
 }
 
-// Match, e.g., `[attr-defined]` or `[attr-defined, misc]`.
-// See: https://github.com/python/mypy/blob/b43e0d34247a6d1b3b9d9094d184bbfcb9808bb9/mypy/fastparse.py#L327
 static TYPE_IGNORE_TAG_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*\[(?P<codes>[^]#]*)]\s*(#.*)?$").unwrap());
 
@@ -115,14 +106,11 @@ static TYPE_IGNORE_TAG_PATTERN: LazyLock<Regex> =
 /// Returns a list of error codes to ignore, or an empty list if the tag is
 /// a blanket ignore.
 fn parse_type_ignore_tag(tag: &str) -> Result<Vec<&str>> {
-    // See: https://github.com/python/mypy/blob/b43e0d34247a6d1b3b9d9094d184bbfcb9808bb9/mypy/fastparse.py#L316
-    // No tag -- ignore all errors.
     let trimmed = tag.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return Ok(vec![]);
     }
 
-    // Parse comma-separated list of error codes.
     TYPE_IGNORE_TAG_PATTERN
         .captures(tag)
         .map(|captures| {

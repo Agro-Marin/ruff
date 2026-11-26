@@ -213,13 +213,11 @@ impl Trivia<'_> {
 
 impl<'a> From<&'a str> for Trivia<'a> {
     fn from(value: &'a str) -> Self {
-        // Remove any prefixes (e.g., remove `u` from `u"foo"`).
         let last_quote_char = value.chars().last().unwrap();
         let first_quote_char = value.find(last_quote_char).unwrap();
         let prefix = &value[..first_quote_char];
         let raw_text = &value[first_quote_char..];
 
-        // Determine if the string is multiline-based.
         let is_multiline = if raw_text.len() >= 3 {
             let mut chars = raw_text.chars();
             let first = chars.next().unwrap();
@@ -263,8 +261,6 @@ fn docstring(checker: &Checker, range: TextRange) {
     if trivia.has_empty_text()
         && text_ends_at_quote(locator, range, quotes_settings.docstring_quotes)
     {
-        // Fixing this would result in a one-sided multi-line docstring, which would
-        // introduce a syntax error.
         checker.report_diagnostic(
             BadQuotesDocstring {
                 preferred_quote: quotes_settings.docstring_quotes,
@@ -318,8 +314,6 @@ fn strings(checker: &Checker, sequence: &[TextRange]) {
         })
         .collect::<Vec<_>>();
 
-    // Return `true` if any of the strings are inline strings that contain the quote
-    // character in the body.
     let relax_quote = trivia.iter().any(|trivia| {
         if trivia.is_multiline {
             return false;
@@ -335,12 +329,10 @@ fn strings(checker: &Checker, sequence: &[TextRange]) {
 
     for (range, trivia) in sequence.iter().zip(trivia) {
         if trivia.is_multiline {
-            // If multiline strings aren't enforced, ignore it.
             if !checker.is_rule_enabled(Rule::BadQuotesMultilineString) {
                 continue;
             }
 
-            // If our string is or contains a known good string, ignore it.
             if trivia
                 .raw_text
                 .contains(good_multiline(quotes_settings.multiline_quotes))
@@ -348,7 +340,6 @@ fn strings(checker: &Checker, sequence: &[TextRange]) {
                 continue;
             }
 
-            // If our string ends with a known good ending, then ignore it.
             if trivia
                 .raw_text
                 .ends_with(good_multiline_ending(quotes_settings.multiline_quotes))
@@ -378,11 +369,9 @@ fn strings(checker: &Checker, sequence: &[TextRange]) {
             )));
         } else if trivia.last_quote_char != quotes_settings.inline_quotes.as_char()
             && (
-                // If we're not using the preferred type, only allow use to avoid escapes.
                 !relax_quote
             )
         {
-            // If inline strings aren't enforced, ignore it.
             if !checker.is_rule_enabled(Rule::BadQuotesInlineString) {
                 continue;
             }
@@ -390,11 +379,6 @@ fn strings(checker: &Checker, sequence: &[TextRange]) {
             if trivia.has_empty_text()
                 && text_ends_at_quote(locator, *range, quotes_settings.inline_quotes)
             {
-                // Fixing this would introduce a syntax error. For example, changing the initial
-                // single quotes to double quotes would result in a syntax error:
-                // ```python
-                // ''"assert" ' SAM macro definitions '''
-                // ```
                 checker.report_diagnostic(
                     BadQuotesInlineString {
                         preferred_quote: quotes_settings.inline_quotes,
@@ -405,11 +389,6 @@ fn strings(checker: &Checker, sequence: &[TextRange]) {
             }
 
             if text_starts_at_consecutive_quote(locator, *range, quotes_settings.inline_quotes) {
-                // Fixing this would introduce a syntax error. For example, changing the double
-                // doubles to single quotes would result in a syntax error:
-                // ```python
-                // ''"assert" ' SAM macro definitions '''
-                // ```
                 checker.report_diagnostic(
                     BadQuotesInlineString {
                         preferred_quote: quotes_settings.inline_quotes,
@@ -443,13 +422,10 @@ fn strings(checker: &Checker, sequence: &[TextRange]) {
 
 /// Generate `flake8-quote` diagnostics from a token stream.
 pub(crate) fn check_string_quotes(checker: &Checker, string_like: StringLike) {
-    // Ignore if the string is part of a forward reference. For example,
-    // `x: "Literal['foo', 'bar']"`.
     if checker.semantic().in_string_type_definition() {
         return;
     }
 
-    // TODO(dhruvmanila): Support checking for escaped quotes in f-strings.
     if checker
         .semantic()
         .in_interpolated_string_replacement_field()

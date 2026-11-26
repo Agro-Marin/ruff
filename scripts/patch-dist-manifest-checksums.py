@@ -44,7 +44,6 @@ def main() -> None:
     for artifact_name, artifact in manifest["artifacts"].items():
         if artifact["kind"] != "executable-zip":
             continue
-        # The manifest can include targets omitted by the custom binary jobs.
         if not (args.artifacts_dir / artifact_name).is_file():
             continue
         checksum = read_sha256(args.artifacts_dir / f"{artifact_name}.sha256")

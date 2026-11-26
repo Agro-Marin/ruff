@@ -105,7 +105,6 @@ fn install_tests(tests: &HashMap<String, Test>, target_dir: &str) -> Result<Test
         fs::create_dir_all(&tests_dir)?;
     }
 
-    // Test kind is irrelevant for existing test cases.
     let existing = existing_tests(&tests_dir)?;
 
     let mut updated_files = vec![];

@@ -14,7 +14,6 @@ pub enum MarkdownResult {
     Unchanged,
 }
 
-// TODO: support code blocks nested inside block quotes, etc
 static MARKDOWN_CODE_FENCE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?ix)
@@ -73,7 +72,6 @@ pub fn format_code_blocks(
 
     let mut lines = source.universal_newlines().peekable();
     while let Some(line) = lines.next() {
-        // Toggle code block formatting off/on
         if let Some(capture) = OFF_ON_DIRECTIVES.captures(&line) {
             let (_, [action]) = capture.extract();
             state = match action {
@@ -81,23 +79,19 @@ pub fn format_code_blocks(
                 "on" => MarkdownState::On,
                 _ => state,
             };
-        // Process code blocks
         } else if let Some(opening_capture) = MARKDOWN_CODE_FENCE.captures(&line) {
             let (_, [code_indent, opening_fence, language, _info]) = opening_capture.extract();
             let start = lines.peek().map_or_default(Line::start);
 
-            // Consume lines until reaching the matching/ending code fence
             for code_line in lines.by_ref() {
                 if !is_closing_code_fence(&code_line, opening_fence) {
                     continue;
                 }
 
-                // Found the matching end of the code block
                 if state != MarkdownState::On {
                     break;
                 }
 
-                // Maybe python, try formatting it
                 let language = language.to_ascii_lowercase();
                 let SourceType::Python(py_source_type) =
                     settings.extension.get_source_type_by_extension(&language)
@@ -112,8 +106,6 @@ pub fn format_code_blocks(
                     "python" | "py" | "python3" | "py3" | "pyi" => {
                         let options =
                             settings.to_format_options(py_source_type, &unformatted_code, path);
-                        // Using `Printed::into_code` requires adding `ruff_formatter` as a direct
-                        // dependency, and I suspect that Rust can optimize the closure away regardless.
                         #[expect(clippy::redundant_closure_for_method_calls)]
                         format_module_source(&unformatted_code, options)
                             .map(|formatted| formatted.into_code())
@@ -123,7 +115,6 @@ pub fn format_code_blocks(
                     _ => None,
                 };
 
-                // Formatting produced changes
                 if let Some(formatted_code) = formatted_code
                     && (formatted_code.len() != unformatted_code.len()
                         || formatted_code != *unformatted_code)
@@ -179,8 +170,6 @@ fn format_pycon_block(
                 unformatted.push_str(&source[TextRange::new(start, end)]);
             }
             let options = settings.to_format_options(PySourceType::Python, &unformatted, path);
-            // Using `Printed::into_code` requires adding `ruff_formatter` as a direct
-            // dependency, and I suspect that Rust can optimize the closure away regardless.
             #[expect(clippy::redundant_closure_for_method_calls)]
             let Ok(formatted) =
                 format_module_source(&unformatted, options).map(|formatted| formatted.into_code())
@@ -512,7 +501,6 @@ print( 'hello' )
 
     #[test]
     fn format_code_blocks_extension_mapping() {
-        // format "py" mapped as "pyi" instead
         let code = r#"
 ```py
 def foo(): ...

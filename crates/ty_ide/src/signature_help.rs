@@ -25,9 +25,6 @@ use ty_python_semantic::types::ide_support::{
     find_active_signature_from_details,
 };
 
-// TODO: We may want to add special-case handling for calls to constructors
-// so the class docstring is used in place of (or inaddition to) any docstring
-// associated with the __new__ or __init__ call.
 
 /// Information about a function parameter
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,12 +80,10 @@ pub fn signature_help<'db>(
 ) -> Option<SignatureHelpInfo<'db>> {
     let parsed = parsed_module(db, file.python_file(db)).load(db);
 
-    // Get the call expression at the given position.
     let (call_expr, current_arg_index) = get_call_expr(db, &parsed, offset)?;
 
     let model = SemanticModel::new(db, file);
 
-    // Get signature details from the semantic analyzer.
     let signature_details: Vec<CallSignatureDetails<'_>> =
         call_signature_details(&model, call_expr);
 
@@ -96,10 +91,8 @@ pub fn signature_help<'db>(
         return None;
     }
 
-    // Find the active signature - the first signature where all arguments map to parameters.
     let active_signature_index = find_active_signature_from_details(&signature_details);
 
-    // Convert to SignatureDetails objects.
     let signatures: Vec<SignatureDetails> = signature_details
         .into_iter()
         .map(|details| {
@@ -127,7 +120,6 @@ fn get_call_expr<'ast>(
     let line_end = line_range.start() + TextSize::of(line.trim_whitespace_end());
     let token_offset = offset.min(line_end);
 
-    // Find the token under the cursor and use its offset to find the node
     let token = parsed
         .tokens()
         .at_offset(token_offset)
@@ -137,24 +129,16 @@ fn get_call_expr<'ast>(
             | TokenKind::Complex
             | TokenKind::Float
             | TokenKind::Int => 1,
-            // Prefer the real token immediately before an empty recovery token at EOF.
             TokenKind::Unknown => -1,
             _ => 0,
         })?;
 
-    // Find the covering node at the given position that is a function call.
-    // Note that we are okay with the range being anywhere within a call
-    // expression, even if it's not in the arguments portion of the call
-    // expression. This is because, e.g., a user can request signature
-    // information at a call site, and this should ideally work anywhere
-    // within the call site, even at the function name.
     let call = covering_node(root_node, token.range())
         .find_first(|node| {
             if !node.is_expr_call() {
                 return false;
             }
 
-            // Close the signature help if the cursor is at the closing parenthesis
             if token.kind() == TokenKind::Rpar
                 && node.end() == token.end()
                 && token_offset == token.end()
@@ -170,12 +154,10 @@ fn get_call_expr<'ast>(
         })
         .ok()?;
 
-    // Get the function call expression.
     let AnyNodeRef::ExprCall(call_expr) = call.node() else {
         return None;
     };
 
-    // Determine which argument corresponds to the current cursor location.
     let current_arg_index = get_argument_index(call_expr, offset);
 
     Some((call_expr, current_arg_index))
@@ -206,7 +188,6 @@ fn create_signature_details_from_call_signature_details<'db>(
         .definition
         .and_then(|def| docstring_for_call_definition(db, def));
 
-    // Translate the argument index to parameter index using the mapping.
     let active_parameter =
         if details.argument_to_parameter_mapping.is_empty() && current_arg_index == 0 {
             Some(0)
@@ -217,11 +198,6 @@ fn create_signature_details_from_call_signature_details<'db>(
                 .copied()
                 .flatten()
                 .or({
-                    // If we can't find a mapping for this argument, fall back to the argument
-                    // index when it still points at a displayed parameter. Otherwise, if the
-                    // last displayed parameter is variadic, keep it active for any later
-                    // positional or keyword arguments that would still bind there. The `- 1`
-                    // converts the parameter count to the zero-based index of that last entry.
                     if current_arg_index < details.parameters.len() {
                         Some(current_arg_index)
                     } else if details.parameters.last().is_some_and(|parameter| {
@@ -250,7 +226,6 @@ fn create_parameters<'db>(
     parameters: Vec<CallSignatureParameter<'db>>,
     docstring: Option<&Docstring>,
 ) -> Vec<ParameterDetails<'db>> {
-    // Extract parameter documentation from the function's docstring if available.
     let param_docs = if let Some(docstring) = docstring {
         docstring.parameter_documentation()
     } else {
@@ -315,14 +290,12 @@ mod tests {
         "#,
         );
 
-        // Test that signature help is provided
         let result = test.signature_help().expect("Should have signature help");
         assert_eq!(result.signatures.len(), 1);
 
         let signature = &result.signatures[0];
         assert!(signature.label.contains("param1") && signature.label.contains("param2"));
 
-        // Verify that the docstring is extracted and included in the documentation
         let expected_docstring = concat!(
             "This is a docstring for the example function.\n",
             "\n",
@@ -358,7 +331,6 @@ mod tests {
         "#,
         );
 
-        // Test that signature help is provided for method calls
         let result = test.signature_help().expect("Should have signature help");
         assert_eq!(result.signatures.len(), 1);
 
@@ -366,7 +338,6 @@ mod tests {
         assert!(signature.label.contains("arg1") && signature.label.contains("arg2"));
         assert_eq!(result.active_signature, Some(0));
 
-        // Check the active parameter from the active signature
         if let Some(active_sig_index) = result.active_signature {
             let active_signature = &result.signatures[active_sig_index];
             assert_eq!(active_signature.active_parameter, Some(0));
@@ -439,7 +410,6 @@ mod tests {
         "#,
         );
 
-        // Test that signature help focuses on the innermost function call
         let result = test.signature_help().expect("Should have signature help");
         assert_eq!(result.signatures.len(), 1);
 
@@ -477,24 +447,20 @@ mod tests {
         assert_eq!(signature.label, "(x: int) -> int");
         assert_eq!(signature.parameters.len(), 1);
 
-        // Check parameter information
         let param = &signature.parameters[0];
         assert_eq!(param.label, "x: int");
         assert_eq!(param.name, "x");
 
-        // Validate the second signature (from func_b)
         let signature_b = &result.signatures[1];
         assert_eq!(signature_b.label, "(y: str) -> str");
         assert_eq!(signature_b.parameters.len(), 1);
 
-        // Check parameter information for the second signature
         let param_b = &signature_b.parameters[0];
         assert_eq!(param_b.label, "y: str");
         assert_eq!(param_b.name, "y");
 
         assert_eq!(result.active_signature, Some(0));
 
-        // Check the active parameter from the active signature
         if let Some(active_sig_index) = result.active_signature {
             let active_signature = &result.signatures[active_sig_index];
             assert_eq!(active_signature.active_parameter, Some(0));
@@ -523,20 +489,16 @@ mod tests {
         "#,
         );
 
-        // Test that signature help is provided for overloaded functions
         let result = test.signature_help().expect("Should have signature help");
 
-        // We should have signatures for the overloads
         assert_eq!(result.signatures.len(), 2);
         assert_eq!(result.active_signature, Some(0));
 
-        // Check the active parameter from the active signature
         if let Some(active_sig_index) = result.active_signature {
             let active_signature = &result.signatures[active_sig_index];
             assert_eq!(active_signature.active_parameter, Some(0));
         }
 
-        // Validate the first overload: process(value: int) -> str
         let signature1 = &result.signatures[0];
         assert_eq!(signature1.label, "(value: int) -> str");
         assert_eq!(signature1.parameters.len(), 1);
@@ -545,7 +507,6 @@ mod tests {
         assert_eq!(param1.label, "value: int");
         assert_eq!(param1.name, "value");
 
-        // Validate the second overload: process(value: str) -> int
         let signature2 = &result.signatures[1];
         assert_eq!(signature2.label, "(value: str) -> int");
         assert_eq!(signature2.parameters.len(), 1);
@@ -676,8 +637,6 @@ def ab(a: str):
             "#,
         );
 
-        // `*[2]` still supplies the positional parameter `x`, even though `x=1` also supplies it.
-        // Highlight that binding despite the duplicate assignment.
         assert_snapshot!(test.signature_help_render(), @"
 
         ============== active signature =============
@@ -699,8 +658,6 @@ def ab(a: str):
             "#,
         );
 
-        // Treat the unpacking as one source argument and highlight its first matched parameter.
-        // The first key is `y`, so `y` is active even though `x` appears first in the signature.
         assert_snapshot!(test.signature_help_render(), @"
 
         ============== active signature =============
@@ -729,8 +686,6 @@ def ab(a: str):
             "#,
         );
 
-        // The two list elements select the two-parameter overload. The unpacking is one source
-        // argument, so highlight its first matched parameter, `x`, in both signatures.
         assert_snapshot!(test.signature_help_render(), @"
 
         ============== active signature =============
@@ -767,8 +722,6 @@ def ab(a: str):
             "#,
         );
 
-        // The two known keys select the overload that accepts both `x` and `y`. Highlight `x` in
-        // both signatures because it is the first key supplied by this single unpacked argument.
         assert_snapshot!(test.signature_help_render(), @"
 
         ============== active signature =============
@@ -1054,27 +1007,22 @@ def ab(a: int, *, c: int):
 
         let result = test.signature_help().expect("Should have signature help");
 
-        // Should have exactly one signature for the constructor
         assert_eq!(result.signatures.len(), 1);
         let signature = &result.signatures[0];
 
-        // Validate the constructor signature
         assert_eq!(signature.label, "(x: int, y: int) -> Point");
         assert_eq!(signature.parameters.len(), 2);
 
-        // Validate the first parameter (x: int)
         let param_x = &signature.parameters[0];
         assert_eq!(param_x.label, "x: int");
         assert_eq!(param_x.name, "x");
         assert_eq!(param_x.documentation, Some("The x-coordinate".to_string()));
 
-        // Validate the second parameter (y: int)
         let param_y = &signature.parameters[1];
         assert_eq!(param_y.label, "y: int");
         assert_eq!(param_y.name, "y");
         assert_eq!(param_y.documentation, Some("The y-coordinate".to_string()));
 
-        // Should have the __init__ method docstring as documentation (not the class docstring)
         let expected_docstring = "Initialize a point with x and y coordinates.\n\nArgs:\n    x: The x-coordinate\n    y: The y-coordinate\n";
         assert_eq!(
             signature
@@ -1137,15 +1085,11 @@ def ab(a: int, *, c: int):
 
         let result = test.signature_help().expect("Should have signature help");
 
-        // dict.pop has multiple overloads; use the active signature
         let active_idx = result
             .active_signature
             .expect("Should have an active signature");
         let signature = &result.signatures[active_idx];
 
-        // The first parameter of dict.pop is `key`, whose annotation is
-        // the TypeVar `_KT`. After TypeVar resolution at this call site,
-        // the parameter type should be `str` (not `_KT`).
         let key_param = &signature.parameters[0];
         assert_eq!(key_param.name, "key");
         let type_display = format!(
@@ -1171,8 +1115,6 @@ def ab(a: int, *, c: int):
 
         let signature = &result.signatures[0];
 
-        // list.append's parameter is typed as `_T`, which should resolve
-        // to `int` for a `list[int]`.
         let object_param = &signature.parameters[0];
         let type_display = format!(
             "{}",
@@ -1185,9 +1127,6 @@ def ab(a: int, *, c: int):
 
     #[test]
     fn signature_help_generic_function_resolves_typevars() {
-        // This tests function-level TypeVar resolution, where the TypeVar
-        // is on the function itself (not inherited from a generic class).
-        // The specialization is inferred purely from the call arguments.
         let test = cursor_test(
             r#"
         def pair[T](a: T, b: T) -> tuple[T, T]:
@@ -1203,7 +1142,6 @@ def ab(a: int, *, c: int):
 
         let signature = &result.signatures[0];
 
-        // `T` should be resolved to `str` from the first argument.
         let a_param = &signature.parameters[0];
         assert_eq!(a_param.name, "a");
         let a_type = format!(
@@ -1236,11 +1174,9 @@ def ab(a: int, *, c: int):
 
         let result = test.signature_help().expect("Should have signature help");
 
-        // Should have a signature for the callable object
         assert!(!result.signatures.is_empty());
         let signature = &result.signatures[0];
 
-        // Should provide signature help for the callable
         assert!(signature.label.contains("int") || signature.label.contains("->"));
     }
 
@@ -1257,11 +1193,9 @@ def ab(a: int, *, c: int):
 
         let result = test.signature_help().expect("Should have signature help");
 
-        // Should have a signature
         assert!(!result.signatures.is_empty());
         let signature = &result.signatures[0];
 
-        // Should have empty documentation for now
         assert_eq!(
             signature
                 .documentation
@@ -1288,7 +1222,6 @@ def ab(a: int, *, c: int):
         let signature = &result.signatures[0];
         assert_eq!(signature.parameters.len(), 3);
 
-        // Check that we have parameter labels
         for (i, param) in signature.parameters.iter().enumerate() {
             let expected_param_spec = match i {
                 0 => "param1: str",
@@ -1302,8 +1235,6 @@ def ab(a: int, *, c: int):
 
     #[test]
     fn signature_help_active_signature_selection() {
-        // This test verifies that the algorithm correctly selects the first signature
-        // where all arguments present in the call have valid parameter mappings.
         let test = cursor_test(
             r#"
         from typing import overload
@@ -1329,10 +1260,8 @@ def ab(a: int, *, c: int):
 
         let result = test.signature_help().expect("Should have signature help");
 
-        // Should have signatures for the overloads.
         assert!(!result.signatures.is_empty());
 
-        // Check that we have an active signature and parameter
         if let Some(active_sig_index) = result.active_signature {
             let active_signature = &result.signatures[active_sig_index];
             assert_eq!(active_signature.active_parameter, Some(1));
@@ -1362,7 +1291,6 @@ def ab(a: int, *, c: int):
         let signature = &result.signatures[0];
         assert_eq!(signature.parameters.len(), 2);
 
-        // Check that parameter documentation is extracted
         let param1 = &signature.parameters[0];
         assert_eq!(
             param1.documentation,
@@ -1436,8 +1364,6 @@ def ab(a: int, *, c: int):
         "#,
         );
 
-        // Should return signature help for the outer function call
-        // even though cursor is after the closing paren of the inner call
         let result = test
             .signature_help()
             .expect("Should have signature help for outer function");
@@ -1446,7 +1372,6 @@ def ab(a: int, *, c: int):
         let signature = &result.signatures[0];
         assert!(signature.label.contains("a: int") && signature.label.contains("b: str"));
 
-        // Should be on the second parameter (b: str) since we're after the inner call
         assert_eq!(signature.active_parameter, Some(1));
         assert_eq!(result.active_signature, Some(0));
     }
@@ -1510,7 +1435,6 @@ def ab(a: int, *, c: int):
             test("test")<CURSOR>"#,
         );
 
-        // Should not return a signature help
         assert_eq!(test.signature_help(), None);
     }
 
@@ -1525,7 +1449,6 @@ def ab(a: int, *, c: int):
         "#,
         );
 
-        // Should not return a signature help
         assert_eq!(test.signature_help(), None);
     }
 
@@ -1542,7 +1465,6 @@ def ab(a: int, *, c: int):
         "#,
         );
 
-        // Should return the outer signature help
         let help = test.signature_help().expect("Should have outer help");
 
         assert_eq!(help.signatures.len(), 1);
@@ -1553,8 +1475,6 @@ def ab(a: int, *, c: int):
 
     #[test]
     fn signature_help_stub_to_implementation_mapping() {
-        // Test that when a function is called from a stub file with no docstring,
-        // the signature help includes the docstring from the corresponding implementation file
         let test = CursorTest::builder()
             .source(
                 "main.py",

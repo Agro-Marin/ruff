@@ -41,8 +41,6 @@ impl FormatNodeRule<StmtAnnAssign> for FormatStmtAnnAssign {
                 }
                 .fmt(f)?;
             } else {
-                // Remove unnecessary parentheses around the annotation if the parenthesize long type hints preview style is enabled.
-                // Ensure we keep the parentheses if the annotation has any comments.
                 let parentheses = if comments.has_leading(annotation.as_ref())
                     || comments.has_trailing(annotation.as_ref())
                     || annotation_parentheses == OptionalParentheses::Always
@@ -70,14 +68,6 @@ impl FormatNodeRule<StmtAnnAssign> for FormatStmtAnnAssign {
                 .with_options(Parentheses::Always)
                 .fmt(f)?;
         } else {
-            // Parenthesize the value and inline the comment if it is a "simple" type annotation, similar
-            // to what we do with the value.
-            // ```python
-            // class Test:
-            //     safe_age: (
-            //         Decimal  #  the user's age, used to determine if it's safe for them to use ruff
-            //     )
-            // ```
             FormatStatementsLastExpression::left_to_right(annotation, item).fmt(f)?;
         }
 

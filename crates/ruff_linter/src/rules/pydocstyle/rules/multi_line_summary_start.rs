@@ -161,7 +161,6 @@ pub(crate) fn multi_line_summary_start(checker: &Checker, docstring: &Docstring)
         if checker.is_rule_enabled(Rule::MultiLineSummaryFirstLine) {
             let mut diagnostic =
                 checker.report_diagnostic(MultiLineSummaryFirstLine, docstring.range());
-            // Delete until first non-whitespace char.
             for line in content_lines {
                 if let Some(end_column) = line.find(|c: char| !c.is_whitespace()) {
                     diagnostic.set_fix(Fix::safe_edit(Edit::deletion(
@@ -173,13 +172,7 @@ pub(crate) fn multi_line_summary_start(checker: &Checker, docstring: &Docstring)
             }
         }
     } else if first_line.as_str().ends_with('\\') {
-        // Ignore the edge case whether a single quoted string is multiple lines through an
-        // escape (https://github.com/astral-sh/ruff/issues/7139). Single quote docstrings are
-        // flagged by D300.
-        // ```python
-        // "\
         // "
-        // ```
     } else {
         if checker.is_rule_enabled(Rule::MultiLineSummarySecondLine) {
             let mut diagnostic =
@@ -189,8 +182,6 @@ pub(crate) fn multi_line_summary_start(checker: &Checker, docstring: &Docstring)
             if !indentation.chars().all(char::is_whitespace) {
                 fixable = false;
 
-                // If the docstring isn't on its own line, look at the statement indentation,
-                // and add the default indentation to get the "right" level.
                 if let Definition::Member(member) = &docstring.definition {
                     let stmt_line_start = checker.locator().line_start(member.start());
                     let stmt_indentation = checker
@@ -208,8 +199,6 @@ pub(crate) fn multi_line_summary_start(checker: &Checker, docstring: &Docstring)
             }
 
             if fixable {
-                // Use replacement instead of insert to trim possible whitespace between leading
-                // quote and text.
                 let repl = format!(
                     "{}{}{}",
                     checker.stylist().line_ending().as_str(),

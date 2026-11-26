@@ -118,19 +118,7 @@ impl Renamer {
     ) -> Result<(Edit, Vec<Edit>)> {
         let mut edits = vec![];
 
-        // Determine whether the symbol is `nonlocal` or `global`. (A symbol can't be both; Python
-        // raises a `SyntaxError`.) If the symbol is `nonlocal` or `global`, we need to rename it in
-        // the scope in which it's declared, rather than the current scope. For example, given:
-        //
-        // ```python
-        // x = 1
-        //
-        // def foo():
         //     global x
-        // ```
-        //
-        // When renaming `x` in `foo`, we detect that `x` is a global, and back out to the module
-        // scope.
         let scope_id = scope.get_all(name).find_map(|binding_id| {
             let binding = semantic.binding(binding_id);
             match binding.kind {
@@ -145,26 +133,8 @@ impl Renamer {
             name, target, scope, semantic, stylist,
         ));
 
-        // Find any scopes in which the symbol is referenced as `nonlocal` or `global`. For example,
-        // given:
-        //
-        // ```python
-        // x = 1
-        //
-        // def foo():
         //     global x
-        //
-        // def bar():
         //     global x
-        // ```
-        //
-        // When renaming `x` in `foo`, we detect that `x` is a global, and back out to the module
-        // scope. But we need to rename `x` in `bar` too.
-        //
-        // Note that it's impossible for a symbol to be referenced as both `nonlocal` and `global`
-        // in the same program. If a symbol is referenced as `global`, then it must be defined in
-        // the module scope. If a symbol is referenced as `nonlocal`, then it _can't_ be defined in
-        // the module scope (because `nonlocal` can only be used in a nested scope).
         for scope_id in scope
             .get_all(name)
             .filter_map(|binding_id| semantic.rebinding_scopes(binding_id))
@@ -178,7 +148,6 @@ impl Renamer {
             ));
         }
 
-        // Deduplicate any edits.
         edits.sort();
         edits.dedup();
 
@@ -199,11 +168,9 @@ impl Renamer {
     ) -> Vec<Edit> {
         let mut edits = vec![];
 
-        // Iterate over every binding to the name in the scope.
         for binding_id in scope.get_all(name) {
             let binding = semantic.binding(binding_id);
 
-            // Rename the binding.
             if let Some(edit) = Renamer::rename_binding(binding, name, target) {
                 edits.push(edit);
 
@@ -213,7 +180,6 @@ impl Renamer {
                     edits.push(edit);
                 }
 
-                // Rename any delayed annotations.
                 if let Some(annotations) = semantic.delayed_annotations(binding_id) {
                     edits.extend(annotations.iter().filter_map(|annotation_id| {
                         let annotation = semantic.binding(*annotation_id);
@@ -221,7 +187,6 @@ impl Renamer {
                     }));
                 }
 
-                // Rename the references to the binding.
                 edits.extend(binding.references().map(|reference_id| {
                     let reference = semantic.reference(reference_id);
                     let replacement = {
@@ -238,8 +203,6 @@ impl Renamer {
             }
         }
 
-        // Deduplicate any edits. In some cases, a reference can be both a read _and_ a write. For
-        // example, `x += 1` is both a read of and a write to `x`.
         edits.sort();
         edits.dedup();
 
@@ -335,10 +298,8 @@ impl Renamer {
         match &binding.kind {
             BindingKind::Import(_) | BindingKind::FromImport(_) => {
                 if binding.is_alias() {
-                    // Ex) Rename `import pandas as alias` to `import pandas as pd`.
                     Some(Edit::range_replacement(target.to_string(), binding.range()))
                 } else {
-                    // Ex) Rename `import pandas` to `import pandas as pd`.
                     Some(Edit::range_replacement(
                         format!("{name} as {target}"),
                         binding.range(),
@@ -346,19 +307,16 @@ impl Renamer {
                 }
             }
             BindingKind::SubmoduleImport(import) => {
-                // Ex) Rename `import pandas.core` to `import pandas as pd`.
                 let module_name = import.qualified_name.segments().first().unwrap();
                 Some(Edit::range_replacement(
                     format!("{module_name} as {target}"),
                     binding.range(),
                 ))
             }
-            // Avoid renaming builtins and other "special" bindings.
             BindingKind::FutureImport
             | BindingKind::Builtin
             | BindingKind::Export(_)
             | BindingKind::DunderClassCell => None,
-            // By default, replace the binding's name with the target name.
             BindingKind::Annotation
             | BindingKind::Argument
             | BindingKind::TypeParam
@@ -398,7 +356,6 @@ impl ShadowedKind {
     /// This function is useful for checking whether or not the `target` of a [`Renamer::rename`]
     /// will shadow another binding.
     pub(crate) fn new(binding: &Binding, new_name: &str, checker: &Checker) -> ShadowedKind {
-        // Check the kind in order of precedence
         if is_keyword(new_name) {
             return ShadowedKind::Keyword;
         }
@@ -426,7 +383,6 @@ impl ShadowedKind {
             return ShadowedKind::Some;
         }
 
-        // Default to no shadowing
         ShadowedKind::None
     }
 

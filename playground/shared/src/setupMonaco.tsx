@@ -1,6 +1,3 @@
-/**
- * Non-rendering component that loads the Monaco editor themes.
- */
 
 import { loader, type Monaco } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
@@ -58,7 +55,6 @@ export function setupMonaco(
 
 function defineAyuThemes(monaco: Monaco) {
   // Generated via `monaco-vscode-textmate-theme-converter`.
-  // See: https://github.com/ayu-theme/vscode-ayu/blob/91839e8a9dfa78d61e58dbcf9b52272a01fee66a/ayu-light.json.
   monaco.editor.defineTheme("Ayu-Light", {
     inherit: false,
     base: "vs",
@@ -335,7 +331,6 @@ function defineAyuThemes(monaco: Monaco) {
   });
 
   // Generated via `monaco-vscode-textmate-theme-converter`.
-  // See: https://github.com/ayu-theme/vscode-ayu/blob/91839e8a9dfa78d61e58dbcf9b52272a01fee66a/ayu-dark.json.
   monaco.editor.defineTheme("Ayu-Dark", {
     inherit: false,
     base: "vs-dark",
@@ -632,7 +627,6 @@ function defineAyuThemes(monaco: Monaco) {
   });
 }
 
-// https://microsoft.github.io/monaco-editor/monarch.html
 function defineRustPythonAstLanguage(monaco: Monaco) {
   monaco.languages.register({
     id: "RustPythonAst",
@@ -652,10 +646,8 @@ function defineRustPythonAstLanguage(monaco: Monaco) {
           },
         ],
 
-        // Whitespace
         [/[ \t\r\n]+/, "white"],
 
-        // Strings
         [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
 
         [/\d+/, "number"],
@@ -688,7 +680,6 @@ function defineRustPythonAstLanguage(monaco: Monaco) {
   });
 }
 
-// Modeled after 'RustPythonAst'
 function defineCommentsLanguage(monaco: Monaco) {
   monaco.languages.register({
     id: "Comments",
@@ -708,10 +699,8 @@ function defineCommentsLanguage(monaco: Monaco) {
           },
         ],
 
-        // Whitespace
         [/[ \t\r\n]+/, "white"],
 
-        // Strings
         [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
 
         [/\d+/, "number"],
@@ -763,10 +752,8 @@ function defineRustPythonTokensLanguage(monaco: Monaco) {
           },
         ],
 
-        // Whitespace
         [/[ \t\r\n]+/, "white"],
 
-        // Strings
         [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
 
         [/\d+/, "number"],
@@ -809,12 +796,10 @@ function defineFirLanguage(monaco: Monaco) {
       root: [
         [/[a-z_$][\w$]*/, "keyword"],
 
-        // Whitespace
         [/[ \t\r\n]+/, "white"],
 
         [/[()[\]<>]/, "@brackets"],
 
-        // Strings
         [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
 
         [/\d+/, "number"],
@@ -856,52 +841,37 @@ function defineTomlLanguage(monaco: Monaco) {
     keywords: ["true", "false"],
     tokenizer: {
       root: [
-        // Comments
         [/#.*$/, "comment"],
 
-        // Array-of-tables header: [[...]]
         [/^\s*\[\[/, { token: "tag", next: "@array_table" }],
 
-        // Table header: [...]
         [/^\s*\[/, { token: "tag", next: "@table" }],
 
-        // Whitespace
         [/[ \t\r\n]+/, "white"],
 
-        // Keys are context-sensitive in TOML. Match the full left-hand side of
-        // a key/value pair before value rules run, otherwise identifiers like
-        // `include` compete with value tokens and numeric prefixes in values
-        // such as `79.5` or `07:32:00.123` get misclassified as keys.
         [
           /(?:"(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+)(?:\s*\.\s*(?:"(?:[^"\\]|\\.)*"|'[^']*'|[A-Za-z0-9_-]+))*\s*(?==)/,
           "variable",
         ],
 
-        // Key-value separator
         [/=/, "delimiter"],
 
-        // Multiline strings (must come before single-line strings)
         [/"""/, { token: "string", next: "@multiline_basic_string" }],
         [/'''/, { token: "string", next: "@multiline_literal_string" }],
 
-        // Single-line strings
         [/"/, { token: "string", next: "@basic_string" }],
         [/'/, { token: "string", next: "@literal_string" }],
 
-        // Numbers: hex, octal, binary, then float/int
         [/0x[0-9a-fA-F][0-9a-fA-F_]*/, "number"],
         [/0o[0-7][0-7_]*/, "number"],
         [/0b[01][01_]*/, "number"],
         [/[-+]?(?:inf|nan)/, "number"],
-        // Date-time (ISO 8601)
         [
           /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/,
           "number",
         ],
-        // Float
         [/[-+]?\d[\d_]*(?:\.[\d_]+)?(?:[eE][-+]?[\d_]+)?/, "number"],
 
-        // Booleans / keywords
         [
           /[a-zA-Z_][\w-]*/,
           {
@@ -912,10 +882,8 @@ function defineTomlLanguage(monaco: Monaco) {
           },
         ],
 
-        // Brackets (inline tables and arrays)
         [/[{}[\]]/, "@brackets"],
 
-        // Punctuation
         [/[,.]/, "delimiter"],
       ],
 

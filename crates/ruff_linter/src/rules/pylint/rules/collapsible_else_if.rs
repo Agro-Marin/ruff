@@ -117,16 +117,13 @@ fn convert_to_elif(
     let inner_if_line_start = locator.line_start(first.start());
     let inner_if_line_end = locator.line_end(first.end());
 
-    // Capture the trivia between the `else` and the `if`.
     let else_line_end = locator.full_line_end(else_clause.start());
     let trivia_range = TextRange::new(else_line_end, inner_if_line_start);
 
-    // Identify the indentation of the outer clause
     let Some(indentation) = indentation(locator.contents(), else_clause) else {
         return Err(anyhow::anyhow!("`else` is expected to be on its own line"));
     };
 
-    // Dedent the content from the end of the `else` to the end of the `if`.
     let indented = adjust_indentation(
         TextRange::new(inner_if_line_start, inner_if_line_end),
         indentation,
@@ -135,7 +132,6 @@ fn convert_to_elif(
         stylist,
     )?;
 
-    // If there's trivia, restore it
     let trivia = if trivia_range.is_empty() {
         None
     } else {
@@ -147,14 +143,11 @@ fn convert_to_elif(
         ))
     };
 
-    // Strip the indent from the first line of the `if` statement, and add `el` to the start.
     let Some(unindented) = indented.strip_prefix(indentation) else {
         return Err(anyhow::anyhow!("indented block to start with indentation"));
     };
     let indented = format!("{indentation}el{unindented}");
 
-    // The `else` line is replaced, so a trailing comment on it (e.g., `else:  # comment`) is
-    // deleted. Comments between the `else` and the `if` are restored above.
     let applicability = if comment_ranges.intersects(locator.line_range(else_clause.start())) {
         Applicability::Unsafe
     } else {

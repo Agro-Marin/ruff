@@ -44,8 +44,6 @@ pub fn inlay_hint_return_type<'db>(
     model: &SemanticModel<'db>,
     function: &ast::StmtFunctionDef,
 ) -> Option<Type<'db>> {
-    // TODO: Remove the async check once return-type inference supports async functions,
-    // using the awaited return type for the hint instead of the coroutine type.
     if function.returns.is_some() || function.is_async {
         return None;
     }
@@ -69,7 +67,6 @@ pub fn definition_for_name<'db>(
 ) -> Option<Definition<'db>> {
     let definitions = definitions_for_name(model, name.id.as_str(), name.into(), alias_resolution);
 
-    // Find the first valid definition and return its kind
     for declaration in definitions {
         if let Some(def) = declaration.definition() {
             return Some(def);
@@ -89,7 +86,6 @@ pub fn definitions_for_name<'db>(
     let db = model.db();
     let env = model.program_environment();
 
-    // Get the scope for this name expression
     let Some(scope) = model.scope(node) else {
         return vec![];
     };
@@ -100,18 +96,9 @@ pub fn definitions_for_name<'db>(
         return definitions;
     }
 
-    // If we didn't find any definitions in scopes, fallback to builtins
     let Some(builtins_scope) = implicit_builtins_symbol_scope(db, &env, name_str) else {
         return vec![];
     };
-    // Special cases for `float` and `complex` in type annotation positions.
-    // We don't know whether we're in a type annotation position, so we'll just ask `Name`'s type,
-    // which resolves to `int | float` or `int | float | complex` if `float` or `complex` is used in
-    // a type annotation position and `float` or `complex` otherwise.
-    //
-    // https://typing.python.org/en/latest/spec/special-types.html#special-cases-for-float-and-complex
-    //
-    // Only numeric builtins need expression inference to distinguish annotations from runtime values.
     if matches!(name_str, "float" | "complex")
         && let Some(expr) = node.expr_name()
         && let Some(ty) = expr.inferred_type(model)
@@ -124,9 +111,6 @@ pub fn definitions_for_name<'db>(
         return union
             .elements(db)
             .iter()
-            // Use `rev` so that `complex` and `float` come first.
-            // This is required for hover to pick up the docstring of `complex` and `float`
-            // instead of `int` (hover only shows the docstring of the first definition).
             .rev()
             .filter_map(|ty| ty.as_nominal_instance())
             .filter_map(|instance| {
@@ -144,7 +128,6 @@ pub fn definitions_for_attribute<'db>(
     model: &SemanticModel<'db>,
     attribute: &ast::ExprAttribute,
 ) -> Vec<ResolvedDefinition<'db>> {
-    // Determine the type of the LHS
     let Some(lhs_ty) = attribute.value.inferred_type(model) else {
         return vec![];
     };
@@ -213,7 +196,6 @@ impl<'a> ImplementationsFinder<'a> {
         let mut family_roots = FxHashSet::default();
 
         for root in roots {
-            // Avoid scanning every known subclass when the member doesn't resolve on this root.
             let Some(root_definitions) =
                 mro_member_definitions(db, root, member_name, accessor_role)
             else {
@@ -255,14 +237,12 @@ impl<'a> ImplementationsFinder<'a> {
     ) -> Option<Vec<ResolvedDefinition<'scan>>> {
         let source = source_text(db, file.file(db));
 
-        // Member implementations must mention the member name.
         if let ImplementationsFinderKind::MemberFamily { name_matcher, .. } = &self.kind
             && !name_matcher.may_match(&source)
         {
             return None;
         }
 
-        // Both class and member searches look for implementations in class definitions.
         if !CLASS_MATCHER.may_match(&source) {
             return None;
         }
@@ -430,15 +410,10 @@ impl<'a> ImplementationsFinder<'a> {
                 continue;
             }
 
-            // Declaration-only definitions such as a bare `sound: str` annotation have no binding
-            // type and cannot refer to a class object.
             if !def.category(db).is_binding() {
                 continue;
             }
 
-            // Only references that resolve to a class object (a base class, annotation, `Animal()`, or
-            // a name bound to a class) are class implementation requests; instances resolve to their
-            // own definitions, whose type is the instance rather than the class object.
             let ty = binding_type(db, *definition);
 
             let root = match ty {
@@ -510,7 +485,6 @@ fn member_implementations_for_file<'db>(
     let mut definitions = Vec::new();
 
     for candidate in reachable_class_literals_in_file(db, file) {
-        // The implementations selected for the roots were collected during finder preparation.
         if roots.contains(&candidate) {
             continue;
         }
@@ -686,21 +660,13 @@ fn member_implementation_definition<'db>(
     definition: Definition<'db>,
 ) -> Option<ResolvedDefinition<'db>> {
     match definition.kind(db) {
-        // `def` statements collapse overload declarations to their concrete implementation below.
         DefinitionKind::Function(_) => {}
-        // Attribute definitions (`sound: str = ...`, `sound = ...`, a bare `sound: str`
-        // declaration, or `self.sound = ...`) are implementation targets as-is.
         DefinitionKind::Assignment(_) | DefinitionKind::AnnotatedAssignment(_) => {
             return Some(ResolvedDefinition::Definition(definition));
         }
-        // Other kinds (imports, comprehension targets, ...) can stop MRO lookup, but should not
-        // themselves become implementation targets.
         _ => return None,
     }
 
-    // Use the inferred function type to collapse overload declarations to their concrete
-    // implementation. If inference cannot produce a function literal, keep the original `def` as a
-    // conservative fallback.
     let Some(function) = binding_type(db, definition).as_function_literal() else {
         return Some(ResolvedDefinition::Definition(definition));
     };
@@ -710,12 +676,10 @@ fn member_implementation_definition<'db>(
         return Some(ResolvedDefinition::Definition(function.last_definition(db)));
     }
 
-    // Stub overload declarations can still map to a real source implementation later.
     if definition.file(db).is_stub(db) {
         return Some(ResolvedDefinition::Definition(definition));
     }
 
-    // Non-stub overload-only groups have no runtime implementation to navigate to.
     None
 }
 
@@ -729,13 +693,11 @@ fn collect_implementation_root_classes<'db>(
 ) {
     match ty.resolve_type_alias(db) {
         Type::Union(union) => {
-            // `pet: Dog | Cat` can dispatch through either `Dog` or `Cat`.
             for element in union.elements(db) {
                 collect_implementation_root_classes(db, env, *element, seen, roots);
             }
         }
         Type::Intersection(intersection) => {
-            // Finite intersections can stand for alternatives like `Dog` or `Cat`.
             if let Some(alternatives) = intersection.finite_alternatives(db, env) {
                 for alternative in alternatives {
                     collect_implementation_root_classes(db, env, alternative, seen, roots);
@@ -743,11 +705,9 @@ fn collect_implementation_root_classes<'db>(
             }
         }
         Type::TypeVar(typevar) => match typevar.typevar(db).bound_or_constraints(db, env) {
-            // `T: Animal` can dispatch through the `Animal` bound.
             Some(TypeVarBoundOrConstraints::UpperBound(bound)) => {
                 collect_implementation_root_classes(db, env, bound, seen, roots);
             }
-            // `T: (Dog, Cat)` can dispatch through either constraint.
             Some(TypeVarBoundOrConstraints::Constraints(constraints)) => {
                 collect_implementation_root_classes(
                     db,
@@ -760,8 +720,6 @@ fn collect_implementation_root_classes<'db>(
             None => {}
         },
         Type::SubclassOf(subclass_of) if subclass_of.is_type_var() => {
-            // Both `type[T]` and the implicit `cls` parameter of a classmethod are represented as
-            // `SubclassOf(TypeVar)`. Normalize them through the existing TypeVar handling above.
             collect_implementation_root_classes(
                 db,
                 env,
@@ -771,7 +729,6 @@ fn collect_implementation_root_classes<'db>(
             );
         }
         ty => {
-            // `dog: Dog` maps directly to the `Dog` class root.
             let root = match ty {
                 Type::ClassLiteral(_) | Type::GenericAlias(_) | Type::SubclassOf(_) => {
                     extract_class_literal(db, env, ty)
@@ -887,7 +844,6 @@ pub fn definitions_for_keyword_argument<'db>(
     let env = &model.program_environment();
 
     if let Some(callables) = func_type.try_upcast_to_callable(db, env) {
-        // For each signature, find the parameter with the matching name
         for signature in callables.signatures(db) {
             if let Some((_param_index, param)) =
                 signature.parameters().keyword_by_name(keyword_name_str)
@@ -1047,9 +1003,6 @@ fn displayed_parameters_for_signature<'db>(
     display_details: &crate::types::display::SignatureDisplayDetails,
     specialization: Option<crate::types::generics::Specialization<'db>>,
 ) -> (Vec<CallSignatureParameter<'db>>, Vec<Option<usize>>) {
-    // Apply any inferred specialization to displayed parameter types so
-    // call-site substitutions are reflected in the rendered signature. For
-    // example, if `_KT` was inferred as `str`, display `str` instead of `_KT`.
     let apply_specialization =
         |ty: Type<'db>| specialization.map_or(ty, |spec| ty.apply_specialization(db, spec));
     let parameters = signature.parameters();
@@ -1148,14 +1101,11 @@ pub fn call_signature_details<'db>(
         return Vec::new();
     };
 
-    // Use into_callable to handle all the complex type conversions
     let env = &model.program_environment();
     if let Some(callable_type) = func_type
         .try_upcast_to_callable(db, env)
         .map(|callables| callables.to_type(db, env))
     {
-        // Use from_arguments_typed so that check_types can infer TypeVar
-        // specializations from the actual argument types at this call site.
         let call_arguments =
             CallArguments::from_arguments_typed(&call_expr.arguments, |expression| {
                 expression.inferred_type(model)
@@ -1165,10 +1115,6 @@ pub fn call_signature_details<'db>(
                 .bindings(db, env)
                 .match_parameters(db, env, &call_arguments);
 
-        // Run type checking to resolve TypeVar bindings from argument types.
-        // For example, calling `dict[str, int].get("a")` resolves the `_KT`
-        // TypeVar to `str`. We ignore errors since we still want signature
-        // details even if the call has type errors.
         let constraints = ConstraintSetBuilder::new();
         let _ = bindings.check_types_impl(
             db,
@@ -1180,14 +1126,12 @@ pub fn call_signature_details<'db>(
             CheckTypesMode::SignatureDetails,
         );
 
-        // Extract signature details from all callable bindings
         bindings
             .iter_flat()
             .flatten()
             .map(|binding| CallSignatureDetails::from_binding(db, env, binding))
             .collect()
     } else {
-        // Type is not callable, return empty signatures
         vec![]
     }
 }
@@ -1266,11 +1210,6 @@ fn full_type_bindings_for_call<'db>(
         .unwrap_or_else(|CallError(_, bindings)| *bindings)
 }
 
-// These are the callables whose arguments were historically classified as type expressions.
-// TODO: Generalize this once call binding records the interpretation selected for each argument.
-// Inspecting only the declared annotation is insufficient because `type[T]` values may remain
-// values, while aliases, unions, intersections, and specialized generics require more context.
-// `TypeForm(...)` also bypasses callable bindings and needs separate handling.
 fn known_type_form_parameter_index(db: &dyn Db, callable_type: Type<'_>) -> Option<usize> {
     match callable_type {
         Type::FunctionLiteral(function) => match function.known(db) {
@@ -1328,7 +1267,6 @@ pub fn call_argument_forms(
     let argument_count = call_expr.arguments.len();
     let db = model.db();
 
-    // Ordinary callables have only value-form arguments for IDE purposes, so skip full binding.
     if !func_type
         .bindings(db, &model.program_environment())
         .iter_flat()
@@ -1350,7 +1288,6 @@ pub fn call_argument_forms(
         })
         .collect();
 
-    // If any bindings are successful, limit analysis to those bindings.
     if candidate_bindings
         .iter()
         .any(|(_, binding)| binding.errors().is_empty())
@@ -1362,8 +1299,6 @@ pub fn call_argument_forms(
         return argument_forms;
     };
 
-    // If all candidate bindings agree on the argument form, use the agreed-upon form; otherwise,
-    // fall back to `CallArgumentForm::Unknown`.
     for (arg_index, resolved_argument_form) in argument_forms.iter_mut().enumerate() {
         let argument_form =
             argument_form_from_binding(db, first_binding.0, first_binding.1, arg_index);
@@ -1405,7 +1340,6 @@ pub fn call_type_simplified_by_overloads(
     let env = &model.program_environment();
     let callable_type = func_type.try_upcast_to_callable(db, env)?.to_type(db, env);
 
-    // If the callable is trivial this analysis is useless, bail out
     if let Some(binding) = callable_type.bindings(db, env).single_element()
         && binding.overloads().len() < 2
     {
@@ -1469,7 +1403,6 @@ pub fn definitions_for_unary_op<'db>(
     ) {
         Ok(bindings) => bindings,
         Err(CallDunderError::MethodNotAvailable) if unary_op.op == ast::UnaryOp::Not => {
-            // The runtime falls back to `__len__` for `not` if `__bool__` is not defined.
             match operand_ty.try_call_dunder(
                 db,
                 env,
@@ -1541,14 +1474,11 @@ pub fn find_active_signature_from_details(
 ) -> Option<usize> {
     let first = signature_details.first()?;
 
-    // If there are no arguments in the mapping, just return the first signature.
     if first.argument_to_parameter_mapping.is_empty() {
         return Some(0);
     }
 
-    // First, try to find a signature where all arguments have valid parameter mappings.
     let perfect_match = signature_details.iter().position(|details| {
-        // Check if all arguments have valid parameter mappings.
         details
             .argument_to_parameter_mapping
             .iter()
@@ -1559,7 +1489,6 @@ pub fn find_active_signature_from_details(
         return Some(index);
     }
 
-    // If no perfect match, find the signature with the most valid argument mappings.
     let (best_index, _) = signature_details
         .iter()
         .enumerate()
@@ -1591,7 +1520,6 @@ pub fn resolved_call_signature<'db>(
         expression.inferred_type(model)
     });
 
-    // Extract the `Bindings` regardless of whether type checking succeeded or failed.
     let constraints = ConstraintSetBuilder::new();
     let bindings = callable_type
         .bindings(db, env)
@@ -1599,7 +1527,6 @@ pub fn resolved_call_signature<'db>(
         .check_types(db, env, &constraints, &args, TypeContext::default(), &[])
         .unwrap_or_else(|CallError(_, bindings)| *bindings);
 
-    // First, try to find the matching overload after full type checking.
     let type_checked_details: Vec<_> = bindings
         .iter_flat()
         .flat_map(|binding| binding.matching_overloads().map(|(_, overload)| overload))
@@ -1611,9 +1538,6 @@ pub fn resolved_call_signature<'db>(
         return type_checked_details.into_iter().nth(active);
     }
 
-    // If all overloads have type-checking errors (e.g., `InvalidArgumentType`),
-    // `matching_overloads()` returns empty. Fall back to arity-based matching
-    // across all overloads to pick the best candidate for showing hints.
     let all_details: Vec<_> = bindings
         .iter_flat()
         .flatten()
@@ -1654,8 +1578,6 @@ pub fn inlay_hint_call_argument_details<'db>(
             continue;
         }
 
-        // Skip if this argument maps to multiple parameters (e.g., unpacked tuple filling
-        // multiple slots). Showing a single parameter name would be misleading.
         if arg_mapping.parameters.len() > 1 {
             continue;
         }
@@ -1673,7 +1595,6 @@ pub fn inlay_hint_call_argument_details<'db>(
             definition.focus_range(db, &module)
         });
 
-        // Only add hints for parameters that can be specified by name
         if !param.is_positional_only() && !param.is_variadic() && !param.is_keyword_variadic() {
             let Some(name) = param.name() else {
                 continue;
@@ -1714,7 +1635,6 @@ mod stub_mapping {
         };
         let env = ProgramEnvironment::from_file(stub_program_file);
 
-        // If the file isn't a stub, this is presumably the real definition
         let stub_file = stub_program_file.file(db);
         trace!("Stub mapping definition in: {}", stub_file.path(db));
         if !stub_file.is_stub(db) {
@@ -1722,16 +1642,6 @@ mod stub_mapping {
             return None;
         }
 
-        // We write vendored typeshed stubs to disk in the cache, and consequently "forget"
-        // that they're typeshed when an IDE hands those paths back to us later. For most
-        // purposes this seemingly doesn't matter at all, and avoids issues with someone
-        // editing the cache by hand in their IDE and us getting confused about the contents
-        // of the file (hello and welcome to anyone who has found Bigger Issues this causes).
-        //
-        // The major exception is in exactly stub-mapping, where we need to "remember" that
-        // we're in typeshed to successfully stub-map to the Real Stdlib. So here we attempt
-        // to do just that. The resulting file must not be used for anything other than
-        // this module lookup, as the `ResolvedDefinition` we're handling isn't for that file.
         let mut stub_file_for_module_lookup = stub_program_file;
         if let Some(vendored_typeshed) = cached_vendored_typeshed
             && let Some(stub_path) = stub_file.path(db).as_system_path()
@@ -1746,7 +1656,6 @@ mod stub_mapping {
             stub_file_for_module_lookup = ProgramFile::new(db, typeshed_file, env.program(db));
         }
 
-        // It's definitely a stub, so now rerun module resolution but with stubs disabled.
         let resolver_file = stub_file_for_module_lookup.resolver_file(db);
         let real_module = stub_file_to_real_module(db, resolver_file)?;
         trace!("Found real module: {}", real_module.name(db));
@@ -1754,17 +1663,6 @@ mod stub_mapping {
         let real_file = real_parse_file.file(db);
         trace!("Found real file: {}", real_file.path(db));
 
-        // A definition's lexical name path describes its nesting within a module:
-        //
-        // ```
-        // class Outer:          # [Outer]
-        //     def method(): ... # [Outer, method]
-        // ```
-        //
-        // Compute the path in the stub file, then resolve the same path in the real file.
-        //
-        // NOTE: currently a path component is just a name, but in the future additional
-        // disambiguators (like "is a class def") could be added if needed.
         let path = match *def {
             ResolvedDefinition::Definition(definition) => {
                 let path = lexical_name_path_for_definition(db, definition)?;
@@ -1780,31 +1678,22 @@ mod stub_mapping {
                 return Some(vec![ResolvedDefinition::Module(real_parse_file)]);
             }
             ResolvedDefinition::FileWithRange(_) => {
-                // Not yet implemented -- in this case we want to recover something like a Definition
-                // and build a lexical name path, but this input is a bit too abstract for now.
                 trace!("Found arbitrary FileWithRange while stub mapping, giving up");
                 return None;
             }
         };
 
-        // Walk down the lexical name path in the real file.
         let mut definitions = Vec::new();
         let index = semantic_index(db, real_parse_file);
         let global_scope = global_scope(db, real_parse_file);
         let real_parsed = parsed_module(db, global_scope.python_file(db));
         let real_ref = real_parsed.load(db);
-        // Start our search in the module (global) scope
         let mut scopes = vec![global_scope];
         let mut path = path.iter().peekable();
         while let Some(component) = path.next() {
             trace!("Traversing lexical name path component: {}", component);
-            // We're doing essentially a breadth-first traversal of the definitions.
-            // If ever we find multiple matching scopes for a component, we need to continue
-            // walking down each of them to try to resolve the path. Here we loop over
-            // all the scopes at the current level of search.
             for scope in std::mem::take(&mut scopes) {
                 if path.peek().is_none() {
-                    // We're at the end of the path, everything we find here is the final result
                     definitions.extend(
                         find_symbol_in_scope(db, scope, component.as_str())
                             .into_iter()
@@ -1819,7 +1708,6 @@ mod stub_mapping {
                             }),
                     );
                 } else {
-                    // We're in the middle of the path, look for scopes that match the current component
                     for (child_scope_id, child_scope) in index.child_scopes(scope.file_scope_id(db))
                     {
                         let scope_node = child_scope.node();
@@ -1903,8 +1791,6 @@ pub fn type_hierarchy_supertypes<'db>(
         .filter_map(|base| extract_class_literal(db, env, base))
         .map(|class_literal| class_literal_to_hierarchy_info(db, class_literal))
         .collect();
-    // Every class implicitly inherits from `object` when no explicit
-    // bases are declared.
     if supertypes.is_empty() {
         supertypes.push(class_literal_to_hierarchy_info(
             db,
@@ -1955,14 +1841,8 @@ fn direct_subtypes<'db>(
             continue;
         };
 
-        // Note that this will always consider namespace
-        // packages to be "not firsty party." This isn't
-        // necessarily correct, and we can probably improve
-        // on this in response to user feedback.
         let is_non_first_party = module.search_path(db).is_none_or(|sp| !sp.is_first_party());
         let name = module.name(db);
-        // Filter out non-first-party modules that are conventionally
-        // regarded as private or tests.
         if is_non_first_party && (name.is_private() || name.is_test_module()) {
             continue;
         }
@@ -1972,10 +1852,6 @@ fn direct_subtypes<'db>(
             continue;
         }
 
-        // Keep the cheap name-based prefilter for non-first-party modules, which includes the
-        // vendored stdlib. First-party modules may inherit through local import aliases, e.g.
-        // `from a import Base as B; class Child(B): ...`, so they need semantic analysis even
-        // when they do not mention the target class's original name.
         if is_non_first_party && !target_is_object && !target_matcher.may_match(&source) {
             continue;
         }
@@ -1983,8 +1859,6 @@ fn direct_subtypes<'db>(
         let program_file = ProgramFile::new(db, file, env.program(db));
         let file_env = ProgramEnvironment::from_file(program_file);
 
-        // Subtype searches can scan many modules, so release closed files' ASTs as we go. Keep the
-        // guard through class search and range collection, which can also load this file's AST.
         let _ast_guard =
             parsed_module(db, program_file.python_file(db)).load_then_clear_on_drop(db);
         for class_ty in reachable_class_literals_in_file(db, program_file) {
@@ -2024,19 +1898,16 @@ fn reachable_class_literals_in_file<'db>(
             continue;
         };
 
-        // Map AST class node to its definition in the semantic index.
         let definition = index.expect_single_definition(class_node);
         if !matches!(definition.kind(db), DefinitionKind::Class(_)) {
             continue;
         }
 
-        // Drop classes in dead code — e.g. a class under if sys.version_info < (3, 9): on a newer Python.
         let file_scope_id = scope_id.file_scope_id(db);
         if !is_range_reachable(db, index, file_scope_id, class_node.node(&parsed).range()) {
             continue;
         }
 
-        // Convert the definition's type into a ClassLiteral, dropping anything that doesn't produce a usable class object.
         if let Some(class) = extract_class_literal(db, &env, binding_type(db, definition)) {
             classes.push(class);
         }
@@ -2100,20 +1971,6 @@ fn class_literal_to_hierarchy_info<'db>(
                 .unwrap_or(header_range);
             (header_range, selection_range)
         }
-        // For the dynamic cases, we special case a variable definition
-        // like this:
-        //
-        //     Dynamic = type("Dynamic", (object,), {})
-        //
-        // In this case, the range for the element we return will correspond to
-        // the left hand side of the variable assignment. This works better as
-        // an "anchor" point because it avoids ambiguity with asking for the
-        // type hierarchy of `type` itself.
-        //
-        // If there is not a variable definition, then we fall back to the
-        // class definition's "header" range, which will be the `type` (or
-        // `namedtuple`) call. Subsequent type hierarchy requests will then
-        // (likely incorrectly) return the type hierarchy for `type` itself.
         ClassLiteral::Dynamic(dynamic_class) => {
             if let DynamicClassAnchor::Definition(definition) = dynamic_class.anchor(db) {
                 let parsed = parsed_module(db, definition.python_file(db)).load(db);

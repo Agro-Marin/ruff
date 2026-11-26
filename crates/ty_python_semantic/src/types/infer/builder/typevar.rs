@@ -73,7 +73,7 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             db,
             identity,
             bound_or_constraint,
-            None, // explicit_variance
+            None,
             default.as_deref().map(|_| TypeVarDefaultEvaluation::Lazy),
         )));
         self.add_declaration_with_binding(
@@ -100,8 +100,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         let bound_node = bound.as_deref();
         let bound_or_constraints = match bound_node {
             Some(expr @ ast::Expr::Tuple(ast::ExprTuple { elts, .. })) => {
-                // Here, we interpret `bound` as a heterogeneous tuple and convert it to `TypeVarConstraints`
-                // in `TypeVarInstance::lazy_constraints`.
                 let constraint_tys: Box<[Type<'_>]> = elts
                     .iter()
                     .map(|expr| {
@@ -119,9 +117,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
                 let tuple_ty = Type::heterogeneous_tuple(db, env, constraint_tys.clone());
                 self.store_expression_type(expr, tuple_ty);
-                // Mirror the `< 2` guard from `infer_typevar_definition` to avoid
-                // a cascading `invalid-type-variable-default` diagnostic for tuples
-                // that have already been flagged as invalid constraints.
                 if elts.len() < 2 {
                     None
                 } else {
@@ -178,10 +173,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
         let db = self.db();
 
-        // Normalize both typevar representations into a `TypeVarInstance` so they
-        // follow the same compatibility rules:
-        // - `Type::KnownInstance(TypeVar(..))` for legacy `typing.TypeVar(...)` values
-        // - `Type::TypeVar(..)` for bound in-scope type parameters (for example, PEP 695)
         let default_typevar = match default_ty {
             Type::KnownInstance(KnownInstanceType::TypeVar(typevar)) => Some(typevar),
             Type::TypeVar(bound_typevar) => Some(bound_typevar.typevar(db)),
@@ -238,7 +229,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         if let Some(default_typevar) = default_typevar {
             let default_name = default_typevar.name(db);
 
-            // Annotate the diagnostic with the definition span of the default TypeVar.
             let annotate_default_definition = |diagnostic: &mut LintDiagnosticGuard<'_, '_>| {
                 if let Some(definition) = default_typevar.definition(db) {
                     diagnostic.annotate(
@@ -253,9 +243,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
             match bound_or_constraints {
                 TypeVarBoundOrConstraints::UpperBound(outer_bound) => {
-                    // Default TypeVar's upper bound must be assignable to outer's bound.
-                    // If the default has constraints, all constraints must be assignable
-                    // to the outer bound.
                     if let Some(default_constraints) = default_typevar.constraints(db, env) {
                         for constraint in default_constraints {
                             if !constraint.is_assignable_to(db, env, outer_bound) {
@@ -342,10 +329,8 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     }
                 }
                 TypeVarBoundOrConstraints::Constraints(outer_constraints) => {
-                    // TypeVar default with constrained outer.
                     let outer = outer_constraints.elements(db);
                     if let Some(default_constraints) = default_typevar.constraints(db, env) {
-                        // Default has constraints: outer constraints must be a superset.
                         for default_constraint in default_constraints {
                             if !outer
                                 .iter()
@@ -389,8 +374,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                             }
                         }
                     } else {
-                        // A non-constrained default TypeVar (bounded or unbounded) is
-                        // incompatible with a constrained outer TypeVar per the typing spec.
                         if let Some(mut diagnostic) = inconsistent_with_constraints() {
                             annotate_default_definition(&mut diagnostic);
                             if let Some(default_bound) = default_typevar.upper_bound(db, env) {
@@ -418,7 +401,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             return;
         }
 
-        // Concrete default type checks.
         match bound_or_constraints {
             TypeVarBoundOrConstraints::UpperBound(bound) => {
                 if !default_ty.is_assignable_to(db, env, bound) {
@@ -476,9 +458,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
     ) -> bool {
         let db = self.db();
 
-        // Determine the expected binding context from the current type parameter scope.
-        // Only check function and type alias scopes; class scopes are handled separately
-        // when processing the class definition.
         let expected_binding_def = match self.scope().node(db) {
             NodeWithScopeKind::FunctionTypeParameters(function) => {
                 self.index.expect_single_definition(function)
@@ -557,8 +536,8 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         let ty = Type::KnownInstance(KnownInstanceType::TypeVar(TypeVarInstance::new(
             db,
             identity,
-            None, // ParamSpec, when declared using PEP 695 syntax, has no bounds or constraints
-            None, // explicit_variance
+            None,
+            None,
             default.as_deref().map(|_| TypeVarDefaultEvaluation::Lazy),
         )));
         self.add_declaration_with_binding(
@@ -626,8 +605,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     InferenceFlags::ALLOW_PARAMSPEC_TYPE_EXPR,
                     previously_allowed_paramspec,
                 );
-                // N.B. We cannot represent a heterogeneous list of types in our type system, so we
-                // use a heterogeneous tuple type to represent the list of types instead.
                 let ty = Type::heterogeneous_tuple(db, self.program_environment(), types);
                 self.store_expression_type(default_expr, ty);
                 return;
@@ -687,7 +664,7 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             db,
             identity,
             None,
-            None, // explicit_variance
+            None,
             default.as_deref().map(|_| TypeVarDefaultEvaluation::Lazy),
         )));
         self.add_declaration_with_binding(
@@ -1040,8 +1017,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             if let Some(builder) = context.report_lint(&INVALID_PARAMSPEC, node) {
                 builder.into_diagnostic(message);
             }
-            // If the call doesn't create a valid paramspec, we'll emit diagnostics and fall back to
-            // just creating a regular instance of `typing.ParamSpec`.
             KnownClass::ParamSpec.to_instance(db, context.program_environment())
         }
 
@@ -1084,8 +1059,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             };
             match identifier.id().as_str() {
                 "name" => {
-                    // Duplicate keyword argument is a syntax error, so we don't have to check if
-                    // `name_param_ty.is_some()` here.
                     if !arguments.args.is_empty() {
                         return error(
                             &self.context,
@@ -1171,8 +1144,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     if !assume_all_features
                         && self.program_environment().python_version(db) < PythonVersion::PY313
                     {
-                        // We don't return here; this error is informational since this will error
-                        // at runtime, but the user's intent is plain, we may as well respect it.
                         error(
                             &self.context,
                             "The `default` parameter of `typing.ParamSpec` was added in Python 3.13",
@@ -1182,10 +1153,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     default = Some(TypeVarDefaultEvaluation::Lazy);
                 }
                 name => {
-                    // We don't return here; this error is informational since this will error
-                    // at runtime, but it will likely cause fewer cascading errors if we just
-                    // ignore the unknown keyword and still understand as much of the typevar as we
-                    // can.
                     error(
                         &self.context,
                         format_args!("Unknown keyword argument `{name}` in `ParamSpec` creation"),
@@ -1293,8 +1260,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             if let Some(builder) = context.report_lint(&INVALID_LEGACY_TYPE_VARIABLE, node) {
                 builder.into_diagnostic(message);
             }
-            // If the call doesn't create a valid typevar, we'll emit diagnostics and fall back to
-            // just creating a regular instance of `typing.TypeVar`.
             KnownClass::TypeVar.to_instance(db, context.program_environment())
         }
 
@@ -1330,8 +1295,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             };
             match identifier.id().as_str() {
                 "name" => {
-                    // Duplicate keyword argument is a syntax error, so we don't have to check if
-                    // `name_param_ty.is_some()` here.
                     if !arguments.args.is_empty() {
                         return error(
                             &self.context,
@@ -1384,8 +1347,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     if !assume_all_features
                         && self.program_environment().python_version(db) < PythonVersion::PY313
                     {
-                        // We don't return here; this error is informational since this will error
-                        // at runtime, but the user's intent is plain, we may as well respect it.
                         error(
                             &self.context,
                             "The `default` parameter of `typing.TypeVar` was added in Python 3.13",
@@ -1399,8 +1360,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     if !assume_all_features
                         && self.program_environment().python_version(db) < PythonVersion::PY312
                     {
-                        // We don't return here; this error is informational since this will error
-                        // at runtime, but the user's intent is plain, we may as well respect it.
                         error(
                             &self.context,
                             "The `infer_variance` parameter of `typing.TypeVar` was added in Python 3.12",
@@ -1425,10 +1384,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     }
                 }
                 name => {
-                    // We don't return here; this error is informational since this will error
-                    // at runtime, but it will likely cause fewer cascading errors if we just
-                    // ignore the unknown keyword and still understand as much of the typevar as we
-                    // can.
                     error(
                         &self.context,
                         format_args!("Unknown keyword argument `{name}` in `TypeVar` creation"),
@@ -1580,8 +1535,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             );
         }
 
-        // Inference of bounds, constraints, and defaults must be deferred, to avoid cycles. So we
-        // only check presence/absence/number here.
 
         let constraints = arguments.args.get(1..).unwrap_or_default();
 

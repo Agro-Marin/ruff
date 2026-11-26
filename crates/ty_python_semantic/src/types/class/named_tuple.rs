@@ -39,7 +39,6 @@ pub(super) fn synthesize_namedtuple_class_member<'db>(
     let origin = SelfTypeVarOrigin::Class(class.class_literal(db));
     match name {
         "__new__" => {
-            // __new__(cls, field1, field2, ...) -> Self
             let self_typevar = BoundTypeVarInstance::synthetic_self(
                 db,
                 origin,
@@ -55,8 +54,6 @@ pub(super) fn synthesize_namedtuple_class_member<'db>(
 
             let generic_context = GenericContext::from_typevar_instances(db, env, variables);
 
-            // CPython generates namedtuple `__new__` as `(_cls, field1, ...)` so field names like
-            // `cls` remain usable as keyword arguments at call sites.
             let first_parameter = Parameter::positional_or_keyword(Name::new_static("_cls"))
                 .with_annotated_type(SubclassOfType::from(db, env, self_typevar));
 
@@ -79,17 +76,14 @@ pub(super) fn synthesize_namedtuple_class_member<'db>(
                 return None;
             }
 
-            // __match_args__: tuple[Literal["field1"], Literal["field2"], ...]
             let field_types = fields.map(|field| Type::string_literal(db, &field.name));
             Some(Type::heterogeneous_tuple(db, env, field_types))
         }
         "_fields" => {
-            // _fields: tuple[Literal["field1"], Literal["field2"], ...]
             let field_types = fields.map(|field| Type::string_literal(db, &field.name));
             Some(Type::heterogeneous_tuple(db, env, field_types))
         }
         "__slots__" => {
-            // __slots__: tuple[()] - always empty for namedtuples
             Some(Type::empty_tuple(db, env))
         }
         "_replace" | "__replace__" => {
@@ -97,7 +91,6 @@ pub(super) fn synthesize_namedtuple_class_member<'db>(
                 return None;
             }
 
-            // _replace(self, *, field1=..., field2=...) -> Self
             let self_ty = Type::TypeVar(BoundTypeVarInstance::synthetic_self(
                 db,
                 origin,
@@ -119,11 +112,9 @@ pub(super) fn synthesize_namedtuple_class_member<'db>(
             Some(Type::function_like_callable(db, signature))
         }
         "__init__" => {
-            // Namedtuples don't have a custom __init__. All construction happens in __new__.
             None
         }
         _ => {
-            // Fall back to NamedTupleFallback for other synthesized methods.
             KnownClass::NamedTupleFallback
                 .to_class_literal(db, env)
                 .as_class_literal()?
@@ -284,8 +275,6 @@ impl<'db> DynamicNamedTupleLiteral<'db> {
         db: &'db dyn Db,
         env: &ProgramEnvironment<'db>,
     ) -> ClassType<'db> {
-        // If fields are unknown, return `tuple[Unknown, ...]` to avoid false positives
-        // like index-out-of-bounds errors.
         if !self.has_known_fields(db) {
             return TupleType::homogeneous(db, env, Type::unknown()).to_class_type(db);
         }
@@ -313,13 +302,11 @@ impl<'db> DynamicNamedTupleLiteral<'db> {
         env: &ProgramEnvironment<'db>,
         name: &str,
     ) -> PlaceAndQualifiers<'db> {
-        // First check own instance members.
         let result = self.own_instance_member(db, name);
         if !result.is_undefined() {
             return result.inner;
         }
 
-        // Fall back to the tuple base type for other attributes.
         Type::instance(db, env, self.tuple_base_class(db, env)).instance_member(db, env, name)
     }
 
@@ -331,20 +318,16 @@ impl<'db> DynamicNamedTupleLiteral<'db> {
         name: &str,
         policy: MemberLookupPolicy,
     ) -> PlaceAndQualifiers<'db> {
-        // First check synthesized members and fields.
         let member = self.own_class_member(db, name);
         if !member.is_undefined() {
             return member.inner;
         }
 
-        // Fall back to tuple class members.
         let result = self
             .tuple_base_class(db, env)
             .class_literal(db)
             .class_member(db, env, name, policy);
 
-        // If fields are unknown (dynamic) and the attribute wasn't found,
-        // return `Any` instead of failing.
         if !self.has_known_fields(db) && result.place.is_undefined() {
             return Place::bound(Type::any()).into();
         }
@@ -358,12 +341,10 @@ impl<'db> DynamicNamedTupleLiteral<'db> {
     /// back to tuple or other base classes.
     pub(super) fn own_class_member(self, db: &'db dyn Db, name: &str) -> Member<'db> {
         let env = ProgramEnvironment::from_scope(self.scope(db));
-        // Handle synthesized namedtuple attributes.
         if let Some(ty) = self.synthesized_class_member(db, &env, name) {
             return Member::definitely_declared(ty);
         }
 
-        // Check if it's a field name (returns a property descriptor).
         for field in self.fields(db) {
             if field.name == name {
                 return Member::definitely_declared(create_field_property(db, field.ty));
@@ -382,10 +363,8 @@ impl<'db> DynamicNamedTupleLiteral<'db> {
     ) -> Option<Type<'db>> {
         let instance_ty = self.to_instance(db, env);
 
-        // When fields are unknown, handle constructor and field-specific methods specially.
         if !self.has_known_fields(db) {
             match name {
-                // For constructors, return a gradual signature that accepts any arguments.
                 "__new__" | "__init__" => {
                     let signature = Signature::new(Parameters::gradual_form(), instance_ty);
                     return Some(Type::function_like_callable(db, signature));
@@ -422,9 +401,6 @@ impl<'db> DynamicNamedTupleLiteral<'db> {
             self.fields(db).iter().cloned(),
             None,
         );
-        // For fallback members from NamedTupleFallback, apply type mapping to handle
-        // `Self` types. The explicitly synthesized members (__new__, _fields, _replace,
-        // __replace__) don't need this mapping.
         if matches!(
             name,
             "__match_args__" | "__new__" | "_fields" | "_replace" | "__replace__" | "__slots__"

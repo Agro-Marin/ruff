@@ -34,30 +34,8 @@ pub(super) fn trailing_comma(stmt: &Stmt, tokens: &Tokens) -> TrailingComma {
 
 /// Return `true` if a [`Stmt`] is preceded by a "comment break"
 pub(super) fn has_comment_break(stmt: &Stmt, locator: &Locator) -> bool {
-    // Starting from the `Stmt` (`def f(): pass`), we want to detect patterns like
-    // this:
-    //
-    //   import os
-    //
-    //   # Detached comment.
-    //
-    //   def f(): pass
 
-    // This should also be detected:
-    //
-    //   import os
-    //
-    //   # Detached comment.
-    //
-    //   # Direct comment.
-    //   def f(): pass
 
-    // But this should not:
-    //
-    //   import os
-    //
-    //   # Direct comment.
-    //   def f(): pass
     let mut seen_blank = false;
     for line in locator.up_to(stmt.start()).universal_newlines().rev() {
         let line = line.trim_whitespace();

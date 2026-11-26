@@ -34,7 +34,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 ruff_db = { workspace = true, features = ["testing", "os"] }
-# Keep this path-only so Cargo strips the unpublished ty dev-dependency when packaging.
 ty_vendored = { path = "../ty_vendored" }
 
 insta = { workspace = true, features = ["filters"] }

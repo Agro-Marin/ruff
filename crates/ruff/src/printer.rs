@@ -129,14 +129,12 @@ impl Printer {
                                 fixables.applicable, fixables.inapplicable_unsafe
                             )?;
                         } else if fixables.applicable > 0 {
-                            // Only applicable fixes
                             writeln!(
                                 writer,
                                 "{fix_prefix} {} fixable with `--fix`.",
                                 fixables.applicable,
                             )?;
                         } else {
-                            // Only inapplicable fixes
                             let es = if fixables.inapplicable_unsafe == 1 {
                                 ""
                             } else {
@@ -159,7 +157,6 @@ impl Printer {
                     }
                 }
             } else {
-                // Check if there are unapplied fixes
                 let unapplied = {
                     if let Some(fixables) = fixables {
                         fixables.inapplicable_unsafe
@@ -306,8 +303,6 @@ impl Printer {
                     url: message.documentation_url(),
                     name: message.name(),
                     count,
-                    // Backward compatibility: `fixable` is true only when all violations are fixable.
-                    // See: https://github.com/astral-sh/ruff/pull/21513
                     all_fixable: fixable_count == count,
                     fixable_count,
                 },
@@ -321,8 +316,6 @@ impl Printer {
 
         match self.format {
             OutputFormat::Full | OutputFormat::Concise => {
-                // Compute the maximum number of digits in the count and code, for all messages,
-                // to enable pretty-printing.
                 let count_width = num_digits(
                     statistics
                         .iter()
@@ -337,8 +330,6 @@ impl Printer {
                     .unwrap();
                 let any_fixable = statistics.iter().any(ExpandedStatistics::any_fixable);
 
-                // Pick the stylesheet the same way the full and concise renderers do, so that
-                // turning colors off also turns the hyperlinks off.
                 let stylesheet = if colored::control::SHOULD_COLORIZE.should_colorize() {
                     DiagnosticStylesheet::styled()
                 } else {
@@ -349,7 +340,6 @@ impl Printer {
                 let partially_fixable = format!("[{}] ", "-".cyan());
                 let unfixable = "[ ] ";
 
-                // By default, we mimic Flake8's `--statistics` format.
                 for statistic in &statistics {
                     let code = statistic.code.map_or_default(SecondaryCode::as_str);
                     let padding_width = code_width - code.len();
@@ -455,11 +445,6 @@ fn num_digits(n: usize) -> usize {
 
 /// Return `true` if the [`Printer`] should indicate that a rule is fixable.
 fn show_fix_status(fix_mode: flags::FixMode, fixables: Option<&FixableStatistics>) -> bool {
-    // If we're in application mode, avoid indicating that a rule is fixable.
-    // If the specific violation were truly fixable, it would've been fixed in
-    // this pass! (We're occasionally unable to determine whether a specific
-    // violation is fixable without trying to fix it, so if fix is not
-    // enabled, we may inadvertently indicate that a rule is fixable.)
     (!fix_mode.is_apply()) && fixables.is_some_and(FixableStatistics::any_applicable_fixes)
 }
 
@@ -532,7 +517,6 @@ impl FixableStatistics {
                 if fix.applies(unsafe_fixes.required_applicability()) {
                     applicable += 1;
                 } else {
-                    // Do not include inapplicable fixes at other levels that do not provide an opt-in
                     if fix.applicability().is_unsafe() {
                         inapplicable_unsafe += 1;
                     }

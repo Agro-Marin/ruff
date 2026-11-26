@@ -61,10 +61,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         if class.arguments.is_some() {
             let previous_deferred_state = self.replace_deferred_state(self.in_stub().into());
 
-            // PEP 695 class headers are inferred in the type-parameter scope, before the completed
-            // class type is available. Infer the bases first because `extra_items=T` is an
-            // annotation in `class C[T](TypedDict, extra_items=T)`, but an ordinary value argument
-            // in `class C[T](Base, extra_items=T)`.
             let mut is_typed_dict = false;
 
             for base in class.bases() {
@@ -191,11 +187,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 )),
             }
         };
-        // In the first pass, collect metadata decorators that shape the original class object.
-        // Once an inner decorator replaces the public binding, outer decorators are ordinary
-        // runtime applications only: they cannot retroactively add metadata to the original class.
-        // For ordinary decorators that still apply to the original class, precompute the call so
-        // the second pass can reuse it if no inner decorator has changed the binding.
         for &(decorator_ty, decorator) in decorator_types_and_nodes.iter().rev() {
             if decorator_ty
                 .as_function_literal()
@@ -264,7 +255,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 continue;
             }
 
-            // Skip identity decorators to avoid salsa cycles on typeshed.
             if decorator_ty.as_function_literal().is_some_and(|function| {
                 matches!(
                     function.known(db),
@@ -276,15 +266,7 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
             if let Type::FunctionLiteral(f) = decorator_ty {
                 // We do not yet detect or flag `@dataclass_transform` applied to more than one
-                // overload, or an overload and the implementation both. Nevertheless, this is not
-                // allowed. We do not try to treat the offenders intelligently -- just use the
                 // params of the last seen usage of `@dataclass_transform`.
-                //
-                // In class-decorator position, dataclass-transform metadata shapes the
-                // original class object. We keep it metadata-only here because the call path
-                // uses synthetic dataclass-transform return types to model decorator factories;
-                // treating this as an ordinary replacement-returning class decorator would
-                // conflate those two cases.
                 let transformer_params = f
                     .iter_overloads_and_implementation(db)
                     .rev()
@@ -294,9 +276,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                         db,
                         transformer_params,
                     ));
-                    // We only model the metadata of this application, but its selected overload
-                    // can still be deprecated. Avoid resolving the call when no overload is
-                    // deprecated: the decorator's annotations may depend on this class.
                     if f.iter_overloads_and_implementation(db).any(|overload| {
                         overload.is_overload(db) && overload.deprecated(db).is_some()
                     }) {
@@ -345,16 +324,11 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             total_ordering,
         );
 
-        // In the second pass, apply class decorators from inner to outer and use their return types
-        // to update the public binding. `original_class_ty` remains the class object whose body and
-        // metadata were inferred above.
         let mut inferred_ty = original_class_ty;
         for (decorator_ty, decorator_node, application) in decorators_to_apply {
             let precomputed_result = match application {
                 ClassDecoratorApplication::Ordinary(precomputed_result) => precomputed_result,
                 ClassDecoratorApplication::RuntimeCheckable => {
-                    // Protocol bases can be deferred, so validate this identity decorator after
-                    // inference. Retain its input in case an inner decorator replaced the class.
                     self.defer_decorator_call(decorator_node, inferred_ty);
                     continue;
                 }
@@ -373,8 +347,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 }
             };
             let decorator_result = match precomputed_result {
-                // The metadata pass already called this decorator with the same input. If an inner
-                // decorator changed the binding, apply this decorator to the new public binding.
                 Some((precomputed_input_ty, decorator_result))
                     if precomputed_input_ty == inferred_ty =>
                 {
@@ -405,9 +377,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             inferred_ty = if is_unknown_decorator_result(db, decorated_ty) {
                 inferred_ty
             } else if let divergent_ty @ Type::Divergent(_) = decorated_ty.resolve_type_alias(db) {
-                // Keep the current binding to bootstrap decorators whose return annotations
-                // depend on the decorated class. Retain the cycle marker too: replacing it with
-                // only the class lets inferred lambda return types grow on every iteration.
                 UnionType::from_elements_cycle_recovery(db, env, [inferred_ty, divergent_ty])
             } else if class_decorator_preserves_class_binding(
                 db,
@@ -427,11 +396,8 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             };
         }
 
-        // An intermediate decorator result can contain a cycle marker. Class-body checks need
-        // the original class even while the public binding is still being inferred.
         self.undecorated_type = (inferred_ty != original_class_ty).then_some(original_class_ty);
 
-        // A decorator can replace a nested class with a writable value, including another class.
         let qualifiers = if self.scope().scope(db).kind().is_class()
             && type_retains_original_class(db, env, original_class_ty, inferred_ty)
         {
@@ -449,10 +415,7 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             )),
         );
 
-        // if there are type parameters, then the keywords and bases are within that scope
-        // and we don't need to run inference here
         if type_params.is_none() {
-            // In stub files, keyword values may reference names that are defined later in the file.
             let previous_deferred_state = self.replace_deferred_state(self.in_stub().into());
             for keyword in class_node.keywords() {
                 if keyword.arg.as_deref() != Some("extra_items") {
@@ -461,7 +424,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             }
             self.deferred_state = previous_deferred_state;
 
-            // Inference of bases deferred in stubs, or if any are string literals.
             if self.in_stub()
                 || class_node
                     .bases()
@@ -577,8 +539,6 @@ fn class_decorator_preserves_class_binding<'db>(
             .subclass_of()
             .into_class(db, env)
             .is_some_and(|class| class == original_literal.default_specialization(db)),
-        // A provisional decorator result does not establish that the class is preserved.
-        // Keep its cycle marker so recursive return types can be normalized.
         Type::Divergent(_) => false,
         Type::Union(union) => union.elements(db).iter().all(|element| {
             class_decorator_preserves_class_binding(db, env, original_class, *element)

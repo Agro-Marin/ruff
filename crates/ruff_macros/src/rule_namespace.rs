@@ -115,9 +115,6 @@ pub(crate) fn derive_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenS
         if let [prefix] = &prefixes[..] {
             common_prefix_match_arms.extend(quote! { Self::#variant_ident => #prefix, });
         } else {
-            // There is more than one prefix. We already previously asserted
-            // that prefixes of the same variant don't start with the same character
-            // so the common prefix for this variant is the empty string.
             common_prefix_match_arms.extend(quote! { Self::#variant_ident => "", });
         }
     }

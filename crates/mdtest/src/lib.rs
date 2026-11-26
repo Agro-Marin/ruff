@@ -73,7 +73,6 @@ pub fn run<C>(
             continue;
         }
 
-        // Buffer any immediate output from the test to emit after the header has been printed.
         let mut test_assertion = String::new();
         let result = run_test(&test, &mut test_assertion, output_format);
 
@@ -318,11 +317,6 @@ fn diagnostic_display_config(tool_name: &'static str) -> DisplayDiagnosticConfig
     DisplayDiagnosticConfig::new(tool_name)
         .color(false)
         .with_fix_applicability(Applicability::DisplayOnly)
-        // Surrounding context in source annotations can be confusing in mdtests,
-        // since you may get to see context from the *subsequent* code block (all
-        // code blocks are merged into a single file). It also leads to a lot of
-        // duplication in general. So we just set it to zero here for concise
-        // and clear snapshots.
         .context(0)
 }
 
@@ -367,8 +361,6 @@ pub fn validate_inline_snapshot(
     let mut failures = matcher::FailuresByLine::default();
     let mut inline_diagnostics = inline_diagnostics;
 
-    // Group the inline diagnostics by code block. We do this by using the code blocks
-    // start offsets. All diagnostics between the current's and next code blocks offset belong to the current code block.
     for (index, code_block) in test_file.code_blocks.iter().enumerate() {
         let next_block_start_offset = test_file
             .code_blocks
@@ -377,7 +369,6 @@ pub fn validate_inline_snapshot(
                 next_code_block.embedded_start_offset()
             });
 
-        // Find the offset of the first diagnostic that belongs to the next code block.
         let diagnostics_end = inline_diagnostics
             .iter()
             .position(|diagnostic| {
@@ -396,8 +387,6 @@ pub fn validate_inline_snapshot(
         let failure_line = line_index.line_index(code_block.embedded_start_offset());
 
         let Some(first_diagnostic) = block_diagnostics.first() else {
-            // If there are no inline diagnostics (no usages of `# snapshot`) but the code block has a
-            // diagnostics section, mark it as unnecessary or remove it.
             if let Some(snapshot_code_block) = code_block.inline_snapshot_block() {
                 if update_snapshots {
                     markdown_edits.push(MarkdownEdit {
@@ -549,11 +538,6 @@ fn create_diagnostic_snapshot<'d, C>(
     for file in test.files() {
         writeln!(snapshot, "## {}", file.relative_path()).unwrap();
         writeln!(snapshot).unwrap();
-        // Note that we don't use ```py here because the line numbering
-        // we add makes it invalid Python. This sacrifices syntax
-        // highlighting when you look at the snapshot on GitHub,
-        // but the line numbers are extremely useful for analyzing
-        // snapshots. So we keep them.
         writeln!(snapshot, "```").unwrap();
 
         let line_number_width = file.code.lines().count().to_string().len();

@@ -92,7 +92,6 @@ pub(crate) fn unnecessary_default_type_args(checker: &Checker, expr: &Expr) {
         return;
     };
 
-    // The type annotation must be `Generator` or `AsyncGenerator`.
     let Some(type_annotation) = DefaultedTypeAnnotation::from_expr(value, checker.semantic())
     else {
         return;
@@ -100,7 +99,6 @@ pub(crate) fn unnecessary_default_type_args(checker: &Checker, expr: &Expr) {
 
     let valid_elts = type_annotation.trim_unnecessary_defaults(elts);
 
-    // If we didn't trim any elements, then the default type arguments are necessary.
     if *elts == valid_elts {
         return;
     }
@@ -191,8 +189,6 @@ impl DefaultedTypeAnnotation {
     fn trim_unnecessary_defaults(self, elts: &[Expr]) -> Vec<Expr> {
         match self {
             Self::Generator => {
-                // Check only if the number of elements is 2 or 3 (e.g., `Generator[int, None]` or `Generator[int, None, None]`).
-                // Otherwise, ignore (e.g., `Generator[]`, `Generator[int]`, `Generator[int, None, None, None]`)
                 if elts.len() != 2 && elts.len() != 3 {
                     return elts.to_vec();
                 }
@@ -202,8 +198,6 @@ impl DefaultedTypeAnnotation {
                     .collect::<Vec<_>>()
             }
             Self::AsyncGenerator => {
-                // Check only if the number of elements is 2 (e.g., `AsyncGenerator[int, None]`).
-                // Otherwise, ignore (e.g., `AsyncGenerator[]`, `AsyncGenerator[int]`, `AsyncGenerator[int, None, None]`)
                 if elts.len() != 2 {
                     return elts.to_vec();
                 }

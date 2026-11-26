@@ -153,12 +153,10 @@ impl Violation for NonPEP695GenericClass {
 
 /// UP046
 pub(crate) fn non_pep695_generic_class(checker: &Checker, class_def: &StmtClassDef) {
-    // PEP-695 syntax is only available on Python 3.12+
     if checker.target_version() < PythonVersion::PY312 {
         return;
     }
 
-    // don't try to handle generic classes inside other functions or classes
     if in_nested_context(checker) {
         return;
     }
@@ -170,8 +168,6 @@ pub(crate) fn non_pep695_generic_class(checker: &Checker, class_def: &StmtClassD
         ..
     } = class_def;
 
-    // it's a runtime error to mix type_params and Generic, so bail out early if we see existing
-    // type_params
     if type_params.is_some() {
         return;
     }
@@ -193,14 +189,6 @@ pub(crate) fn non_pep695_generic_class(checker: &Checker, class_def: &StmtClassD
         *range,
     );
 
-    // only handle the case where Generic is at the end of the argument list, in line with PYI059
-    // (generic-not-last-base-class). If it comes elsewhere, it results in a runtime error. In stubs
-    // it's not *strictly* necessary for `Generic` to come last in the bases tuple, but it would
-    // cause more complication for us to handle stubs specially, and probably isn't worth the
-    // bother. we still offer a diagnostic here but not a fix
-    //
-    // because `find_generic` also finds the *first* Generic argument, this has the additional
-    // benefit of bailing out with a diagnostic if multiple Generic arguments are present
     if generic_idx != arguments.args.len() - 1 {
         return;
     }
@@ -212,33 +200,12 @@ pub(crate) fn non_pep695_generic_class(checker: &Checker, class_def: &StmtClassD
     };
     visitor.visit_expr(slice);
 
-    // if any of the parameters have been skipped, this indicates that we could not resolve the type
-    // to a `TypeVar`, `TypeVarTuple`, or `ParamSpec`, and thus our fix would remove it from the
-    // signature incorrectly. We can still offer the diagnostic created above without a Fix. For
-    // example,
-    //
-    // ```python
-    // from somewhere import SomethingElse
-    //
-    // T = TypeVar("T")
-    //
-    // class Class(Generic[T, SomethingElse]): ...
-    // ```
-    //
-    // should not be converted to
-    //
-    // ```python
-    // class Class[T]: ...
-    // ```
-    //
-    // just because we can't confirm that `SomethingElse` is a `TypeVar`
     if !visitor.any_skipped {
         let Some(type_vars) = check_type_vars(visitor.vars, checker) else {
             diagnostic.defuse();
             return;
         };
 
-        // build the fix as a String to avoid removing comments from the entire function body
         let type_params = DisplayTypeVars {
             type_vars: &type_vars,
             source: checker.source(),

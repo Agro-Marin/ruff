@@ -117,11 +117,9 @@ impl<'a> From<&'a Stylist<'a>> for Generator<'a> {
 impl<'a> Generator<'a> {
     pub const fn new(indent: &'a Indentation, line_ending: LineEnding) -> Self {
         Self {
-            // Style preferences.
             indent,
             line_ending,
             mode: Mode::Default,
-            // Internal state.
             buffer: String::new(),
             indent_depth: 0,
             num_newlines: 0,
@@ -183,10 +181,6 @@ impl<'a> Generator<'a> {
     }
 
     fn p_bytes_repr(&mut self, s: &[u8], flags: BytesLiteralFlags) {
-        // raw bytes are interpreted without escapes and should all be ascii (it's a python syntax
-        // error otherwise), but if this assumption is violated, a `Utf8Error` will be returned from
-        // `p_raw_bytes`, and we should fall back on the normal escaping behavior instead of
-        // panicking
         if flags.prefix().is_raw() {
             if let Ok(s) = std::str::from_utf8(s) {
                 write!(self.buffer, "{}", flags.display_contents(s))
@@ -1230,7 +1224,6 @@ impl<'a> Generator<'a> {
                     [],
                 ) = (arguments.args.as_ref(), arguments.keywords.as_ref())
                 {
-                    // Ensure that a single generator doesn't get double-parenthesized.
                     self.unparse_expr(elt, precedence::COMMA);
                     self.unparse_comp(generators);
                 } else {
@@ -1511,7 +1504,6 @@ impl<'a> Generator<'a> {
         let mut generator = Generator::new(self.indent, self.line_ending);
         generator.unparse_expr(val, precedence::FORMATTED_VALUE);
         let brace = if generator.buffer.starts_with('{') {
-            // put a space to avoid escaping the bracket
             "{ "
         } else {
             "{"
@@ -1914,7 +1906,6 @@ class Foo:
         assert_round_trip!("x = (i := 1)");
         assert_round_trip!("x += (i := 1)");
 
-        // Type aliases
         assert_round_trip!(r"type Foo = int | str");
         assert_round_trip!(r"type Foo[T] = list[T]");
         assert_round_trip!(r"type Foo[*Ts] = ...");
@@ -1924,7 +1915,6 @@ class Foo:
         assert_round_trip!(r"type Foo[*Ts = *int] = ...");
         assert_round_trip!(r"type Foo[**P = int] = ...");
         assert_round_trip!(r"type Foo[T, U, *Ts, **P] = ...");
-        // https://github.com/astral-sh/ruff/issues/6498
         assert_round_trip!(r"f(a=1, *args, **kwargs)");
         assert_round_trip!(r"f(*args, a=1, **kwargs)");
         assert_round_trip!(r"f(*args, a=1, *args2, **kwargs)");
@@ -1958,28 +1948,27 @@ class Foo:
             ("r", "r", 0),
             ("u", "u", 1),
             ("R", "R", 2),
-            ("U", "u", 3), // case not tracked
+            ("U", "u", 3),
             ("f", "f", 4),
-            ("F", "f", 5),   // f case not tracked
-            ("fr", "rf", 6), // r before f
-            ("Fr", "rf", 7), // f case not tracked, r before f
-            ("fR", "Rf", 8), // r before f
-            ("FR", "Rf", 9), // f case not tracked, r before f
+            ("F", "f", 5),
+            ("fr", "rf", 6),
+            ("Fr", "rf", 7),
+            ("fR", "Rf", 8),
+            ("FR", "Rf", 9),
             ("rf", "rf", 10),
-            ("rF", "rf", 11), // f case not tracked
+            ("rF", "rf", 11),
             ("Rf", "Rf", 12),
-            ("RF", "Rf", 13), // f case not tracked
-            // bytestrings
+            ("RF", "Rf", 13),
             ("b", "b", 14),
-            ("B", "b", 15),   // b case
-            ("br", "rb", 16), // r before b
-            ("Br", "rb", 17), // b case, r before b
-            ("bR", "Rb", 18), // r before b
-            ("BR", "Rb", 19), // b case, r before b
+            ("B", "b", 15),
+            ("br", "rb", 16),
+            ("Br", "rb", 17),
+            ("bR", "Rb", 18),
+            ("BR", "Rb", 19),
             ("rb", "rb", 20),
-            ("rB", "rb", 21), // b case
+            ("rB", "rb", 21),
             ("Rb", "Rb", 22),
-            ("RB", "Rb", 23), // b case
+            ("RB", "Rb", 23),
         ],
         [("\"", 0), ("'",1), ("\"\"\"", 2), ("'''", 3)],
         ["hello", "{hello} {world}"]
@@ -1992,7 +1981,7 @@ class Foo:
 
     #[test]
     fn raw() {
-        assert_round_trip!(r#"r"a\.b""#); // https://github.com/astral-sh/ruff/issues/9663
+        assert_round_trip!(r#"r"a\.b""#);
         assert_round_trip!(r#"R"a\.b""#);
     }
 
@@ -2004,7 +1993,6 @@ class Foo:
         assert_round_trip!(r#"f"{ chr(65)  =   :#x}""#);
         assert_round_trip!(r#"f"{  ( chr(65)  ) = }""#);
         assert_round_trip!(r#"f"{a=!r:0.05f}""#);
-        // https://github.com/astral-sh/ruff/issues/18742
         assert_eq!(
             round_trip(
                 r#"

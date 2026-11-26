@@ -18,7 +18,6 @@ impl FormatNodeRule<ModModule> for FormatModModule {
         } = item;
 
         if body.is_empty() {
-            // Only preserve an empty line if the source contains an empty line too.
             if !f.context().comments().has_leading(item)
                 && lines_after(range.start(), f.context().source()) != 0
             {
@@ -31,7 +30,6 @@ impl FormatNodeRule<ModModule> for FormatModModule {
                 f,
                 [
                     body.format().with_options(SuiteKind::TopLevel),
-                    // Trailing newline at the end of the file
                     hard_line_break()
                 ]
             )

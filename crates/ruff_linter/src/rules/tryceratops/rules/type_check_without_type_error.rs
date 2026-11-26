@@ -58,7 +58,6 @@ impl<'a> StatementVisitor<'a> for ControlFlowVisitor<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
-                // Don't recurse.
             }
             Stmt::Return(_) => self.returns.push(stmt),
             Stmt::Break(_) => self.breaks.push(stmt),
@@ -162,7 +161,6 @@ pub(crate) fn type_check_without_type_error(
         }
     }
 
-    // Only consider the body when the `if` condition is all type-related
     if !check_type_check_test(checker.semantic(), test) {
         return;
     }
@@ -170,13 +168,11 @@ pub(crate) fn type_check_without_type_error(
 
     for clause in elif_else_clauses {
         if let Some(test) = &clause.test {
-            // If there are any `elif`, they must all also be type-related
             if !check_type_check_test(checker.semantic(), test) {
                 return;
             }
         }
 
-        // The `elif` or `else` body raises the wrong exception
         check_body(checker, &clause.body);
     }
 }

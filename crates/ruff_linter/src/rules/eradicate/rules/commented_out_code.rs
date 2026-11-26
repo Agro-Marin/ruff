@@ -54,7 +54,6 @@ pub(crate) fn commented_out_code(
     comment_ranges: &CommentRanges,
 ) {
     let mut comments = comment_ranges.into_iter().peekable();
-    // Iterate over all comments in the document.
     while let Some(range) = comments.next() {
         let line = locator.line_str(range.start());
 
@@ -64,7 +63,6 @@ pub(crate) fn commented_out_code(
             }
         }
 
-        // Verify that the comment is on its own line, and that it contains code.
         if is_own_line_comment(line)
             && comment_contains_code(line, &context.settings().task_tags[..])
         {
@@ -107,12 +105,10 @@ where
         }
     }
 
-    // > Unclosed blocks MUST be ignored.
     let Some(end_offset) = end_offset else {
         return false;
     };
 
-    // Skip over all script-comments.
     while let Some(comment) = comments.peek() {
         if comment.start() >= end_offset {
             break;
@@ -126,16 +122,13 @@ where
 
 fn script_line_content(line: &str) -> Option<&str> {
     let Some(rest) = line.strip_prefix('#') else {
-        // Not a comment
         return None;
     };
 
-    // An empty line
     if rest.is_empty() {
         return Some("");
     }
 
-    // > If there are characters after the # then the first character MUST be a space.
     rest.strip_prefix(' ')
 }
 

@@ -93,7 +93,6 @@ impl TextSize {
 }
 
 /// Methods to act like a primitive integer type, where reasonably applicable.
-//  Last updated for parity with Rust 1.42.0.
 impl TextSize {
     /// Checked addition. Returns `None` if overflow occurred.
     #[inline]

@@ -154,7 +154,6 @@ pub(crate) fn check_logical_lines(
             }
         }
 
-        // Extract the indentation level.
         let Some(first_token) = line.first_token() else {
             continue;
         };

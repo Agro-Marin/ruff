@@ -61,8 +61,6 @@ impl TypingReference {
                 continue;
             }
 
-            // if we're not in a type checking block, we necessarily need to be within a
-            // type definition to be considered a typing reference
             if !reference.in_type_definition() {
                 return Self::Runtime;
             }
@@ -77,7 +75,6 @@ impl TypingReference {
                 continue;
             }
 
-            // prefer `from __future__ import annotations` to quoting
             if settings.future_annotations
                 && !reference.in_typing_only_annotation()
                 && reference.in_runtime_evaluated_annotation()
@@ -172,8 +169,6 @@ fn base_class_runtime_semantics(
             .find(|(base_class, ..)| QualifiedName::from_dotted_name(base_class) == qualified_name)
         {
             Some((_, RuntimeSemantics::Required)) => {
-                // Once we encounter a runtime required name we can stop looking
-                // at the rest of the names by returning `true`
                 result = RuntimeSemantics::Required;
                 true
             }
@@ -200,24 +195,9 @@ fn decorator_runtime_semantics(
     for decorator in decorator_list {
         let expression = map_callable(&decorator.expression);
         match semantic
-            // First try to resolve the qualified name normally for cases like:
-            // ```python
-            // from mymodule import app
-            //
             // @app.get(...)
-            // def test(): ...
-            //  ```
             .resolve_qualified_name(expression)
-            // If we can't resolve the name, then try resolving the assignment
-            // in order to support cases like:
-            // ```python
-            // from fastapi import FastAPI
-            //
-            // app = FastAPI()
-            //
             // @app.get(...)
-            // def test(): ...
-            // ```
             .or_else(|| analyze::typing::resolve_assignment(expression, semantic))
             .and_then(|qualified_name| {
                 decorators.iter().find(|(decorator, ..)| {
@@ -255,7 +235,6 @@ pub(crate) fn is_dataclass_meta_annotation(annotation: &Expr, semantic: &Semanti
                 &["dataclasses", "dataclass"],
             )
         }) {
-            // Determine whether the annotation is `typing.ClassVar`, `dataclasses.InitVar`, or `dataclasses.KW_ONLY`.
             return semantic
                 .resolve_qualified_name(map_subscript(annotation))
                 .is_some_and(|qualified_name| {
@@ -363,27 +342,15 @@ pub(crate) fn quote_annotation(
     if let Some(parent_id) = semantic.parent_expression_id(node_id) {
         match semantic.expression(parent_id) {
             Some(Expr::Subscript(parent)) if expr == parent.value.as_ref() => {
-                // If we're quoting the value of a subscript, we need to quote the entire
-                // expression. For example, when quoting `DataFrame` in `DataFrame[int]`, we
-                // should generate `"DataFrame[int]"`.
                 return quote_annotation(parent_id, semantic, stylist, locator, flags);
             }
             Some(Expr::Attribute(parent)) if expr == parent.value.as_ref() => {
-                // If we're quoting the value of an attribute, we need to quote the entire
-                // expression. For example, when quoting `DataFrame` in `pd.DataFrame`, we
-                // should generate `"pd.DataFrame"`.
                 return quote_annotation(parent_id, semantic, stylist, locator, flags);
             }
             Some(Expr::Call(parent)) if expr == parent.func.as_ref() => {
-                // If we're quoting the function of a call, we need to quote the entire
-                // expression. For example, when quoting `DataFrame` in `DataFrame()`, we
-                // should generate `"DataFrame()"`.
                 return quote_annotation(parent_id, semantic, stylist, locator, flags);
             }
             Some(Expr::BinOp(parent)) if parent.op.is_bit_or() => {
-                // If we're quoting the left or right side of a binary operation, we need to
-                // quote the entire expression. For example, when quoting `DataFrame` in
-                // `DataFrame | Series`, we should generate `"DataFrame | Series"`.
                 return quote_annotation(parent_id, semantic, stylist, locator, flags);
             }
             _ => {}
@@ -408,7 +375,6 @@ pub(crate) fn quote_type_expression(
     locator: &Locator,
     flags: StringLiteralFlags,
 ) -> Edit {
-    // Quote the entire expression.
     let quote_annotator = QuoteAnnotator::new(semantic, stylist, locator, flags);
 
     Edit::range_replacement(quote_annotator.into_annotation(expr), expr.range())
@@ -427,14 +393,12 @@ pub(crate) fn unquote_annotation_string(
 
     let fix_string = if (fix_string.contains('\n') || fix_string.contains('\r'))
         && parenthesized_range(
-            // Check for parentheses outside the string ("""...""")
             annotation_expr.into(),
             checker.semantic().current_statement().into(),
             checker.source_tokens(),
         )
         .is_none()
         && parenthesized_range(
-            // Check for parentheses inside the string """(...)"""
             expr.into(),
             annotation_expr.into(),
             checker.tokens(),
@@ -452,10 +416,8 @@ pub(crate) fn unquote_annotation_string(
 pub(crate) fn filter_contained(edits: Vec<Edit>) -> Vec<Edit> {
     let mut edits = edits;
 
-    // Sort such that the largest edits are prioritized.
     edits.sort_unstable_by_key(|edit| (edit.start(), Reverse(edit.end())));
 
-    // Remove any edits that are completely contained by another edit.
     let mut filtered: Vec<Edit> = Vec::with_capacity(edits.len());
     for edit in edits {
         if !filtered
@@ -494,8 +456,6 @@ impl<'a> QuoteAnnotator<'a> {
         let mut expr_without_forward_references = expr.clone();
         self.visit_expr(&mut expr_without_forward_references);
         let generator = Generator::from(self.stylist);
-        // we first generate the annotation with the inverse quote, so we can
-        // generate the string literal with the preferred quote
         let subgenerator = Generator::new(self.stylist.indentation(), self.stylist.line_ending());
         let annotation = subgenerator.expr(&expr_without_forward_references);
         generator.expr(&Expr::from(ast::StringLiteral {
@@ -507,14 +467,9 @@ impl<'a> QuoteAnnotator<'a> {
     }
 
     fn visit_annotated_slice(&self, slice: &mut Expr) {
-        // we only want to walk the first tuple element if it exists,
-        // anything else should not be transformed
         if let Expr::Tuple(ast::ExprTuple { elts, .. }) = slice {
             if !elts.is_empty() {
                 self.visit_expr(&mut elts[0]);
-                // The outer annotation will use the preferred quote.
-                // As such, any quotes found in metadata elements inside an `Annotated` slice
-                // should use the opposite quote to the preferred quote.
                 for elt in elts.iter_mut().skip(1) {
                     QuoteRewriter::new(self.stylist).visit_expr(elt);
                 }
@@ -532,9 +487,6 @@ impl Transformer for QuoteAnnotator<'_> {
                         .semantic
                         .match_typing_qualified_name(&qualified_name, "Literal")
                     {
-                        // The outer annotation will use the preferred quote.
-                        // As such, any quotes found inside a `Literal` slice
-                        // should use the opposite quote to the preferred quote.
                         QuoteRewriter::new(self.stylist).visit_expr(slice);
                     } else if self
                         .semantic
@@ -547,14 +499,8 @@ impl Transformer for QuoteAnnotator<'_> {
                 }
             }
             Expr::StringLiteral(literal) => {
-                // try to parse the forward reference and replace the string
-                // literal node with the parsed expression, if we fail to
-                // parse the forward reference, we just keep treating this
-                // like a regular string literal
                 if let Ok(annotation) = parse_type_annotation(literal, self.locator.contents()) {
                     *expr = annotation.expression().clone();
-                    // we need to visit the parsed expression too
-                    // since it may contain forward references itself
                     self.visit_expr(expr);
                 }
             }
@@ -605,10 +551,6 @@ pub(crate) fn quotes_are_unremovable(
                     quotes_are_unremovable(semantic, left, target_version)
                         || quotes_are_unremovable(semantic, right, target_version)
                 }
-                // for now we'll treat uses of other operators as unremovable quotes
-                // since that would make it an invalid type expression anyways. We skip
-                // walking the nested non-type expressions from `typing.Annotated`, so
-                // we don't produce false negatives in this branch.
                 _ => true,
             }
         }
@@ -618,17 +560,12 @@ pub(crate) fn quotes_are_unremovable(
             ..
         }) => quotes_are_unremovable(semantic, value, target_version),
         Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => {
-            // for subscripts we don't know whether it's safe to do at runtime
-            // since the operation may only be available at type checking time.
-            // E.g. stubs only generics.
             if !semantic.in_type_checking_block() {
                 return true;
             }
             if quotes_are_unremovable(semantic, value, target_version) {
                 return true;
             }
-            // for `typing.Annotated`, only analyze the first argument, since the rest may
-            // contain arbitrary expressions.
             if let Some(qualified_name) = semantic.resolve_qualified_name(value) {
                 if semantic.match_typing_qualified_name(&qualified_name, "Annotated") {
                     if let Expr::Tuple(ast::ExprTuple { elts, .. }) = slice.as_ref() {
@@ -641,7 +578,6 @@ pub(crate) fn quotes_are_unremovable(
             quotes_are_unremovable(semantic, slice, target_version)
         }
         Expr::Attribute(ast::ExprAttribute { value, .. }) => {
-            // for attributes we also don't know whether it's safe
             if !semantic.in_type_checking_block() {
                 return true;
             }

@@ -76,14 +76,12 @@ impl AlwaysFixableViolation for UnnecessaryIterableAllocationForFirstElement {
 /// RUF015
 pub(crate) fn unnecessary_iterable_allocation_for_first_element(checker: &Checker, expr: &Expr) {
     let value = match expr {
-        // Ex) `list(x)[0]`
         Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => {
             if !is_zero(slice) {
                 return;
             }
             value
         }
-        // Ex) `list(x).pop(0)`
         Expr::Call(ast::ExprCall {
             func, arguments, ..
         }) => {
@@ -197,9 +195,7 @@ fn match_iteration_target(expr: &Expr, semantic: &SemanticModel) -> Option<Itera
                     None => IterationTarget {
                         range: arg
                             .range()
-                            // Remove the `[`
                             .add_start(TextSize::from(1))
-                            // Remove the `]`
                             .sub_end(TextSize::from(1)),
                         iterable: true,
                     },
@@ -227,9 +223,7 @@ fn match_iteration_target(expr: &Expr, semantic: &SemanticModel) -> Option<Itera
             None => IterationTarget {
                 range: expr
                     .range()
-                    // Remove the `[`
                     .add_start(TextSize::from(1))
-                    // Remove the `]`
                     .sub_end(TextSize::from(1)),
                 iterable: true,
             },
@@ -272,12 +266,10 @@ fn match_simple_comprehension(elt: &Expr, generators: &[Comprehension]) -> Optio
         return None;
     };
 
-    // Ignore if there's an `if` statement in the comprehension, since it filters the list.
     if !generator.ifs.is_empty() {
         return None;
     }
 
-    // Verify that the generator is, e.g. `i for i in x`, as opposed to `i for j in x`.
     let elt = elt.as_name_expr()?;
     let target = generator.target.as_name_expr()?;
     if elt.id != target.id {

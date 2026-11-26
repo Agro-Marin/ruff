@@ -39,14 +39,6 @@ pub(in crate::server) enum Task {
     Sync(SyncTask),
 }
 
-// The reason why this isn't just a 'static background closure
-// is because we need to take a snapshot of the session before sending
-// this task to the background, and the inner closure can't take the session
-// as an immutable reference since it's used mutably elsewhere. So instead,
-// a background task is built using an outer closure that borrows the session to take a snapshot,
-// that the inner closure can capture. This builder closure has a lifetime linked to the scheduler.
-// When the task is dispatched, the scheduler runs the synchronous builder, which takes the session
-// as a reference, to create the inner 'static closure. That closure is then moved to a background task pool.
 pub(in crate::server) struct BackgroundTaskBuilder {
     pub(super) schedule: BackgroundSchedule,
     pub(super) builder: BackgroundFnBuilder,

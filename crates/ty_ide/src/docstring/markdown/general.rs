@@ -7,10 +7,6 @@ use super::super::document::preformatted::MarkdownFence;
 
 mod inline;
 
-// Here lies a monument to robust parsing and escaping:
-// a codefence with SO MANY backticks that surely no one will ever accidentally
-// break out of it, even if they're writing python documentation about markdown
-// code fences and are showing off how you can use more than 3 backticks.
 const FENCE: &str = "```````````";
 
 /// Renders normalized docstring source as Markdown.
@@ -77,27 +73,17 @@ fn render_with_indentation_mode(
     source: &str,
     leading_indentation: LeadingIndentation,
 ) {
-    // TODO: there is a convention that `singletick` is for items that can
-    // be looked up in-scope while ``multitick`` is for opaque inline code.
-    // While rendering this we should make note of all the `singletick` locations
-    // and (possibly in a higher up piece of logic) try to resolve the names for
-    // cross-linking. (Similar to `TypeDetails` in the type formatting code.)
     let mut first_line = true;
     let mut renderer = Renderer::new(output);
     let mut temp_owned_line;
     for line in source.lines() {
-        // We can assume leading whitespace has been normalized
         let trimmed_source_line = line.trim_start_matches(' ');
         let mut rendered_line = trimmed_source_line;
         let line_indent = TextSize::of(line) - TextSize::of(trimmed_source_line);
 
-        // First things first, prepare the prefix for the new line.
         renderer.prepare_line(first_line);
         first_line = false;
 
-        // If we're in a literal block and we find a non-empty dedented line, end the block
-        // TODO: we should remove all the trailing blank lines
-        // (Just pop all trailing `\n` from `output`?)
         if let Some(indent) = renderer.block_state.rst_literal_indent()
             && !rendered_line.is_empty()
             && line_indent < indent
@@ -105,56 +91,32 @@ fn render_with_indentation_mode(
             renderer.finish_rest_literal();
         }
 
-        // We previously entered a literal block and we just found our first non-blank line
-        // So now we're actually in the literal block
         if let Some(language) = renderer.block_state.pending_rst_literal_language()
             && !rendered_line.is_empty()
         {
             renderer.start_rest_literal(language, line_indent);
         }
 
-        // If we're not in a codeblock and we see something that signals a doctest, start one
         if renderer.block_state.is_prose() && rendered_line.starts_with(">>>") {
             renderer.start_doctest();
         }
 
-        // If we're not in a codeblock and we see a markdown codefence, start one
         if renderer.block_state.is_prose()
             && let Some(fence) = MarkdownFence::find(trimmed_source_line)
         {
-            // Unlike other blocks we don't need to emit fences because it's already markdown
-            // Render the line verbatim without its indent and move on.
-            //
-            // If there's any indent this is really just Bad Syntax but it "makes sense"
-            // to someone writing docs like this:
-            //
-            // Returns:
-            //     Some details...
-            //     ```
-            //     some_example()
-            //     ```
-            //     etc etc...
-            //
-            // We "make this work" by stripping the indent on the fences but preserving the
-            // full indent of the lines between the fences
             renderer.start_markdown_fence(fence, rendered_line);
             continue;
-        // If we're in a markdown code fence and this line seems to terminate it, end the block
         } else if renderer
             .block_state
             .markdown_fence_is_closed_by(rendered_line)
         {
-            // Render the line without its indent and move on.
             renderer.finish_markdown_fence(rendered_line);
             continue;
         }
 
-        // If we're not in a codeblock and we see something that signals a literal block, start one
         let parsed_literal = trimmed_source_line
-            // first check for a line ending with `::`
             .strip_suffix("::")
             .map(|prefix| (prefix, None))
-            // if that fails, look for a line ending with `:: lang`
             .or_else(|| {
                 let (prefix, lang) = trimmed_source_line.rsplit_once(' ')?;
                 let prefix = prefix.trim_end().strip_suffix("::")?;
@@ -165,7 +127,6 @@ fn render_with_indentation_mode(
         {
             let mut without_directive = without_literal;
             let mut directive = None;
-            // Parse out a directive like `.. warning::`
             if let Some((prefix, directive_str)) = without_literal.rsplit_once(' ')
                 && let Some(without_directive_str) = prefix.strip_suffix("..")
             {
@@ -173,13 +134,9 @@ fn render_with_indentation_mode(
                 without_directive = without_directive_str;
             }
 
-            // Whether the `::` should become `:` or be erased
             let include_colon = if let Some(character) = without_directive.chars().next_back() {
-                // If lang is set then we're either deleting the whole line or
-                // the special rendering below will add it itself
                 lang.is_none() && !character.is_whitespace()
             } else {
-                // Delete whole line
                 false
             };
 
@@ -190,7 +147,6 @@ fn render_with_indentation_mode(
             }
 
             match directive {
-                // Special directives that should be plaintext
                 Some(
                     directive @ ("attention" | "caution" | "danger" | "error" | "hint"
                     | "important" | "note" | "tip" | "warning" | "admonition"
@@ -198,11 +154,8 @@ fn render_with_indentation_mode(
                     | "version-changed" | "version-deprecated" | "deprecated"
                     | "version-removed" | "versionremoved"),
                 ) => {
-                    // A directive starts a new block and cannot continue a
-                    // pending hyperlink from the previous line.
                     renderer.flush_pending_link();
 
-                    // Map version directives to human-readable phrases (matching Sphinx output)
                     let pretty_directive = match directive {
                         "versionadded" | "version-added" => Cow::Borrowed("Added in version"),
                         "versionchanged" | "version-changed" => Cow::Borrowed("Changed in version"),
@@ -224,26 +177,19 @@ fn render_with_indentation_mode(
                         ),
                     };
 
-                    // Render the argument of things like `.. version-added:: 4.0`
                     let suffix = if let Some(lang) = lang {
                         format!(" {lang}")
                     } else {
                         String::new()
                     };
-                    // We prepend without_directive here out of caution for preserving input.
-                    // This is probably gibberish/invalid syntax? But it's a no-op in normal cases.
                     temp_owned_line = format!("**{without_directive}{pretty_directive}{suffix}:**");
 
                     rendered_line = temp_owned_line.as_str();
                 }
-                // All other directives are code and default to Python.
                 _ => renderer.start_pending_rest_literal(lang.unwrap_or("python")),
             }
         }
 
-        // Add this line's indentation.
-        // We could subtract the literal block's indentation here but in practice it's uglier
-        // TODO: should we not do this if the `line.is_empty()`? When would it matter?
         renderer.push_indentation(line_indent, leading_indentation);
 
         if renderer.block_state.is_doctest() && rendered_line.is_empty() {
@@ -339,7 +285,6 @@ impl<'source, 'output> Renderer<'source, 'output> {
     fn start_doctest(&mut self) {
         self.flush_pending_line();
         self.block_state = BlockState::Doctest;
-        // TODO: is there something more specific? `pycon`?
         self.output.push_str(FENCE);
         self.output.push_str("python\n");
     }
@@ -416,20 +361,13 @@ impl LinePrefix {
     fn prepare(&mut self, block_state: &BlockState<'_>, first_line: bool) {
         self.rendered.clear();
         if first_line {
-            // If this is the first source line of the fragment that we're rendering,
-            // then there is no previous line to delineate from the next one.
             return;
         }
 
         if !block_state.is_code() {
-            // Two trailing spaces turn the next newline into a Markdown hard
-            // break, thereby preserving the source line boundary.
             self.rendered.push_str("  ");
         }
 
-        // Suppress source line boundaries after a reST literal marker while we
-        // wait for its content. This allows us to collapse any intervening
-        // newlines that are purely structural.
         if !block_state.is_pending_rst_literal() {
             self.rendered.push('\n');
         }
@@ -446,8 +384,6 @@ impl LinePrefix {
             if !block_state.is_code()
                 && matches!(leading_indentation, LeadingIndentation::DisplayOnly)
             {
-                // TODO: would the raw unicode codepoint be handled *better* or *worse*
-                // by various IDEs? VS Code handles this approach well, at least.
                 self.rendered.push_str("&nbsp;");
             } else {
                 self.rendered.push(' ');

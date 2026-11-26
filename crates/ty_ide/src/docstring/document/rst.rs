@@ -171,7 +171,6 @@ impl FieldList {
 
         while let Some(line) = lines.peek() {
             if line.text.trim().is_empty() {
-                // Blank lines continue the field list only before another field or a continuation.
 
                 if !Self::blank_line_continues_field_list(lines, field_list_indent) {
                     break;
@@ -189,7 +188,6 @@ impl FieldList {
             }
 
             if let Some(header) = FieldHeader::at_indent(line.text, field_list_indent) {
-                // Same-indent field header starts the next field in this list.
 
                 let previous = std::mem::replace(&mut current, FieldBuilder::new(header));
                 fields.push(previous.finish());
@@ -200,19 +198,15 @@ impl FieldList {
             }
 
             if FieldHeader::indentation(line.text) <= field_list_indent {
-                // Same- or less-indented content ends this field list.
                 break;
             }
 
-            // More-indented non-blank lines continue the current field body
-            // (and hence also the current field list).
             current.lines.push(line.text);
             lines.next();
             end_line = line.index + 1;
             range_end = line.range.end();
         }
 
-        // Finalize the last field.
         fields.push(current.finish());
 
         Some(Self {
@@ -339,11 +333,8 @@ impl<'a> FieldBuilder<'a> {
 
     /// Normalizes the text of the body of a field (e.g., the documentation for a parameter).
     fn normalized_body(&self) -> String {
-        // Skip the field header line.
         let continuation_lines = self.lines.iter().skip(1);
 
-        // Use the smallest indentation from all non-blank continuation lines as the normalized
-        // continuation indent.
         let continuation_indent = continuation_lines
             .clone()
             .filter(|line| !line.trim().is_empty())
@@ -353,16 +344,12 @@ impl<'a> FieldBuilder<'a> {
 
         let mut lines = Vec::with_capacity(self.lines.len());
 
-        // Begin with the inline body text parsed from the field header line.
         lines.push(self.body.trim_end().to_string());
 
-        // Then normalize and add all continuation lines.
         lines.extend(continuation_lines.map(|line| {
             if line.trim().is_empty() {
-                // Any pure whitespace line becomes an empty line.
                 String::new()
             } else {
-                // For any other line we strip the shared continuation indent and trailing whitespace.
                 line.get(continuation_indent.to_usize()..)
                     .unwrap_or_default()
                     .trim_end()
@@ -370,7 +357,6 @@ impl<'a> FieldBuilder<'a> {
             }
         }));
 
-        // Find non-empty start and end lines.
         let Some(start) = lines.iter().position(|line| !line.is_empty()) else {
             return String::new();
         };
@@ -379,7 +365,6 @@ impl<'a> FieldBuilder<'a> {
             .rposition(|line| !line.is_empty())
             .map_or(start, |index| index + 1);
 
-        // Trim empty lines from either end of the result.
         lines[start..end].join("\n")
     }
 }
@@ -435,7 +420,6 @@ impl<'a> FieldHeader<'a> {
         let trimmed = line.trim_start();
         let after_opening_colon = trimmed.strip_prefix(':')?;
         let (name_and_argument, body) = after_opening_colon.split_once(':')?;
-        // Escaped colons belong to the field name, not the field marker.
         if name_and_argument.ends_with('\\') {
             return None;
         }

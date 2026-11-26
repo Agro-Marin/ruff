@@ -1,6 +1,3 @@
-/**
- * Light and dark mode theming.
- */
 import { useState } from "react";
 
 export type Theme = "dark" | "light";

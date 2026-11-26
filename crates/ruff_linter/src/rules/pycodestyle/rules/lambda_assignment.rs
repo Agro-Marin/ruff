@@ -81,11 +81,6 @@ pub(crate) fn lambda_assignment(
         return;
     };
 
-    // If the assignment is a class attribute (with an annotation), ignore it.
-    //
-    // This is most common for, e.g., dataclasses and Pydantic models. Those libraries will
-    // treat the lambda as an assignable field, and the use of a lambda is almost certainly
-    // intentional.
     if annotation.is_some() && checker.semantic().current_scope().kind.is_class() {
         return;
     }
@@ -116,9 +111,6 @@ pub(crate) fn lambda_assignment(
             }
         }
 
-        // If the lambda is shadowing a variable in the current scope,
-        // rewriting it as a function declaration may break type-checking.
-        // See: https://github.com/astral-sh/ruff/issues/5421
         let applicability = if checker
             .semantic()
             .current_scope()
@@ -164,20 +156,12 @@ fn extract_types(annotation: &Expr, semantic: &SemanticModel) -> Option<(Vec<Exp
         return None;
     }
 
-    // The first argument to `Callable` must be a list of types, parameter
-    // specification (e.g., a `ParamSpec`), or ellipsis.
-    // For parameter specifications, we cannot assign per-parameter annotations,
-    // but we can still preserve the return type annotation.
     let params = match param_types {
         Expr::List(ast::ExprList { elts, .. }) => elts.clone(),
         Expr::EllipsisLiteral(_) => vec![],
-        // Treat any other form (e.g., `ParamSpec`, `Concatenate`, etc.) as a
-        // parameter specification: do not annotate individual parameters, but
-        // keep the return type.
         _ => vec![],
     };
 
-    // The second argument to `Callable` must be a type.
     let return_type = return_type.clone();
 
     Some((params, return_type))
@@ -191,8 +175,6 @@ fn function(
     stmt: &Stmt,
     checker: &Checker,
 ) -> String {
-    // Use a dummy body. It gets replaced at the end with the actual body.
-    // This allows preserving the source formatting for the body.
     let body = Stmt::Return(ast::StmtReturn {
         value: Some(Box::new(Expr::EllipsisLiteral(
             ExprEllipsisLiteral::default(),
@@ -203,8 +185,6 @@ fn function(
     let parameters = lambda.parameters.as_deref().cloned().unwrap_or_default();
     if let Some(annotation) = annotation {
         if let Some((arg_types, return_type)) = extract_types(annotation, checker.semantic()) {
-            // A `lambda` expression can only have positional-only and positional-or-keyword
-            // arguments. The order is always positional-only first, then positional-or-keyword.
             let new_posonlyargs = parameters
                 .posonlyargs
                 .iter()
@@ -279,9 +259,6 @@ fn replace_trailing_ellipsis_with_original_expr(
         parenthesized_range((&lambda.body).into(), lambda.into(), checker.tokens())
             .unwrap_or(lambda.body.range());
 
-    // This prevents the autofix of introducing a syntax error if the lambda's body is an
-    // expression spanned across multiple lines. To avoid the syntax error we preserve
-    // the parenthesis around the body.
     let original_expr_in_source =
         if parenthesized_range(lambda.into(), stmt.into(), checker.tokens()).is_some() {
             format!("({})", checker.locator().slice(original_expr_range))

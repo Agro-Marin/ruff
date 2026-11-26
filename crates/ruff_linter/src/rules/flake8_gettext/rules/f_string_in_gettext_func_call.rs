@@ -66,14 +66,12 @@ impl Violation for FStringInGetTextFuncCall {
 
 /// INT001
 pub(crate) fn f_string_in_gettext_func_call(checker: &Checker, func: &Expr, args: &[Expr]) {
-    // Check first argument (singular)
     if let Some(first) = args.first() {
         if first.is_f_string_expr() {
             checker.report_diagnostic(FStringInGetTextFuncCall { is_plural: false }, first.range());
         }
     }
 
-    // Check second argument (plural) for ngettext calls
     if is_ngettext_call(checker, func)
         && let Some(second) = args.get(1)
         && second.is_f_string_expr()

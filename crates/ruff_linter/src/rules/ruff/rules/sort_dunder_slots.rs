@@ -141,12 +141,10 @@ pub(crate) fn sort_dunder_slots(checker: &Checker, binding: &Binding) {
         return;
     }
 
-    // We're only interested in `__slots__` in the class scope
     let Some(enclosing_class) = semantic.scopes[binding.scope].kind.as_class() else {
         return;
     };
 
-    // and it has to be an assignment to a "display literal" (a literal dict/set/tuple/list)
     let Some(display) = StringLiteralDisplay::new(value) else {
         return;
     };
@@ -241,14 +239,8 @@ impl<'a> StringLiteralDisplay<'a> {
             ast::Expr::Dict(dict) => {
                 let mut narrowed_keys = Vec::with_capacity(dict.len());
                 for key in dict.iter_keys() {
-                    // This is somewhat unfortunate,
-                    // *but* using a dict for __slots__ is very rare
                     narrowed_keys.push(key?.to_owned());
                 }
-                // If `None` was present in the keys, it indicates a "** splat", .e.g
-                // `__slots__ = {"foo": "bar", **other_dict}`
-                // If `None` wasn't present in the keys,
-                // the length of the keys should always equal the length of the values
                 assert_eq!(narrowed_keys.len(), dict.len());
                 Self {
                     elts: Cow::Owned(narrowed_keys),
@@ -292,7 +284,6 @@ impl<'a> StringLiteralDisplay<'a> {
                 );
                 Some((sorted_code, comment_complexity))
             }
-            // Sorting multiline dicts is unsupported
             (DisplayKind::Dict { .. }, MultilineClassification::Multiline) => None,
             (DisplayKind::Sequence(sequence_kind), MultilineClassification::SingleLine) => {
                 let sorted_code = sort_single_line_elements_sequence(
@@ -359,8 +350,6 @@ impl<'a> DictElements<'a> {
     }
 
     fn last_item_index(&self) -> usize {
-        // Safe from underflow, as the constructor guarantees
-        // that the underlying vector has length >= 2
         self.0.len() - 1
     }
 
@@ -389,10 +378,6 @@ fn sort_single_line_elements_dict<'a>(
     let element_trios = DictElements::new(elements, key_elts, original_items);
     let last_item_index = element_trios.last_item_index();
     let mut result = String::from('{');
-    // We grab the original source-code ranges using `locator.slice()`
-    // rather than using the expression generator, as this approach allows
-    // us to easily preserve stylistic choices in the original source code
-    // such as whether double or single quotes were used.
     for (i, (key, value)) in element_trios.into_sorted_elts().enumerate() {
         result.push_str(locator.slice(key));
         result.push_str(": ");

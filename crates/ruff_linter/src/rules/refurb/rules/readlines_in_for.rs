@@ -86,7 +86,6 @@ fn readlines_in_iter(checker: &Checker, iter_expr: &Expr) {
         return;
     }
 
-    // Determine whether `fp` in `fp.readlines()` was bound to a file object.
     if let Expr::Name(name) = expr_attr.value.as_ref() {
         if !checker
             .semantic()

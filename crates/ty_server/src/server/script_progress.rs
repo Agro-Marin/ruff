@@ -192,7 +192,6 @@ mod tests {
             let _ = reported.send(());
         });
 
-        // Observe the waiting sender without offering it a receiver for a nonblocking send.
         let timeout = Duration::from_secs(5);
         let mut ready = Select::new();
         ready.recv(&messages);

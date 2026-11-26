@@ -265,8 +265,6 @@ impl Options {
                 default
             });
 
-        // Scripts with uv enabled use only their own environment, even before sync or after
-        // sync fails. The setting does not affect environment discovery for the project.
         let allow_environment_fallback =
             !matches!(context, OptionsContext::Script(_)) || self.script_uses_uv() != Some(true);
         let python_environment = match self.python_environment(context.configuration_root(), system)
@@ -286,7 +284,6 @@ impl Options {
             _ => None,
         };
 
-        // If in safe-mode, fallback to None if this fails instead of erroring.
         let python_environment = strategy
             .fallback_opt(python_environment, |_| {
                 tracing::debug!("Default settings failed to discover local Python environment");
@@ -314,13 +311,9 @@ impl Options {
                 SitePackagesPaths::default()
             })?;
             match self_environment {
-                // When ty is installed in a virtual environment (e.g., `uvx --with ...`),
-                // the self-environment takes priority over the discovered environment.
                 Some((self_site_packages, true)) => {
                     self_site_packages.concatenate(site_packages_paths)
                 }
-                // When ty is installed in a system Python, do not include the system
-                // Python's site-packages if there's a discovered project environment.
                 Some((_, false)) | None => site_packages_paths,
             }
         } else {
@@ -329,7 +322,6 @@ impl Options {
         };
 
         let real_stdlib_path = python_environment.as_ref().and_then(|python_environment| {
-            // For now this is considered non-fatal, we don't Need this for anything.
             python_environment
                 .real_stdlib_path(system)
                 .map_err(|err| {
@@ -444,7 +436,6 @@ impl Options {
                     || system.is_file(&dir.join("__init__.pyi"))
             };
 
-            // Check for `./src` directory (src-layout)
             let src = project_root.join("src");
             if system.is_directory(&src) && !is_package(&src) {
                 tracing::debug!(
@@ -454,8 +445,6 @@ impl Options {
                 roots.push(src);
             }
 
-            // Check for `./<project-name>/<project-name>` directory (src-layout with project-named folder)
-            // For example, the "src" folder for `psycopg` is called `psycopg` and the python files are in `psycopg/psycopg/_adapters_map.py`
             let project_name_dir = project_root.join(project_name);
             if system.is_directory(&project_name_dir.join(project_name))
                 && !is_package(&project_name_dir)
@@ -469,8 +458,6 @@ impl Options {
                 roots.push(project_name_dir);
             }
 
-            // Check for `./python` directory (maturin-based rust/python projects)
-            // https://github.com/PyO3/maturin/blob/979fe1db42bb9e58bc150fa6fc45360b377288bf/README.md?plain=1#L88-L99
             let python = project_root.join("python");
             if system.is_directory(&python) && !is_package(&python) && !roots.contains(&python) {
                 tracing::debug!(
@@ -480,14 +467,11 @@ impl Options {
                 roots.push(python);
             }
 
-            // The project root is always included, and should always come last
-            // (after any subdirectories such as `./src`, `./<project-name>`, and/or `./python`).
             roots.push(project_root.to_path_buf());
 
             roots
         };
 
-        // collect the existing site packages
         let mut extra_paths: Vec<SystemPathBuf> = environment
             .extra_paths
             .as_deref()
@@ -496,10 +480,6 @@ impl Options {
             .map(|path| path.absolute(context.configuration_root(), system))
             .collect();
 
-        // read all the paths off the PYTHONPATH environment variable, check
-        // they exist as a directory, and add them to the vec of extra_paths
-        // as they should be checked before site-packages just like python
-        // interpreter does
         if let Ok(python_path) = system.env_var(EnvVars::PYTHONPATH) {
             for path in std::env::split_paths(python_path.as_str()) {
                 let path = match SystemPathBuf::from_path_buf(path) {
@@ -634,7 +614,6 @@ impl Options {
         }
         if let Some(overrides) = &self.overrides {
             for section in &overrides.0 {
-                // Inline overrides never apply to a script.
                 if matches!(section.source(), ValueSource::ScriptMetadata(_)) {
                     continue;
                 }
@@ -1297,8 +1276,6 @@ impl FromIterator<(RangedValue<String>, RangedValue<Level>)> for Rules {
     ) -> Self {
         let mut rules = Self::default();
         for (name, level) in iter {
-            // Move repeated selectors to the end so they take precedence over an intervening
-            // alias or `all` selector.
             rules.inner.insert_before(rules.inner.len(), name, level);
         }
         rules
@@ -1319,7 +1296,6 @@ impl Rules {
                     Severity::Warning,
                 ),
                 Ok(_) => continue,
-                // TODO: Add a note if the value was configured on the CLI.
                 Err(error) => {
                     let mut diagnostic = OptionDiagnostic::new(
                         DiagnosticId::UnknownRule,
@@ -1340,7 +1316,6 @@ impl Rules {
     pub(crate) fn to_rule_selection(&self, db: &dyn Db) -> RuleSelection {
         let registry = db.lint_registry();
 
-        // Initialize the selection with the defaults
         let mut selection = RuleSelection::from_registry(registry);
 
         for (rule_name, level) in &self.inner {
@@ -1361,7 +1336,6 @@ impl Rules {
                 }
             };
 
-            // Handle "all" as a special case - apply the level to all rules
             if rule_name.as_str() == "all" {
                 for lint in registry.lints() {
                     set_lint_level(*lint);
@@ -1418,7 +1392,6 @@ fn build_include_filter(
 
     if let Some(include_patterns) = include_patterns {
         if include_patterns.is_empty() {
-            // An override with an empty include `[]` won't match any files.
             let mut diagnostic = OptionDiagnostic::new(
                 DiagnosticId::EmptyInclude,
                 "Empty include matches no files".to_string(),
@@ -1430,7 +1403,6 @@ fn build_include_filter(
                 or add a pattern to match specific files",
             ));
 
-            // Add source annotation if we have source information
             if let Some(file) = include_patterns.source().file(db) {
                 let annotation = Annotation::primary(
                     Span::from(file).with_optional_range(include_patterns.range()),
@@ -1502,8 +1474,6 @@ fn build_exclude_filter(
     let system = db.system();
     let mut excludes = ExcludeFilterBuilder::new();
 
-    // Like excludes in a `ty.toml`, default excludes only apply under the project root.
-    // An explicit `../sibling/dist` is not excluded by project defaults.
     for pattern in default_patterns {
         PortableGlobPattern::parse(pattern, PortableGlobKind::Exclude)
             .and_then(|exclude| Ok(excludes.add(&exclude.into_absolute(project_root))?))
@@ -1512,7 +1482,6 @@ fn build_exclude_filter(
             });
     }
 
-    // Add user-specified excludes
     if let Some(exclude_patterns) = exclude_patterns {
         for exclude in exclude_patterns {
             exclude
@@ -2289,7 +2258,6 @@ impl OverrideOptions {
             .is_none_or(|exclude| exclude.is_empty());
 
         if include_missing && exclude_empty {
-            // Neither include nor exclude specified - applies to all files
             let mut diagnostic = OptionDiagnostic::new(
                 DiagnosticId::UnnecessaryOverridesSection,
                 "Unnecessary `overrides` section".to_string(),
@@ -2373,7 +2341,6 @@ impl OverrideOptions {
             merged_rules = merged_rules.combine(global_rules.clone());
         }
 
-        // Convert merged rules to rule selection
         let rule_selection = merged_rules.to_rule_selection(db);
 
         let mut merged_analysis = self.analysis.clone().unwrap_or_default();
@@ -2573,8 +2540,6 @@ mod schema {
             let mut schema = schemars::json_schema!({ "type": "object" });
             let object = schema.ensure_object();
             object.insert("properties".to_string(), Value::Object(properties));
-            // Allow unknown rules: ty will warn about them. It gives a better experience when using an older
-            // ty version because the schema will not deny rules that have been removed in newer versions.
             object.insert("additionalProperties".to_string(), level_schema.into());
 
             schema

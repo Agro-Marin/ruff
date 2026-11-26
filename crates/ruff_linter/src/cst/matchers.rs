@@ -246,17 +246,13 @@ pub(crate) fn transform_expression(
     stylist: &Stylist,
     func: impl FnOnce(Expression) -> Result<Expression>,
 ) -> Result<String> {
-    // Wrap the expression in parentheses.
     let source_code = format!("({source_code})");
     let expression = match_expression(&source_code)?;
 
-    // Run the function on the expression.
     let expression = func(expression)?;
 
-    // Codegen the expression.
     let mut source_code = expression.codegen_stylist(stylist);
 
-    // Drop the outer parentheses.
     source_code.drain(0..1);
     source_code.drain(source_code.len() - 1..source_code.len());
     Ok(source_code)
@@ -268,13 +264,10 @@ pub(crate) fn transform_expression_text(
     source_code: &str,
     func: impl FnOnce(String) -> Result<String>,
 ) -> Result<String> {
-    // Wrap the expression in parentheses.
     let source_code = format!("({source_code})");
 
-    // Run the function on the expression.
     let mut transformed = func(source_code)?;
 
-    // Drop the outer parentheses.
     transformed.drain(0..1);
     transformed.drain(transformed.len() - 1..transformed.len());
     Ok(transformed)

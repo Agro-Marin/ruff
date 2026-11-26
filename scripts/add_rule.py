@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-#
 # /// script
 # requires-python = ">=3.12"
 # dependencies = []
@@ -55,7 +54,6 @@ def get_indent(line: str) -> str:
 
 def main(*, name: str, prefix: str, code: str, linter: str, category: str) -> None:
     """Generate boilerplate for a new rule."""
-    # Create a test fixture.
     filestem = f"{prefix}{code}" if linter != "pylint" else snake_case(name)
     with (
         ROOT_DIR
@@ -68,7 +66,6 @@ def main(*, name: str, prefix: str, code: str, linter: str, category: str) -> No
     plugin_module = ROOT_DIR / "crates/ruff_linter/src/rules" / dir_name(linter)
     rule_name_snake = snake_case(name)
 
-    # Add the relevant `#testcase` macro.
     mod_rs = plugin_module / "mod.rs"
     content = mod_rs.read_text()
 
@@ -98,7 +95,6 @@ def main(*, name: str, prefix: str, code: str, linter: str, category: str) -> No
             else:
                 lines.append(line)
 
-    # Add the exports
     rules_dir = plugin_module / "rules"
     rules_mod = rules_dir / "mod.rs"
 
@@ -123,7 +119,6 @@ def main(*, name: str, prefix: str, code: str, linter: str, category: str) -> No
             fp.write(f"{new_mod}")
             fp.write("\n")
 
-    # Add the relevant rule function.
     with (rules_dir / f"{rule_name_snake}.rs").open("w") as fp:
         fp.write(
             f"""\

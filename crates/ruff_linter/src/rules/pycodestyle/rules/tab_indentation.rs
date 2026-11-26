@@ -40,15 +40,12 @@ pub(crate) fn tab_indentation(context: &LintContext, locator: &Locator, indexer:
     let contents = locator.contents().as_bytes();
     let mut offset = 0;
     while let Some(index) = memchr::memchr(b'\t', &contents[offset..]) {
-        // If we find a tab in the file, grab the entire line.
         let range = locator.full_line_range(TextSize::try_from(offset + index).unwrap());
 
-        // Determine whether the tab is part of the line's indentation.
         if let Some(indent) = tab_indentation_at_line_start(range.start(), locator, indexer) {
             context.report_diagnostic_if_enabled(TabIndentation, indent);
         }
 
-        // Advance to the next line.
         offset = range.end().to_usize();
     }
 }
@@ -63,13 +60,10 @@ fn tab_indentation_at_line_start(
     let mut contains_tab = false;
     for (i, char) in locator.after(line_start).as_bytes().iter().enumerate() {
         match char {
-            // If we find a tab character, report it as a violation.
             b'\t' => {
                 contains_tab = true;
             }
-            // If we find a space, continue.
             b' ' | b'\x0C' => {}
-            // If we find a non-whitespace character, stop.
             _ => {
                 if contains_tab {
                     let range = TextRange::at(line_start, TextSize::try_from(i).unwrap());

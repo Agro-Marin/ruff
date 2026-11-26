@@ -214,8 +214,6 @@ impl Client {
                 data: None,
             };
 
-            // Use `client_sender` here instead of `respond_err` because
-            // `respond_err` filters out responses for canceled requests (which we just did!).
             self.client_sender
                 .send(Message::Response(lsp_server::Response {
                     id,

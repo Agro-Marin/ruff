@@ -13,17 +13,14 @@ use crate::rules::pydocstyle::settings::{Convention, Settings};
 
 /// Return the index of the first logical line in a string.
 pub(super) fn logical_line(content: &str) -> Option<usize> {
-    // Find the first logical line.
     let mut logical_line = None;
     for (i, line) in content.universal_newlines().enumerate() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.chars().all(|c| matches!(c, '-' | '~' | '=' | '#')) {
-            // Empty line, or underline. If this is the line _after_ the first logical line, stop.
             if logical_line.is_some() {
                 break;
             }
         } else {
-            // Non-empty line. Store the index.
             logical_line = Some(i);
         }
     }
@@ -80,12 +77,7 @@ pub(crate) fn get_section_contexts<'a>(
         }
         Some(Convention::Numpy) => SectionContexts::from_docstring(docstring, SectionStyle::Numpy),
         Some(Convention::Pep257) | None => {
-            // There are some overlapping section names, between the Google and NumPy conventions
-            // (e.g., "Returns", "Raises"). Break ties by checking for the presence of some of the
-            // section names that are unique to each convention.
 
-            // If the docstring contains `Parameters:` or `Other Parameters:`, use the NumPy
-            // convention.
             let numpy_sections = SectionContexts::from_docstring(docstring, SectionStyle::Numpy);
             if numpy_sections.iter().any(|context| {
                 matches!(
@@ -98,7 +90,6 @@ pub(crate) fn get_section_contexts<'a>(
                 return numpy_sections;
             }
 
-            // If the docstring contains any argument specifier, use the Google convention.
             let google_sections = SectionContexts::from_docstring(docstring, SectionStyle::Google);
             if google_sections.iter().any(|context| {
                 matches!(
@@ -114,23 +105,17 @@ pub(crate) fn get_section_contexts<'a>(
                 return google_sections;
             }
 
-            // Otherwise, If one convention matched more sections, return that...
             match google_sections.len().cmp(&numpy_sections.len()) {
                 Ordering::Greater => return google_sections,
                 Ordering::Less => return numpy_sections,
                 Ordering::Equal => {}
             }
 
-            // 0 sections of either convention? Default to numpy
             if google_sections.len() == 0 {
                 return numpy_sections;
             }
 
             for section in &google_sections {
-                // If any section has something that could be an underline
-                // on the following line, assume Numpy.
-                // If it *doesn't* have an underline and it *does* have a colon
-                // at the end of a section name, assume Google.
                 if let Some(following_line) = section.following_lines().next() {
                     if find_underline(&following_line, '-').is_some() {
                         return numpy_sections;
@@ -141,7 +126,6 @@ pub(crate) fn get_section_contexts<'a>(
                 }
             }
 
-            // If all else fails, default to numpy
             numpy_sections
         }
     }
@@ -151,28 +135,21 @@ pub(crate) fn get_section_contexts<'a>(
 pub(super) fn find_underline(line: &Line, dash: char) -> Option<TextRange> {
     let mut cursor = Cursor::new(line.as_str());
 
-    // Eat leading whitespace.
     cursor.eat_while(char::is_whitespace);
 
-    // Determine the start of the dashes.
     let offset = cursor.token_len();
 
-    // Consume the dashes.
     cursor.start_token();
     cursor.eat_while(|c| c == dash);
 
-    // Determine the end of the dashes.
     let len = cursor.token_len();
 
-    // If there are no dashes, return None.
     if len == TextSize::new(0) {
         return None;
     }
 
-    // Eat trailing whitespace.
     cursor.eat_while(char::is_whitespace);
 
-    // If there are any characters after the dashes, return None.
     if !cursor.is_eof() {
         return None;
     }

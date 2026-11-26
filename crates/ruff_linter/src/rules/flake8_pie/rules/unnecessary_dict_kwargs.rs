@@ -91,7 +91,6 @@ impl Violation for UnnecessaryDictKwargs {
 pub(crate) fn unnecessary_dict_kwargs(checker: &Checker, call: &ast::ExprCall) {
     let mut duplicate_keywords = None;
     for keyword in &*call.arguments.keywords {
-        // keyword is a spread operator (indicated by None).
         if keyword.arg.is_some() {
             continue;
         }
@@ -100,7 +99,6 @@ pub(crate) fn unnecessary_dict_kwargs(checker: &Checker, call: &ast::ExprCall) {
             continue;
         };
 
-        // Ex) `foo(**{**bar})`
         if let [ast::DictItem { key: None, value }] = dict.items.as_slice() {
             let edit = Edit::range_replacement(
                 format!("**{}", checker.locator().slice(value)),
@@ -112,8 +110,6 @@ pub(crate) fn unnecessary_dict_kwargs(checker: &Checker, call: &ast::ExprCall) {
             continue;
         }
 
-        // Ensure that every keyword is a valid keyword argument (e.g., avoid errors for cases like
-        // `foo(**{"bar-bar": 1})`).
         let kwargs: Vec<&str> = dict
             .iter_keys()
             .filter_map(|key| key.and_then(as_kwarg))
@@ -136,12 +132,10 @@ pub(crate) fn unnecessary_dict_kwargs(checker: &Checker, call: &ast::ExprCall) {
                 .map(Fix::safe_edit)
             });
         } else {
-            // Compute the set of duplicate keywords (lazily).
             if duplicate_keywords.is_none() {
                 duplicate_keywords = Some(duplicates(call));
             }
 
-            // Avoid fixing if doing so could introduce a duplicate keyword argument.
             if let Some(duplicate_keywords) = duplicate_keywords.as_ref() {
                 if kwargs
                     .iter()

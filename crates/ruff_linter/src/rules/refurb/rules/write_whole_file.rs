@@ -82,18 +82,15 @@ impl Violation for WriteWholeFile<'_> {
 
 /// FURB103
 pub(crate) fn write_whole_file(checker: &Checker, with: &ast::StmtWith) {
-    // `async` check here is more of a precaution.
     if with.is_async {
         return;
     }
 
-    // First we go through all the items in the statement and find all `open` operations.
     let candidates = find_file_opens(with, checker.semantic(), false, checker.target_version());
     if candidates.is_empty() {
         return;
     }
 
-    // Then we need to match each `open` operation with exactly one `write` call.
     let mut matcher = WriteMatcher::new(checker, candidates, with);
     visitor::walk_body(&mut matcher, &with.body);
 }
@@ -180,7 +177,6 @@ fn match_write_call(expr: &Expr) -> Option<(&Expr, &Expr)> {
         return None;
     }
 
-    // `write` only takes in a single positional argument.
     Some((&*attr.value, call.arguments.args.first()?))
 }
 

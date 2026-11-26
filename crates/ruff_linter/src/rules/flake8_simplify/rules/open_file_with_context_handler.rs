@@ -138,7 +138,6 @@ fn match_unittest_context_methods(semantic: &SemanticModel) -> bool {
 fn is_open_call(semantic: &SemanticModel, call: &ast::ExprCall) -> bool {
     let func = &*call.func;
 
-    // Ex) `open(...)`
     if let Some(qualified_name) = semantic.resolve_qualified_name(func) {
         return matches!(
             qualified_name.segments(),
@@ -165,7 +164,6 @@ fn is_open_call(semantic: &SemanticModel, call: &ast::ExprCall) -> bool {
         );
     }
 
-    // Ex) `pathlib.Path(...).open()`
     let Expr::Attribute(ast::ExprAttribute { attr, value, .. }) = func else {
         return false;
     };
@@ -174,7 +172,6 @@ fn is_open_call(semantic: &SemanticModel, call: &ast::ExprCall) -> bool {
         return false;
     };
 
-    // E.g. for `pathlib.Path(...).open()`, `qualified_name_of_instance.segments() == ["pathlib", "Path"]`
     let Some(qualified_name_of_instance) = semantic.resolve_qualified_name(func) else {
         return false;
     };
@@ -223,37 +220,30 @@ pub(crate) fn open_file_with_context_handler(checker: &Checker, call: &ast::Expr
         return;
     }
 
-    // Ex) `open("foo.txt").close()`
     if is_immediately_closed(semantic) {
         return;
     }
 
-    // Ex) `with open("foo.txt") as f: ...`
     if semantic.current_statement().is_with_stmt() {
         return;
     }
 
-    // Ex) `return open("foo.txt")`
     if semantic.current_statement().is_return_stmt() {
         return;
     }
 
-    // Ex) `with contextlib.ExitStack() as exit_stack: ...`
     if match_exit_stack(semantic) {
         return;
     }
 
-    // Ex) `with contextlib.AsyncExitStack() as exit_stack: ...`
     if match_async_exit_stack(semantic) {
         return;
     }
 
-    // Ex) `self.enterContext(open("foo.txt"))`
     if match_unittest_context_methods(semantic) {
         return;
     }
 
-    // Ex) `def __enter__(self): ...`
     if let ScopeKind::Function(ast::StmtFunctionDef { name, .. }) =
         &checker.semantic().current_scope().kind
     {

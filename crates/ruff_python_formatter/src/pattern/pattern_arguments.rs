@@ -11,12 +11,6 @@ pub struct FormatPatternArguments;
 
 impl FormatNodeRule<PatternArguments> for FormatPatternArguments {
     fn fmt_fields(&self, item: &PatternArguments, f: &mut PyFormatter) -> FormatResult<()> {
-        // If there are no arguments, all comments are dangling:
-        // ```python
-        // case Point2D(  # dangling
-        //     # dangling
-        // )
-        // ```
         if item.patterns.is_empty() && item.keywords.is_empty() {
             let comments = f.context().comments().clone();
             let dangling = comments.dangling(item);
@@ -32,9 +26,6 @@ impl FormatNodeRule<PatternArguments> for FormatPatternArguments {
                         if is_single_argument_parenthesized(pattern, item.end(), source) {
                             Parentheses::Always
                         } else {
-                            // Note: no need to handle opening-parenthesis comments, since
-                            // an opening-parenthesis comment implies that the argument is
-                            // parenthesized.
                             Parentheses::Never
                         };
                     joiner.entry(pattern, &pattern.format().with_options(parentheses));
@@ -54,13 +45,6 @@ impl FormatNodeRule<PatternArguments> for FormatPatternArguments {
             joiner.finish()
         });
 
-        // If the arguments are non-empty, then a dangling comment indicates a comment on the
-        // same line as the opening parenthesis, e.g.:
-        // ```python
-        // case Point2D(  # dangling
-        //     ...
-        // )
-        // ```
         let comments = f.context().comments().clone();
         let dangling_comments = comments.dangling(item);
 
@@ -89,10 +73,8 @@ fn is_single_argument_parenthesized(pattern: &Pattern, call_end: TextSize, sourc
                 }
                 has_seen_r_paren = true;
             }
-            // Skip over any trailing comma
             SimpleTokenKind::Comma => continue,
             _ => {
-                // Passed the arguments
                 break;
             }
         }

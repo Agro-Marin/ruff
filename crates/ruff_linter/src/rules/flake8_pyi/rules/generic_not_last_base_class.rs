@@ -125,22 +125,12 @@ pub(crate) fn generic_not_last_base_class(checker: &Checker, class_def: &ast::St
         return;
     };
 
-    // If `Generic[]` exists, but is the last base, don't emit a diagnostic.
     if generic_base.range() == last_base.range() {
         return;
     }
 
     let mut diagnostic = checker.report_diagnostic(GenericNotLastBaseClass, bases.range());
 
-    // Avoid suggesting a fix if any of the arguments is starred. This avoids tricky syntax errors
-    // in cases like
-    //
-    // ```python
-    // class C3(Generic[T], metaclass=type, *[str]): ...
-    // ```
-    //
-    // where we would naively try to put `Generic[T]` after `*[str]`, which is also after a keyword
-    // argument, causing the error.
     if bases
         .iter_source_order()
         .any(|arg| arg.value().is_starred_expr())
@@ -148,7 +138,6 @@ pub(crate) fn generic_not_last_base_class(checker: &Checker, class_def: &ast::St
         return;
     }
 
-    // No fix if multiple `Generic[]`s are seen in the class bases.
     if generic_base_iter.next().is_none() {
         diagnostic.try_set_fix(|| generate_fix(generic_base, bases, checker));
     }

@@ -80,10 +80,6 @@ impl<'db> Type<'db> {
                 Type::TypedDict(TypedDictType::Class(a)),
                 Type::TypedDict(TypedDictType::Class(b)),
             ) => {
-                // Different specializations of the same recursive TypedDict can form a cycle.
-                // Each class statement has a unique body scope, so comparing scopes tells us
-                // whether the types came from the same class, even after decorators.
-                // Other TypedDicts can only match by exact equality, which we checked above.
                 matches!(
                     (a.class_literal(db).as_static(), b.class_literal(db).as_static()),
                     (Some(a), Some(b)) if a.body_scope(db) == b.body_scope(db)
@@ -99,19 +95,12 @@ impl<'db> Type<'db> {
     fn recursive_identity(self, db: &'db dyn Db) -> Option<TypeIdentity<'db>> {
         match self {
             // We can create a self-referential function type: e.g. `def f(x: "TypeOf[f]"): reveal_type(x)`
-            // To avoid the difficulty of equality checking for function types containing this, we simply use `literal` for equality checking.
             Type::FunctionLiteral(function) => {
                 Some(TypeIdentity::FunctionLiteral(function.literal(db)))
             }
-            // Similarly, we can create a self-referential NewType: e.g. `T = NewType("T", list["T"])`
             Type::NewTypeInstance(newtype) => {
                 Some(TypeIdentity::NewTypeInstance(newtype.definition(db)))
             }
-            // Recursive aliases, protocols, and TypedDicts whose specialization can keep changing
-            // (e.g. `type Growing[T] = T | Growing[list[T]]`) are collapsed to their definition so
-            // that visits stop even though no exact type repeats. Recursion that revisits one
-            // exact specialization (e.g. `type RecursiveT = int | tuple[RecursiveT, ...]`) needs
-            // no definition-level identity: the detectors stop on the repeated type itself.
             Type::TypeAlias(_)
             | Type::ProtocolInstance(_)
             | Type::TypedDict(_)
@@ -452,10 +441,7 @@ impl<'db> SpecializationFlowGraph<'db> {
                 .get(&edge.from)
                 .zip(components.get(&edge.to))
                 .is_some_and(|(from_component, to_component)| {
-                    // True if this edge is inside the SCC (a nested cycle is formed).
                     from_component == to_component
-                    // Only a nested cycle containing a root parameter can grow the root's
-                    // specialization. Helper-only cycles are handled when visiting the helper.
                     && root_components.contains(from_component)
                 })
         })
@@ -554,9 +540,6 @@ impl<'db> SpecializationFlowGraph<'db> {
             incoming.entry(target).or_default().push(source);
         }
 
-        // Start from predecessors rather than the target itself so the result contains only
-        // definitions with a non-empty path to the target. The target itself is included only if
-        // it belongs to a cycle.
         let mut pending = Vec::new();
         if let Some(sources) = incoming.get(&target) {
             pending.extend(sources.iter().copied());
@@ -677,8 +660,6 @@ impl<'db> TypeVisitor<'db> for SpecializationFlowVisitor<'db> {
         if let Type::TypeVar(typevar) = ty {
             let identity = RecursiveDefinition::parameter_identity(db, typevar);
             if !self.source_parameters.contains(&identity) {
-                // Nested definitions can capture a type variable from an outer generic scope.
-                // Specialization does not yet retain the parent mapping needed to model it.
                 self.inconclusive.set(true);
             }
             return;
@@ -755,8 +736,6 @@ impl<'db> TypeVisitor<'db> for SourceParameterCollector<'_, 'db> {
             return;
         }
 
-        // Unions and intersections are normalized set operations. Reapplying the same operation
-        // does not add another structural layer to a parameter.
         match ty {
             Type::Union(union) => {
                 self.visit_union_type(db, union);
@@ -767,8 +746,6 @@ impl<'db> TypeVisitor<'db> for SourceParameterCollector<'_, 'db> {
                 return;
             }
             Type::SubclassOf(subclass_of) if let Some(typevar) = subclass_of.into_type_var() => {
-                // Repeated metaclass projection reaches `type`; it does not
-                // accumulate layers like `list[T]` or `tuple[T]`.
                 self.visit_type(db, Type::TypeVar(typevar));
                 return;
             }
@@ -979,8 +956,6 @@ where
         let identity = if candidates.peek().is_none() {
             OnceCell::new()
         } else {
-            // Deriving an identity can require a structural definition walk. Defer it until a
-            // cheap candidate match shows that another active item could form a cycle.
             let identity = item.to_identity(db);
             if candidates.any(|active| {
                 active.identity.get_or_init(|| active.item.to_identity(db)) == &identity
@@ -1248,8 +1223,6 @@ impl<T: Hash + Eq + Clone> ActiveRecursionDetector<T> {
             return on_cycle();
         }
 
-        // Keep the active-recursion state scoped even if `func` unwinds. In some cases, we catch
-        // panics and continue handling later work on the same thread.
         let _guard = ActiveRecursionGuard {
             seen: &self.seen,
             item,

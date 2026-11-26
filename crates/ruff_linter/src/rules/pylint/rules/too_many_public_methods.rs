@@ -107,7 +107,6 @@ pub(crate) fn too_many_public_methods(
     class_def: &ast::StmtClassDef,
     max_methods: usize,
 ) {
-    // https://github.com/astral-sh/ruff/issues/14535
     if checker.source_type.is_stub() {
         return;
     }

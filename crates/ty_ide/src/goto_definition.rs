@@ -2188,7 +2188,6 @@ p = Point<CURSOR>(1, 2)
         "#);
     }
 
-    // TODO: Should only list `a: int`
     #[test]
     fn redeclarations() {
         let test = CursorTest::builder()

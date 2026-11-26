@@ -199,7 +199,6 @@ impl<'db> Completions<'db> {
             .collect()
     }
 
-    // Convert this collection into a list of "import..." fixes
     fn into_imports(self) -> Vec<ImportEdit> {
         self.items
             .into_sorted_vec()
@@ -214,15 +213,12 @@ impl<'db> Completions<'db> {
             .collect()
     }
 
-    // Convert this collection into a list of "qualify..." fixes
     fn into_qualifications(self, range: TextRange) -> Vec<ImportEdit> {
         self.items
             .into_sorted_vec()
             .into_iter()
             .map(|CompletionRanker(c)| c)
             .filter_map(|item| {
-                // If we would have to actually import something, don't suggest the qualification
-                // (we could, maybe we should, but for now, we don't)
                 if item.import.is_some() {
                     return None;
                 }
@@ -280,7 +276,6 @@ impl<'db> Completions<'db> {
         let completion =
             CompletionRanker(builder.build(self.db, self.program_file, &self.context, &self.query));
         if self.items.len() >= Completions::LIMIT {
-            // OK because `self.items` is guaranteed to be non-empty here.
             let worst = self.items.peek_mut().unwrap();
             if *worst <= completion {
                 return false;
@@ -407,7 +402,6 @@ impl<'db> Completion<'db> {
 #[derive(Debug)]
 #[expect(clippy::struct_excessive_bools)]
 struct CompletionBuilder<'db> {
-    // See comments on `Completion` for the meaning of fields.
     name: CompactString,
     qualified: Option<CompactString>,
     insert: Option<CompactString>,
@@ -498,13 +492,6 @@ impl<'db> CompletionBuilder<'db> {
     ) -> Completion<'db> {
         if let Some(ty) = self.ty {
             self.is_type_check_only |= ty.is_type_check_only(db);
-            // Tags completions with context-specific if they are
-            // known to be usable in an exception context and we have
-            // determined an `exception_ty`.
-            //
-            // It's possible that some completions are usable in an exception
-            // but aren't marked here. That is, false negatives are
-            // possible but false positives are not.
             if let Some(exception_ty) = collection_context.exception_ty {
                 let env = ProgramEnvironment::from_file(program_file);
                 self.is_context_specific |= ty.is_assignable_to(db, &env, exception_ty);
@@ -721,11 +708,6 @@ pub struct CompletionSettings {
     pub complete_function_parentheses: bool,
 }
 
-// N.B. It's important for the defaults here to match the defaults
-// established by `CompletionOptions::into_settings`. This is
-// because `WorkspaceSettings::default()` uses this definition.
-// But `WorkspaceOptions::default().into_settings()` will use the
-// `CompletionOptions::into_settings` definition.
 impl Default for CompletionSettings {
     fn default() -> CompletionSettings {
         CompletionSettings {
@@ -849,10 +831,6 @@ impl<'m> Context<'m> {
                     && !self.cursor.suppress_callable_parentheses();
                 let existing_class_bases = self.cursor.enclosing_class_def().map(|class_def| {
                     let mut bases = extract_base_class_names(class_def);
-                    // Exclude the class being defined from its own base class
-                    // completions, unless the name was previously bound in the
-                    // same scope (in which case the bases refer to the prior
-                    // definition).
                     if !model.is_class_name_reassigned(class_def) {
                         bases.insert(CompactString::new(&class_def.name.id));
                     }
@@ -984,19 +962,9 @@ impl<'m> ContextCursor<'m> {
     /// When `Some` is returned, the range guaranteed to be non-empty.
     fn find_typed_text_range(tokens_before: &[Token], offset: TextSize) -> Option<TextRange> {
         let last = tokens_before.last()?;
-        // It's odd to include `TokenKind::Import` here (among other
-        // keywords), but it indicates that the user has typed
-        // `import`. This is useful to know in some contexts. And this
-        // applies also to the other keywords.
         if !is_name_like_token(last) {
             return None;
         }
-        // This one's weird, but if the cursor is beyond
-        // what is in the closest `Identifier` token, then it's
-        // likely we can't infer anything about what has
-        // been typed. This likely means there is whitespace
-        // or something that isn't represented in the token
-        // stream. So just give up.
         if last.end() < offset || last.range().is_empty() {
             return None;
         }
@@ -1096,8 +1064,6 @@ impl<'m> ContextCursor<'m> {
     fn is_in_decorator_name(&self) -> bool {
         self.covering_node
             .ancestors()
-            // We bail if we're specifying arguments as we don't want
-            // to suppress suggestions there.
             .take_while(|node| {
                 !matches!(node, ast::AnyNodeRef::Arguments(_)) && !node.is_statement()
             })
@@ -1145,8 +1111,6 @@ impl<'m> ContextCursor<'m> {
         } {
             return true;
         }
-        // Analyze the AST if token matching is insufficient
-        // to determine if we're inside a name definition.
         self.is_in_variable_binding()
     }
 
@@ -1165,15 +1129,6 @@ impl<'m> ContextCursor<'m> {
             ast::AnyNodeRef::StmtFor(stmt_for) => {
                 stmt_for.target.range().contains_range(self.range)
             }
-            // The AST does not produce `ast::AnyNodeRef::Parameter` nodes for keywords
-            // or otherwise invalid syntax. Rather they are captured in a
-            // `ast::AnyNodeRef::Parameters` node as "empty space". To ensure
-            // we still suppress suggestions even when the syntax is technically
-            // invalid we extract the token under the self and check if it makes
-            // up that "empty space" inside the Parameters Node. If it does, we know
-            // that we are still binding variables, just that the current state is
-            // syntactically invalid. Hence we suppress autocomplete suggestions
-            // also in those cases.
             ast::AnyNodeRef::Parameters(params) => {
                 if !params.range.contains_range(self.range) {
                     return false;
@@ -1286,7 +1241,6 @@ impl<'m> ContextCursor<'m> {
         const MATCH: &[ContextualKeyword] = &[ContextualKeyword::As, ContextualKeyword::If];
         const NONE: &[ContextualKeyword] = &[];
 
-        // Phase 1: Identify the keyword groups compatible with the typed prefix.
         let typed_matches = |keywords: &[ContextualKeyword]| {
             self.typed.is_none_or(|typed| {
                 keywords
@@ -1301,7 +1255,6 @@ impl<'m> ContextCursor<'m> {
             return None;
         }
 
-        // Phase 2: Find the complete token immediately preceding the completion target.
         let (tokens, start) = match self.typed {
             Some(_) => (
                 self.tokens_before.get(..self.tokens_before.len() - 1)?,
@@ -1326,10 +1279,7 @@ impl<'m> ContextCursor<'m> {
         }
         let covering_node = self.covering_node(token.range());
 
-        // Phase 3: Determine which contextual keywords can follow that token from its
-        // enclosing syntax.
 
-        // Loop and comprehension targets can only be followed by `in`.
         if matches_in
             && let Some(keywords) = covering_node.ancestors().find_map(|node| match node {
                 ast::AnyNodeRef::StmtFor(stmt) => self
@@ -1344,7 +1294,6 @@ impl<'m> ContextCursor<'m> {
             return Some(self.before_already_present(keywords));
         }
 
-        // Context managers and exception types can be followed by `as`.
         if matches_as
             && let Some(keywords) = covering_node.ancestors().find_map(|node| match node {
                 ast::AnyNodeRef::StmtWith(stmt) => stmt.items.iter().find_map(|item| {
@@ -1364,8 +1313,6 @@ impl<'m> ContextCursor<'m> {
             return Some(self.before_already_present(keywords));
         }
 
-        // Match patterns can be followed by `as` or `if`; an existing alias can only be
-        // followed by `if`.
         if (matches_as || matches_if)
             && let Some(keywords) = covering_node.ancestors().find_map(|node| {
                 let ast::AnyNodeRef::MatchCase(case) = node else {
@@ -1500,10 +1447,7 @@ impl<'m> ContextCursor<'m> {
         let contains = |expr: &ast::Expr| expr.range().contains_range(self.range);
 
         match node {
-            // All checks here are intended to find cases where
-            // the python grammar disallows anything but expressions.
 
-            // if_stmt := 'if' named_expression ':' block elif_stmt
             ast::AnyNodeRef::StmtIf(stmt) => {
                 contains(&stmt.test)
                     || stmt
@@ -1511,32 +1455,24 @@ impl<'m> ContextCursor<'m> {
                         .iter()
                         .any(|clause| clause.test.as_ref().is_some_and(contains))
             }
-            // while_stmt := 'while' named_expression ':' block [else_block]
             ast::AnyNodeRef::StmtWhile(stmt) => contains(&stmt.test),
 
-            // for_stmt := 'for' star_targets 'in' ~ star_expressions ':' [TYPE_COMMENT] block [else_block]
             ast::AnyNodeRef::StmtFor(stmt) => contains(&stmt.iter),
-            // with_item := expression
             ast::AnyNodeRef::StmtWith(stmt) => {
                 stmt.items.iter().any(|item| contains(&item.context_expr))
             }
-            // match_stmt := "match" subject_expr ':' NEWLINE INDENT case_block+ DEDENT
             ast::AnyNodeRef::StmtMatch(stmt) => contains(&stmt.subject),
-            // case_guard := 'if' named_expression
             ast::AnyNodeRef::MatchCase(case) => {
                 case.guard.as_deref().is_some_and(contains)
                     || case.pattern.range().contains_range(self.range)
             }
-            // assert_stmt := 'assert' expression [',' expression ]
             ast::AnyNodeRef::StmtAssert(stmt) => {
                 contains(&stmt.test) || stmt.msg.as_deref().is_some_and(contains)
             }
-            // raise_stmt := 'raise' expression ['from' expression ]
             ast::AnyNodeRef::StmtRaise(stmt) => {
                 stmt.exc.as_deref().is_some_and(contains)
                     || stmt.cause.as_deref().is_some_and(contains)
             }
-            // return_stmt := 'return' [star_expressions]
             ast::AnyNodeRef::StmtReturn(stmt) => stmt.value.as_deref().is_some_and(contains),
 
             ast::AnyNodeRef::StmtAssign(stmt) => contains(&stmt.value),
@@ -1544,9 +1480,7 @@ impl<'m> ContextCursor<'m> {
             ast::AnyNodeRef::StmtAnnAssign(stmt) => {
                 contains(&stmt.annotation) || stmt.value.as_deref().is_some_and(contains)
             }
-            // type_alias := "type" NAME [type_params] '=' expression
             ast::AnyNodeRef::StmtTypeAlias(stmt) => contains(&stmt.value),
-            // except_clause := 'except' expression ':' block
             ast::AnyNodeRef::ExceptHandlerExceptHandler(handler) => {
                 handler.type_.as_deref().is_some_and(contains)
             }
@@ -1559,13 +1493,10 @@ impl<'m> ContextCursor<'m> {
                 .iter()
                 .any(|item| item.range().contains_range(self.range)),
 
-            // with_item := expression
             ast::AnyNodeRef::WithItem(item) => contains(&item.context_expr),
 
-            // lambdef := 'lambda' [lambda_params] ':' expression
             ast::AnyNodeRef::ExprLambda(expr) => contains(&expr.body),
 
-            // arguments := (positional arguments | keyword arguments | "*" expression | "**" expression)*
             ast::AnyNodeRef::Arguments(args) => {
                 args.args.iter().any(contains) || args.keywords.iter().any(|kw| contains(&kw.value))
             }
@@ -1585,8 +1516,6 @@ impl<'m> ContextCursor<'m> {
     fn is_in_for_statement_iterable(&self, node: AnyNodeRef) -> bool {
         match node {
             ast::AnyNodeRef::StmtFor(stmt_for) => stmt_for.iter.range().contains_range(self.range),
-            // Detects `for x in <CURSOR>` statements inside comprehensions.
-            // E.g. `[for x in <CURSOR>]`
             ast::AnyNodeRef::Comprehension(comprehension) => {
                 comprehension.target.range().contains_range(self.range)
                     || comprehension.iter.range().contains_range(self.range)
@@ -1672,8 +1601,6 @@ impl TypeCheckingBlock {
     }
 
     fn is_inside<'db>(&self, db: &'db dyn Db, file: ProgramFile<'db>) -> bool {
-        // Most completions are ranked independently of `TYPE_CHECKING`, so only query the
-        // semantic index when a typing-only completion needs to know the cursor's context.
         *self.is_inside.get_or_init(|| {
             let parsed = parsed_module(db, file.python_file(db)).load(db);
             let index = semantic_index(db, file);
@@ -1748,15 +1675,10 @@ impl<'db> CollectionContext<'db> {
         {
             return !valid_keywords.contains(builder.name.as_str());
         }
-        // Exclude classes that are already listed as base classes in the class definition.
         if let Some(ref existing_class_bases) = self.existing_class_bases {
-            // For in-scope completions, check if the simple name matches.
             if builder.import.is_none() && existing_class_bases.contains(&builder.name) {
                 return true;
             }
-            // For auto-import completions, check if the qualified name matches.
-            // This handles cases like `class Foo(mod.Bar, ...)` where we want to
-            // filter out auto-import suggestions for `Bar` from module `mod`.
             if let Some(ref qualified) = builder.qualified
                 && existing_class_bases.contains(qualified)
             {
@@ -1887,8 +1809,6 @@ impl Relevance {
             } else {
                 Sort::Even
             },
-            // We only up-rank top-level modules.
-            // Doing this for sub-modules generates too much noise.
             is_module: if c.kind == Some(CompletionKind::Module)
                 && !c
                     .qualified
@@ -2029,9 +1949,6 @@ impl ModuleDependencyKind {
         } else if sp.is_site_packages() {
             ModuleDependencyKind::ThirdParty
         } else {
-            // We assume anything else, including
-            // "extra" search paths and editable installs,
-            // are part of the end user's code.
             ModuleDependencyKind::Project
         }
     }
@@ -2051,10 +1968,6 @@ fn is_type_check_only_module<'db>(
         return true;
     }
 
-    // typeshed bundles `typing_extensions` with its standard-library stubs even
-    // though the actual module is a third-party package. Since the bundled stub
-    // takes precedence during module resolution, look past it to check whether a
-    // corresponding runtime module is also available from the project or site-packages.
     let importing_file = ImportingFile::File(
         importing_from.file(db),
         importing_from.resolver_environment(db),
@@ -2089,8 +2002,6 @@ fn add_argument_completions<'db>(
     let mut in_arguments = false;
     for node in cursor.covering_node.ancestors() {
         match node {
-            // Do not suggest argument completions in value positions for
-            // keyword arguments
             ast::AnyNodeRef::Keyword(kw) => {
                 if kw.value.range().contains_range(cursor.range) {
                     return;
@@ -2152,10 +2063,6 @@ fn add_class_arg_completions<'db>(
         .and_then(Type::as_class_literal)
         .is_some_and(|t| t.is_typed_dict(db));
 
-    // TODO: Handle PEP 728 that adds two extra keywords,
-    // closed and extra_items.
-    //
-    // See https://peps.python.org/pep-0728/
     if is_typed_dict && !is_set("total") {
         let ty = KnownClass::Bool.to_instance(db, &env);
         completions.add(CompletionBuilder::argument("total").ty(ty));
@@ -2259,7 +2166,6 @@ pub(crate) fn unresolved_fixes<'db>(
     let query = UserQuery::exactly(symbol);
     let ctx = CollectionContext::none();
 
-    // Request imports we could add to put the symbol in scope
     let mut completions = Completions::new(db, file, ctx.clone(), query.clone());
     add_unimported_completions(
         db,
@@ -2273,7 +2179,6 @@ pub(crate) fn unresolved_fixes<'db>(
     );
     results.extend(completions.into_imports());
 
-    // Request qualifications we could apply to the symbol to make it resolve
     let mut completions = Completions::new(db, file, ctx, query);
     add_unimported_completions(
         db,
@@ -2309,12 +2214,6 @@ fn add_keyword_completions<'db>(
         completions.add(CompletionBuilder::keyword(name).ty(ty).builtin(true));
     }
 
-    // Note that we specifically omit the `type` keyword here, since
-    // it will be included via `builtins`. This does make its sorting
-    // priority slightly different than other keywords, but it's not
-    // clear (to me, AG) if that's an issue or not. Since the builtin
-    // completion has an actual type associated with it, we use that
-    // instead of a keyword completion.
     let keywords = [
         "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del",
         "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is",
@@ -2355,9 +2254,6 @@ fn add_string_literal_completions<'db>(
         escaped
     }
 
-    // When we insert a completion for a string literal, we need to make sure
-    // to properly escape any special characters in the completion value and
-    // to use the appropriate quote style.
     fn escape_for_quote(value: &str, quote: Quote) -> Option<String> {
         let escaped = UnicodeEscape::with_preferred_quote(value, quote);
         let mut out = String::new();
@@ -2402,10 +2298,6 @@ fn add_unimported_completions<'db>(
     create_import_request: impl for<'a> Fn(&'a ModuleName, &'a str) -> ImportRequest<'a>,
     completions: &mut Completions<'db>,
 ) {
-    // This is redundant since `all_symbols` will also bail
-    // when the query can match everything. But we bail here
-    // to avoid building an `Importer` and other plausibly
-    // costly work when we know we won't use it.
     if completions.query.will_match_everything() {
         return;
     }
@@ -2429,15 +2321,12 @@ fn add_unimported_completions<'db>(
                 (name, ImportRequest::module(name))
             });
 
-        // Don't suggest symbols that are already imported.
         if members.satisfies(db, importing_file, &request) {
             continue;
         }
 
         let import_action = importer.import(request, &members);
 
-        // N.B. We use `add_skip_query` here because `all_symbols`
-        // already takes our query into account.
         completions.add_skip_query(
             Completion::builder(name)
                 .qualified(symbol.qualified())
@@ -2494,11 +2383,6 @@ impl<'t> CompletionTargetTokens<'t> {
 
         let before = cursor.tokens_before;
         Some(
-            // Our strategy when it comes to `object.attribute` here is
-            // to look for the `.` and then take the token immediately
-            // preceding it. Later, we look for an `ExprAttribute` AST
-            // node that overlaps (even partially) with this token. And
-            // that's the object we try to complete attributes for.
             if let Some([_dot]) = token_suffix_by_kinds(before, OBJECT_DOT_EMPTY) {
                 let object = before[..before.len() - 1].last()?;
                 CompletionTargetTokens::PossibleObjectDot {
@@ -2514,19 +2398,8 @@ impl<'t> CompletionTargetTokens<'t> {
                     attribute: Some(attribute),
                 }
             } else if let Some([_]) = token_suffix_by_kinds(before, [TokenKind::Float]) {
-                // If we're writing a `float`, then we should
-                // specifically not offer completions. This wouldn't
-                // normally be an issue, but if completions are
-                // automatically triggered by a `.` (which is what we
-                // request as an LSP server), then we can get here
-                // in the course of just writing a decimal number.
                 return None;
             } else if let Some([_]) = token_suffix_by_kinds(before, [TokenKind::Ellipsis]) {
-                // Similarly as above. If we've just typed an ellipsis,
-                // then we shouldn't show completions. Note that
-                // this doesn't prevent `....<CURSOR>` from showing
-                // completions (which would be the attributes available
-                // on an `ellipsis` object).
                 return None;
             } else {
                 let Some(last) = before.last() else {
@@ -2548,22 +2421,9 @@ impl<'t> CompletionTargetTokens<'t> {
                 let covering_node = cursor
                     .covering_node(object.range())
                     .find_last(|node| {
-                        // We require that the end of the node range not
-                        // exceed the cursor offset. This avoids selecting
-                        // a node "too high" in the AST in cases where
-                        // completions are requested in the middle of an
-                        // expression. e.g., `foo.<CURSOR>.bar`.
                         if node.is_expr_attribute() {
                             return node.range().end() <= cursor.offset;
                         }
-                        // For import statements though, they can't be
-                        // nested, so we don't care as much about the
-                        // cursor being strictly after the statement.
-                        // And indeed, sometimes it won't be! e.g.,
-                        //
-                        //   import re, os.p<CURSOR>, zlib
-                        //
-                        // So just return once we find an import.
                         node.is_stmt_import() || node.is_stmt_import_from()
                     })
                     .ok()?;
@@ -2701,15 +2561,6 @@ impl<'a> ImportStatement<'a> {
     ) -> Option<ImportStatement<'a>> {
         use TokenKind as TK;
 
-        // This state machine moves backwards through the token stream,
-        // starting at where the user's cursor is and ending when
-        // either a `from` token is found, or a token that cannot
-        // possibly appear in an import statement at a particular
-        // position is found.
-        //
-        // To understand this state machine, it's recommended to become
-        // familiar with the grammar for Python import statements:
-        // https://docs.python.org/3/reference/grammar.html
 
         /// The current state of the parser below.
         #[derive(Clone, Copy, Debug)]
@@ -2780,8 +2631,6 @@ impl<'a> ImportStatement<'a> {
             /// continue consuming a dotted name.
             InitialDottedName,
 
-            // When the states below occur, we are locked into
-            // recognizing a `from ... import ...` statement.
             /// Occurs when we've seen an ellipsis right before the
             /// cursor or after the first name-like token. That is,
             /// `...name`. This must be from a
@@ -2807,8 +2656,6 @@ impl<'a> ImportStatement<'a> {
             /// A left parenthesis was just seen.
             FromLpar,
 
-            // Below are terminal states. Once we reach one
-            // of these, the state machine ends.
             /// We just saw a `from` token. We never have any
             /// outgoing transitions from this.
             From,
@@ -2820,37 +2667,17 @@ impl<'a> ImportStatement<'a> {
         }
 
         let mut state = S::Start;
-        // The token immediate before (or at) the cursor.
         let last = cursor.tokens_before.last()?;
-        // A token corresponding to `import`, if found.
         let mut import: Option<&Token> = None;
-        // A token corresponding to `from`, if found.
         let mut from: Option<&Token> = None;
-        // Whether an initial dot was found right before the cursor,
-        // or right before the name at the cursor.
         let mut initial_dot = false;
-        // An incomplete import statement was found.
-        // Usually either `from foo imp<CURSOR>`
-        // or `import foo a<CURSOR>`.
         let mut incomplete_as_or_import = false;
-        // Whether the cursor is at the name being defined by `as`.
         let mut completing_alias = false;
         for token in cursor.tokens_before.iter().rev().take(Self::LIMIT) {
             if token.kind().is_trivia() {
                 continue;
             }
             state = match (state, token.kind()) {
-                // These cases handle our "initial" condition.
-                // Basically, this is what detects how to drop us into
-                // the full state machine below for parsing any kind of
-                // import statement. There are also some cases we try
-                // to detect here that indicate the user is probably
-                // typing an `import` or `as` token. In effect, we
-                // try to pluck off the initial name-like token that
-                // represents where the cursor likely is. And then
-                // we move on to try and detect the type of import
-                // statement that we're dealing with.
-                // (S::Start, TK::Newline) => S::Start,
                 (S::Start, TK::Star) => S::FromStar,
                 (S::Start, TK::Identifier) if cursor.typed.is_none() => S::AdjacentName,
                 (S::Start, TK::Identifier) => S::FirstName,
@@ -2867,10 +2694,6 @@ impl<'a> ImportStatement<'a> {
                 (S::FirstName, TK::From) => S::From,
                 (S::FirstName, TK::Identifier) => S::AdjacentName,
 
-                // This handles the case where we see `.name`. Here,
-                // we could be in `from .name`, `from ..name`, `from
-                // ...name`, `from foo.name`, `import foo.name`,
-                // `import bar, foo.name` and so on.
                 (S::InitialDot, TK::Dot | TK::Ellipsis) => S::FromDots,
                 (S::InitialDot, TK::Identifier) => S::InitialDotName,
                 (S::InitialDot, TK::From) => S::From,
@@ -2884,10 +2707,6 @@ impl<'a> ImportStatement<'a> {
                 (S::InitialDottedName, TK::Identifier) => S::InitialDotName,
                 (S::InitialDottedName, TK::From) => S::From,
 
-                // This state machine parses `dotted_as_names` or
-                // `import_from_as_names`. It has a carve out for when
-                // it finds a dot, which indicates it must parse only
-                // `dotted_as_names`.
                 (S::NameList, TK::Identifier | TK::Unknown) => S::NameListNameOrAlias,
                 (S::NameList, TK::Lpar) => S::FromLpar,
                 (S::NameListNameOrAlias, TK::As) => S::As,
@@ -2895,29 +2714,14 @@ impl<'a> ImportStatement<'a> {
                 (S::NameListNameOrAlias, TK::Import) => S::Import,
                 (S::NameListNameOrAlias, TK::Lpar) => S::FromLpar,
                 (S::NameListNameOrAlias, TK::Unknown) => S::NameListNameOrAlias,
-                // This pops us out of generic name-list parsing
-                // and puts us firmly into `dotted_as_names` in
-                // the grammar.
                 (S::NameListNameOrAlias, TK::Dot) => S::AsDottedNameDot,
 
-                // This identifies aliasing via `as`. The main trick
-                // here is that if we see a `.`, then we move to a
-                // different set of states since we know we must be in
-                // an `import` statement. Without a `.` though, we
-                // could be in an `import` or a `from`. For example,
-                // `import numpy as np` or
-                // `from collections import defaultdict as dd`.
                 (S::As, TK::Identifier) => S::AsName,
                 (S::AsName, TK::Dot) => S::AsDottedNameDot,
                 (S::AsName, TK::Import) => S::Import,
                 (S::AsName, TK::Comma) => S::NameList,
                 (S::AsName, TK::Lpar) if !completing_alias => S::FromLpar,
 
-                // This is the mini state machine for handling
-                // `dotted_as_names`. We enter it when we see
-                // `foo.bar as baz`. We therefore know this must
-                // be an `import` statement and not a `from import`
-                // statement.
                 (S::AsDottedName, TK::Dot) => S::AsDottedNameDot,
                 (S::AsDottedName, TK::Comma) => S::AsDottedNameComma,
                 (S::AsDottedName, TK::Import) => S::ImportFinal,
@@ -2928,15 +2732,8 @@ impl<'a> ImportStatement<'a> {
                 (S::AsDottedNameOrAliasName, TK::Dot | TK::As) => S::AsDottedNameDot,
                 (S::AsDottedNameOrAliasName, TK::Import) => S::ImportFinal,
 
-                // A `*` and `(` immediately constrains what we're allowed to see.
-                // We can jump right to expecting an `import` keyword.
                 (S::FromStar | S::FromLpar, TK::Import) => S::Import,
 
-                // The transitions below handle everything from `from`
-                // to `import`. Basically, once we see an `import`
-                // token or otherwise know we're parsing the module
-                // section of a `from` import statement, we end up in
-                // one of the transitions below.
                 (S::Import, TK::Dot | TK::Ellipsis) => S::FromDots,
                 (S::Import, TK::Identifier | TK::Unknown) => S::FromDottedName,
                 (S::FromDottedName, TK::Dot) => S::FromDottedNameDot,
@@ -2951,8 +2748,6 @@ impl<'a> ImportStatement<'a> {
 
                 _ => break,
             };
-            // If we transition into a few different special
-            // states, we record the token.
             match state {
                 S::Import | S::ImportFinal => {
                     import = Some(token);
@@ -2961,12 +2756,6 @@ impl<'a> ImportStatement<'a> {
                     from = Some(token);
                 }
                 S::AdjacentName => {
-                    // We've seen two adjacent name-like tokens
-                    // right before the cursor. At this point,
-                    // we continue on to try to recognize a nearly
-                    // valid import statement, and to figure out
-                    // what kinds of completions we should offer
-                    // (if any).
                     incomplete_as_or_import = true;
                 }
                 S::InitialDot | S::FromEllipsisName => {
@@ -2976,11 +2765,6 @@ impl<'a> ImportStatement<'a> {
             }
         }
 
-        // Now find a possibly dotted name up to where the current
-        // cursor is. This could be an item inside a module, a module
-        // name, a submodule name or even a relative module. The
-        // point is that it is the thing that the end user is trying
-        // to complete.
         let mut to_complete = String::new();
         let end = last.range().end();
         let mut start = end;
@@ -2994,32 +2778,6 @@ impl<'a> ImportStatement<'a> {
         }
         to_complete.push_str(&cursor.source[TextRange::new(start, end)]);
 
-        // If the typed text corresponds precisely to a keyword,
-        // then as a special case, consider it "incomplete" for that
-        // keyword. This occurs when the cursor is immediately at the
-        // end of `import` or `as`, e.g., `import<CURSOR>`. So we
-        // should provide it as a completion so that the end user can
-        // confirm it as-is. We special case this because a complete
-        // `import` or `as` gets special recognition as a special token
-        // kind, and it isn't worth complicating the state machine
-        // above to account for this.
-        //
-        // We also handle the more general "incomplete" cases here too.
-        // Basically, `incomplete_as_or_import` is set to `true` when
-        // we detect an "adjacent" name in an import statement. Some
-        // examples:
-        //
-        //     from foo <CURSOR>
-        //     from foo imp<CURSOR>
-        //     from foo import bar <CURSOR>
-        //     from foo import bar a<CURSOR>
-        //     import foo <CURSOR>
-        //     import foo a<CURSOR>
-        //
-        // Since there is a very limited number of cases, we can
-        // suggest `import` when an `import` token isn't present. And
-        // `as` when an `import` token *is* present. Notably, `as` can
-        // only appear after an `import` keyword!
         if cursor.typed == Some("import") || (incomplete_as_or_import && import.is_none()) {
             return Some(ImportStatement::Incomplete(IncompleteImport::Import));
         } else if cursor.typed == Some("as") || (incomplete_as_or_import && import.is_some()) {
@@ -3029,8 +2787,6 @@ impl<'a> ImportStatement<'a> {
             (None, None) => None,
             (None, Some(import)) => {
                 let ast = find_ast_for_import(cursor.parsed, import)?;
-                // If we found a dot near the cursor, then this
-                // must be a request for submodule completions.
                 let kind = if initial_dot {
                     let (parent, _) = to_complete.rsplit_once('.')?;
                     let module_name = ModuleName::new(parent)?;
@@ -3044,10 +2800,6 @@ impl<'a> ImportStatement<'a> {
             }
             (Some(from), import) => {
                 let ast = find_ast_for_from_import(cursor.parsed, from)?;
-                // If we saw an `import` keyword, then that means the
-                // cursor must be *after* the `import`. And thus we
-                // only ever need to offer completions for importable
-                // elements from the module being imported.
                 let kind = if import.is_some() {
                     FromImportKind::Attribute
                 } else if !initial_dot {
@@ -3055,30 +2807,17 @@ impl<'a> ImportStatement<'a> {
                 } else {
                     let to_complete_without_leading_dots = to_complete.trim_start_matches('.');
 
-                    // When there aren't any leading dots to trim, then we
-                    // have a regular absolute import. Otherwise, it's relative.
                     if to_complete == to_complete_without_leading_dots {
                         let (parent, _) = to_complete.rsplit_once('.')?;
                         let parent = ModuleName::new(parent)?;
                         FromImportKind::Submodule { parent }
                     } else {
                         let all_dots = to_complete.chars().all(|c| c == '.');
-                        // We should suggest `import` in `from ...<CURSOR>`
-                        // and `from ...imp<CURSOR>`.
                         let import_keyword_allowed =
                             all_dots || !to_complete_without_leading_dots.contains('.');
                         let parent = if all_dots {
                             ModuleName::from_import_statement(db, file, ast).ok()?
                         } else {
-                            // We know `to_complete` is not all dots.
-                            // But that it starts with a dot.
-                            // So we must have one of `..foo`, `..foo.`
-                            // or `..foo.bar`. We drop the leading dots,
-                            // since those are captured by `ast.level`.
-                            // From there, we can treat it like a normal
-                            // module name. We want to list submodule
-                            // completions, so we pop off the last element
-                            // if there are any remaining dots.
                             let parent = to_complete_without_leading_dots
                                 .rsplit_once('.')
                                 .map(|(parent, _)| parent);
@@ -3331,8 +3070,6 @@ fn completion_kind_from_type<'db>(db: &'db dyn Db, ty: Type<'db>) -> Option<Comp
             Type::ClassLiteral(_) | Type::GenericAlias(_) | Type::SubclassOf(_) => {
                 CompletionKind::Class
             }
-            // This is a little weird for "struct." I'm mostly interpreting
-            // "struct" here as a more general "object." ---AG
             Type::NominalInstance(_)
             | Type::PropertyInstance(_)
             | Type::SlotDescriptor(_)
@@ -3531,11 +3268,8 @@ mod tests {
         let test = builder.build();
 
         test.contains("filter");
-        // Sunder items should be filtered out
         test.not_contains("_T");
-        // Dunder attributes should not be stripped
         test.contains("__annotations__");
-        // See `private_symbols_in_stub` for more comprehensive testing private of symbol filtering.
     }
 
     #[test]
@@ -3667,8 +3401,6 @@ from os import path
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"path");
     }
 
-    // N.B. We don't currently explore module APIs. This
-    // is still just emitting symbols from the detected scope.
     #[test]
     fn module_api() {
         let builder = completion_test_builder(
@@ -4001,24 +3733,6 @@ def foo():
 ",
         );
 
-        // FIXME: Should include `foofoo`.
-        //
-        // `foofoo` isn't included at present (2025-05-22). The problem
-        // here is that the AST for `def foo():` doesn't encompass the
-        // trailing indentation. So when the cursor position is in that
-        // trailing indentation, we can't (easily) get a handle to the
-        // right scope. And even if we could, the AST expressions for
-        // `def foo():` and `def foofoo(): ...` end at precisely the
-        // same point. So there is no AST we can hold after the end of
-        // `foofoo` but before the end of `foo`. So at the moment, it's
-        // not totally clear how to get the right scope.
-        //
-        // If we didn't want to change the ranges on the AST nodes,
-        // another approach here would be to get the inner most scope,
-        // and explore its ancestors until we get to a level that
-        // matches the current cursor's indentation. This seems fraught
-        // however. It's not clear to me that we can always assume a
-        // correspondence between scopes and indentation level.
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"foo");
     }
 
@@ -4133,15 +3847,6 @@ def foo():
 ",
         );
 
-        // FIXME: Should include `foofoo` (but not `foofoofoo`).
-        //
-        // The tests below fail for the same reason that
-        // `nested_function_not_in_global_scope_blank` fails: there is no
-        // space in the AST ranges after the end of `foofoofoo` but before
-        // the end of `foofoo`. So either the AST needs to be tweaked to
-        // account for the indented whitespace, or some other technique
-        // needs to be used to get the scope containing `foofoo` but not
-        // `foofoofoo`.
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"foo");
     }
 
@@ -4155,7 +3860,6 @@ def foo():
     <CURSOR>",
         );
 
-        // FIXME: Should include `foofoo` (but not `foofoofoo`).
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"foo");
     }
 
@@ -4171,7 +3875,6 @@ def frob(): ...
             ",
         );
 
-        // FIXME: Should include `foofoo` (but not `foofoofoo`).
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"
         foo
         frob
@@ -4191,7 +3894,6 @@ def frob(): ...
 ",
         );
 
-        // FIXME: Should include `foofoo` (but not `foofoofoo`).
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"
         foo
         frob
@@ -4212,7 +3914,6 @@ def frob(): ...
 ",
         );
 
-        // FIXME: Should include `foofoo` (but not `foofoofoo`).
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"
         foo
         frob
@@ -4244,9 +3945,6 @@ def frob(): ...
 ",
         );
 
-        // TODO: it would be good if `bar` was included here, but
-        // the list comprehension is not yet valid and so we do not
-        // detect this as a definition of `bar`.
         assert_snapshot!(
             builder.skip_keywords().skip_builtins().build().snapshot(),
             @"<No completions found after filtering out completions>",
@@ -4378,17 +4076,6 @@ items: list[str] = []
 ",
         );
 
-        // FIXME: Should include `foo`.
-        //
-        // This fails for similar reasons as above: the body of the
-        // lambda doesn't include the position of <CURSOR> because
-        // <CURSOR> is inside leading or trailing whitespace. (Even
-        // when enclosed in parentheses. Specifically, parentheses
-        // aren't part of the node's range unless it's relevant e.g.,
-        // tuples.)
-        //
-        // The `lambda_blank1` test works because there are expressions
-        // on either side of <CURSOR>.
         assert_snapshot!(
             builder.skip_keywords().skip_builtins().build().snapshot(),
             @"<No completions found after filtering out completions>",
@@ -4470,12 +4157,6 @@ class Foo:
 ",
         );
 
-        // FIXME: Should include `bar`, `quux` and `frob`.
-        // (Unclear if `Foo` should be included, but a false
-        // positive isn't the end of the world.)
-        //
-        // These don't work for similar reasons as other
-        // tests above with the <CURSOR> inside of whitespace.
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"Foo");
     }
 
@@ -4490,9 +4171,6 @@ class Foo:
 ",
         );
 
-        // FIXME: Should include `bar`, `quux` and `frob`.
-        // (Unclear if `Foo` should be included, but a false
-        // positive isn't the end of the world.)
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"Foo");
     }
 
@@ -4622,9 +4300,6 @@ class Foo(Fo<CURSOR>
 
     #[test]
     fn class_base_includes_prior_definition_with_same_name() {
-        // When a class with the same name was previously defined,
-        // the bases refer to the prior definition, so it should
-        // still be offered as a completion.
         let builder = completion_test_builder(
             "\
 class Foo: ...
@@ -4682,10 +4357,6 @@ class D(A, B, <CURSOR>
 
     #[test]
     fn class_base_same_name_different_module() {
-        // Even though `Foo` is already a base class, the auto-import suggestion
-        // for `other.Foo` should still be shown since it's a different symbol.
-        // Note: We need to type some characters (e.g., "Fo") to trigger auto-import
-        // suggestions, as empty queries don't generate unimported completions.
         let builder = CursorTest::builder()
             .source(
                 "other.py",
@@ -4712,13 +4383,11 @@ class Bar(Foo, Fo<CURSOR>
             .filter(|c| c.name == "Foo")
             .collect();
 
-        // The local Foo should be filtered out (no import required)
         assert!(
             !foo_completions.iter().any(|c| c.import.is_none()),
             "Local `Foo` should be filtered out as it's already a base class"
         );
 
-        // The auto-import Foo from `other` module should be present
         assert!(
             foo_completions.iter().any(|c| c.import.is_some()),
             "Auto-import `Foo` from other module should still be suggested"
@@ -4727,8 +4396,6 @@ class Bar(Foo, Fo<CURSOR>
 
     #[test]
     fn class_base_qualified_already_specified() {
-        // When a qualified base class like `other.Foo` is already specified,
-        // the auto-import suggestion for `Foo` from `other` should be filtered.
         let builder = CursorTest::builder()
             .source(
                 "other.py",
@@ -4755,8 +4422,6 @@ class Bar(other.Foo, Fo<CURSOR>
             .filter(|c| c.name == "Foo")
             .collect();
 
-        // The auto-import Foo from `other` should be filtered since `other.Foo`
-        // is already a base class.
         assert!(
             foo_completions.is_empty(),
             "Auto-import `Foo` from `other` should be filtered since `other.Foo` is already a base"
@@ -4765,14 +4430,6 @@ class Bar(other.Foo, Fo<CURSOR>
 
     #[test]
     fn class_base_qualified_attribute_not_filtered() {
-        // TODO: This test documents a known limitation. When completing attributes
-        // on an already-imported module (e.g., `other.F<CURSOR>`), we don't filter
-        // out classes that are already base classes. This is because attribute
-        // completions don't have `import` or `qualified` set, so we can't match
-        // them against the existing base classes.
-        //
-        // This is a false negative (showing a duplicate that should be hidden),
-        // not a false positive, so it's a minor UX issue rather than a bug.
         let builder = CursorTest::builder()
             .source(
                 "other.py",
@@ -4800,8 +4457,6 @@ class MyClass(other.Foo, other.F<CURSOR>): pass
             .filter(|c| c.name == "Foo")
             .collect();
 
-        // Ideally this would be empty since `other.Foo` is already a base class,
-        // but we don't currently filter attribute completions on imported modules.
         assert_eq!(
             foo_completions.len(),
             1,
@@ -5082,10 +4737,6 @@ Meta.<CURSOR>
         );
 
         insta::with_settings!({
-            // The formatting of some types are different depending on
-            // whether we're in release mode or not. These differences
-            // aren't really relevant for completion tests AFAIK, so
-            // just redact them. ---AG
             filters => [(r"(?m)\s*__(annotations|new|annotate)__.+$", "")]},
             {
                 assert_snapshot!(
@@ -5281,7 +4932,6 @@ Answer.<CURSOR>
 
         insta::with_settings!({
             // See above: filter out some members which contain @Todo types that are
-            // rendered differently in release mode.
             filters => [(r"(?m)\s*__(call|reduce_ex|annotate|signature)__.+$", "")]},
             {
                 assert_snapshot!(
@@ -5467,7 +5117,6 @@ bar(o<CURSOR>
         );
     }
 
-    // Regression test for https://github.com/astral-sh/ty/issues/3803
     #[test]
     fn call_keyword_only_argument_between_variadic_parameters() {
         completion_test_builder(
@@ -5595,9 +5244,6 @@ abc(okay=1, ba<CURSOR> baz=5
 
     #[test]
     fn call_positional_only_argument() {
-        // If the parameter is positional only we don't
-        // want to suggest it as specifying by name
-        // is not valid.
         let builder = completion_test_builder(
             "\
 def bar(okay, /): ...
@@ -5616,9 +5262,6 @@ bar(o<CURSOR>
 
     #[test]
     fn call_positional_only_keyword_only_argument_mix() {
-        // If the parameter is positional only we don't
-        // want to suggest it as specifying by name
-        // is not valid.
         let builder = completion_test_builder(
             "\
 def bar(not_okay, no, /, okay, *, okay_abc, okay_okay): ...
@@ -5671,8 +5314,6 @@ def takes(f: Callable[P, None]) -> None:
             })
             .collect::<Vec<_>>();
 
-        // Bare `ParamSpec` signatures are rendered as a synthetic parameter for
-        // signature help, but they don't correspond to a valid keyword argument.
         assert!(
             keyword_argument_completions.is_empty(),
             "Unexpected keyword argument completions: {keyword_argument_completions:?}",
@@ -5766,9 +5407,6 @@ class C:
 ",
         );
 
-        // FIXME: Should NOT include `foo` here, since
-        // that is only a method that can be called on
-        // `self`.
         assert_snapshot!(
             builder.skip_keywords().skip_builtins().skip_auto_import().build().snapshot(),
             @"
@@ -5839,9 +5477,6 @@ if sys.platform == \"not-my-current-platform\":
 ",
         );
 
-        // TODO: ideally, `only_available_in_this_branch` should be available here, but we
-        // currently make no effort to provide a good IDE experience within sections that
-        // are unreachable
         assert_snapshot!(
             builder.skip_keywords().skip_builtins().skip_auto_import().build().snapshot(),
             @"<No completions found after filtering out completions>",
@@ -5858,7 +5493,6 @@ Re<CURSOR>
 ",
         );
 
-        // `ReadableBuffer` is a symbol in `typing`, but it is not re-exported
         builder
             .build()
             .contains("Reversible")
@@ -6276,7 +5910,6 @@ A.<CURSOR>
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_function_identifier1() {
         let builder = completion_test_builder(
@@ -6291,7 +5924,6 @@ def m<CURSOR>
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_function_identifier2() {
         let builder = completion_test_builder(
@@ -6306,7 +5938,6 @@ def m<CURSOR>(): pass
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn fscope_id_missing_function_identifier3() {
         let builder = completion_test_builder(
@@ -6319,7 +5950,6 @@ def m(): pass
         assert_snapshot!(builder.skip_keywords().skip_builtins().build().snapshot(), @"m");
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_class_identifier1() {
         let builder = completion_test_builder(
@@ -6334,7 +5964,6 @@ class M<CURSOR>
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_type_alias1() {
         let builder = completion_test_builder(
@@ -6349,7 +5978,6 @@ Fo<CURSOR> = float
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_import1() {
         let builder = completion_test_builder(
@@ -6358,10 +5986,6 @@ import fo<CURSOR>
 ",
         );
 
-        // This snapshot would generate a big list of modules,
-        // which is kind of annoying. So just assert that it
-        // runs without panicking and produces some non-empty
-        // output.
         assert!(
             !builder
                 .skip_keywords()
@@ -6372,7 +5996,6 @@ import fo<CURSOR>
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_import2() {
         let builder = completion_test_builder(
@@ -6381,15 +6004,6 @@ import foo as ba<CURSOR>
 ",
         );
 
-        // This snapshot would generate a big list of modules,
-        // which is kind of annoying. So just assert that it
-        // runs without panicking and produces some non-empty
-        // output.
-        //
-        // ... some time passes ...
-        //
-        // Actually, this shouldn't offer any completions since
-        // the context here is introducing a new name.
         assert!(
             builder
                 .skip_keywords()
@@ -6400,7 +6014,6 @@ import foo as ba<CURSOR>
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_from_import1() {
         let builder = completion_test_builder(
@@ -6409,10 +6022,6 @@ from fo<CURSOR> import wat
 ",
         );
 
-        // This snapshot would generate a big list of modules,
-        // which is kind of annoying. So just assert that it
-        // runs without panicking and produces some non-empty
-        // output.
         assert!(
             !builder
                 .skip_keywords()
@@ -6423,7 +6032,6 @@ from fo<CURSOR> import wat
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_from_import2() {
         let builder = completion_test_builder(
@@ -6438,7 +6046,6 @@ from foo import wa<CURSOR>
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_from_import3() {
         let builder = completion_test_builder(
@@ -6453,7 +6060,6 @@ from foo import wat as ba<CURSOR>
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_try_except1() {
         let builder = completion_test_builder(
@@ -6471,7 +6077,6 @@ except Type<CURSOR>:
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/2401
     #[test]
     fn no_panic_incomplete_except_handler() {
         let builder = completion_test_builder(
@@ -6488,7 +6093,6 @@ except <CURSOR># Trigger completion/hover here
         );
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/2401
     #[test]
     fn incomplete_except_handler_uses_enclosing_scope() {
         completion_test_builder(
@@ -6508,7 +6112,6 @@ def f():
         .contains("sentinel");
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/572
     #[test]
     fn scope_id_missing_global1() {
         let builder = completion_test_builder(
@@ -6602,7 +6205,6 @@ def test_point(p2: Point):
         builder.build().contains("orthogonal_direction");
     }
 
-    // https://github.com/astral-sh/ty/issues/3087
     #[test]
     fn no_panic_argument_completion_before_paren() {
         let builder = completion_test_builder(
@@ -7237,7 +6839,6 @@ from os.<CURSOR>
     #[test]
     fn type_check_only_is_type_check_only() {
         // `@typing.type_check_only` is a function that's unavailable at runtime
-        // and so should rank after runtime-available completions in `typing`.
         let builder = completion_test_builder("from typing import t<CURSOR>");
         let test = builder.build();
         let completions = test.completions();
@@ -7256,7 +6857,6 @@ from os.<CURSOR>
 
     #[test]
     fn regression_test_issue_642() {
-        // Regression test for https://github.com/astral-sh/ty/issues/642
 
         let test = completion_test_builder(
             r#"
@@ -8722,7 +8322,6 @@ def f[T: str](msg: T):
 
     #[test]
     fn typevar_with_constraints() {
-        // Test TypeVar with constraints
         let builder = completion_test_builder(
             "\
 from typing import TypeVar
@@ -9047,8 +8646,6 @@ match status:
             @"<No completions found>",
         );
 
-        // Also check that completions are suppressed
-        // when nothing has been typed.
         let builder = completion_test_builder(
             "\
 foo = 1
@@ -9315,9 +8912,6 @@ def foo[T: s<CURSOR>]
 
     #[test]
     fn completions_in_function_param_type_annotation() {
-        // Ensure that completions are no longer
-        // suppressed when have left the name
-        // definition block.
         completion_test_builder(
             "\
 def foo(param: s<CURSOR>)
@@ -9627,7 +9221,6 @@ except a<CURSOR>
         .not_contains("raise");
     }
 
-    // TODO: Suggesting False doesn't make much sense here.
     #[test]
     fn no_statement_keywords_in_with() {
         completion_test_builder(
@@ -9714,8 +9307,6 @@ def foo(bar: str = a<CURSOR>): ...
         .not_contains("raise");
     }
 
-    // FIXME: Should not contain False as we're expecting an iterable
-    // or a container.
     #[test]
     fn no_statement_keywords_in_if_x_in() {
         completion_test_builder(
@@ -9855,8 +9446,6 @@ if foo:
             .build()
             .snapshot();
 
-        // Even though long_namea is alphabetically before long_nameb,
-        // long_nameb is currently imported and should be preferred.
         assert_snapshot!(snapshot, @"
         long_nameb :: Literal[1] :: <no import required>
         long_namea :: Unavailable :: foo
@@ -9872,8 +9461,6 @@ if foo:
                 .build()
                 .snapshot();
 
-        // Here we favour `Protocol` over the other completions
-        // because `Protocol` has been imported, and the other completions are builtin.
         assert_snapshot!(snapshot, @"
         Protocol
         PendingDeprecationWarning
@@ -9967,7 +9554,6 @@ if foo:
     #[test]
     fn from_import_nested_very_dotted_name_relative_import_suggests_import() {
         let builder = CursorTest::builder()
-            // N.B. the `...` tokenizes as `TokenKind::Ellipsis`
             .source("src/main.py", "from ...foo i<CURSOR>")
             .source("foo.py", "")
             .completion_test_builder();
@@ -10485,10 +10071,6 @@ ZQ<CURSOR>
             .module_names()
             .build()
             .snapshot();
-        // We're specifically looking for `ZQZQ` in `bar`
-        // here but *not* in `foo`. Namely, in `foo`,
-        // `ZQZQ` is a "regular" import that is not by
-        // convention considered a re-export.
         assert_snapshot!(snapshot, @"ZQZQ :: bar");
     }
 
@@ -10553,16 +10135,9 @@ ZQ<CURSOR>
             .module_names()
             .build()
             .snapshot();
-        // We specifically do not want `ZQZQ2` here, since
-        // it is not part of `__all__`.
         assert_snapshot!(snapshot, @"ZQZQ1 :: bar");
     }
 
-    // This test confirms current behavior (as of 2025-12-04), but
-    // it's not consistent with auto-import. That is, it doesn't
-    // strictly respect `__all__` on `bar`, but perhaps it should.
-    //
-    // See: https://github.com/astral-sh/ty/issues/1757
     #[test]
     fn object_attr_ignores_all() {
         let snapshot = CursorTest::builder()
@@ -10585,8 +10160,6 @@ bar.ZQ<CURSOR>
             .module_names()
             .build()
             .snapshot();
-        // We specifically do not want `ZQZQ2` here, since
-        // it is not part of `__all__`.
         assert_snapshot!(snapshot, @"
         ZQZQ1 :: <no import required>
         ZQZQ2 :: <no import required>
@@ -10606,9 +10179,6 @@ Quitter<CURSOR>
             .module_names()
             .build()
             .snapshot();
-        // There is a `Quitter` in `_sitebuiltins` in the standard
-        // library. But this is skipped by auto-import because it's
-        // 1) not first party and 2) starts with an `_`.
         assert_snapshot!(snapshot, @"<No completions found>");
     }
 
@@ -10728,8 +10298,6 @@ collabc<CURSOR>
 
     #[test]
     fn auto_import_namespace_descendant_but_not_namespace_package() {
-        // TODO: We should in fact suggest the namespace package itself (not just its descendants);
-        // this was merely a scope cut in the original delivery of namespace package support.
 
         let builder = CursorTest::builder()
             .source("main.py", "acme<CURSOR>")
@@ -11077,10 +10645,6 @@ zqzqzq: str = 'foo'
 zqzq<CURSOR>
 ",
         );
-        // The type for `zqzqzq` *should* be `str`, but we consider all
-        // reachable declarations and bindings, which means we get a
-        // union of `int` and `str` here even though the `int` binding
-        // isn't live at the cursor position.
         assert_snapshot!(
             builder.skip_auto_import().type_signatures().build().snapshot(),
             @"zqzqzq :: int | str",
@@ -11096,10 +10660,6 @@ zqzq<CURSOR>
 zqzqzq: str = 'foo'
 ",
         );
-        // The type for `zqzqzq` *should* be `int`, but we consider all
-        // reachable declarations and bindings, which means we get a
-        // union of `int` and `str` here even though the `str` binding
-        // doesn't exist at the cursor position.
         assert_snapshot!(
             builder.skip_auto_import().type_signatures().build().snapshot(),
             @"zqzqzq :: int | str",
@@ -11117,10 +10677,6 @@ def foo():
     return
 ",
         );
-        // The type for `zqzqzq` *should* be `str`, but we consider all
-        // reachable declarations and bindings, which means we get a
-        // union of `int` and `str` here even though the `int` binding
-        // isn't live at the cursor position.
         assert_snapshot!(
             builder.skip_auto_import().type_signatures().build().snapshot(),
             @"zqzqzq :: int | str",
@@ -11138,10 +10694,6 @@ def foo():
     return
 ",
         );
-        // The type for `zqzqzq` *should* be `int`, but we consider all
-        // reachable declarations and bindings, which means we get a
-        // union of `int` and `str` here even though the `str` binding
-        // doesn't exist at the cursor position.
         assert_snapshot!(
             builder.skip_auto_import().type_signatures().build().snapshot(),
             @"zqzqzq :: int | str",
@@ -11159,10 +10711,6 @@ def f(zqzqzq: str):
     return
 ",
         );
-        // The type for `zqzqzq` *should* be `Path`, but we consider all
-        // reachable declarations and bindings, which means we get a
-        // union of `str` and `Path` here even though the `str` binding
-        // isn't live at the cursor position.
         assert_snapshot!(
             builder.skip_auto_import().type_signatures().build().snapshot(),
             @"zqzqzq :: str | Path",
@@ -11469,7 +11017,6 @@ def f(x: Intersection[int, Any] | str):
     fn dunder_file_completion() {
         let builder = completion_test_builder("__fil<CURSOR>");
 
-        // __file__ should be `str` when accessed within a module, not `str | None`
         assert_snapshot!(
             builder.skip_keywords().skip_auto_import().type_signatures().build().snapshot(),
             @"__file__ :: str",
@@ -11483,8 +11030,6 @@ def f(x: Intersection[int, Any] | str):
             .source("main.py", "import module; module.__file<CURSOR>")
             .completion_test_builder();
 
-        // __file__ should be `str` when accessed as an attribute on a non-namespace-package module,
-        // not `str | None`
         assert_snapshot!(
             builder.skip_keywords().skip_auto_import().type_signatures().build().snapshot(),
             @"__file__ :: str",
@@ -11501,8 +11046,6 @@ def f(x: Intersection[int, Any] | str):
             )
             .completion_test_builder();
 
-        // __file__ should be `None` when accessed as an attribute on a namespace-package module,
-        // not `str | None`
         assert_snapshot!(
             builder.skip_keywords().skip_auto_import().type_signatures().build().snapshot(),
             @"__file__ :: None",
@@ -11545,14 +11088,6 @@ bar(y_true=y<CURSOR>
         );
     }
 
-    // Ideally, we should favour completions that are definitely raisable
-    // here. However, doing so would require `exception_ty` to fall back to
-    // token matching when AST-matching fails, making the function significantly
-    // more complex. At the time of writing, this trade-off was not
-    // considered worthwhile.
-    //
-    // Note that this only applies to bare raise/raise-from statements with no
-    // characters typed after it. It does not apply to `raise A<CURSOR>`.
     #[test]
     fn empty_raise_statement() {
         let builder = completion_test_builder(
@@ -11619,7 +11154,7 @@ raise <CURSOR>
     /// of completions from a cursor position in source code. Most of
     /// the options involve some kind of filtering or adjustment to
     /// apply to the snapshots, depending on what one wants to test.
-    #[expect(clippy::struct_excessive_bools)] // free the bools!
+    #[expect(clippy::struct_excessive_bools)]
     struct CompletionTestBuilder {
         cursor_test: CursorTest,
         settings: CompletionSettings,
@@ -11629,7 +11164,6 @@ raise <CURSOR>
         type_signatures: bool,
         imports: bool,
         module_names: bool,
-        // This doesn't seem like a "very complex" type to me... ---AG
         #[expect(clippy::type_complexity)]
         predicate: Option<Box<dyn Fn(&Completion) -> bool>>,
         capabilities: CompletionCapabilities,
@@ -11802,12 +11336,6 @@ raise <CURSOR>
             if self.original.is_empty() {
                 return "<No completions found>".to_string();
             } else if self.filtered.is_empty() {
-                // It'd be nice to include the actual number of
-                // completions filtered out, but in practice, the
-                // number is environment dependent. For example, on
-                // Windows, there are 231 builtins, but on Unix, there
-                // are 230. So we just leave out the number I guess.
-                // ---AG
                 return "<No completions found after filtering out completions>".to_string();
             }
             let env = self.db.program_environment();
@@ -11878,11 +11406,6 @@ raise <CURSOR>
         fn completion_test_builder(&self) -> CompletionTestBuilder {
             CompletionTestBuilder {
                 cursor_test: self.build(),
-                // N.B. We very much want to use the default settings
-                // here, so that our test environment matches the
-                // production environment. If a default changes, the
-                // tests should be fixed to accommodate that change
-                // as well. ---AG
                 settings: CompletionSettings::default(),
                 capabilities: CompletionCapabilities::default(),
                 skip_builtins: false,
@@ -11900,7 +11423,6 @@ raise <CURSOR>
         fn completion_test_builder(&self) -> CompletionTestBuilder {
             CompletionTestBuilder {
                 cursor_test: self.build(),
-                // Keep defaults aligned with production completion settings.
                 settings: CompletionSettings::default(),
                 capabilities: CompletionCapabilities::default(),
                 skip_builtins: false,

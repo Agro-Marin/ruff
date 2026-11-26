@@ -182,18 +182,6 @@ impl<'a> Binding<'a> {
     /// redefinition.
     pub fn redefines(&self, existing: &Binding) -> bool {
         match &self.kind {
-            // Submodule imports are only considered redefinitions if they import the same
-            // submodule. For example, this is a redefinition:
-            // ```python
-            // import foo.bar
-            // import foo.bar
-            // ```
-            //
-            // This, however, is not:
-            // ```python
-            // import foo.bar
-            // import foo.baz
-            // ```
             BindingKind::Import(Import {
                 qualified_name: redefinition,
             }) => {
@@ -232,19 +220,12 @@ impl<'a> Binding<'a> {
                 }
                 _ => {}
             },
-            // Deletions, annotations, `__future__` imports, and builtins are never considered
-            // redefinitions.
             BindingKind::Deletion
             | BindingKind::Annotation
             | BindingKind::FutureImport
             | BindingKind::Builtin => {
                 return false;
             }
-            // Assignment-assignment bindings are not considered redefinitions, as in:
-            // ```python
-            // x = 1
-            // x = 2
-            // ```
             BindingKind::Assignment | BindingKind::NamedExprAssignment => {
                 if matches!(
                     existing.kind,
@@ -255,8 +236,6 @@ impl<'a> Binding<'a> {
             }
             _ => {}
         }
-        // Otherwise, the shadowed binding must be a class definition, function definition,
-        // import, or assignment to be considered a redefinition.
         matches!(
             existing.kind,
             BindingKind::ClassDefinition(_)

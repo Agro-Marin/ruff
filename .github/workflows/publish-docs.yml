@@ -1,7 +1,3 @@
-# Publish the Ruff documentation.
-#
-# Assumed to run as a subworkflow of .github/workflows/release.yml; specifically, as a post-announce
-# job within `cargo-dist`.
 name: mkdocs
 
 on:
@@ -31,18 +27,16 @@ jobs:
       name: release
     permissions:
       contents: read
-      id-token: write # for the credential broker
+      id-token: write
     runs-on: ${{ github.repository == 'astral-sh/ruff' && 'github-ubuntu-24.04-x86_64-4' || 'ubuntu-latest' }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - uses: $/.github/actions/setup-ruff-workspace
         with:
-          # Pin to 3.13 to match the docs build in ci.yaml and to avoid missing wheel errors when
-          # uv's default Python version changes.
           python-version: "3.13"
 
       - name: "Set docs version"
@@ -85,7 +79,7 @@ jobs:
 
       - name: "Get docs token"
         id: token
-        uses: astral-sh/github-actions/simple-token-service@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889 # 2026.11.16.0
+        uses: astral-sh/github-actions/simple-token-service@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889
         with:
           exchange-url: ${{ secrets.RELEASES_STS_API_URL }}/exchange
           audience: ${{ secrets.RELEASES_STS_API_URL }}
@@ -95,7 +89,7 @@ jobs:
             pull_requests: write
 
       - name: "Checkout docs repo"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: astral-sh/docs
           ref: main

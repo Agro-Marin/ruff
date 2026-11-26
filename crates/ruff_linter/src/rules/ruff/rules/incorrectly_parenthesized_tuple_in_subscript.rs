@@ -75,21 +75,14 @@ pub(crate) fn subscript_with_parenthesized_tuple(checker: &Checker, subscript: &
         return;
     }
 
-    // We should not handle single starred expressions
-    // (regardless of `prefer_parentheses`)
     if matches!(&tuple_subscript.elts[..], &[Expr::Starred(_)]) {
         return;
     }
 
-    // Adding parentheses in the presence of a slice leads to a syntax error.
     if prefer_parentheses && tuple_subscript.iter().any(Expr::is_slice_expr) {
         return;
     }
 
-    // Removing parentheses in the presence of unpacking leads
-    // to a syntax error in Python 3.10.
-    // This is no longer a syntax error starting in Python 3.11
-    // see https://peps.python.org/pep-0646/#change-1-star-expressions-in-indexes
     if checker.target_version() <= PythonVersion::PY310
         && !prefer_parentheses
         && tuple_subscript.iter().any(Expr::is_starred_expr)
@@ -97,8 +90,6 @@ pub(crate) fn subscript_with_parenthesized_tuple(checker: &Checker, subscript: &
         return;
     }
 
-    // subscripts in annotations, type definitions or class bases are typing subscripts.
-    // These have their own special conventions; skip applying the rule in these cases.
     let semantic = checker.semantic();
     if semantic.in_annotation() || semantic.in_type_definition() || semantic.in_class_base() {
         return;

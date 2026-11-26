@@ -16,7 +16,6 @@ impl FormatNodeRule<ExprBytesLiteral> for FormatExprBytesLiteral {
         if let Some(bytes_literal) = item.as_single_part_bytestring() {
             bytes_literal.format().fmt(f)
         } else {
-            // Always join byte literals that aren't parenthesized and thus, always on a single line.
             if !f.context().node_level().is_parenthesized() {
                 if let Some(format_flat) =
                     FormatImplicitConcatenatedStringFlat::new(item.into(), f.context())

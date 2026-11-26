@@ -74,7 +74,6 @@ impl Violation for TooManyArguments {
 
 /// PLR0913
 pub(crate) fn too_many_arguments(checker: &Checker, function_def: &ast::StmtFunctionDef) {
-    // https://github.com/astral-sh/ruff/issues/14535
     if checker.source_type.is_stub() {
         return;
     }
@@ -91,14 +90,12 @@ pub(crate) fn too_many_arguments(checker: &Checker, function_def: &ast::StmtFunc
     }
 
     // Allow excessive arguments in `@override` or `@overload` methods, since they're required
-    // to adhere to the parent signature.
     if visibility::is_override(&function_def.decorator_list, checker.semantic())
         || visibility::is_overload(&function_def.decorator_list, checker.semantic())
     {
         return;
     }
 
-    // Check if the function is a method or class method.
     let num_arguments = if matches!(
         function_type::classify(
             &function_def.name,
@@ -112,8 +109,6 @@ pub(crate) fn too_many_arguments(checker: &Checker, function_def: &ast::StmtFunc
             | function_type::FunctionType::ClassMethod
             | function_type::FunctionType::NewMethod
     ) {
-        // If so, we need to subtract one from the number of positional arguments, since the first
-        // argument is always `self` or `cls`.
         num_arguments.saturating_sub(1)
     } else {
         num_arguments

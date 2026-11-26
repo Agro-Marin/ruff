@@ -86,13 +86,7 @@ impl OwnedConstraintSetBuilder {
         source_order: SourceOrderId,
         seen_source_orders: &mut FxHashSet<SourceOrderId>,
     ) -> Option<SourceOrderId> {
-        // TODO: Deduplicate source-order constraints when constructing a `ConstraintSet`,
-        // rather than only when freezing it into an `OwnedConstraintSet`.
 
-        // Later occurrences do not affect the order, but retaining them can prevent
-        // recursive queries from converging as their stored trees keep growing.
-        // Source-order nodes are interned, so this also deduplicates atomic constraints
-        // while avoiding an exponential walk through shared subtrees.
         if !seen_source_orders.insert(source_order) {
             return None;
         }
@@ -111,9 +105,6 @@ impl OwnedConstraintSetBuilder {
                 }
             }
             SourceOrder::AtomicConstraint(constraint) => {
-                // If a constraint is not used anywhere in the BDD, and doesn't mention any
-                // typevars that are used in the BDD, we don't have to include it in the compacted
-                // source_order list.
                 let constraint_support_id = storage.constraint_support_id(constraint.into_inner());
                 let constraint_support = storage.support_data(constraint_support_id);
                 if !self.used_constraints[constraint.index()]

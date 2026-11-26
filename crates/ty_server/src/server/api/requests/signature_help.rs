@@ -51,14 +51,12 @@ impl BackgroundDocumentRequestHandler for SignatureHelpRequestHandler {
             return Ok(None);
         };
 
-        // Extract signature help capabilities from the client
         let resolved_capabilities = snapshot.resolved_client_capabilities();
 
         let Some(signature_help_info) = signature_help(db, db.program_file(file), offset) else {
             return Ok(None);
         };
 
-        // Compute active parameter from the active signature
         let active_parameter = signature_help_info
             .active_signature
             .and_then(|s| signature_help_info.signatures.get(s))
@@ -66,7 +64,6 @@ impl BackgroundDocumentRequestHandler for SignatureHelpRequestHandler {
             .and_then(|p| u32::try_from(p).ok())
             .map(ActiveParameter::Int);
 
-        // Convert from IDE types to LSP types
         let signatures = signature_help_info
             .signatures
             .into_iter()
@@ -76,11 +73,9 @@ impl BackgroundDocumentRequestHandler for SignatureHelpRequestHandler {
                     .into_iter()
                     .map(|param| {
                         let label = if resolved_capabilities.supports_signature_label_offset() {
-                            // Find the parameter's offset in the signature label
                             if let Some(start) = sig.label.find(&param.label) {
                                 let encoding = snapshot.encoding();
 
-                                // Convert byte offsets to character offsets based on negotiated encoding
                                 let start_char_offset = match encoding {
                                     PositionEncoding::UTF8 => start,
                                     PositionEncoding::UTF16 => {

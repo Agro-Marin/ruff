@@ -29,7 +29,6 @@ pub(crate) fn annotate_imports<'a>(
                     is_lazy,
                     node_index: _,
                 }) => {
-                    // Find comments above.
                     let mut atop = vec![];
                     while let Some(comment) =
                         comments_iter.next_if(|comment| comment.start() < range.start())
@@ -37,7 +36,6 @@ pub(crate) fn annotate_imports<'a>(
                         atop.push(comment);
                     }
 
-                    // Find comments inline.
                     let mut inline = vec![];
                     let import_line_end = locator.line_end(range.end());
 
@@ -68,7 +66,6 @@ pub(crate) fn annotate_imports<'a>(
                     range: _,
                     node_index: _,
                 }) => {
-                    // Find comments above.
                     let mut atop = vec![];
                     while let Some(comment) =
                         comments_iter.next_if(|comment| comment.start() < import.start())
@@ -76,9 +73,6 @@ pub(crate) fn annotate_imports<'a>(
                         atop.push(comment);
                     }
 
-                    // Find comments inline.
-                    // We associate inline comments with the import statement unless there's a
-                    // single member, and it's a single-line import (like `from foo
                     // import bar  # noqa`).
                     let mut inline = vec![];
                     if names.len() > 1
@@ -95,11 +89,9 @@ pub(crate) fn annotate_imports<'a>(
                         }
                     }
 
-                    // Capture names.
                     let mut aliases: Vec<_> = names
                         .iter()
                         .map(|alias| {
-                            // Find comments above.
                             let mut alias_atop = vec![];
                             while let Some(comment) =
                                 comments_iter.next_if(|comment| comment.start() < alias.start())
@@ -107,7 +99,6 @@ pub(crate) fn annotate_imports<'a>(
                                 alias_atop.push(comment);
                             }
 
-                            // Find comments inline.
                             let mut alias_inline = vec![];
                             let alias_line_end = locator.line_end(alias.end());
                             while let Some(comment) =
@@ -126,13 +117,7 @@ pub(crate) fn annotate_imports<'a>(
                         })
                         .collect();
 
-                    // Capture trailing comments on the _last_ alias, as in:
-                    // ```python
-                    // from foo import (
-                    //     bar,
                     //     # noqa
-                    // )
-                    // ```
                     if let Some(last_alias) = aliases.last_mut() {
                         while let Some(comment) =
                             comments_iter.next_if(|comment| comment.start() < import.end())
@@ -141,12 +126,7 @@ pub(crate) fn annotate_imports<'a>(
                         }
                     }
 
-                    // Capture trailing comments, as in:
-                    // ```python
-                    // from foo import (
-                    //     bar,
                     // )  # noqa
-                    // ```
                     let mut trailing = vec![];
                     let import_line_end = locator.line_end(import.end());
                     while let Some(comment) =

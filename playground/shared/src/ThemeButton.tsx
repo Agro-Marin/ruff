@@ -1,6 +1,3 @@
-/**
- * Button to toggle between light and dark mode themes.
- */
 import { Theme } from "./theme";
 import AstralButton from "./AstralButton";
 

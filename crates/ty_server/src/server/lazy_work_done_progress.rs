@@ -65,7 +65,6 @@ impl LazyWorkDoneProgress {
         if let Some(token) = request_token {
             work_done.begin(token, begin);
         } else if capabilities.supports_work_done_progress() {
-            // Use a string token because Zed does not support numeric tokens
             let token = ProgressToken::String(format!(
                 "ty-{}",
                 SERVER_WORK_DONE_TOKENS.fetch_add(1, Ordering::Relaxed)

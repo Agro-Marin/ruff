@@ -93,8 +93,6 @@ pub(crate) fn too_many_try_statements(
     try_stmt: &StmtTry,
     max_statements: usize,
 ) {
-    // Ignore cases with only `finally` clauses and no `except` handlers. These can't accidentally
-    // catch the wrong exception and are instead being used more like context managers.
     if try_stmt.handlers.is_empty() {
         return;
     }

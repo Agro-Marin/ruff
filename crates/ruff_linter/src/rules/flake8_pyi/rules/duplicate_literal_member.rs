@@ -63,9 +63,7 @@ pub(crate) fn duplicate_literal_member<'a>(checker: &Checker, expr: &'a Expr) {
     let mut unique_nodes: Vec<&Expr> = Vec::new();
     let mut diagnostics = Vec::new();
 
-    // Adds a member to `literal_exprs` if it is a `Literal` annotation
     let mut check_for_duplicate_members = |expr: &'a Expr, _: &'a Expr| {
-        // If we've already seen this literal member, raise a violation.
         if seen_nodes.insert(expr.into()) {
             unique_nodes.push(expr);
         } else {
@@ -78,14 +76,12 @@ pub(crate) fn duplicate_literal_member<'a>(checker: &Checker, expr: &'a Expr) {
         }
     };
 
-    // Traverse the literal, collect all diagnostic members.
     traverse_literal(&mut check_for_duplicate_members, checker.semantic(), expr);
 
     if diagnostics.is_empty() {
         return;
     }
 
-    // If there's at least one diagnostic, create a fix to remove the duplicate members.
     if let Expr::Subscript(subscript) = expr {
         let subscript = Expr::Subscript(ast::ExprSubscript {
             slice: Box::new(if let [elt] = unique_nodes.as_slice() {

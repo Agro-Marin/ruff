@@ -72,12 +72,10 @@ pub(crate) fn camelcase_imported_as_acronym(
     {
         let ignore_names = &checker.settings().pep8_naming.ignore_names;
 
-        // Ignore any explicitly-allowed names.
         if ignore_names.matches(name) || ignore_names.matches(asname) {
             return;
         }
 
-        // Ignore names that follow a community-agreed import convention.
         if is_ignored_because_of_import_convention(asname, stmt, alias, checker) {
             return;
         }
@@ -100,7 +98,6 @@ fn is_ignored_because_of_import_convention(
     checker: &Checker,
 ) -> bool {
     let full_name = if let Some(import_from) = stmt.as_import_from_stmt() {
-        // Never test relative imports for exclusion because we can't resolve the full-module name.
         let Some(module) = import_from.module.as_ref() else {
             return false;
         };
@@ -114,7 +111,6 @@ fn is_ignored_because_of_import_convention(
         std::borrow::Cow::Borrowed(&*alias.name)
     };
 
-    // Ignore names that follow a community-agreed import convention.
     checker
         .settings()
         .flake8_import_conventions

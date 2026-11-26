@@ -2721,8 +2721,6 @@ impl<Context> Format<Context> for BestFitting<'_, Context> {
             buffer.write_element(FormatElement::Tag(EndBestFittingEntry));
         }
 
-        // OK because the constructor guarantees that there are always at
-        // least two variants.
         let variants = BestFittingVariants::from_vec_unchecked(buffer.into_vec());
         let element = FormatElement::BestFitting {
             variants,

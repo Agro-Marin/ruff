@@ -108,7 +108,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let db = self.db();
         let env = self.program_environment();
 
-        // Quoting a nested test identifies which part of the enclosing condition is redundant.
         let should_quote_test_expression = || {
             !matches!(test, ast::Expr::Name(_) | ast::Expr::Attribute(_))
                 || !self.index.is_boolean_test_root(test)
@@ -158,9 +157,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 ) && ((left_type.is_string() && (right_type.is_bytes() || right_type.is_int()))
                     || ((left_type.is_bytes() || left_type.is_int()) && right_type.is_string()))
                 {
-                    // For the specific case of a string-literal type compared with a bytes-literal type,
-                    // cite their nominal-instance supertypes rather than their `Literal` types,
-                    // since their `Literal` types look quite similar in their display representations.
                     for node in [left, single_comparator] {
                         if let Some(class) = self.expression_type(node).nominal_class(db, env) {
                             diagnostic.annotate(
@@ -197,8 +193,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             }
         };
 
-        // Short-circuit evaluation can determine a condition's truthiness even when its
-        // value type does not. In that case, describe the condition rather than the type.
         let describe_as_condition = !truthiness.is_ambiguous()
             && (test_type.is_subtype_of(db, env, KnownClass::Bool.to_instance(db, env))
                 || test_type.bool(db, env) != *truthiness);
@@ -507,9 +501,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             } else if let Some(tuple_spec) = test_type.tuple_instance_spec(db, env)
                 && tuple_spec.len().minimum() > 0
             {
-                // This error message might not be 100% accurate for a tuple subclass
-                // that overrides `__len__` or `__bool__` in a way that's inconsistent
-                // with the tuple's inherited tuple spec, but you just shouldn't do that anyway.
 
                 let length = tuple_spec.len();
 
@@ -525,10 +516,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
                 let mut diagnostic = builder.into_diagnostic(&message);
 
-                // If the tuple has a small number of fixed elements,
-                // describe the whole type of the tuple in the concise message.
-                // Otherwise, avoid printing the full tuple type in the concise message here
-                // (since it can be very long in some cases)
                 if tuple_spec.fixed_elements().len() <= 8 {
                     add_always_truthy_concise_message(&mut diagnostic);
                 } else {
@@ -602,11 +589,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 if SemanticModel::new(db, self.program_file())
                     .definitely_has_builtin_binding("any", ast::AnyNodeRef::from(*test))
                 {
-                    // display-only edits rather than unsafe edits
-                    // because we don't know what the user *really* wanted here!
-                    // Collecting the result into a `tuple` is also a very plausible thing
-                    // they might have wanted to do (a lot of folks think that generator expressions
-                    // are actually "tuple comprehensions").
                     diagnostic.set_fix(Fix::display_only_edits(
                         Edit::insertion("any(".to_string(), test.start()),
                         [Edit::insertion(")".to_string(), test.end())],
@@ -751,8 +733,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 _ => None,
             };
 
-            // This list of builtin types does not need to be exhaustive. We just list the ones
-            // that were most commonly encountered in practice (ecosystem results):
             diagnostic.set_primary_annotation_message(match known_class {
                 Some(KnownClass::Int | KnownClass::Float | KnownClass::Complex) => {
                     "`None` and `0` are both falsy"
@@ -800,9 +780,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             } else if let Some(tuple) = test_type.tuple_instance_spec(db, env)
                 && tuple.len() == TupleLength::Fixed(0)
             {
-                // This error message might not be 100% accurate for a tuple subclass
-                // that overrides `__len__` or `__bool__` in a way that's inconsistent
-                // with the tuple's inherited tuple spec, but you just shouldn't do that anyway.
                 let mut diagnostic = builder.into_diagnostic("An empty tuple is always falsy");
                 add_always_falsy_concise_message(&mut diagnostic);
                 annotate_inferred_type(&mut diagnostic);
@@ -1008,8 +985,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let db = self.db();
         let env = self.program_environment();
 
-        // The ellipsis suggestion is for `tuple[T]`, not named tuples or other
-        // subclasses whose fixed length is part of their definition.
         if length == TupleLength::Fixed(1)
             && let Some(tuple_spec) = node_type.tuple_instance_spec(db, env)
             && let Tuple::Fixed(fixed_length_tuple) = &*tuple_spec
@@ -1094,9 +1069,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let db = self.db();
         let env = self.program_environment();
 
-        // Use the top materialization so concrete return types can be subtypes regardless of
-        // the awaitable's generic arguments. `Any`, `Unknown`, and `Never` do not establish
-        // that a call returns an awaitable.
         let awaitable = KnownClass::Awaitable
             .to_instance(db, env)
             .top_materialization(db, env);
@@ -1159,20 +1131,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             if let Some(stmt) = first_nontrivial_statement(&while_statement.orelse)
                 && self.is_unreachable(stmt)
             {
-                // E.g. for
-                //
-                // ```py
-                // def example(nonempty: tuple[int, int]):
-                //     while nonempty:
-                //         break
-                //     else:
-                //         print("unreachable")
-                // ```
-                //
-                // Since `nonempty` is always truthy, the loop can *only* ever terminate due to
-                // control flow encountering a `break` statement in the loop body. This means
-                // that the `else` suite is unreachable, since `else` suites for `while` and `for`
-                // statements are *only* executed if the control flow never hit a `break`.
                 diagnostic.annotate(
                     self.context
                         .secondary(self.branch_range_until_first_newline(stmt.start(), stmt))
@@ -1185,25 +1143,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 && let Some(stmt) = first_nontrivial_statement(following_suite)
                 && self.is_unreachable(stmt)
             {
-                // E.g. in both cases here, the statement after the `while` loop is unreachable:
-                // the loop condition is always truthy and the loop contains no `break`, so it
-                // can never terminate.
-                //
-                // ```py
-                // def example(nonempty: tuple[int, int]):
-                //     while nonempty:
-                //         print("loop body")
-                //
-                //     print("unreachable")
-                //
-                // def example2(nonempty: tuple[int, int]):
-                //     while nonempty:
-                //         print("loop body")
-                //     else:
-                //         print("unreachable else")
-                //
-                //     print("unreachable following statement")
-                // ```
                 diagnostic.annotate(
                     self.context
                         .secondary(self.branch_range_until_first_newline(stmt.start(), stmt))
@@ -1218,13 +1157,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             && let Some(stmt) = first_nontrivial_statement(&while_statement.body)
             && self.is_unreachable(stmt)
         {
-            // The body of the `while` loop here is unreachable due to the condition being always falsy:
-            //
-            // ```py
-            // def example(empty: tuple[()]):
-            //     while empty:
-            //         print("unreachable")
-            // ```
             diagnostic.annotate(
                 self.context
                     .secondary(self.branch_range_until_first_newline(stmt.start(), stmt))
@@ -1265,17 +1197,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 .find_map(|case| first_nontrivial_statement(&case.body).map(|stmt| (case, stmt)))
             && self.is_unreachable(stmt)
         {
-            // The second `case` branch here is unreachable because the first `case`
-            // has an irrefutable pattern with an always-truthy guard:
-            //
-            // ```py
-            // def example(value: object, nonempty: tuple[int, int]):
-            //     match value:
-            //         case _ if nonempty:
-            //             print("selected")
-            //         case str():
-            //             print("unreachable")
-            // ```
             diagnostic.annotate(
                 self.context
                     .secondary(self.branch_range_until_first_newline(next_case.start(), stmt))
@@ -1285,14 +1206,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             && let Some(stmt) = first_nontrivial_statement(&case.body)
             && self.is_unreachable(stmt)
         {
-            // The `case` body here is unreachable due to the always-falsy guard:
-            //
-            // ```py
-            // def example(value: object, empty: tuple[()]):
-            //     match value:
-            //         case str() if empty:
-            //             print("unreachable")
-            // ```
             diagnostic.annotate(
                 self.context
                     .secondary(self.branch_range_until_first_newline(stmt.start(), stmt))
@@ -1328,7 +1241,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         if full_condition_truthiness.is_always_true() {
             let mut implicit_else_is_unreachable = false;
 
-            // The branch index includes the initial `if`, but `elif_else_clauses` does not.
             if let Some((next_branch, stmt)) = if_stmt.elif_else_clauses[branch_index..]
                 .iter()
                 .find_map(|clause| {
@@ -1336,15 +1248,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 })
                 && self.is_unreachable(stmt)
             {
-                // The `elif` branch here is unreachable because the preceding `if` condition is always true:
-                //
-                // ```py
-                // def example(nonempty: tuple[int, int], flag: bool):
-                //     if nonempty:
-                //         print("selected")
-                //     elif flag:
-                //         print("unreachable")
-                // ```
                 diagnostic.annotate(
                     self.context
                         .secondary(self.branch_range_until_first_newline(next_branch.start(), stmt))
@@ -1358,19 +1261,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 && let Some(stmt) = first_nontrivial_statement(following_suite)
                 && self.is_unreachable(stmt)
             {
-                // The suite following the `if`/`elif`/`else` chain here is unreachable because the final
-                // condition in the chain is always true, and every branch exits.
-                // This leaves no path to the following suite:
-                //
-                // ```py
-                // def example(value: int | str):
-                //     if isinstance(value, int):
-                //         return
-                //     elif isinstance(value, str):
-                //         return
-                //
-                //     print("unreachable")
-                // ```
                 implicit_else_is_unreachable = true;
                 diagnostic.annotate(
                     self.context
@@ -1401,13 +1291,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         } else if let Some(stmt) = first_nontrivial_statement(if_elif_else_suites[branch_index])
             && self.is_unreachable(stmt)
         {
-            // The `if` body here is unreachable because the condition is always false:
-            //
-            // ```py
-            // def example(empty: tuple[()]):
-            //     if empty:
-            //         print("unreachable")
-            // ```
             diagnostic.annotate(
                 self.context
                     .secondary(self.branch_range_until_first_newline(stmt.start(), stmt))
@@ -1449,7 +1332,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
         let mut end = logical_line_end(&source, self.module().tokens(), clause.end());
 
-        // Keep trailing body comments with the `elif`, including those after a nested statement.
         for line in UniversalNewlineIterator::with_offset(&source[usize::from(end)..], end) {
             if line.trim().is_empty() {
                 continue;
@@ -1583,8 +1465,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return None;
         }
 
-        // An indent token can span backslash continuations. In that case, the first statement's
-        // physical indentation may differ from the indentation that determines the body's scope.
         if let Some(token) = tokens.before(first_statement.start()).last()
             && token.kind() == TokenKind::Indent
             && token.start() < first_statement_line_start
@@ -1597,9 +1477,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let test_range = parenthesized_test_range.unwrap_or(test.range());
         let header_prefix_range = TextRange::new(clause.start(), test_range.start());
 
-        // Ruff caches `CommentRanges` in its indexer, but ty does not. Constructing
-        // `CommentRanges` here would scan and index every comment in the file just to check
-        // this small range, so inspect the existing tokens directly instead.
         if tokens
             .in_range(header_prefix_range)
             .iter()

@@ -198,8 +198,6 @@ fn invalid_paths_respect_projection_budgets() {
     let inferable = TypeVarSet::from_typevars(db, [t]);
     let choose = |_, _: &CandidateTypeVarSolution<'_>| PathBoundSolution::Unsolved;
 
-    // Both alternatives fail the declaration. Their retained diagnostics still consume the
-    // path budget, even though neither contributes a valid solution.
     let alternatives = upper(bool).or(db, &builder, || upper(bytes));
     for paths in [0, 1] {
         assert_eq!(
@@ -218,7 +216,6 @@ fn invalid_paths_respect_projection_budgets() {
         );
     }
 
-    // Each retained upper bound also consumes the type budget.
     let conjunction = upper(str).and(db, &builder, || upper(bytes));
     let result = conjunction.solutions_with(
         db,
@@ -315,7 +312,6 @@ fn alternative_constraint_failures_keep_upper_bounds_on_separate_paths() {
         }
     }
 
-    // A failing alternative must not produce a diagnostic when another alternative is valid.
     let set = upper(bool).or(db, &builder, || upper(str));
     let result = set.solutions_with(
         db,
@@ -472,8 +468,6 @@ fn upper_bound_checks_mixed_evidence_after_substitution() {
     });
     let inferable = TypeVarSet::from_typevars(db, [t, u]);
 
-    // Substituting U's validity constraint into U <= T produces the mixed lower bound
-    // list[S] <= T. S is fixed, so it cannot be specialized to make that satisfy T's bound.
     assert!(matches!(
         set.solutions(db, &env, inferable),
         Ok(Solutions::Unsatisfiable(_))
@@ -522,7 +516,6 @@ fn upper_bound_cannot_narrow_a_callable_receiver() {
     let s = create_typevar(db, "S");
     let int = known_instance(db, KnownClass::Int);
     let bound = Type::single_callable(db, Signature::new(Parameters::empty(), Type::object()));
-    // Binding the receiver retains the condition `int <= S` on the signature.
     let callable = Type::single_callable(
         db,
         Signature::new(
@@ -597,7 +590,6 @@ fn unspecialized_phantom_argument_respects_the_evidence_policy() -> anyhow::Resu
         candidates.solve(db, &env, &builder)
     };
 
-    // Adding an unrelated choice for U must not change which bounds count as evidence for T.
     let branched = upper.and(db, &builder, || binary_choice(db, &builder, u, [int, str]));
     assert_eq!(
         solve(upper, UnspecializedTypeVarPolicy::Ignore),
@@ -631,7 +623,6 @@ fn terminal_projections_need_no_paths_or_types() {
     let t = create_typevar(db, "T");
     let builder = ConstraintSetBuilder::new();
 
-    // Terminal answers do not allocate any path or construct any type.
     let terminal_budget = SolutionBudget {
         paths: 0,
         visits: 1,
@@ -665,7 +656,6 @@ fn source_and_interning_order_do_not_change_correlated_projection() {
     let bytes = known_instance(db, KnownClass::Bytes);
     let bool = known_instance(db, KnownClass::Bool);
     let atoms = [(t, int), (t, str), (u, bytes), (u, bool)];
-    // These alternatives do not admit the crossed pairings of T and U.
     let expected = FxHashSet::from_iter([
         solution([binding(t, int), binding(u, bytes)]),
         solution([binding(t, str), binding(u, bool)]),
@@ -721,8 +711,6 @@ fn four_independent_binary_arguments_have_sixteen_solutions() {
         [[1, 2], [3, 4], [5, 6], [7, 8]].map(|choices| choices.map(Type::int_literal));
     let builder = ConstraintSetBuilder::new();
 
-    // Four arguments that independently admit two specializations produce sixteen whole-call
-    // solutions. The limit applies before constructing any of their projected return types.
     let set =
         typevars
             .into_iter()
@@ -847,8 +835,6 @@ fn rejected_exhausted_path_does_not_poison_valid_sibling() {
                 rejected.or(db, &builder, || valid)
             };
 
-            // Only the valid sibling consumes the budget, even when the rejected path had
-            // already selected a type or retained a fallback before finding its contradiction.
             for rejected_binding in [
                 PathBoundSolution::Solved(str),
                 PathBoundSolution::BudgetExceeded {
@@ -987,8 +973,6 @@ fn type_budget_is_charged_before_constructing_a_union() {
                 CandidateSolutions::default_solve(db, &env, &builder, bound)
             },
         );
-        // One additional path is selected to discover that it exceeds the budget; later
-        // paths are not solved.
         assert_eq!(selected, (max_type_terms + 1).min(3));
 
         let mut constructed = 0;
@@ -1061,8 +1045,6 @@ type Recursive = int | Recursive
     let intersection =
         IntersectionType::from_elements(db, &env, [int, Type::int_literal(1).negate(db, &env)]);
 
-    // Existing set operations count their members; aliases cannot hide those members.
-    // An invalid cyclic alias is charged for its recovered value.
     for (ty, terms) in [
         (union, 3),
         (intersection, 3),
@@ -1109,9 +1091,6 @@ class E: ...
     let inferable = TypeVarSet::from_typevars(db, [t]);
     let builder = ConstraintSetBuilder::new();
 
-    // These classes can overlap, so distributing the intersection requires six DNF terms.
-    // Charging the input alone does not prevent that expansion; the fold also needs a bounded
-    // intersection constructor.
     for alternatives in [[left, right], [right, left]] {
         let paths = CandidateSolutions::Constrained(
             alternatives

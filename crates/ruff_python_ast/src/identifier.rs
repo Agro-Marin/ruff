@@ -197,15 +197,12 @@ impl<'a> IdentifierTokenizer<'a> {
                 }
 
                 '\n' => {
-                    // Nothing to do.
                 }
 
                 '\\' => {
-                    // Nothing to do.
                 }
 
                 _ => {
-                    // Nothing to do.
                 }
             }
         }

@@ -33,8 +33,6 @@ mod tests {
     #[test_case(Rule::ShebangNotFirstLine, Path::new("EXE005_3.py"))]
     fn rules(rule: Rule, path: &Path) -> Result<()> {
         if super::helpers::is_wsl() {
-            // these rules are always ignored on WSL, so skip testing them in a WSL environment
-            // see https://github.com/astral-sh/ruff/pull/21724 for latest discussion
             return Ok(());
         }
 

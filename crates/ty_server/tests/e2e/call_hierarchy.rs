@@ -25,7 +25,6 @@ result = my_function()
         .wait_until_workspaces_are_initialized();
     server.open_text_document("foo.py", content, 1);
 
-    // Cursor on the `def my_function` name.
     let items = prepare(&mut server, "foo.py", Position::new(0, 6)).unwrap();
     insta::assert_json_snapshot!(items, @r#"
     [
@@ -77,7 +76,6 @@ def caller():
         .wait_until_workspaces_are_initialized();
     server.open_text_document("foo.py", content, 1);
 
-    // Position on `caller`.
     let items = prepare(&mut server, "foo.py", Position::new(3, 4)).unwrap();
     let calls = outgoing(&mut server, items[0].clone()).unwrap();
     insta::assert_json_snapshot!(calls, @r#"
@@ -160,7 +158,6 @@ def trace(func):
     server.open_text_document("main.py", content, 1);
     let items = prepare(&mut server, "main.py", Position::new(3, 4)).unwrap();
 
-    // The saved position for `label` now falls on the imported `trace` decorator.
     let change = TextDocumentContentChangeWholeDocument {
         text: format!("\n{content}"),
     };
@@ -196,10 +193,7 @@ def use_b():
 
     let items = prepare(&mut server, "lib.py", Position::new(0, 4)).unwrap();
     let mut calls = incoming(&mut server, items[0].clone()).unwrap();
-    // Sort by caller name so the snapshot does not depend on discovery order.
     calls.sort_by(|a, b| a.from.name.cmp(&b.from.name));
-    // In particular, this records that `fromRanges` use the caller files'
-    // line indexes rather than the prepared definition's file.
     insta::assert_json_snapshot!(calls, @r#"
     [
       {

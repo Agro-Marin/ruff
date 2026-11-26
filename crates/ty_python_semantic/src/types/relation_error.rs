@@ -564,7 +564,6 @@ impl<'db> ErrorContext<'db> {
                 target,
                 parameter,
             } => {
-                // reversed order due to contravariance of parameter types
                 format!(
                     "{parameter} has an incompatible type: `{target}` is not {relation} `{source}`",
                     source = source.display(db, env),

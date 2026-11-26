@@ -4,9 +4,6 @@ version = "0.0.1"
 description = "Package for running end-to-end ty benchmarks"
 requires-python = ">=3.14"
 dependencies = [
-    # mypy is installed into each project's virtual environment. See `Venv.install`.
-    # Pyright is missing because we install it with `npm` to avoid measuring the overhead
-    # of the Python wrapper script (that lazily installs Pyright).
     "mslex>=1.3.0",
     "pyrefly==1.4.0",
     "zuban==0.10.2",
@@ -26,7 +23,7 @@ build-backend = "uv_build"
 
 [tool.ruff.lint]
 ignore = [
-    "E501", # We use ruff format
+    "E501",
 ]
 
 [tool.ty.analysis]
@@ -52,7 +49,6 @@ unused-ignore-comment = "error"
 no-build = true
 require-build-hashes = true
 no-binary-package = ["ty-benchmark"]
-# Pin the isolated build environment for source-build exceptions.
 build-constraint-dependencies = [
     { requirement = "uv-build==0.13.5", hashes = [
         "sha256:21b9a3a0c3d3149ae69b00763181b57f64f57e93c90babaacc50e1c8fcd52373",
@@ -80,7 +76,6 @@ exclude-newer = "2026-10-24T19:50:00Z"
 preview-features = ["build-dependency-hashes"]
 
 [tool.uv.exclude-newer-package]
-# Zuban was released after the cutoff used by the other benchmark dependencies.
 zuban = "2026-10-30T00:00:00Z"
 
 [tool.uv.build-backend]

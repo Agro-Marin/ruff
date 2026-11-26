@@ -79,14 +79,10 @@ impl<'db> DunderAllNamesCollector<'db> {
     fn extend(&mut self, expr: &ast::Expr) -> bool {
         let db = self.db;
         match expr {
-            // `__all__ += [...]`
-            // `__all__.extend([...])`
             ast::Expr::List(ast::ExprList { elts, .. })
             | ast::Expr::Tuple(ast::ExprTuple { elts, .. })
             | ast::Expr::Set(ast::ExprSet { elts, .. }) => self.add_names(elts),
 
-            // `__all__ += module.__all__`
-            // `__all__.extend(module.__all__)`
             ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
                 if attr != "__all__" {
                     return false;
@@ -102,7 +98,6 @@ impl<'db> DunderAllNamesCollector<'db> {
                     .map(|file| ProgramFile::new(db, file, self.env.program(db)))
                     .and_then(|file| dunder_all_names(db, file))
                 else {
-                    // The module either does not have a `__all__` variable or it is invalid.
                     return false;
                 };
                 self.names.extend(module_dunder_all_names.iter().cloned());
@@ -128,15 +123,12 @@ impl<'db> DunderAllNamesCollector<'db> {
             return false;
         };
         match function_name.as_str() {
-            // `__all__.extend([...])`
-            // `__all__.extend(module.__all__)`
             "extend" => {
                 if !self.extend(argument) {
                     return false;
                 }
             }
 
-            // `__all__.append(...)`
             "append" => {
                 let Some(name) = create_name(argument) else {
                     return false;
@@ -144,7 +136,6 @@ impl<'db> DunderAllNamesCollector<'db> {
                 self.names.insert(name);
             }
 
-            // `__all__.remove(...)`
             "remove" => {
                 let Some(name) = create_name(argument) else {
                     return false;
@@ -238,13 +229,7 @@ impl<'db> StatementVisitor<'db> for DunderAllNamesCollector<'db> {
         match stmt {
             ast::Stmt::ImportFrom(import_from @ ast::StmtImportFrom { names, .. }) => {
                 for ast::Alias { name, asname, .. } in names {
-                    // `from module import *` where `module` is a module with a top-level `__all__`
-                    // variable that contains the "__all__" element.
                     if name == "*" {
-                        // Here, we need to use the `dunder_all_names` query instead of the
-                        // `exported_names` query because a `*`-import does not import the
-                        // `__all__` attribute unless it is explicitly included in the `__all__` of
-                        // the module.
                         let Some(all_names) = self.dunder_all_names_for_import_from(import_from)
                         else {
                             self.invalid = true;
@@ -256,8 +241,6 @@ impl<'db> StatementVisitor<'db> for DunderAllNamesCollector<'db> {
                             self.names.extend(all_names.iter().cloned());
                         }
                     } else {
-                        // `from module import __all__`
-                        // `from module import __all__ as __all__`
                         if name != "__all__"
                             || asname.as_ref().is_some_and(|asname| asname != "__all__")
                         {
@@ -284,8 +267,6 @@ impl<'db> StatementVisitor<'db> for DunderAllNamesCollector<'db> {
                     return;
                 }
                 match &**value {
-                    // `__all__ = [...]`
-                    // `__all__ = (...)`
                     ast::Expr::List(ast::ExprList { elts, .. })
                     | ast::Expr::Tuple(ast::ExprTuple { elts, .. }) => {
                         self.update_origin(DunderAllOrigin::CurrentModule);
@@ -306,7 +287,6 @@ impl<'db> StatementVisitor<'db> for DunderAllNamesCollector<'db> {
                 ..
             }) => {
                 if self.origin.is_none() {
-                    // We can't update `__all__` if it doesn't already exist.
                     return;
                 }
                 if !is_dunder_all(target) {
@@ -326,8 +306,6 @@ impl<'db> StatementVisitor<'db> for DunderAllNamesCollector<'db> {
                     return;
                 }
                 match &**value {
-                    // `__all__: list[str] = [...]`
-                    // `__all__: tuple[str, ...] = (...)`
                     ast::Expr::List(ast::ExprList { elts, .. })
                     | ast::Expr::Tuple(ast::ExprTuple { elts, .. }) => {
                         self.update_origin(DunderAllOrigin::CurrentModule);
@@ -343,7 +321,6 @@ impl<'db> StatementVisitor<'db> for DunderAllNamesCollector<'db> {
 
             ast::Stmt::Expr(ast::StmtExpr { value: expr, .. }) => {
                 if self.origin.is_none() {
-                    // We can't update `__all__` if it doesn't already exist.
                     return;
                 }
                 let Some(ast::ExprCall {
@@ -406,8 +383,6 @@ impl<'db> StatementVisitor<'db> for DunderAllNamesCollector<'db> {
             }
 
             ast::Stmt::FunctionDef(..) | ast::Stmt::ClassDef(..) => {
-                // Avoid recursing into any nested scopes as `__all__` is only valid at the module
-                // level.
             }
 
             ast::Stmt::AugAssign(..)

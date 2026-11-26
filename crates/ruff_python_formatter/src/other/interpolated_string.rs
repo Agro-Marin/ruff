@@ -37,18 +37,6 @@ pub(crate) enum InterpolatedStringLayout {
 }
 
 impl InterpolatedStringLayout {
-    // Heuristic: Allow breaking the f/t-string expressions across multiple lines
-    // only if there already is at least one multiline expression. This puts the
-    // control in the hands of the user to decide if they want to break the
-    // f/t-string expressions across multiple lines or not. This is similar to
-    // how Prettier does it for template literals in JavaScript.
-    //
-    // If it's single quoted f-string and it contains a multiline expression, then we
-    // assume that the target version of Python supports it (3.12+). If there are comments
-    // used in any of the expression of the f-string, then it's always going to be multiline
-    // and we assume that the target version of Python supports it (3.12+).
-    //
-    // Reference: https://prettier.io/docs/en/next/rationale.html#template-literals
     pub(crate) fn from_interpolated_string_elements(
         elements: &InterpolatedStringElements,
         source: &str,

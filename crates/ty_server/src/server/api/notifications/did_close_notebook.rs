@@ -30,8 +30,6 @@ impl SyncNotificationHandler for DidCloseNotebookHandler {
             .open_document_handle(&uri)
             .with_failure_code(lsp_server::ErrorCode::InternalError)?;
 
-        // We don't need to call publish any diagnostics because we clear
-        // the diagnostics when closing the corresponding cell documents.
         let _ = document
             .close(session, client)
             .with_failure_code(lsp_server::ErrorCode::InternalError)?;

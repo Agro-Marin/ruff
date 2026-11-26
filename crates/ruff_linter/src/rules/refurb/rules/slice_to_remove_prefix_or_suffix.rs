@@ -165,10 +165,6 @@ fn affix_removal_data_expr(if_expr: &ast::ExprIf) -> Option<RemoveAffixData<'_>>
     } = if_expr;
 
     let ast::ExprSubscript { value, slice, .. } = body.as_subscript_expr()?;
-    // Variable names correspond to:
-    // ```python
-    // value[slice] if test else orelse
-    // ```
     affix_removal_data(value, test, orelse, slice)
 }
 
@@ -191,32 +187,14 @@ fn affix_removal_data_stmt(if_stmt: &ast::StmtIf) -> Option<RemoveAffixData<'_>>
         node_index: _,
     } = if_stmt;
 
-    // Cannot safely transform, e.g.,
-    // ```python
-    // if text.startswith(prefix):
-    //     text = text[len(prefix):]
-    // else:
-    //     text = "something completely different"
-    // ```
     if !elif_else_clauses.is_empty() {
         return None;
     }
 
-    // Cannot safely transform, e.g.,
-    // ```python
-    // if text.startswith(prefix):
-    //     text = f"{prefix} something completely different"
-    //     text = text[len(prefix):]
-    // ```
     let [statement] = body.as_slice() else {
         return None;
     };
 
-    // Variable names correspond to:
-    // ```python
-    // if test:
-    //     else_or_target_name = value[slice]
-    // ```
     let ast::StmtAssign {
         value,
         targets,
@@ -264,18 +242,14 @@ fn affix_removal_data<'a>(
     }
     let slice = slice.as_slice_expr()?;
 
-    // Exit early if slice step is...
     if slice
         .step
         .as_deref()
-        // present and
         .is_some_and(|step| match step {
-            // not equal to 1
             ast::Expr::NumberLiteral(ast::ExprNumberLiteral {
                 value: ast::Number::Int(x),
                 ..
             }) => x.as_u8() != Some(1),
-            // and not equal to `None` or `True`
             ast::Expr::NoneLiteral(_)
             | ast::Expr::BooleanLiteral(ast::ExprBooleanLiteral { value: true, .. }) => false,
             _ => true,
@@ -353,7 +327,6 @@ fn affix_matches_slice_bound(data: &RemoveAffixData, semantic: &SemanticModel) -
             }),
         ) => num
             .as_int()
-            // Only support prefix removal for size at most `usize::MAX`
             .and_then(ast::Int::as_usize)
             .is_some_and(|x| x == string_val.chars().count()),
         (
@@ -392,7 +365,6 @@ fn affix_matches_slice_bound(data: &RemoveAffixData, semantic: &SemanticModel) -
             ..
         }) = &**operand =>
         {
-            // Only support prefix removal for size at most `u32::MAX`
             value
                 .as_usize()
                 .is_some_and(|x| x == string_val.chars().count())

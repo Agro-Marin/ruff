@@ -2,7 +2,6 @@ fn is_integer(v: f64) -> bool {
     (v - v.round()).abs() < f64::EPSILON
 }
 
-// TODO: rewrite using format_general
 pub fn to_string(value: f64) -> String {
     let lit = format!("{value:e}");
     if let Some(position) = lit.find('e') {

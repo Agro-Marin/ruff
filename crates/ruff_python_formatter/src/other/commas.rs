@@ -18,7 +18,6 @@ pub(crate) fn has_magic_trailing_comma(range: TextRange, context: &PyFormatConte
 pub(crate) fn has_trailing_comma(range: TextRange, context: &PyFormatContext) -> bool {
     let first_token = SimpleTokenizer::new(context.source(), range)
         .skip_trivia()
-        // Skip over any closing parentheses belonging to the expression
         .find(|token| token.kind() != SimpleTokenKind::RParen);
 
     matches!(

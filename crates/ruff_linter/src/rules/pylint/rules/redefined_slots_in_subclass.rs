@@ -53,9 +53,7 @@ impl Violation for RedefinedSlotsInSubclass {
     }
 }
 
-// PLW0244
 pub(crate) fn redefined_slots_in_subclass(checker: &Checker, class_def: &ast::StmtClassDef) {
-    // Early return if this is not a subclass
     if class_def.bases().is_empty() {
         return;
     }
@@ -63,7 +61,6 @@ pub(crate) fn redefined_slots_in_subclass(checker: &Checker, class_def: &ast::St
     let ast::StmtClassDef { body, .. } = class_def;
     let class_slots = slots_members(body);
 
-    // If there are no slots, we're safe
     if class_slots.is_empty() {
         return;
     }
@@ -84,10 +81,6 @@ struct Slot<'a> {
 }
 
 impl std::cmp::PartialEq for Slot<'_> {
-    // We will only ever be comparing slots
-    // within a class and with the slots of
-    // a super class. In that context, we
-    // want to compare names and not ranges.
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
     }
@@ -125,7 +118,6 @@ fn slots_members(body: &[Stmt]) -> FxHashSet<Slot<'_>> {
     let mut members = FxHashSet::default();
     for stmt in body {
         match stmt {
-            // Ex) `__slots__ = ("name",)`
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
                 let [Expr::Name(ast::ExprName { id, .. })] = targets.as_slice() else {
                     continue;
@@ -136,7 +128,6 @@ fn slots_members(body: &[Stmt]) -> FxHashSet<Slot<'_>> {
                 }
             }
 
-            // Ex) `__slots__: Tuple[str, ...] = ("name",)`
             Stmt::AnnAssign(ast::StmtAnnAssign {
                 target,
                 value: Some(value),
@@ -151,7 +142,6 @@ fn slots_members(body: &[Stmt]) -> FxHashSet<Slot<'_>> {
                 }
             }
 
-            // Ex) `__slots__ += ("name",)`
             Stmt::AugAssign(ast::StmtAugAssign { target, value, .. }) => {
                 let Expr::Name(ast::ExprName { id, .. }) = target.as_ref() else {
                     continue;
@@ -168,7 +158,6 @@ fn slots_members(body: &[Stmt]) -> FxHashSet<Slot<'_>> {
 }
 
 fn slots_attributes(expr: &Expr) -> impl Iterator<Item = Slot<'_>> {
-    // Ex) `__slots__ = ("name",)`
     let elts_iter = match expr {
         Expr::Tuple(ast::ExprTuple { elts, .. })
         | Expr::List(ast::ExprList { elts, .. })
@@ -186,7 +175,6 @@ fn slots_attributes(expr: &Expr) -> impl Iterator<Item = Slot<'_>> {
         _ => None,
     };
 
-    // Ex) `__slots__ = {"name": ...}`
     let keys_iter = match expr {
         Expr::Dict(ast::ExprDict { .. }) => Some(
             expr.as_dict_expr()

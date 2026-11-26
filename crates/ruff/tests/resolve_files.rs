@@ -17,13 +17,6 @@ const TEST_FILTERS: &[(&str, &str)] = &[
 
 #[test]
 fn check_project_include_defaults() {
-    // Defaults to checking the current working directory
-    //
-    // The test directory includes:
-    //  - A pyproject.toml which specifies an include
-    //  - A nested pyproject.toml which has a Ruff section
-    //
-    // The nested project should all be checked instead of respecting the parent includes
 
     insta::with_settings!({
         filters => TEST_FILTERS.to_vec()
@@ -47,7 +40,6 @@ fn check_project_include_defaults() {
 
 #[test]
 fn check_project_respects_direct_paths() {
-    // Given a direct path not included in the project `includes`, it should be checked
 
     insta::with_settings!({
         filters => TEST_FILTERS.to_vec()
@@ -66,7 +58,6 @@ fn check_project_respects_direct_paths() {
 
 #[test]
 fn check_project_respects_subdirectory_includes() {
-    // Given a direct path to a subdirectory, the include should be respected
 
     insta::with_settings!({
         filters => TEST_FILTERS.to_vec()
@@ -85,7 +76,6 @@ fn check_project_respects_subdirectory_includes() {
 
 #[test]
 fn check_project_from_project_subdirectory_respects_includes() {
-    // Run from a project subdirectory, the include specified in the parent directory should be respected
 
     insta::with_settings!({
         filters => TEST_FILTERS.to_vec()

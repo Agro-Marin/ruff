@@ -86,7 +86,6 @@ impl StyledBuffer {
     /// and fills the last line with unstyled whitespace.
     pub(crate) fn puts(&mut self, line: usize, col: usize, string: &str, style: ElementStyle) {
         if string.is_empty() {
-            // don't add trailing whitespace (from column offset) for blank strings
             return;
         }
 
@@ -119,8 +118,6 @@ impl StyledBuffer {
         if start == end {
             return;
         }
-        // If the replacement range would be out of bounds, do nothing, as we
-        // can't replace things that don't exist.
         if start > self.lines[line].len() || end > self.lines[line].len() {
             return;
         };

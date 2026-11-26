@@ -80,14 +80,12 @@ impl Violation for DeprecatedMockImport {
 
 /// Return a vector of all non-`mock` imports.
 fn clean_import_aliases(aliases: Vec<ImportAlias>) -> (Vec<ImportAlias>, Vec<Option<AsName>>) {
-    // Preserve the trailing comma (or not) from the last entry.
     let trailing_comma = aliases.last().and_then(|alias| alias.comma.clone());
 
     let mut clean_aliases: Vec<ImportAlias> = vec![];
     let mut mock_aliases: Vec<Option<AsName>> = vec![];
     for alias in aliases {
         match &alias.name {
-            // Ex) `import mock`
             NameOrAttribute::N(name_struct) => {
                 if name_struct.value == "mock" {
                     mock_aliases.push(alias.asname.clone());
@@ -95,7 +93,6 @@ fn clean_import_aliases(aliases: Vec<ImportAlias>) -> (Vec<ImportAlias>, Vec<Opt
                 }
                 clean_aliases.push(alias);
             }
-            // Ex) `import mock.mock`
             NameOrAttribute::A(attribute_struct) => {
                 if let Expression::Name(name_struct) = &*attribute_struct.value {
                     if name_struct.value == "mock" && attribute_struct.attr.value == "mock" {
@@ -108,7 +105,6 @@ fn clean_import_aliases(aliases: Vec<ImportAlias>) -> (Vec<ImportAlias>, Vec<Opt
         }
     }
 
-    // But avoid destroying any trailing comments.
     if let Some(alias) = clean_aliases.last_mut() {
         let has_comment = if let Some(comma) = &alias.comma {
             match &comma.whitespace_after {
@@ -202,7 +198,6 @@ fn format_import_from(
     let (module, names, is_lazy) = match_import_from(&mut tree)?;
 
     if let ImportNames::Star(..) = names {
-        // Ex) `from mock import *`
         *module = Some(NameOrAttribute::A(Box::new(Attribute {
             value: Box::new(Expression::Name(Box::new(Name {
                 value: "unittest",
@@ -224,7 +219,6 @@ fn format_import_from(
         Ok(tree.codegen_stylist(stylist))
     } else {
         let aliases = match_aliases(names)?;
-        // Ex) `from mock import mock`
         let (clean_aliases, mock_aliases) = clean_import_aliases(aliases.clone());
         Ok(if clean_aliases.is_empty() {
             format_mocks(mock_aliases, is_lazy, indent, stylist)
@@ -286,7 +280,6 @@ pub(crate) fn deprecated_mock_attribute(checker: &Checker, attribute: &ast::Expr
 /// UP026
 pub(crate) fn deprecated_mock_import(checker: &Checker, stmt: &Stmt) {
     match stmt {
-        // Find all `mock` imports.
         Stmt::Import(ast::StmtImport {
             names,
             is_lazy,
@@ -296,15 +289,11 @@ pub(crate) fn deprecated_mock_import(checker: &Checker, stmt: &Stmt) {
             .iter()
             .any(|name| &name.name == "mock" || &name.name == "mock.mock") =>
         {
-            // Explicit `lazy` imports stay lazy because the fix preserves the keyword.
-            // Otherwise, changing the module must preserve whether `__lazy_modules__`
-            // makes the import lazy.
             let can_fix = *is_lazy
                 || names
                     .iter()
                     .filter(|name| matches!(name.name.as_str(), "mock" | "mock.mock"))
                     .all(|name| checker.import_rewrite_preserves_laziness(&name.name, "unittest"));
-            // Generate the fix, if needed, which is shared between all `mock` imports.
             let content = if can_fix && let Some(indent) = indentation(checker.source(), stmt) {
                 match format_import(stmt, indent, checker.locator(), checker.stylist()) {
                     Ok(content) => Some(content),
@@ -317,7 +306,6 @@ pub(crate) fn deprecated_mock_import(checker: &Checker, stmt: &Stmt) {
                 None
             };
 
-            // Add a `Diagnostic` for each `mock` import.
             for name in names {
                 if (&name.name == "mock" || &name.name == "mock.mock")
                     && !is_import_required_by_isort(

@@ -24,7 +24,6 @@ pub(super) fn remove_unused_format_arguments_from_dict(
     transform_expression(source_code, stylist, |mut expression| {
         let dict = match_dict(&mut expression)?;
 
-        // Remove the elements at the given indexes.
         let mut index = 0;
         dict.elements.retain(|_| {
             let is_unused = unused_arguments.contains(&index);
@@ -48,7 +47,6 @@ pub(super) fn remove_unused_keyword_arguments_from_format_call(
     transform_expression(source_code, stylist, |mut expression| {
         let call = match_call_mut(&mut expression)?;
 
-        // Remove the keyword arguments at the given indexes.
         let mut index = 0;
         call.args.retain(|arg| {
             if arg.keyword.is_none() {
@@ -72,12 +70,6 @@ pub(crate) fn remove_unused_positional_arguments_from_format_call(
     locator: &Locator,
     stylist: &Stylist,
 ) -> Result<Edit> {
-    // If we're removing _all_ arguments, we can remove the entire call.
-    //
-    // For example, `"Hello".format(", world!")` -> `"Hello"`, as opposed to `"Hello".format()`.
-    //
-    // However, if the `format` call has other effects, like escaping `{{` to `{` or would raise a
-    // `KeyError` for a missing field name, we preserve the empty call to avoid changing behavior.
     if unused_arguments.len() == call.arguments.len()
         && let Expr::Attribute(attribute) = &*call.func
         && let Expr::StringLiteral(string_expr) = &*attribute.value
@@ -93,7 +85,6 @@ pub(crate) fn remove_unused_positional_arguments_from_format_call(
     transform_expression(source_code, stylist, |mut expression| {
         let call = match_call_mut(&mut expression)?;
 
-        // Remove any unused arguments.
         let mut index = 0;
         call.args.retain(|_| {
             let is_unused = unused_arguments.contains(&index);
@@ -111,30 +102,18 @@ pub(crate) fn remove_exception_handler_assignment(
     bound_exception: &Binding,
     locator: &Locator,
 ) -> Result<Edit> {
-    // Find the position just after the exception name. This is a late pass so we only have the
-    // binding and can't look its parent in the AST up anymore.
-    // ```
-    // except ZeroDivisionError as err:
-    //                             ^^^ This is the bound_exception range
-    //                         ^^^^ lex this range
-    //                         ^ preceding_end (we want to remove from here)
-    // ```
-    // There can't be any comments in that range.
     let mut tokenizer =
         BackwardsTokenizer::up_to(bound_exception.start(), locator.contents(), &[]).skip_trivia();
 
-    // Eat the `as` token.
     let preceding = tokenizer
         .next()
         .context("expected the exception name to be preceded by `as`")?;
     debug_assert_matches!(preceding.kind, SimpleTokenKind::As);
 
-    // Lex to the end of the preceding token, which should be the exception value.
     let preceding = tokenizer
         .next()
         .context("expected the exception name to be preceded by a token")?;
 
-    // Lex forwards, to the `:` token.
     let following = SimpleTokenizer::starts_at(bound_exception.end(), locator.contents())
         .skip_trivia()
         .next()

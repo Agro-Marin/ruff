@@ -649,9 +649,6 @@ pub fn walk_except_handler<V: Transformer + ?Sized>(
 }
 
 pub fn walk_arguments<V: Transformer + ?Sized>(visitor: &V, arguments: &mut Arguments) {
-    // Note that there might be keywords before the last arg, e.g. in
-    // f(*args, a=2, *args2, **kwargs)`, but we follow Python in evaluating first `args` and then
-    // `keywords`. See also [Arguments::arguments_source_order`].
     for arg in &mut *arguments.args {
         visitor.visit_expr(arg);
     }
@@ -661,7 +658,6 @@ pub fn walk_arguments<V: Transformer + ?Sized>(visitor: &V, arguments: &mut Argu
 }
 
 pub fn walk_parameters<V: Transformer + ?Sized>(visitor: &V, parameters: &mut Parameters) {
-    // Defaults are evaluated before annotations.
     for arg in &mut parameters.posonlyargs {
         if let Some(default) = &mut arg.default {
             visitor.visit_expr(default);

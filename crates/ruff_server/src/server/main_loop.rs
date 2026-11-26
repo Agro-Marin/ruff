@@ -75,7 +75,6 @@ impl Server {
                             api::notification(notification)
                         }
 
-                        // Handle the response from the client to a server request
                         Message::Response(response) => {
                             if let Some(handler) = self
                                 .session
@@ -98,7 +97,6 @@ impl Server {
                     scheduler.dispatch(task, &mut self.session, client);
                 }
                 Event::SendResponse(response) => {
-                    // Filter out responses for already canceled requests.
                     if let Some((start_time, method)) = self
                         .session
                         .request_queue_mut()
@@ -128,7 +126,6 @@ impl Server {
     fn next_event(&self) -> Result<Option<Event>, crossbeam::channel::RecvError> {
         select!(
             recv(self.connection.receiver) -> msg => {
-                // Ignore disconnect errors, they're handled by the main loop (it will exit).
                 Ok(msg.ok().map(Event::Message))
             },
             recv(self.main_loop_receiver) -> event => event.map(Some),
@@ -150,12 +147,9 @@ impl Server {
             supports_watched_files || supports_formatting || supports_range_formatting;
 
         if dynamic_registration {
-            // Register all dynamic capabilities here
             let mut registrations = vec![];
 
             if supports_watched_files {
-                // `workspace/didChangeWatchedFiles`
-                // (this registers the configuration file watcher)
                 registrations.push(lsp_types::Registration {
                     id: "ruff-server-watch".into(),
                     method: "workspace/didChangeWatchedFiles".into(),

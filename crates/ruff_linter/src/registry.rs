@@ -378,8 +378,6 @@ impl Rule {
 
     /// Return the URL for the rule documentation.
     pub fn url(&self) -> String {
-        // Every rule has documentation. Calling `explanation()` here would retain all
-        // documentation strings in binaries that only need the URLs.
         format!(
             "{}/rules/{name}",
             env!("CARGO_PKG_HOMEPAGE"),
@@ -519,7 +517,6 @@ mod tests {
 
     #[test]
     fn rule_naming_convention() {
-        // The disallowed rule names are defined in a separate file so that they can also be picked up by add_rule.py.
         let patterns: Vec<_> = include_str!("../resources/test/disallowed_rule_names.txt")
             .trim()
             .split('\n')

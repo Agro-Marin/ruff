@@ -216,7 +216,6 @@ fn generic_arguments_to_type_vars<'a>(
             return None;
         }
 
-        // TODO: Type parameter defaults
         if type_var.default.is_some() {
             return None;
         }

@@ -88,7 +88,6 @@ impl AlwaysFixableViolation for RepeatedEqualityComparison {
 
 /// PLR1714
 pub(crate) fn repeated_equality_comparison(checker: &Checker, bool_op: &ast::ExprBoolOp) {
-    // Map from expression hash to (starting offset, number of comparisons, list
     let mut value_to_comparators: FxHashMap<ComparableExpr, (&Expr, Vec<&Expr>, Vec<usize>)> =
         FxHashMap::with_capacity_and_hasher(bool_op.values.len() * 2, FxBuildHasher);
 
@@ -118,12 +117,10 @@ pub(crate) fn repeated_equality_comparison(checker: &Checker, bool_op: &ast::Exp
         .into_values()
         .sorted_by_key(|(expr, _, _)| expr.start())
     {
-        // If there's only one comparison, there's nothing to merge.
         if comparators.len() == 1 {
             continue;
         }
 
-        // Break into sequences of consecutive comparisons.
         let mut sequences: Vec<(Vec<usize>, Vec<&Expr>)> = Vec::new();
         let mut last = None;
         for (index, comparator) in indices.iter().zip(comparators) {
@@ -149,13 +146,10 @@ pub(crate) fn repeated_equality_comparison(checker: &Checker, bool_op: &ast::Exp
                     .iter()
                     .all(|&c| ComparableExpr::from(c) == first_comparable)
                 {
-                    // Do not flag if all members are identical
                     continue;
                 }
             }
 
-            // if we can determine that all the values are hashable, we can use a set
-            // TODO: improve with type inference
             let all_hashable = comparators
                 .iter()
                 .all(|comparator| comparator.is_literal_expr());
@@ -174,7 +168,6 @@ pub(crate) fn repeated_equality_comparison(checker: &Checker, bool_op: &ast::Exp
                 bool_op.range(),
             );
 
-            // Grab the remaining comparisons.
             let [first, .., last] = indices.as_slice() else {
                 unreachable!("Indices should have at least two elements")
             };
@@ -229,7 +222,6 @@ fn to_allowed_value<'a>(
     value: &'a Expr,
     semantic: &SemanticModel,
 ) -> Option<(&'a Expr, &'a Expr)> {
-    // Ignore, e.g., `foo == bar == baz`.
     let (left, op, right) = value.as_compare_expr()?.as_single()?;
 
     if match bool_op {
@@ -239,7 +231,6 @@ fn to_allowed_value<'a>(
         return None;
     }
 
-    // Ignore self-comparisons, e.g., `foo == foo`.
     if ComparableExpr::from(left) == ComparableExpr::from(right) {
         return None;
     }
@@ -248,8 +239,6 @@ fn to_allowed_value<'a>(
         return None;
     }
 
-    // Ignore `sys.version_info` and `sys.platform` comparisons, which are only
-    // respected by type checkers when enforced via equality.
     if any_over_expr(value, |expr| {
         semantic
             .resolve_qualified_name(expr)

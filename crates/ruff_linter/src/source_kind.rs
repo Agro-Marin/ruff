@@ -229,7 +229,6 @@ impl std::fmt::Display for SourceKindDiff<'_> {
                 writeln!(f, "{diff}")?;
             }
             DiffKind::IpyNotebook(original, modified) => {
-                // Cell indices are 1-based.
                 for ((idx, src_cell), dst_cell) in
                     (1u32..).zip(original.cells()).zip(modified.cells())
                 {
@@ -253,21 +252,6 @@ impl std::fmt::Display for SourceKindDiff<'_> {
                     let mut diff = CodeDiff::new(&src_source_code, &dst_source_code);
                     diff.header(&header.0, &header.1);
 
-                    // Jupyter notebook cells don't necessarily have a newline
-                    // at the end. For example,
-                    //
-                    // ```python
-                    // print("hello")
-                    // ```
-                    //
-                    // For a cell containing the above code, there'll only be one line,
-                    // and it won't have a newline at the end. If it did, there'd be
-                    // two lines, and the second line would be empty:
-                    //
-                    // ```python
-                    // print("hello")
-                    //
-                    // ```
                     diff.missing_newline_hint(false);
 
                     write!(f, "{diff}")?;
@@ -322,11 +306,9 @@ impl std::fmt::Display for CodeDiff<'_> {
         let mut unified = self.diff.unified_diff();
         unified.missing_newline_hint(self.missing_newline_hint);
 
-        // Individual hunks (section of changes)
         for hunk in unified.iter_hunks() {
             writeln!(f, "{}", hunk.header())?;
 
-            // individual lines
             for change in hunk.iter_changes() {
                 let value = change.value().show_nonprinting();
                 match change.tag() {

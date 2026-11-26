@@ -198,10 +198,6 @@ impl NarrowingConstraintsBuilder {
             return node.if_true;
         }
 
-        // Find and absorb cofactors if we can. (See module documentation for more details.)
-        // `if_uncertain` contributes to both cofactors. If either cofactor is already true,
-        // then the remaining cofactor can be lifted into `if_uncertain`, avoiding shapes like
-        // `A or (not A and B)`.
         let when_true = self.add_or_constraint(node.if_true, node.if_uncertain);
         let when_false = self.add_or_constraint(node.if_false, node.if_uncertain);
         if when_true == when_false {
@@ -321,9 +317,6 @@ impl NarrowingConstraintsBuilder {
             return ALWAYS_TRUE;
         }
 
-        // See the "BDDs with lazy unions (or ternary decision diagrams)" section for the edge
-        // calculations below:
-        // https://elixir-lang.org/blog/2025/12/02/lazier-bdds-for-set-theoretic-types/#bdds-with-lazy-unions-or-ternary-decision-diagrams
         let result = match self.cmp_atoms(a, b) {
             Ordering::Equal => {
                 let a_node = self.interiors[a];
@@ -388,8 +381,6 @@ impl NarrowingConstraintsBuilder {
             return ALWAYS_TRUE;
         }
 
-        // See the "Lazier BDDs (for intersections)" section for the edge calculations below:
-        // https://elixir-lang.org/blog/2025/12/02/lazier-bdds-for-set-theoretic-types/#lazier-bdds-for-intersections
         let result = match self.cmp_atoms(a, b) {
             Ordering::Equal => {
                 let a_node = self.interiors[a];

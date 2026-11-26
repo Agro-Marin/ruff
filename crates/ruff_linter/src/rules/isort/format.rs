@@ -4,7 +4,6 @@ use crate::line_width::{LineLength, LineWidthBuilder};
 
 use super::types::{AliasData, ImportCommentSet, ImportFromCommentSet, ImportFromData, Importable};
 
-// Guess a capacity to use for string allocation.
 const CAPACITY: usize = 200;
 
 /// Add a plain import statement to the [`RopeBuilder`].
@@ -71,7 +70,6 @@ pub(crate) fn format_import_from(
         return single_line;
     }
 
-    // We can only inline if none of the aliases have comments.
     if !trailing_comma
         && (aliases.len() == 1
             || aliases.iter().all(

@@ -107,15 +107,6 @@ impl<'s> InlineFileAssertions<'s> {
             let mut collector = AssertionVec::new();
             let mut line_number = file_index.line_index(ranged_assertion.start());
 
-            // Collect all own-line comments on consecutive lines; these all apply to the same line of
-            // code. For example:
-            //
-            // ```py
-            // # error: [unbound-name]
-            // # revealed: Unbound
-            // reveal_type(x)
-            // ```
-            //
             if CommentRanges::is_own_line(ranged_assertion.start(), source) {
                 collector.push(ranged_assertion.into_comment());
                 let mut only_own_line = true;
@@ -136,27 +127,15 @@ impl<'s> InlineFileAssertions<'s> {
 
                     collector.push(ranged_assertion.into_comment());
 
-                    // If we see an end-of-line comment, it has to be the end of the stack,
-                    // otherwise we'd botch this case, attributing all three errors to the `bar`
-                    // line:
-                    //
-                    // ```py
-                    // # error:
-                    // foo  # error:
-                    // bar  # error:
-                    // ```
-                    //
                     if !only_own_line {
                         break;
                     }
                 }
 
                 if only_own_line {
-                    // The collected comments apply to the _next_ line in the code.
                     line_number = line_number.saturating_add(1);
                 }
             } else {
-                // We have a line-trailing comment; it applies to its own line, and is not grouped.
                 collector.push(ranged_assertion.into_comment());
             }
 
@@ -258,7 +237,6 @@ impl<'a> UnparsedAssertion<'a> {
     fn from_comment(comment: &'a str) -> Option<Self> {
         let comment = comment.trim().strip_prefix('#')?.trim();
 
-        // Support other pragma comments coming after `error` or `revealed`, e.g.
         // `# error: [code] # type: ignore` (nested pragma comments)
         let comment = if let Some((before_nested, _)) = comment.split_once('#') {
             before_nested
@@ -413,7 +391,6 @@ impl<'a> ErrorAssertionParser<'a> {
 
         while let Some(character) = self.cursor.bump() {
             match character {
-                // column number
                 '0'..='9' => {
                     if column.is_some() {
                         return Err(ErrorAssertionParseError::MultipleColumnNumbers);
@@ -430,7 +407,6 @@ impl<'a> ErrorAssertionParser<'a> {
                         .map_err(|e| ErrorAssertionParseError::BadColumnNumber(column_str, e))?;
                 }
 
-                // rule code
                 '[' => {
                     if rule.is_some() {
                         return Err(ErrorAssertionParseError::MultipleRuleCodes);
@@ -446,7 +422,6 @@ impl<'a> ErrorAssertionParser<'a> {
                     self.cursor.bump();
                 }
 
-                // message text
                 '"' => {
                     let comment_source = self.comment_source.trim_end();
                     return if comment_source.ends_with('"') {
@@ -466,12 +441,10 @@ impl<'a> ErrorAssertionParser<'a> {
                     };
                 }
 
-                // Some other assumptions we make don't hold true if we hit this branch:
                 '\n' | '\r' => {
                     unreachable!("Assertion comments should never contain newlines")
                 }
 
-                // something else (bad!)...
                 unexpected => {
                     return Err(ErrorAssertionParseError::UnexpectedCharacter {
                         character: unexpected,

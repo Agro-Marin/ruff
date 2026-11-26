@@ -121,7 +121,6 @@ impl<'a> Diff<'a> {
         let cell_ranges = self.cell_ranges();
 
         for (cell_index, range) in cell_ranges {
-            // For non-notebooks, construct and diff only the source surrounding the edits.
             let (range, line_offset) = if cell_index.is_none()
                 && let Some(first) = self.fix.edits().first()
                 && let Some(last) = self.fix.edits().last()
@@ -152,7 +151,6 @@ impl<'a> Diff<'a> {
                 .iter()
                 .filter(|edit| range.contains_range(edit.range()))
                 .collect::<Vec<_>>();
-            // No edits were applied, so there's no need to diff.
             if edits.is_empty() {
                 continue;
             }
@@ -186,7 +184,6 @@ impl<'a> Diff<'a> {
                     ] = group.as_slice()
                     && next_new_index.saturating_sub(*new_index + *len) <= self.merge_window
                 {
-                    // Restore the unchanged lines that `grouped_ops` omitted between the groups.
                     *len = next_new_index + next_len - *new_index;
                     previous.extend_from_slice(rest);
                 } else {
@@ -194,16 +191,12 @@ impl<'a> Diff<'a> {
                 }
             }
 
-            // Find the new line number with the largest number of digits to align all of the line
-            // number separators.
             let last_op = grouped_ops.last().and_then(|group| group.last());
             let largest_new = last_op.map_or_default(|op| op.new_range().end + line_offset);
 
             let digit_with = OneIndexed::new(largest_new).unwrap_or_default().digits();
 
             if let Some(cell_index) = cell_index {
-                // Room for 1 digit, 1 space, 1 `|`, and 1 more following space. This centers the
-                // three colons on the pipe.
                 writeln!(f, "{:>1$} cell {cell_index}", ":::", digit_with.get() + 3)?;
             }
 
@@ -284,13 +277,11 @@ impl<'a> Diff<'a> {
 
         let mut last_end = TextSize::ZERO;
         let Some(notebook_index) = self.notebook_index.as_ref() else {
-            // a regular script file, all the lines will be in one "cell" under the `None` key
             let offset = source_text.text_len();
             let range = TextRange::new(last_end, offset);
             return vec![(None, range)];
         };
 
-        // Partition the source code into end offsets for each cell.
         let mut last_cell_index = OneIndexed::MIN;
         let mut cells: Vec<(Option<usize>, TextRange)> = Vec::new();
         for cell in notebook_index.iter() {
@@ -347,12 +338,8 @@ impl std::fmt::Display for Line {
 }
 
 fn show_nonprinting(s: &str) -> Cow<'_, str> {
-    // The diff includes its line ending in the text to display.
     let content = s.trim_end_matches(['\r', '\n']);
 
-    // Accumulate the comparisons without an early exit so LLVM can vectorize the scan.
-    // The Unicode characters below start with 0xE2 or 0xEF in UTF-8. Other lead bytes
-    // in that range are harmless false positives.
     let mut may_need_replacement = false;
     for byte in content.bytes() {
         let control = byte.is_ascii_control() && byte != b'\t';
@@ -835,19 +822,16 @@ print()
         env.add("notebook.ipynb", NOTEBOOK);
 
         let diagnostics = vec![
-            // adjacent context windows
             env.builder("unused-import", Severity::Error, "`os` imported but unused")
                 .primary("notebook.ipynb", "2:7", "2:9", "")
                 .secondary("notebook.ipynb", "4:7", "4:11", "second cell")
                 .help("Remove unused import: `os`")
                 .build(),
-            // non-adjacent context windows
             env.builder("unused-import", Severity::Error, "`os` imported but unused")
                 .primary("notebook.ipynb", "2:7", "2:9", "")
                 .secondary("notebook.ipynb", "10:4", "10:5", "second cell")
                 .help("Remove unused import: `os`")
                 .build(),
-            // adjacent context windows in the same cell
             env.err()
                 .primary("notebook.ipynb", "4:7", "4:11", "second cell")
                 .secondary("notebook.ipynb", "6:0", "6:5", "print statement")
@@ -917,8 +901,6 @@ print()
         env.show_fix_status(true);
         env.fix_applicability(Applicability::DisplayOnly);
 
-        // Move all of the edits from the later diagnostics to the first diagnostic to simulate a
-        // single diagnostic with edits in different cells.
         let mut diagnostic = diagnostics.swap_remove(0);
         let fix = diagnostic.fix_mut().unwrap();
         let mut edits = fix.edits().to_vec();

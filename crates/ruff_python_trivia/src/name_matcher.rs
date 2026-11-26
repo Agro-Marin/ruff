@@ -68,27 +68,21 @@ impl<'a> NameMatcher<'a> {
 fn unicode_identifiers(mut source: &str) -> impl Iterator<Item = &str> {
     std::iter::from_fn(move || {
         loop {
-            // Only identifiers containing a non-ASCII character can change under NFKC.
-            // The first non-ASCII byte in a UTF-8 string always starts a character.
             let index = source.as_bytes().find_non_ascii_byte()?;
             let (ascii, rest) = source.split_at(index);
             let mut chars = rest.chars();
             let first = chars.next()?;
             if !is_identifier_continuation(first) {
-                // Punctuation such as `…` separates identifiers. Resume just after it.
                 source = chars.as_str();
                 continue;
             }
 
-            // In `obj.myＣache()`, we landed on `Ｃ`. Scan left over `my` and right
-            // over `ache` so we yield the whole identifier and resume at `(`.
             let start = ascii.trim_end_matches(is_identifier_continuation).len();
             let remaining = chars
                 .as_str()
                 .trim_start_matches(is_identifier_continuation);
             let word = &source[start..source.len() - remaining.len()];
             source = remaining;
-            // Skip runs like `1Ｃ`: a Python identifier cannot start with a digit.
             if word.starts_with(is_identifier_start) {
                 return Some(word);
             }
@@ -145,7 +139,6 @@ mod tests {
         assert!(!matcher.may_match("# 中文"));
         assert!(!matcher.may_match("# שלום"));
         assert!(!matcher.may_match("# 🦀"));
-        // There is no precomposed character for 'q' with an acute accent.
         assert!(!matcher.may_match("# q\u{301}"));
         assert!(matcher.may_match("# café\nC = 1"));
         assert!(NameMatcher::new("café").may_match("café = 1"));

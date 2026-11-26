@@ -76,14 +76,9 @@ impl Terminal {
                         ),
                     );
 
-                    // If the `if` statement is known to be exhaustive (by way of including an
-                    // `else`)...
                     if elif_else_clauses.iter().any(|clause| clause.test.is_none()) {
-                        // And all branches return, then the `if` statement returns.
                         terminal = terminal.and_then(branch_terminal);
                     } else if branch_terminal.has_any_return() {
-                        // Otherwise, if any branch returns, we know this can't be a
-                        // non-returning function.
                         terminal = terminal.and_then(Terminal::ConditionalReturn);
                     }
                 }
@@ -94,14 +89,9 @@ impl Terminal {
                             .map(|case| Self::from_body(&case.body, semantic)),
                     ));
 
-                    // If the `match` is known to be exhaustive (by way of including a wildcard
-                    // pattern)...
                     if cases.iter().any(is_wildcard) {
-                        // And all branches return, then the `match` statement returns.
                         terminal = terminal.and_then(branch_terminal);
                     } else {
-                        // Otherwise, if any branch returns, we know this can't be a
-                        // non-returning function.
                         if branch_terminal.has_any_return() {
                             terminal = terminal.and_then(Terminal::ConditionalReturn);
                         }
@@ -114,17 +104,11 @@ impl Terminal {
                     finalbody,
                     ..
                 }) => {
-                    // If the body returns, then this can't be a non-returning function. We assume
-                    // that _any_ statement in the body could raise an exception, so we don't
-                    // consider the body to be exhaustive. In other words, we assume the exception
-                    // handlers exist for a reason.
                     let body_terminal = Self::from_body(body, semantic);
                     if body_terminal.has_any_return() {
                         terminal = terminal.and_then(Terminal::ConditionalReturn);
                     }
 
-                    // If the `finally` block returns, the `try` block must also return. (Similarly,
-                    // if the `finally` block raises, the `try` block must also raise.)
                     terminal = terminal.and_then(Self::from_body(finalbody, semantic));
 
                     let branch_terminal = Terminal::branches(handlers.iter().map(|handler| {
@@ -137,13 +121,11 @@ impl Terminal {
 
                     if orelse.is_empty() {
                         // If there's no `else`, we may fall through, so only mark that this can't
-                        // be a non-returning function if any of the branches return.
                         if branch_terminal.has_any_return() {
                             terminal = terminal.and_then(Terminal::ConditionalReturn);
                         }
                     } else {
                         // If there's an `else`, we won't fall through. If all the handlers and
-                        // the `else` block return,, the `try` block also returns.
                         terminal = terminal.and_then(
                             branch_terminal.branch(Terminal::from_body(orelse, semantic)),
                         );
@@ -156,7 +138,6 @@ impl Terminal {
                     terminal = terminal.and_then(Terminal::RaiseOrReturn);
                 }
                 Stmt::Raise(raise) => {
-                    // Check if this raise is NotImplementedError
                     let is_not_implemented = raise.exc.as_ref().is_some_and(|exc| {
                         let exc = map_callable(exc);
                         semantic.match_builtin_expr(exc, "NotImplementedError")
@@ -181,19 +162,14 @@ impl Terminal {
     /// Combine two [`Terminal`] operators, with one appearing after the other.
     fn and_then(self, other: Self) -> Self {
         match (self, other) {
-            // If one of the operators is `None`, the result is the other operator.
             (Self::None, other) => other,
             (other, Self::None) => other,
 
-            // If one of the operators is `Implicit`, the result is the other operator.
             (Self::Implicit, other) => other,
             (other, Self::Implicit) => other,
 
-            // If both operators are conditional returns, the result is a conditional return.
             (Self::ConditionalReturn, Self::ConditionalReturn) => Self::ConditionalReturn,
 
-            // If one of the operators is `Raise` or `RaiseNotImplemented`, then the function ends
-            // with an explicit `raise` or `return` statement.
             (Self::Raise | Self::RaiseNotImplemented, Self::ConditionalReturn) => {
                 Self::RaiseOrReturn
             }
@@ -201,29 +177,21 @@ impl Terminal {
                 Self::RaiseOrReturn
             }
 
-            // If one of the operators is `Return`, then the function returns.
             (Self::Return, Self::ConditionalReturn) => Self::Return,
             (Self::ConditionalReturn, Self::Return) => Self::Return,
 
-            // All paths through the function end with a `raise` statement.
             (Self::Raise, Self::Raise) => Self::Raise,
-            // All paths through the function end with a `raise NotImplementedError` statement.
             (Self::RaiseNotImplemented, Self::RaiseNotImplemented) => Self::RaiseNotImplemented,
-            // Mixed raises: if one is NotImplementedError and one is regular Raise, result is Raise
             (Self::RaiseNotImplemented, Self::Raise) | (Self::Raise, Self::RaiseNotImplemented) => {
                 Self::Raise
             }
 
-            // All paths through the function end with a `return` statement.
             (Self::Return, Self::Return) => Self::Return,
 
-            // All paths through the function end with a `return` or `raise` statement.
             (Self::Raise | Self::RaiseNotImplemented, Self::Return) => Self::RaiseOrReturn,
 
-            // All paths through the function end with a `return` or `raise` statement.
             (Self::Return, Self::Raise | Self::RaiseNotImplemented) => Self::RaiseOrReturn,
 
-            // All paths through the function end with a `return` or `raise` statement.
             (Self::RaiseOrReturn, _) => Self::RaiseOrReturn,
             (_, Self::RaiseOrReturn) => Self::RaiseOrReturn,
         }
@@ -232,11 +200,9 @@ impl Terminal {
     /// Combine two [`Terminal`] operators from different branches.
     fn branch(self, other: Self) -> Self {
         match (self, other) {
-            // If one of the operators is `None`, the result is the other operator.
             (Self::None, other) => other,
             (other, Self::None) => other,
 
-            // If one of the operators is `Implicit`, the other operator should be downgraded.
             (Self::Implicit, Self::Implicit) => Self::Implicit,
             (Self::Implicit, Self::Raise | Self::RaiseNotImplemented) => Self::Implicit,
             (Self::Raise | Self::RaiseNotImplemented, Self::Implicit) => Self::Implicit,
@@ -247,7 +213,6 @@ impl Terminal {
             (Self::Implicit, Self::ConditionalReturn) => Self::ConditionalReturn,
             (Self::ConditionalReturn, Self::Implicit) => Self::ConditionalReturn,
 
-            // If both operators are conditional returns, the result is a conditional return.
             (Self::ConditionalReturn, Self::ConditionalReturn) => Self::ConditionalReturn,
 
             (Self::Raise | Self::RaiseNotImplemented, Self::ConditionalReturn) => {
@@ -260,21 +225,14 @@ impl Terminal {
             (Self::Return, Self::ConditionalReturn) => Self::Return,
             (Self::ConditionalReturn, Self::Return) => Self::Return,
 
-            // All paths through the function end with a `raise` statement.
             (Self::Raise, Self::Raise) => Self::Raise,
-            // All paths through the function end with a `raise NotImplementedError` statement.
             (Self::RaiseNotImplemented, Self::RaiseNotImplemented) => Self::RaiseNotImplemented,
-            // Mixed raises: if one is NotImplementedError and one is regular Raise, result is Raise
             (Self::RaiseNotImplemented, Self::Raise) | (Self::Raise, Self::RaiseNotImplemented) => {
                 Self::Raise
             }
-            // All paths through the function end with a `return` statement.
             (Self::Return, Self::Return) => Self::Return,
-            // All paths through the function end with a `return` or `raise` statement.
             (Self::Raise | Self::RaiseNotImplemented, Self::Return) => Self::RaiseOrReturn,
-            // All paths through the function end with a `return` or `raise` statement.
             (Self::Return, Self::Raise | Self::RaiseNotImplemented) => Self::RaiseOrReturn,
-            // All paths through the function end with a `return` or `raise` statement.
             (Self::RaiseOrReturn, _) => Self::RaiseOrReturn,
             (_, Self::RaiseOrReturn) => Self::RaiseOrReturn,
         }

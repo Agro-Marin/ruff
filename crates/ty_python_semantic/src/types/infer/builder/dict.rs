@@ -22,24 +22,11 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return None;
         }
 
-        // Fast-path dict(...) in TypedDict context: infer keyword values against fields,
-        // then validate and return the TypedDict type. This also covers `dict(**src)` when `src`
-        // is `TypedDict`-shaped.
         if let Some(tcx) = call_expression_tcx.expected_type()
             && let Some(typed_dict) = tcx
                 .filter_union(db, self.program_environment(), Type::is_typed_dict)
                 .as_typed_dict()
         {
-            // Only speculate the `**kwargs` applicability check. Assignability handles inputs that
-            // are already valid for the target, including gradual and bottom types. The additional
-            // TypedDict-shape check keeps invalid-but-analyzable unpacks on this path so validation
-            // can emit key-level diagnostics instead of falling back to a broad `dict[...]`
-            // assignment error. Unsupported unpacks still fall back to ordinary `dict(...)`
-            // inference.
-            //
-            // Named keyword values are inferred on the real builder so their diagnostics are either
-            // committed with the fast path or left for ordinary `dict(...)` inference when we fall
-            // back.
             let supports_typed_dict_context = {
                 let mut speculative_builder = self.speculate_without_diagnostics();
                 let env = speculative_builder.program_environment();
@@ -81,9 +68,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return None;
         }
 
-        // Lower `dict(a=..., b=...)` to synthetic `(Literal["a"], value)` pairs so we can
-        // reuse dict-literal inference. We key the synthetic name off the value node because
-        // `infer_collection_literal` operates on expressions rather than keywords.
         let items = arguments
             .keywords
             .iter()
@@ -118,14 +102,10 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             call_expression_tcx,
         )
         .or_else(|| {
-            // Empty calls still need constructor validation and have no inferred values to preserve.
             if arguments.is_empty() {
                 return None;
             }
 
-            // Without generic definitions, collection inference still checks all values. Return
-            // `Unknown` in that case to avoid inferring them again. Specialization failures need
-            // ordinary call checking to report argument errors.
             KnownClass::Dict
                 .try_to_class_literal(db, self.program_environment())
                 .and_then(|class| class.generic_context(db))

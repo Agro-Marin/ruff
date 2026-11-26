@@ -54,13 +54,6 @@ impl Default for TypeContext<'_> {
 
 impl<'db> TypeContext<'db> {
     pub(crate) fn new(expected_type: Option<Type<'db>>, kind: TypeContextKind) -> Self {
-        // During generic call argument inference, type variables that cannot yet be specialized are
-        // replaced by `UnspecializedTypeVar`. This marker intentionally carries neither type-variable
-        // identity nor a concrete expected type, and so it should not be treated as a useful constraint.
-        //
-        // This deliberately matches only the bare marker: a partially specialized context such as
-        // `list[UnspecializedTypeVar | int]` still carries useful structure and concrete type
-        // information.
         let expected_type =
             expected_type.filter(|ty| *ty != Type::Dynamic(DynamicType::UnspecializedTypeVar));
 
@@ -81,9 +74,6 @@ impl<'db> TypeContext<'db> {
     pub(super) fn from_origin(ty: Type<'db>, origin: TypeOrigin) -> Self {
         match origin {
             TypeOrigin::Declared => Self::preference(Some(ty)),
-            // Later assignments are validated against the type of an inferred attribute, but it
-            // does not provide a declared type preference, allowing the type of the attribute to
-            // be overwritten by a gradual type.
             TypeOrigin::Inferred => Self::expected(Some(ty)),
         }
     }
@@ -103,7 +93,6 @@ impl<'db> TypeContext<'db> {
     pub(crate) fn should_prefer_expected_type(self) -> bool {
         match self.kind {
             TypeContextKind::Expected { prefer } => prefer,
-            // Preserve a solution inferred from other arguments in the previous fixpoint round.
             TypeContextKind::Inferred => true,
             TypeContextKind::Validity => false,
         }
@@ -153,9 +142,6 @@ impl<'db> TypeContext<'db> {
             Cow::Borrowed(union.elements(db))
         };
 
-        // TODO: We could theoretically attempt to narrow to every element of
-        // the power set of this union. However, this leads to an exponential
-        // explosion of inference attempts, and is rarely needed in practice.
         Some(targets)
     }
 }

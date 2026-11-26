@@ -32,14 +32,12 @@ impl ToLink for NavigationTarget {
     ) -> Option<lsp_types::LocationLink> {
         let file = self.file();
 
-        // Get target_range and URI together to ensure they're consistent (same cell for notebooks)
         let target_location = self
             .full_range()
             .to_lsp_range(db, file, encoding)?
             .into_location()?;
         let target_range = target_location.range;
 
-        // For selection_range, we can use as_local_range since we know it's in the same document/cell
         let selection_range = self
             .focus_range()
             .to_lsp_range(db, file, encoding)?
@@ -69,7 +67,6 @@ impl ToLink for ReferenceTarget {
         src: Option<FileRange>,
         encoding: PositionEncoding,
     ) -> Option<lsp_types::LocationLink> {
-        // Get target_range and URI together to ensure they're consistent (same cell for notebooks)
         let target_location = self
             .range()
             .to_lsp_range(db, self.file(), encoding)?

@@ -82,7 +82,6 @@ pub(crate) fn check(
     let settings = query.settings();
     let document_path = query.virtual_file_path();
 
-    // If the document is excluded, return an empty list of diagnostics.
     if is_document_excluded_for_linting(
         &document_path,
         &settings.file_resolver,
@@ -123,8 +122,6 @@ pub(crate) fn check(
 
     let mut diagnostics_map = DiagnosticsMap::default();
 
-    // Populates all relevant URLs with an empty diagnostic list.
-    // This ensures that documents without diagnostics still get updated.
     if let Some(notebook) = query.as_notebook() {
         for uri in notebook.uris() {
             diagnostics_map.entry(uri.clone()).or_default();
@@ -189,22 +186,17 @@ fn check_python(
 
     let target_version = settings.linter.resolve_target_version(&document_path);
 
-    // Parse once.
     let parsed = parse_unchecked_source(&source_kind, source_type, target_version.parser_version());
 
-    // Map row and column locations to byte slices (lazily).
     let locator = Locator::new(source_kind.source_code());
 
-    // Detect the current code style (lazily).
     let stylist = Stylist::from_tokens(parsed.tokens(), locator.contents());
 
-    // Extra indices from the code.
     let indexer = Indexer::from_tokens(parsed.tokens(), locator.contents());
 
     // Extract the `# noqa` and `# isort: skip` directives from the source.
     let directives = extract_directives(parsed.tokens(), Flags::all(), &locator, &indexer);
 
-    // Parse range suppression comments
     let suppressions = Suppressions::from_tokens(
         locator.contents(),
         parsed.tokens(),
@@ -212,7 +204,6 @@ fn check_python(
         &settings.linter,
     );
 
-    // Generate checks.
     let diagnostics = check_path(
         &document_path,
         package,
@@ -391,7 +382,6 @@ fn to_lsp_diagnostic(
     } else {
         (
             match diagnostic.severity() {
-                // Map lint diagnostics without codes to warning, like in `severity`.
                 _ if diagnostic.id().is_lint() => lsp_types::DiagnosticSeverity::Warning,
                 ruff_db::diagnostic::Severity::Hint => lsp_types::DiagnosticSeverity::Hint,
                 ruff_db::diagnostic::Severity::Info => lsp_types::DiagnosticSeverity::Information,
@@ -484,8 +474,6 @@ fn to_lsp_diagnostic(
         diagnostic.concise_message().to_string()
     };
 
-    // Append sub-diagnostics that have no location (and thus can't be shown as related
-    // information) to the message.
     let mut first = true;
     for sub_diagnostic in diagnostic.sub_diagnostics() {
         if sub_diagnostic.primary_annotation().is_none() {
@@ -591,8 +579,6 @@ fn diagnostic_edit_range(range: TextRange, context: &LspDiagnosticContext) -> ls
 
 fn severity(code: &str) -> lsp_types::DiagnosticSeverity {
     match code {
-        // F821: undefined name <name>
-        // E902: IOError
         "F821" | "E902" => lsp_types::DiagnosticSeverity::Error,
         _ => lsp_types::DiagnosticSeverity::Warning,
     }

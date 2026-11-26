@@ -183,9 +183,6 @@ fn src_subdirectory_takes_precedence_over_repo_root() -> anyhow::Result<()> {
         "from . import nonexistent_submodule",
     )])?;
 
-    // If `./src` didn't take priority over `.` here, we would report
-    // "Module `src.package` has no member `nonexistent_submodule`"
-    // instead of "Module `package` has no member `nonexistent_submodule`".
     assert_cmd_snapshot!(case.command(), @"
     success: false
     exit_code: 1
@@ -216,7 +213,6 @@ fn src_subdirectory_not_added_as_root_if_src_package_exists() -> anyhow::Result<
         ("src/test_box.py", "from .box import Box"),
     ])?;
 
-    // The import is only resolvable because `src` was *not* added as a root.
     assert_cmd_snapshot!(case.command(), @"
     success: true
     exit_code: 0
@@ -333,25 +329,19 @@ fn python_version_inferred_from_system_installation() -> anyhow::Result<()> {
 #[test]
 fn python_argument_trapped_in_a_symlink_factory() -> anyhow::Result<()> {
     let case = CliTest::with_files([
-        // This is the real python binary.
         (
             "opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/bin/python3.13",
             "",
         ),
-        // There's a real site-packages here (although it's basically empty).
         (
             "opt/homebrew/Cellar/python@3.13/3.13.5/lib/python3.13/site-packages/foo.py",
             "",
         ),
-        // There's also a real site-packages here (although it's basically empty).
         ("opt/homebrew/lib/python3.13/site-packages/bar.py", ""),
-        // This has the real stdlib, but the site-packages in this dir is a symlink.
         (
             "opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/abc.py",
             "",
         ),
-        // It's important that this our faux-homebrew not be in the same dir as our working directory
-        // to reproduce the crash, don't ask me why.
         (
             "project/test.py",
             "\
@@ -362,7 +352,6 @@ import colorama
         ),
     ])?;
 
-    // many python symlinks pointing to a single real python (the longest path)
     case.write_symlink(
         "opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/bin/python3.13",
         "opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/bin/python3",
@@ -375,13 +364,11 @@ import colorama
         "opt/homebrew/Cellar/python@3.13/3.13.5/bin/python3",
         "opt/homebrew/bin/python3",
     )?;
-    // the "real" python's site-packages is a symlink to a different dir
     case.write_symlink(
         "opt/homebrew/Cellar/python@3.13/3.13.5/lib/python3.13/site-packages",
         "opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages",
     )?;
 
-    // Try all 4 pythons with absolute paths to our fauxbrew install
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .arg("--python").arg(case.root().join("opt/homebrew/bin/python3")), @"
@@ -691,7 +678,6 @@ fn many_search_paths() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // Shows all with `-v`
     assert_cmd_snapshot!(
         case.command()
             .arg("--python-platform").arg("linux")
@@ -925,7 +911,6 @@ fn python_cli_argument_virtual_environment() -> anyhow::Result<()> {
         (other_venv_path, ""),
     ])?;
 
-    // Passing a path to the installation works
     assert_cmd_snapshot!(case.command().arg("--python").arg("my-venv"), @"
     success: true
     exit_code: 0
@@ -935,7 +920,6 @@ fn python_cli_argument_virtual_environment() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // And so does passing a path to the executable inside the installation
     assert_cmd_snapshot!(case.command().arg("--python").arg(path_to_executable), @"
     success: true
     exit_code: 0
@@ -945,7 +929,6 @@ fn python_cli_argument_virtual_environment() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // But random other paths inside the installation are rejected
     assert_cmd_snapshot!(case.command().arg("--python").arg(other_venv_path), @"
     success: false
     exit_code: 2
@@ -956,7 +939,6 @@ fn python_cli_argument_virtual_environment() -> anyhow::Result<()> {
       Cause: Invalid `--python` argument `<temp_dir>/my-venv/foo/some_other_file.txt`: does not point to a Python executable or a directory on disk
     ");
 
-    // And so are paths that do not exist on disk
     assert_cmd_snapshot!(case.command().arg("--python").arg("not-a-directory-or-executable"), @"
     success: false
     exit_code: 2
@@ -992,7 +974,6 @@ fn python_cli_argument_system_installation() -> anyhow::Result<()> {
         (path_to_executable, ""),
     ])?;
 
-    // Passing a path to the installation works
     assert_cmd_snapshot!(case.command().arg("--python").arg("Python3.11"), @"
     success: true
     exit_code: 0
@@ -1002,7 +983,6 @@ fn python_cli_argument_system_installation() -> anyhow::Result<()> {
     ----- stderr -----
     ");
 
-    // And so does passing a path to the executable inside the installation
     assert_cmd_snapshot!(case.command().arg("--python").arg(path_to_executable), @"
     success: true
     exit_code: 0
@@ -1196,7 +1176,6 @@ fn config_file_python_setting_directory_with_unsupported_python_version() -> any
     Ok(())
 }
 
-// This error message is never emitted on Windows, because Windows installations have simpler layouts
 #[cfg(not(windows))]
 #[test]
 fn unix_system_installation_with_no_lib_directory() -> anyhow::Result<()> {
@@ -1292,7 +1271,6 @@ fn defaults_to_a_new_python_version() -> anyhow::Result<()> {
     ----- stderr -----
     "#);
 
-    // Use default (which should be latest supported)
     let case = CliTest::with_files([
         (
             "ty.toml",
@@ -1489,7 +1467,6 @@ home = ./
 
     write_conda_interpreters(&case)?;
 
-    // Run with nothing set, should find the working venv
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project")), @"
     success: false
@@ -1506,7 +1483,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // An empty VIRTUAL_ENV does not hide the working venv.
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("VIRTUAL_ENV", ""), @"
@@ -1524,7 +1500,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // Run with VIRTUAL_ENV set, should find the active venv
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("VIRTUAL_ENV", case.root().join("myvenv")), @"
@@ -1542,7 +1517,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with CONDA_PREFIX set, should find the child conda
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda/envs/conda-env")), @"
@@ -1560,7 +1534,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with CONDA_PREFIX and CONDA_DEFAULT_ENV set (unequal), should find working venv
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda"))
@@ -1579,8 +1552,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with CONDA_PREFIX and CONDA_DEFAULT_ENV (unequal) and VIRTUAL_ENV set,
-    // should find child active venv
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda"))
@@ -1600,7 +1571,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with CONDA_DEFAULT_ENV set to the directory name of CONDA_PREFIX, should find ChildConda
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda/envs/conda-env"))
@@ -1619,7 +1589,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with _CONDA_ROOT and CONDA_PREFIX (unequal!) set, should find ChildConda
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda/envs/conda-env"))
@@ -1638,7 +1607,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with _CONDA_ROOT and CONDA_PREFIX (equal!) set, should find WorkingVenv
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda"))
@@ -1728,7 +1696,6 @@ home = ./
 
     write_conda_interpreters(&case)?;
 
-    // Run with nothing set, should fail to find anything
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project")), @"
     success: false
@@ -1779,7 +1746,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // Run with VIRTUAL_ENV set, should find the active venv
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("VIRTUAL_ENV", case.root().join("myvenv")), @"
@@ -1797,7 +1763,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with CONDA_PREFIX set, should find the child conda
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda/envs/conda-env")), @"
@@ -1815,7 +1780,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with CONDA_PREFIX and CONDA_DEFAULT_ENV set (unequal), should find base conda
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda"))
@@ -1834,8 +1798,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with CONDA_PREFIX and CONDA_DEFAULT_ENV (unequal) and VIRTUAL_ENV set,
-    // should find child active venv
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda"))
@@ -1855,7 +1817,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with CONDA_PREFIX and CONDA_DEFAULT_ENV (unequal!) set, should find base conda
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda"))
@@ -1874,7 +1835,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with _CONDA_ROOT and CONDA_PREFIX (unequal!) set, should find ChildConda
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda/envs/conda-env"))
@@ -1893,7 +1853,6 @@ home = ./
     ----- stderr -----
     ");
 
-    // run with _CONDA_ROOT and CONDA_PREFIX (equal!) set, should find BaseConda
     assert_cmd_snapshot!(case.command()
         .current_dir(case.root().join("project"))
         .env("CONDA_PREFIX", case.root().join("conda"))
@@ -1993,8 +1952,6 @@ fn default_root_flat_layout_variant() -> anyhow::Result<()> {
         ),
         ("psycopg/__init__.py", ""),
         ("psycopg/box.py", "class Box: ..."),
-        // This import only resolves because of the fact that
-        // `./psycopg` was *not* added as a search path.
         ("psycopg/psycopg/__init__.py", "from psycopg.box import Box"),
     ])?;
 

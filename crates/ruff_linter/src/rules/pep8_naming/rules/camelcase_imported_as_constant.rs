@@ -75,7 +75,6 @@ pub(crate) fn camelcase_imported_as_constant(
     stmt: &Stmt,
     ignore_names: &IgnoreNames,
 ) {
-    // Single-character names are ambiguous. It could be a class or a constant.
     if asname.chars().nth(1).is_none() {
         return;
     }
@@ -85,7 +84,6 @@ pub(crate) fn camelcase_imported_as_constant(
         && str::is_cased_uppercase(asname)
         && !helpers::is_acronym(name, asname)
     {
-        // Ignore any explicitly-allowed names.
         if ignore_names.matches(name) || ignore_names.matches(asname) {
             return;
         }

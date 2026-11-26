@@ -110,8 +110,6 @@ impl NotebookDocument {
                         }))
                     }
                     NotebookCellKind::Custom(_) => {
-                        // Ignore unsupported cell kinds. This arm should never be reached unless a
-                        // client sends a value which is not mentioned/supported in the LSP.
                         None
                     }
                 }
@@ -152,7 +150,6 @@ impl NotebookDocument {
             new_cells.into_iter().map(NotebookCell::new),
         );
 
-        // Re-build the cell-index if new cells were added, deleted or removed
         if !deleted_range.is_empty() || added > 0 {
             self.cell_index.clear();
             self.cell_index.extend(

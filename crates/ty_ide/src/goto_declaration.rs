@@ -251,7 +251,6 @@ class A:
 "#,
         );
 
-        // Should not find the class variable 'x' due to Python's scoping rules
         assert_snapshot!(test.goto_declaration(), @"No goto target found");
     }
 
@@ -350,7 +349,6 @@ FOO = 0
             )
             .build();
 
-        // Should find the submodule file itself
         assert_snapshot!(test.goto_declaration(), @"
         info[goto-declaration]: Go to declaration
          --> main.py:3:7
@@ -373,7 +371,6 @@ FOO = 0
             .source("main.py", r#"from lib import module<CURSOR>"#)
             .build();
 
-        // Should resolve to the actual function definition, not the import statement
         assert_snapshot!(test.goto_declaration(), @"
         info[goto-declaration]: Go to declaration
          --> main.py:1:17
@@ -407,7 +404,6 @@ def func(arg):
             )
             .build();
 
-        // Should resolve to the actual function definition, not the import statement
         assert_snapshot!(test.goto_declaration(), @r#"
         info[goto-declaration]: Go to declaration
          --> main.py:3:7
@@ -530,7 +526,6 @@ def another_helper():
             )
             .build();
 
-        // Should resolve the relative import to find the actual function definition
         assert_snapshot!(test.goto_declaration(), @r#"
         info[goto-declaration]: Go to declaration
          --> package/main.py:3:10
@@ -1264,11 +1259,8 @@ x: i<CURSOR>nt = 42
 "#,
         );
 
-        // Test that we can navigate to builtin types, but don't snapshot the exact content
-        // since typeshed stubs can change frequently
         let result = test.goto_declaration();
 
-        // Should not be "No goto target found" - we should find the builtin int type
         assert!(
             !result.contains("No goto target found"),
             "Should find builtin int type"
@@ -1278,7 +1270,6 @@ x: i<CURSOR>nt = 42
             "Should find builtin int declarations"
         );
 
-        // Should navigate to a stdlib file containing the int class
         assert!(
             result.contains("builtins.pyi"),
             "Should navigate to builtins.pyi"
@@ -1309,7 +1300,6 @@ def outer():
 "#,
         );
 
-        // Should find the variable declaration in the outer scope, not the nonlocal statement
         assert_snapshot!(test.goto_declaration(), @r#"
         info[goto-declaration]: Go to declaration
          --> main.py:8:16
@@ -1340,7 +1330,6 @@ def outer():
 "#,
         );
 
-        // Should find the variable declaration in the outer scope, not the nonlocal statement
         assert_snapshot!(test.goto_declaration(), @r#"
         info[goto-declaration]: Go to declaration
          --> main.py:6:18
@@ -1880,7 +1869,6 @@ def function():
             "#,
         );
 
-        // Should navigate to the __doc__ property in the FunctionType class in typeshed
         let result = test.goto_declaration();
 
         assert!(
@@ -1892,7 +1880,6 @@ def function():
             "Should find builtin __doc__ declarations"
         );
 
-        // Should navigate to a typeshed file containing the __doc__ attribute
         assert!(
             result.contains("types.pyi") || result.contains("builtins.pyi"),
             "Should navigate to typeshed file with __doc__ definition"
@@ -1948,7 +1935,6 @@ class MyClass:
 "#,
         );
 
-        // Should find the ClassType defined in the class body, not fail to resolve
         assert_snapshot!(test.goto_declaration(), @"
         info[goto-declaration]: Go to declaration
          --> main.py:5:40
@@ -2008,7 +1994,6 @@ class MyClass:
             "#,
         );
 
-        // Should navigate to the parameter in both matching overloads
         assert_snapshot!(test.goto_declaration(), @r#"
         info[goto-declaration]: Go to declaration
           --> main.py:14:27
@@ -2543,10 +2528,6 @@ def ab(a: int, *, c: int): ...
             )
             .build();
 
-        // TODO(submodule-imports): I don't *think* this is what we want..?
-        // It's a bit confusing because this symbol is essentially the LHS *and* RHS of
-        // `subpkg = mypackage.subpkg`. As in, it's both defining a local `subpkg` and
-        // loading the module `mypackage.subpkg`, so, it's understandable to get confused!
         assert_snapshot!(test.goto_declaration(), @"
         info[goto-declaration]: Go to declaration
          --> mypackage/__init__.py:2:7
@@ -2581,7 +2562,6 @@ def ab(a: int, *, c: int): ...
             )
             .build();
 
-        // No result is correct!
         assert_snapshot!(test.goto_declaration(), @"No goto target found");
     }
 
@@ -2605,7 +2585,6 @@ def ab(a: int, *, c: int): ...
             )
             .build();
 
-        // Going to the submod module is correct!
         assert_snapshot!(test.goto_declaration(), @"
         info[goto-declaration]: Go to declaration
          --> mypackage/__init__.py:2:14
@@ -2639,7 +2618,6 @@ def ab(a: int, *, c: int): ...
             )
             .build();
 
-        // Going to the subpkg module is correct!
         assert_snapshot!(test.goto_declaration(), @"
         info[goto-declaration]: Go to declaration
          --> mypackage/__init__.py:2:7
@@ -2673,7 +2651,6 @@ def ab(a: int, *, c: int): ...
             )
             .build();
 
-        // Going to the subpkg `int` is correct!
         assert_snapshot!(test.goto_declaration(), @"
         info[goto-declaration]: Go to declaration
          --> mypackage/__init__.py:2:21
@@ -2707,8 +2684,6 @@ def ab(a: int, *, c: int): ...
             )
             .build();
 
-        // The transient submodule binding is skipped because this import statement
-        // immediately shadows it with the imported symbol.
         assert_snapshot!(test.goto_declaration(), @"
         info[goto-declaration]: Go to declaration
          --> mypackage/__init__.py:4:5
@@ -2723,7 +2698,6 @@ def ab(a: int, *, c: int): ...
         ");
     }
 
-    // TODO: Should only return `a: int`
     #[test]
     fn redeclarations() {
         let test = CursorTest::builder()

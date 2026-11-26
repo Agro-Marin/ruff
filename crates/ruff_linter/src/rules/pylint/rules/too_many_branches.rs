@@ -186,7 +186,6 @@ fn num_branches(stmts: &[Stmt]) -> usize {
                         .map(|case| num_branches(&case.body))
                         .sum::<usize>()
             }
-            // The `with` statement is not considered a branch but the statements inside the `with` should be counted.
             Stmt::With(ast::StmtWith { body, .. }) => num_branches(body),
             Stmt::For(ast::StmtFor { body, orelse, .. })
             | Stmt::While(ast::StmtWhile { body, orelse, .. }) => {
@@ -204,8 +203,6 @@ fn num_branches(stmts: &[Stmt]) -> usize {
                 finalbody,
                 ..
             }) => {
-                // Count each `except` clause as a branch; the `else` and `finally` clauses also
-                // count, but the `try` clause itself does not.
                 num_branches(body)
                     + (if orelse.is_empty() {
                         0

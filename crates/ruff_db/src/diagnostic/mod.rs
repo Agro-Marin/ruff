@@ -145,8 +145,6 @@ impl Diagnostic {
     /// primary annotations is allowed, but its rendering may be sub-optimal.
     pub fn annotate(&mut self, ann: Annotation) {
         let annotations = &mut Arc::make_mut(&mut self.inner).annotations;
-        // Most diagnostics have exactly one annotation. Avoid the default allocation of four
-        // annotations on the first push, while retaining normal amortized growth thereafter.
         if annotations.is_empty() {
             annotations.reserve_exact(1);
         }
@@ -520,11 +518,6 @@ struct RenderingSortKey<'a> {
 }
 
 impl Ord for RenderingSortKey<'_> {
-    // Group diagnostics by file and sort them in source order.
-    // For diagnostics at the same location, fall back to severity
-    // (with fatal messages sorting before info messages) and then
-    // finally the diagnostic ID and concise message.
-    // Diagnostics without a file come first. Whole-file diagnostics sort at offset zero.
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         let left = self.diagnostic;
         let right = other.diagnostic;
@@ -552,7 +545,6 @@ impl Ord for RenderingSortKey<'_> {
             return location;
         }
 
-        // Reverse so that, e.g., Fatal sorts before Info.
         let order = left.severity().cmp(&right.severity()).reverse();
         if order.is_ne() {
             return order;
@@ -1294,13 +1286,6 @@ impl Severity {
             Severity::Hint | Severity::Info => AnnotateLevel::INFO,
             Severity::Warning => AnnotateLevel::WARNING,
             Severity::Error => AnnotateLevel::ERROR,
-            // NOTE: Should we really collapse this to "error"?
-            //
-            // After collapsing this, the snapshot tests seem to reveal that we
-            // don't currently have any *tests* with a `fatal` severity level.
-            // And maybe *rendering* this as just an `error` is fine. If we
-            // really do need different rendering, then I think we can add a
-            // `Level::Fatal`. ---AG
             Severity::Fatal => AnnotateLevel::ERROR,
         }
     }
@@ -1706,7 +1691,6 @@ impl PartialEq<SecondaryCode> for &str {
     }
 }
 
-// for `hashbrown::EntryRef`
 impl From<&SecondaryCode> for SecondaryCode {
     fn from(value: &SecondaryCode) -> Self {
         value.clone()

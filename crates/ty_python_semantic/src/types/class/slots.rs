@@ -99,12 +99,9 @@ impl InstanceDictionary {
             | KnownClass::BuiltinFunctionType
             | KnownClass::EllipsisType
             | KnownClass::NoneType => Some(Self::Absent),
-            // Typeshed adds these abstract bases to builtin sequences and mappings even though
-            // they do not occur in their runtime inheritance chains or provide instance storage.
             KnownClass::Sequence | KnownClass::Mapping | KnownClass::MutableMapping => {
                 Some(Self::Absent)
             }
-            // This synthetic base supplies named-tuple members without changing instance layouts.
             KnownClass::NamedTupleFallback => Some(Self::Absent),
             KnownClass::Type
             | KnownClass::BaseException
@@ -289,10 +286,6 @@ impl<'db> StaticClassLiteral<'db> {
     )]
     fn slot_definition(self, db: &'db dyn Db) -> SlotDefinition {
         let body_scope = self.body_scope(db);
-        // A bare annotation does not bind `__slots__`, but an annotated assignment does:
-        //
-        //     __slots__: tuple[str, ...]
-        //     __slots__: tuple[str, ...] = ("value",)
         let Some(symbol) = place_table(db, body_scope)
             .symbol_id("__slots__")
             .filter(|_| self.has_explicit_slots(db))
@@ -305,17 +298,7 @@ impl<'db> StaticClassLiteral<'db> {
                 return SlotDefinition::DynamicOrNone;
             }
 
-            // Dataclasses generate slots for their fields, excluding inherited storage:
-            //
-            //     class Base:
-            //         __slots__ = ("inherited",)
-            //
             //     @dataclass(slots=True, weakref_slot=True)
-            //     class Child(Base):
-            //         inherited: int
-            //         value: int
-            //
-            // Here, `Child.__slots__` contains only `value` and `__weakref__`.
             let Some(field_policy @ CodeGeneratorKind::DataclassLike(_)) =
                 CodeGeneratorKind::from_class(db, self.into())
             else {
@@ -345,10 +328,6 @@ impl<'db> StaticClassLiteral<'db> {
             return SlotDefinition::Names(names.into_boxed_slice());
         };
 
-        // A conditional assignment does not establish one definite layout:
-        //
-        //     if condition:
-        //         __slots__ = ("value",)
         let env = ProgramEnvironment::from_scope(body_scope);
         let use_def = use_def_map(db, body_scope);
         let bindings = use_def.end_of_scope_symbol_bindings(symbol);
@@ -361,18 +340,10 @@ impl<'db> StaticClassLiteral<'db> {
             return SlotDefinition::DynamicOrNone;
         };
 
-        // A single string is itself a slot name: `__slots__ = "value"`.
         if let Some(name) = slots_ty.as_string_literal() {
             return SlotDefinition::Names(Box::new([Name::new(name.value(db))]));
         }
 
-        // Tuple inference preserves individual names, including names supplied indirectly:
-        //
-        //     names = ("first", "second")
-        //     __slots__ = names
-        //
-        // An unknown element prevents recovering every name. A variable-length tuple still
-        // proves the declaration is nonempty when its minimum length is greater than zero.
         if let Some(tuple) = slots_ty.tuple_instance_spec(db, &env) {
             match &*tuple {
                 Tuple::Fixed(tuple) => {
@@ -393,14 +364,6 @@ impl<'db> StaticClassLiteral<'db> {
             }
         }
 
-        // Mutable container types do not retain their individual literal elements:
-        //
-        //     __slots__ = ["value"]
-        //     __slots__ = {"value"}
-        //     __slots__ = {"value": "Documentation"}
-        //
-        // Recover each element's inferred string-literal type from the single reaching class-body
-        // assignment instead, so names supplied through other variables are also recognized.
         let Ok(definition) = use_def
             .end_of_scope_symbol_bindings(symbol)
             .filter_map(|binding| binding.binding.definition())
@@ -470,11 +433,7 @@ impl<'db> StaticClassLiteral<'db> {
 
             let base = match base.class_literal(db) {
                 ClassLiteral::Static(base) => base,
-                // Functional named tuples synthesize empty slots, while TypedDict instances use
-                // dictionary item storage rather than an instance-attribute dictionary.
                 ClassLiteral::DynamicNamedTuple(_) | ClassLiteral::DynamicTypedDict(_) => continue,
-                // Enum instances retain an instance dictionary even when the enum is created
-                // through the functional API.
                 ClassLiteral::DynamicEnum(_) => {
                     dictionary = InstanceDictionary::Present;
                     continue;
@@ -537,8 +496,6 @@ impl<'db> StaticClassLiteral<'db> {
 
     /// Whether this class creates a descriptor for `name` in its own namespace.
     pub(in crate::types) fn has_own_slot_descriptor(self, db: &'db dyn Db, name: &str) -> bool {
-        // The inherited `object.__dict__` annotation already describes dictionary access. A
-        // synthesized slot descriptor would incorrectly replace the class's own namespace.
         name != "__dict__"
             && self
                 .slot_names(db)

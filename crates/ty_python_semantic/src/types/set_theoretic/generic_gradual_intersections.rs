@@ -77,9 +77,6 @@ fn base_top_intersection<'db>(
     let (base_class, base_specialization) = base.class_specialization(db, env)?;
     let (subclass_class, subclass_specialization) = subclass.class_specialization(db, env)?;
 
-    // As a deliberately unsound exception, allow `Iterable` as the base when the subclass is
-    // nominal or is the `Iterator` protocol. We assume containers and iterators obey their
-    // behavioral contracts, including agreement between iteration and indexing.
     let is_iterable_special_case = base_class.known(db) == Some(KnownClass::Iterable)
         && (subclass.is_nominal_instance()
             || subclass_class.known(db) == Some(KnownClass::Iterator));
@@ -102,9 +99,6 @@ fn base_top_intersection<'db>(
             _ => None,
         })?;
 
-    // Inspect lazy attributes only after establishing that the classes are related. Expanding a
-    // recursive generic alias or member can re-enter intersection simplification with ever-growing
-    // type arguments. Exact recursive specializations can still be checked.
     if contains_growing_type(db, env, base) {
         return Some(GenericIntersection::Recursive);
     }
@@ -170,7 +164,6 @@ fn base_top_intersection<'db>(
 
     if subclass_class.known(db) == Some(KnownClass::Tuple) {
         let tuple = subclass_specialization.tuple(db)?;
-        // A homogeneous tuple would lose the shape of any fixed prefix or suffix.
         if tuple.fixed_elements().next().is_some() {
             return None;
         }
@@ -208,7 +201,6 @@ fn dynamic_generalization_intersection<'db>(
     general: Type<'db>,
     specific: Type<'db>,
 ) -> Option<Type<'db>> {
-    // Fast path to avoid performance regressions.
     if !general.has_dynamic(db, env)
         || matches!(general, Type::TypeVar(_) | Type::NewTypeInstance(_))
         || matches!(specific, Type::TypeVar(_) | Type::NewTypeInstance(_))
@@ -227,7 +219,6 @@ fn dynamic_generalization_intersection<'db>(
         return None;
     };
 
-    // Top and bottom materializations are not gradual types.
     if general_class != specific_class
         || general_specialization == specific_specialization
         || general_specialization.materialization_kind(db).is_some()

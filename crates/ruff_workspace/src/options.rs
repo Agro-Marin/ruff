@@ -193,7 +193,6 @@ pub struct Options {
     )]
     pub preview: Option<bool>,
 
-    // File resolver options
     /// A list of file patterns to exclude from formatting and linting.
     ///
     /// Exclusions are based on globs, and can be either:
@@ -329,7 +328,6 @@ pub struct Options {
     )]
     pub extension: Option<FxHashMap<String, Language>>,
 
-    // Generic python options
     /// A list of builtins to treat as defined references, in addition to the
     /// system builtins.
     #[option(
@@ -636,7 +634,6 @@ impl<'de> Deserialize<'de> for DeprecatedTopLevelLintOptions {
     where
         D: Deserializer<'de>,
     {
-        // Temporarily disable span information because the flattened values don't retain spans.
         let _guard = ValueSourceGuard::without_spans();
         LintCommonOptions::deserialize(deserializer).map(Self)
     }
@@ -644,9 +641,6 @@ impl<'de> Deserialize<'de> for DeprecatedTopLevelLintOptions {
 
 impl OptionsMetadata for DeprecatedTopLevelLintOptions {
     fn record(_visit: &mut dyn Visit) {
-        // Intentionally empty. Omit all fields from the documentation and instead promote the options under the `lint.` section.
-        // This doesn't create an empty 'common' option  because the field in the `Options` struct is marked with `#[serde(flatten)]`.
-        // Meaning, the code here flattens no-properties into the parent, which is what we want.
     }
 }
 
@@ -684,9 +678,6 @@ impl schemars::JsonSchema for DeprecatedTopLevelLintOptions {
     }
 }
 
-// Note: This struct should be inlined into [`LintOptions`] once support for the top-level lint settings
-// is removed.
-// Don't add any new options to this struct. Add them to [`LintOptions`] directly to avoid exposing them in the
 // global settings.
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(
@@ -694,7 +685,6 @@ impl schemars::JsonSchema for DeprecatedTopLevelLintOptions {
 )]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct LintCommonOptions {
-    // WARNING: Don't add new options to this type. Add them to `LintOptions` instead.
     /// A list of allowed "confusable" Unicode characters to ignore when
     /// enforcing `RUF001`, `RUF002`, and `RUF003`.
     #[option(
@@ -987,7 +977,6 @@ pub struct LintCommonOptions {
     )]
     pub unfixable: Option<Vec<UnresolvedRuleSelector>>,
 
-    // WARNING: Don't add new options to this type. Add them to `LintOptions` instead.
     /// Options for the `flake8-annotations` plugin.
     #[option_group]
     pub flake8_annotations: Option<Flake8AnnotationsOptions>,
@@ -1088,9 +1077,7 @@ pub struct LintCommonOptions {
     #[option_group]
     pub pyupgrade: Option<PyUpgradeOptions>,
 
-    // WARNING: Don't add new options to this type. Add them to `LintOptions` instead.
 
-    // Tables are required to go last.
     /// A list of mappings from file pattern to rule codes or prefixes to
     /// exclude, when considering any matching files. An initial '!' negates
     /// the file pattern.
@@ -1124,7 +1111,6 @@ pub struct LintCommonOptions {
         "#
     )]
     pub extend_per_file_ignores: Option<FxHashMap<String, Vec<UnresolvedRuleSelector>>>,
-    // WARNING: Don't add new options to this type. Add them to `LintOptions` instead.
 }
 
 /// Options for the `flake8-annotations` plugin.
@@ -1469,7 +1455,6 @@ impl Flake8BuiltinsOptions {
             strict_checking: self
                 .strict_checking
                 .or(self.builtins_strict_checking)
-                // use the old default of true on non-preview
                 .unwrap_or_default(),
         }
     }
@@ -1773,9 +1758,6 @@ impl<'de> Deserialize<'de> for Alias {
         D: Deserializer<'de>,
     {
         let name = String::deserialize(deserializer)?;
-        // Assigning to "__debug__" is a SyntaxError
-        // see the note here:
-        // https://docs.python.org/3/library/constants.html#debug__
         if &*name == "__debug__" {
             return Err(de::Error::invalid_value(
                 de::Unexpected::Str(&name),
@@ -3010,7 +2992,6 @@ pub struct IsortOptions {
     )]
     length_sort_straight: Option<bool>,
 
-    // Tables are required to go last.
     /// A list of mappings from section names to modules.
     ///
     /// By default, imports are categorized according to their type (e.g., `future`, `third-party`,
@@ -3059,7 +3040,6 @@ impl IsortOptions {
     pub(crate) fn try_into_settings(
         self,
     ) -> Result<isort::settings::Settings, isort::settings::SettingsError> {
-        // Verify that if `no_sections` is set, then `section_order` is empty.
         let no_sections = self.no_sections.unwrap_or_default();
         if no_sections && self.section_order.is_some() {
             warn_user_once!("`section-order` is ignored when `no-sections` is set to `true`");
@@ -3071,7 +3051,6 @@ impl IsortOptions {
             warn_user_once!("`sections` is ignored when `no-sections` is set to `true`");
         }
 
-        // Verify that if `force_sort_within_sections` is `True`, then `lines_between_types` is set to `0`.
         let force_sort_within_sections = self.force_sort_within_sections.unwrap_or_default();
         let lines_between_types = self.lines_between_types.unwrap_or_default();
         if force_sort_within_sections && lines_between_types != 0 {
@@ -3081,7 +3060,6 @@ impl IsortOptions {
             );
         }
 
-        // Extract any configuration options that deal with user-defined sections.
         let mut section_order: Vec<_> = self
             .section_order
             .unwrap_or_else(|| ImportType::iter().map(ImportSection::Known).collect());
@@ -3137,7 +3115,6 @@ impl IsortOptions {
         let from_first = self.from_first.unwrap_or_default();
         let sections = self.sections.unwrap_or_default();
 
-        // Verify that `sections` doesn't contain any built-in sections.
         let sections: FxHashMap<String, Vec<IdentifierPattern>> = sections
             .into_iter()
             .filter_map(|(section, modules)| match section {
@@ -3159,7 +3136,6 @@ impl IsortOptions {
             })
             .collect::<Result<_, _>>()?;
 
-        // Verify that `section_order` doesn't contain any duplicates.
         let mut seen = FxHashSet::with_capacity_and_hasher(section_order.len(), FxBuildHasher);
         for section in &section_order {
             if !seen.insert(section) {
@@ -3170,7 +3146,6 @@ impl IsortOptions {
             }
         }
 
-        // Verify that all sections listed in `section_order` are defined in `sections`.
         for section in &section_order {
             if let ImportSection::UserDefined(section_name) = section {
                 if !sections.contains_key(section_name) {
@@ -3179,7 +3154,6 @@ impl IsortOptions {
             }
         }
 
-        // Verify that all sections listed in `no_lines_before` are defined in `sections`.
         for section in &no_lines_before {
             if let ImportSection::UserDefined(section_name) = section {
                 if !sections.contains_key(section_name) {
@@ -3193,7 +3167,6 @@ impl IsortOptions {
 
         let import_heading = self.import_heading.unwrap_or_default();
 
-        // Verify that all sections listed in `import_heading` are defined in `sections`.
         let mut import_heading_sections = import_heading.keys().collect::<Vec<_>>();
         import_heading_sections.sort_unstable();
         for section in import_heading_sections {
@@ -3204,7 +3177,6 @@ impl IsortOptions {
             }
         }
 
-        // Verify that `default_section` is in `section_order`.
         if !section_order.contains(&default_section) {
             warn_user_once!(
                 "`section-order` must contain `default-section`: {:?}",
@@ -3759,7 +3731,7 @@ pub struct PylintOptions {
     ///
     /// If not specified, defaults to the value of `max-args`.
     #[option(
-        default = r"5", // Needs to be in sync with default of `max-args`.
+        default = r"5",
         value_type = "int",
         example = r"max-positional-args = 3"
     )]
@@ -4415,7 +4387,6 @@ pub struct AnalyzeOptions {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LintOptionsWire {
-    // common: LintCommonOptions
     allowed_confusables: Option<Vec<char>>,
     dummy_variable_rgx: Option<String>,
     extend_ignore: Option<Vec<UnresolvedRuleSelector>>,
@@ -4598,7 +4569,6 @@ mod tests {
     fn flake8_self_options() {
         let default_settings = flake8_self::settings::Settings::default();
 
-        // Uses defaults if no options are specified.
         let options = Flake8SelfOptions {
             ignore_names: None,
             extend_ignore_names: None,
@@ -4606,7 +4576,6 @@ mod tests {
         let settings = options.into_settings();
         assert_eq!(settings.ignore_names, default_settings.ignore_names);
 
-        // Uses ignore_names if specified.
         let options = Flake8SelfOptions {
             ignore_names: Some(vec![Name::new_static("_foo")]),
             extend_ignore_names: None,
@@ -4614,7 +4583,6 @@ mod tests {
         let settings = options.into_settings();
         assert_eq!(settings.ignore_names, vec![Name::new_static("_foo")]);
 
-        // Appends extend_ignore_names to defaults if only extend_ignore_names is specified.
         let options = Flake8SelfOptions {
             ignore_names: None,
             extend_ignore_names: Some(vec![Name::new_static("_bar")]),
@@ -4629,7 +4597,6 @@ mod tests {
                 .collect::<Vec<_>>()
         );
 
-        // Appends extend_ignore_names to ignore_names if both are specified.
         let options = Flake8SelfOptions {
             ignore_names: Some(vec![Name::new_static("_foo")]),
             extend_ignore_names: Some(vec![Name::new_static("_bar")]),

@@ -57,16 +57,11 @@ struct AmbiguousReturnMerger<'env, 'db> {
 
 impl<'db> AmbiguousReturnMerger<'_, 'db> {
     fn merge(&self, types: &[Type<'db>]) -> Type<'db> {
-        // Differing leaves retain this marker so cycle recovery can recognize when overload
-        // ambiguity caused a loss of precision.
         let unknown = Type::Dynamic(DynamicType::AmbiguousOverload);
         if types.contains(&unknown) {
             return unknown;
         }
 
-        // Compare all candidates together: equivalent types can have different structures, so
-        // replacing an equivalent pair with one representative before considering other
-        // candidates can make the result depend on overload order.
         if let Some(equivalent) = self.equivalent_representative(types) {
             return equivalent;
         }
@@ -85,8 +80,6 @@ impl<'db> AmbiguousReturnMerger<'_, 'db> {
             return None;
         }
 
-        // An equivalent `Any` or ordinary `Unknown` must not erase the provenance that allows
-        // cycle recovery to recognize a loss of precision from overload ambiguity.
         Some(
             types
                 .iter()
@@ -202,8 +195,6 @@ impl<'db> AmbiguousReturnMerger<'_, 'db> {
                     .iter()
                     .map(|specialization| specialization.types(db)[index])
                     .collect();
-                // Packs have callable or tuple encodings that cannot be replaced by an ordinary
-                // dynamic type. Retain equivalent packs while merging other type arguments.
                 if typevar.is_paramspec(db) || typevar.is_typevartuple(db) {
                     self.equivalent_representative(&arguments)
                 } else {

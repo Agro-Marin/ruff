@@ -71,21 +71,17 @@ pub(crate) fn invalid_function_name(
     ignore_names: &IgnoreNames,
     semantic: &SemanticModel,
 ) {
-    // Ignore any function names that are already lowercase.
     if str::is_lowercase(name) {
         return;
     }
 
     // Ignore any functions that are explicitly `@override` or `@overload`.
-    // These are defined elsewhere, so if they're first-party,
-    // we'll flag them at the definition site.
     if visibility::is_override(decorator_list, semantic)
         || visibility::is_overload(decorator_list, semantic)
     {
         return;
     }
 
-    // Ignore any explicitly-allowed names.
     if ignore_names.matches(name) {
         return;
     }
@@ -94,7 +90,6 @@ pub(crate) fn invalid_function_name(
         .current_statement_parent()
         .and_then(|parent| parent.as_class_def_stmt());
 
-    // Ignore the visit_* methods of the ast.NodeVisitor and ast.NodeTransformer classes.
     if name.starts_with("visit_")
         && parent_class.is_some_and(|class| {
             any_base_class(class, semantic, |superclass| {
@@ -108,7 +103,6 @@ pub(crate) fn invalid_function_name(
         return;
     }
 
-    // Ignore the do_* methods of the http.server.BaseHTTPRequestHandler class and its subclasses
     if name.starts_with("do_")
         && parent_class.is_some_and(|class| {
             any_base_class(class, semantic, |superclass| {

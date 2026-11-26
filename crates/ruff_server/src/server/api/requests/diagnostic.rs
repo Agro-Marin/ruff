@@ -30,7 +30,6 @@ impl super::BackgroundDocumentRequestHandler for DocumentDiagnostic {
         Ok(RelatedFullDocumentDiagnosticReport {
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                // TODO(jane): eventually this will be important for caching diagnostic information.
                 result_id: None,
                 items: diagnostics,
             },

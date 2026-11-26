@@ -277,14 +277,12 @@ function useCheckResult(
   const deferredRevision = useDeferredValue(revision);
 
   return useMemo(() => {
-    // Determine which file handle to use
     const currentHandle =
       currentVendoredFileHandle ??
       (files.selected == null ? null : files.metadata[files.selected].handle);
 
     const isVendoredFile = currentVendoredFileHandle != null;
 
-    // Regular file handling
     if (currentHandle == null || !isPythonFile(currentHandle)) {
       return {
         diagnostics: [],
@@ -295,7 +293,6 @@ function useCheckResult(
     }
 
     try {
-      // Don't run diagnostics for vendored files - always empty
       const diagnostics = isVendoredFile
         ? []
         : workspace.checkFile(currentHandle);
@@ -338,7 +335,6 @@ function useCheckResult(
         };
       }
 
-      // Convert diagnostics (empty array for vendored files)
       const serializedDiagnostics = diagnostics.map((diagnostic) => ({
         id: diagnostic.id(),
         message: diagnostic.message(),
@@ -365,8 +361,6 @@ function useCheckResult(
         secondary: null,
       };
     }
-    // Monaco document edits mutate the workspace in place. The deferred
-    // revision is an invalidation token for this memoized check.
     // oxlint-disable-next-line react/exhaustive-deps
   }, [
     files,

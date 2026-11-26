@@ -45,22 +45,18 @@ impl AlwaysFixableViolation for NonEmptyStubBody {
 
 /// PYI010
 pub(crate) fn non_empty_stub_body(checker: &Checker, body: &[Stmt]) {
-    // Ignore multi-statement bodies (covered by PYI048).
     let [stmt] = body else {
         return;
     };
 
-    // Ignore `pass` statements (covered by PYI009).
     if stmt.is_pass_stmt() {
         return;
     }
 
-    // Ignore docstrings (covered by PYI021).
     if is_docstring_stmt(stmt) {
         return;
     }
 
-    // Ignore `...` (the desired case).
     if let Stmt::Expr(ast::StmtExpr {
         value,
         range: _,

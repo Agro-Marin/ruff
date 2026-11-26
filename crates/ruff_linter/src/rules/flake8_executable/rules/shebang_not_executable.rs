@@ -52,8 +52,6 @@ impl Violation for ShebangNotExecutable {
 /// EXE001
 #[cfg(target_family = "unix")]
 pub(crate) fn shebang_not_executable(filepath: &Path, range: TextRange, context: &LintContext) {
-    // WSL supports Windows file systems, which do not have executable bits.
-    // Instead, everything is executable. Therefore, we skip this rule on WSL.
 
     if is_wsl() {
         return;

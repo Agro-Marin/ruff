@@ -62,13 +62,9 @@ static HASH_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#\d").unwrap
 
 static POSITIVE_CASES: LazyLock<RegexSet> = LazyLock::new(|| {
     RegexSet::new([
-        // Keywords
         r"^(?:elif\s+.*\s*:.*|else\s*:.*|try\s*:.*|finally\s*:.*|except.*:.*|case\s+.*\s*:.*)$",
-        // Partial dictionary
         r#"^['"]\w+['"]\s*:.+[,{]\s*(#.*)?$"#,
-        // Multiline assignment
         r"^(?:[(\[]\s*)?(?:\w+\s*,\s*)*\w+\s*([)\]]\s*)?=.*[(\[{]\s*(#.*)?$",
-        // Brackets,
         r"^[()\[\]{}\s]+\s*(#.*)?$",
     ])
     .unwrap()
@@ -80,12 +76,10 @@ pub(crate) fn comment_contains_code(line: &str, task_tags: &[String]) -> bool {
         .trim_start_matches(|char| char == '#' || is_python_whitespace(char))
         .trim_end();
 
-    // Fast path: if none of the indicators are present, the line is not code.
     if !CODE_INDICATORS.is_match(line) {
         return false;
     }
 
-    // Fast path: if the comment contains consecutive identifiers, we know it won't parse.
     let tokenizer = SimpleTokenizer::starts_at(TextSize::default(), line).skip_trivia();
     if tokenizer.tuple_windows().any(|(first, second)| {
         first.kind == SimpleTokenKind::Name && second.kind == SimpleTokenKind::Name
@@ -93,7 +87,6 @@ pub(crate) fn comment_contains_code(line: &str, task_tags: &[String]) -> bool {
         return false;
     }
 
-    // Ignore task tag comments (e.g., "# TODO(tom): Refactor").
     if line
         .split(&[' ', ':', '('])
         .next()
@@ -102,27 +95,22 @@ pub(crate) fn comment_contains_code(line: &str, task_tags: &[String]) -> bool {
         return false;
     }
 
-    // Ignore whitelisted comments.
     if ALLOWLIST_REGEX.is_match(line) {
         return false;
     }
 
-    // Ignore non-comment related hashes (e.g., "# Issue #999").
     if HASH_NUMBER.is_match(line) {
         return false;
     }
 
-    // If the comment made it this far, and ends in a continuation, assume it's code.
     if line.ends_with('\\') {
         return true;
     }
 
-    // If the comment matches any of the specified positive cases, assume it's code.
     if POSITIVE_CASES.is_match(line) {
         return true;
     }
 
-    // Finally, compile the source code.
     parse_module(line).is_ok()
 }
 
@@ -173,7 +161,6 @@ mod tests {
         ));
         assert!(comment_contains_code("\t# x = 1", &[]));
 
-        // TODO(charlie): This should be `true` under aggressive mode.
         assert!(!comment_contains_code("#},", &[]));
     }
 
@@ -235,7 +222,6 @@ mod tests {
         assert!(!comment_contains_code("#else True:", &[]));
         assert!(!comment_contains_code("# in that case:", &[]));
 
-        // Unpacking assignments
         assert!(comment_contains_code(
             "# user_content_type, _ = TimelineEvent.objects.using(db_alias).get_or_create(",
             &[]
@@ -250,15 +236,11 @@ mod tests {
         ));
         assert!(comment_contains_code("# )", &[]));
 
-        // This used to return true, but our parser has gotten a bit better
-        // at rejecting invalid Python syntax. And indeed, this is not valid
-        // Python code.
         assert!(!comment_contains_code(
             "#     app_label=\"core\", model=\"user\"",
             &[]
         ));
 
-        // TODO(charlie): This should be `true` under aggressive mode.
         assert!(!comment_contains_code("#def foo():", &[]));
     }
 
@@ -358,35 +340,27 @@ mod tests {
 
     #[test]
     fn comment_contains_language_injection() {
-        // `language` with bad casing
         assert!(comment_contains_code("# Language=C#", &[]));
         assert!(comment_contains_code("# lAngUAgE=inI", &[]));
 
-        // Unreasonable language IDs, possibly literals
         assert!(comment_contains_code("# language=\"pt\"", &[]));
         assert!(comment_contains_code("# language='en'", &[]));
 
-        // Spaces around equal sign
         assert!(comment_contains_code("# language =xml", &[]));
         assert!(comment_contains_code("# language= html", &[]));
         assert!(comment_contains_code("# language = RegExp", &[]));
 
-        // Leading whitespace
         assert!(!comment_contains_code("#language=CSS", &[]));
         assert!(!comment_contains_code("#   \t language=C++", &[]));
 
-        // Human language false negatives
         assert!(!comment_contains_code("# language=en", &[]));
         assert!(!comment_contains_code("# language=en-US", &[]));
 
-        // Casing (fine because such IDs cannot be validated)
         assert!(!comment_contains_code("# language=PytHoN", &[]));
         assert!(!comment_contains_code("# language=jaVaScrIpt", &[]));
 
-        // Space within ID (fine because `Shell` is considered the ID)
         assert!(!comment_contains_code("#    language=Shell Script", &[]));
 
-        // With prefix and/or suffix
         assert!(!comment_contains_code("# language=HTML prefix=<body>", &[]));
         assert!(!comment_contains_code(
             r"# language=Requirements suffix=\n",

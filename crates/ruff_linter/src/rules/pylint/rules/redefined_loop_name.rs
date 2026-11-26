@@ -72,20 +72,6 @@ impl Violation for RedefinedLoopName {
             outer_kind,
             inner_kind,
         } = self;
-        // Prefix the nouns describing the outer and inner kinds with "outer" and "inner"
-        // to better distinguish them, but to avoid confusion, only do so if the outer and inner
-        // kinds are equal. For example, instead of:
-        //
-        //    "Outer `for` loop variable `i` overwritten by inner assignment target."
-        //
-        // We have:
-        //
-        //    "`for` loop variable `i` overwritten by assignment target."
-        //
-        // While at the same time, we have:
-        //
-        //    "Outer `for` loop variable `i` overwritten by inner `for` loop target."
-        //    "Outer `with` statement variable `f` overwritten by inner `with` statement target."
 
         if outer_kind == inner_kind {
             format!("Outer {outer_kind} variable `{name}` overwritten by inner {inner_kind} target")
@@ -155,7 +141,6 @@ struct InnerForWithAssignTargetsVisitor<'a, 'b> {
 
 impl<'b> StatementVisitor<'b> for InnerForWithAssignTargetsVisitor<'_, 'b> {
     fn visit_stmt(&mut self, stmt: &'b Stmt) {
-        // Collect target expressions.
         match stmt {
             Stmt::For(ast::StmtFor { target, .. }) => {
                 self.assignment_targets.extend(
@@ -178,8 +163,6 @@ impl<'b> StatementVisitor<'b> for InnerForWithAssignTargetsVisitor<'_, 'b> {
                 );
             }
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
-                // Check for single-target assignments which are of the
-                // form `x = cast(..., x)`.
                 if targets
                     .first()
                     .is_some_and(|target| assignment_is_cast_expr(value, target, self.context))
@@ -198,7 +181,6 @@ impl<'b> StatementVisitor<'b> for InnerForWithAssignTargetsVisitor<'_, 'b> {
             Stmt::AugAssign(ast::StmtAugAssign {
                 target, value, op, ..
             }) => {
-                // Check for in-place update of mutable type
                 if is_mutable_expr(value, self.context)
                     && matches!(
                         op,
@@ -236,11 +218,8 @@ impl<'b> StatementVisitor<'b> for InnerForWithAssignTargetsVisitor<'_, 'b> {
             }
             _ => {}
         }
-        // Decide whether to recurse.
         match stmt {
-            // Don't recurse into blocks that create a new scope.
             Stmt::ClassDef(_) | Stmt::FunctionDef(_) => {}
-            // Otherwise, do recurse.
             _ => {
                 walk_stmt(self, stmt);
             }
@@ -289,9 +268,6 @@ fn assignment_targets_from_expr<'a>(
     expr: &'a Expr,
     dummy_variable_rgx: &'a Regex,
 ) -> Box<dyn Iterator<Item = &'a Expr> + 'a> {
-    // The Box is necessary to ensure the match arms have the same return type - we can't use
-    // a cast to "impl Iterator", since at the time of writing that is only allowed for
-    // return types and argument types.
     match expr {
         Expr::Attribute(ast::ExprAttribute {
             ctx: ExprContext::Store,
@@ -313,7 +289,6 @@ fn assignment_targets_from_expr<'a>(
             range: _,
             node_index: _,
         }) => {
-            // Ignore dummy variables.
             if dummy_variable_rgx.is_match(id) {
                 Box::new(iter::empty())
             } else {
@@ -410,7 +385,6 @@ pub(crate) fn redefined_loop_name(checker: &Checker, stmt: &Stmt) {
 
     for outer_assignment_target in &outer_assignment_targets {
         for inner_assignment_target in &inner_assignment_targets {
-            // Compare the targets structurally.
             if ComparableExpr::from(outer_assignment_target.expr)
                 .eq(&(ComparableExpr::from(inner_assignment_target.expr)))
             {

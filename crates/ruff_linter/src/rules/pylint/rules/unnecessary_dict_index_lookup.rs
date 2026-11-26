@@ -140,7 +140,6 @@ fn dict_items<'a>(
         return None;
     };
 
-    // Grab the variable names.
     let Expr::Name(index_name) = index else {
         return None;
     };
@@ -149,8 +148,6 @@ fn dict_items<'a>(
         return None;
     };
 
-    // If either of the variable names are intentionally ignored by naming them `_`, then don't
-    // emit.
     if index_name.id == "_" || value_name.id == "_" {
         return None;
     }

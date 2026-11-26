@@ -17,10 +17,8 @@ pub fn can_rename(
     let source_file = file.file(db);
     let model = SemanticModel::new(db, file);
 
-    // Get the definitions for the symbol at the offset
     let goto_target = find_goto_target(&model, &module, offset)?;
 
-    // Don't allow renaming of import module components
     if matches!(
         goto_target,
         crate::goto::GotoTarget::ImportModuleComponent { .. }
@@ -38,12 +36,10 @@ pub fn can_rename(
     for target in &declaration_targets {
         let target_file = target.file();
 
-        // If definition is outside the project, refuse rename
         if !is_file_in_project(db, target_file) {
             return None;
         }
 
-        // If current file is not in project and any definition is outside current file, refuse rename
         if !current_file_in_project && target_file != source_file {
             return None;
         }
@@ -64,28 +60,20 @@ pub fn rename(
     let module = parsed.load(db);
     let model = SemanticModel::new(db, file);
 
-    // Get the definitions for the symbol at the offset
     let goto_target = find_goto_target(&model, &module, offset)?;
 
-    // Clients shouldn't call us with an empty new name, but just in case...
     if new_name.is_empty() {
         return None;
     }
 
-    // Determine if we should do a multi-file rename or single-file rename
-    // based on whether the current file is part of the project
     let current_file_in_project = is_file_in_project(db, file.file(db));
 
-    // Choose the appropriate rename mode:
-    // - If current file is in project, do multi-file rename
-    // - If current file is not in project, limit to single-file rename
     let rename_mode = if current_file_in_project {
         ReferencesMode::RenameMultiFile
     } else {
         ReferencesMode::Rename
     };
 
-    // Find all references that need to be renamed
     references(db, file, &goto_target, rename_mode)
 }
 
@@ -142,7 +130,6 @@ mod tests {
                 return "No locations to rename".to_string();
             }
 
-            // Create a single diagnostic with multiple annotations
             let rename_diagnostic = RenameResultSet {
                 locations: rename_results
                     .into_iter()
@@ -166,13 +153,11 @@ mod tests {
                 format!("Rename symbol (found {} locations)", self.locations.len()),
             );
 
-            // Add the first location as primary annotation (the symbol being renamed)
             if let Some(first_location) = self.locations.first() {
                 main.annotate(Annotation::primary(
                     Span::from(first_location.file()).with_range(first_location.range()),
                 ));
 
-                // Add remaining locations as secondary annotations
                 for location in &self.locations[1..] {
                     main.annotate(Annotation::secondary(
                         Span::from(location.file()).with_range(location.range()),
@@ -975,7 +960,6 @@ instance = ExampleClass(old_name="test")
 
     #[test]
     fn cannot_rename_import_module_component() {
-        // Test that we cannot rename parts of module names in import statements
         let test = cursor_test(
             "
 import <CURSOR>os.path
@@ -988,7 +972,6 @@ x = os.path.join('a', 'b')
 
     #[test]
     fn cannot_rename_from_import_module_component() {
-        // Test that we cannot rename parts of module names in from import statements
         let test = cursor_test(
             "
 from os.<CURSOR>path import join
@@ -1001,8 +984,6 @@ result = join('a', 'b')
 
     #[test]
     fn cannot_rename_external_file() {
-        // This test verifies that we cannot rename a symbol when it's defined in a file
-        // that's outside the project (like a standard library function)
         let test = cursor_test(
             "
 import os
@@ -1044,7 +1025,6 @@ result = alias()
 
     #[test]
     fn rename_alias_at_usage_site() {
-        // Test renaming an alias when the cursor is on the alias in the usage statement
         let test = CursorTest::builder()
             .source(
                 "utils.py",
@@ -1074,10 +1054,6 @@ result = <CURSOR>alias()
 
     #[test]
     fn rename_across_import_chain_with_mixed_aliases() {
-        // Test renaming a symbol that's imported across multiple files with mixed alias patterns
-        // File 1 (source.py): defines the original function
-        // File 2 (middle.py): imports without alias from source.py
-        // File 3 (consumer.py): imports with alias from middle.py
         let test = CursorTest::builder()
             .source(
                 "source.py",
@@ -1189,7 +1165,6 @@ class App:
 
     #[test]
     fn cannot_rename_keyword() {
-        // Test that we cannot rename Python keywords like "None"
         let test = cursor_test(
             "
 def process_value(value):
@@ -1204,7 +1179,6 @@ def process_value(value):
 
     #[test]
     fn cannot_rename_builtin_type() {
-        // Test that we cannot rename Python builtin types like "int"
         let test = cursor_test(
             "
 def convert_to_number(value):
@@ -1217,8 +1191,6 @@ def convert_to_number(value):
 
     #[test]
     fn cannot_rename_private_builtin_helper() {
-        // Unresolved references must not resolve to a private typeshed helper that likely does not
-        // exist at runtime or rename matching unresolved references in other files.
         let test = CursorTest::builder()
             .source("other.py", "_T_co\n")
             .source("main.py", "<CURSOR>_T_co\n")
@@ -1229,7 +1201,6 @@ def convert_to_number(value):
 
     #[test]
     fn rename_keyword_argument() {
-        // Test renaming a keyword argument and its corresponding parameter
         let test = cursor_test(
             "
 def func(x, y=5):
@@ -1255,7 +1226,6 @@ result = func(10, <CURSOR>y=20)
 
     #[test]
     fn rename_parameter_with_keyword_argument() {
-        // Test renaming a parameter and its corresponding keyword argument
         let test = cursor_test(
             "
 def func(x, <CURSOR>y=5):
@@ -1519,7 +1489,6 @@ DC(f=1)
             )
             .build();
 
-        // TODO(submodule-imports): we should refuse to rename this (it's the name of a module)
         assert_snapshot!(test.rename("mypkg"), @"
         info[rename]: Rename symbol (found 1 locations)
          --> mypackage/__init__.py:4:5
@@ -1549,7 +1518,6 @@ DC(f=1)
             )
             .build();
 
-        // Refusing to rename is correct
         assert_snapshot!(test.rename("mypkg"), @"Cannot rename");
     }
 
@@ -1573,7 +1541,6 @@ DC(f=1)
             )
             .build();
 
-        // Refusing to rename is good/fine here, it's an undefined reference
         assert_snapshot!(test.rename("mypkg"), @"Cannot rename");
     }
 
@@ -1597,7 +1564,6 @@ DC(f=1)
             )
             .build();
 
-        // Refusing to rename is good here, it's a module name
         assert_snapshot!(test.rename("mypkg"), @"Cannot rename");
     }
 
@@ -1620,7 +1586,6 @@ DC(f=1)
             )
             .build();
 
-        // Refusing to rename is good here, it's the name of a module
         assert_snapshot!(test.rename("mypkg"), @"Cannot rename");
     }
 
@@ -1643,7 +1608,6 @@ DC(f=1)
             )
             .build();
 
-        // Renaming the integer is correct
         assert_snapshot!(test.rename("mypkg"), @"
         info[rename]: Rename symbol (found 3 locations)
          --> mypackage/__init__.py:2:21
@@ -1680,7 +1644,6 @@ DC(f=1)
             )
             .build();
 
-        // Includes import binding and underlying definition in one rename set.
         assert_snapshot!(test.rename("mypkg"), @"
         info[rename]: Rename symbol (found 3 locations)
          --> mypackage/__init__.py:2:21
@@ -1836,7 +1799,6 @@ DC(f=1)
             )
             .build();
 
-        // Includes all overload declarations plus implementation from usage-site rename.
         assert_snapshot!(test.rename("better_name"), @r#"
         info[rename]: Rename symbol (found 6 locations)
           --> main.py:2:17
@@ -2279,8 +2241,6 @@ DC(f=1)
             )
             .build();
 
-        // Only 2 locations should be found (the definition and the decorator reference),
-        // not the second `my_func` function definition, because `my_func` is not a property.
         assert_snapshot!(test.rename("better_name"), @"
         info[rename]: Rename symbol (found 2 locations)
           --> lib.py:8:5
@@ -2318,13 +2278,6 @@ DC(f=1)
             )
             .build();
 
-        // The second `my_func` definition should be renamed. The decorator reference
-        // is incorrectly included because `definitions_for_name` returns all bindings
-        // for a symbol rather than using position-aware lookup (`bindings_at_use`).
-        // Note: The first `def my_func` is correctly excluded since it has a distinct
-        // `Definition` from the second. The decorator should also be excluded since it
-        // semantically refers to the first definition, but fixing this requires using
-        // position-aware binding resolution in `definitions_for_name`.
         assert_snapshot!(test.rename("better_name"), @"
         info[rename]: Rename symbol (found 2 locations)
           --> lib.py:12:5
@@ -2356,7 +2309,6 @@ DC(f=1)
             )
             .build();
 
-        // Only the getter should be renamed, not the setter (they have different names).
         assert_snapshot!(test.rename("new_name"), @"
         info[rename]: Rename symbol (found 2 locations)
          --> lib.py:4:9
@@ -2691,8 +2643,6 @@ DC(f=1)
         ");
     }
 
-    // TODO: This should rename all attribute usages
-    // Note: Pylance only renames the assignment in `__init__`.
     #[test]
     fn rename_implicit_attribute() {
         let test = CursorTest::builder()
@@ -2729,7 +2679,6 @@ DC(f=1)
         ");
     }
 
-    // TODO: Should not rename the first declaration
     #[test]
     fn rename_redeclarations() {
         let test = CursorTest::builder()
@@ -2903,8 +2852,6 @@ class C:
 
     #[test]
     fn rename_cannot_start_from_slot_string() {
-        // Renaming is driven from the attribute; the `__slots__` string itself
-        // is not a renameable symbol, so starting a rename on it is rejected.
         let test = cursor_test(
             r#"
 class C:
@@ -3039,8 +2986,6 @@ class C:
 
     #[test]
     fn rename_parameter_does_not_touch_slots() {
-        // The parameter `value` is a local symbol, not the instance attribute, so renaming it must
-        // leave the `__slots__` string untouched even though it shares the name.
         let test = cursor_test(
             r#"
 class C:
@@ -3064,8 +3009,6 @@ class C:
 
     #[test]
     fn rename_nested_class_attribute_does_not_touch_outer_slots() {
-        // The instance attribute belongs to `Inner`, whose nearest enclosing class has no matching
-        // slot, so renaming it must not touch `Outer.__slots__`.
         let test = cursor_test(
             r#"
 class Outer:

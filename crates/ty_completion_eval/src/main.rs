@@ -126,7 +126,6 @@ impl ShowOneCommand {
 fn main() -> anyhow::Result<ExitCode> {
     let args = Cli::parse();
 
-    // The base path to which all CLI arguments are relative to.
     let cwd = {
         let cwd = std::env::current_dir().context("Failed to get the current working directory")?;
         SystemPathBuf::from_path_buf(cwd).map_err(|path| {
@@ -137,7 +136,6 @@ fn main() -> anyhow::Result<ExitCode> {
             )
         })?
     };
-    // Where we store our truth data.
     let truth = cwd.join("crates").join("ty_completion_eval").join("truth");
     anyhow::ensure!(
         truth.as_std_path().exists(),
@@ -146,10 +144,6 @@ fn main() -> anyhow::Result<ExitCode> {
         truth = truth.as_std_path().display(),
     );
 
-    // The temporary directory at which we copy our truth
-    // data to. We do this because we can't use the truth
-    // data as-is with its `<CURSOR>` annotations (and perhaps
-    // any other future annotations we add).
     let mut tmp_eval_dir = tempfile::Builder::new()
         .prefix("ty-completion-eval-")
         .tempdir()
@@ -279,7 +273,6 @@ impl Task {
 
         let system = OsSystem::new(project_path);
         let mut project_metadata = ProjectMetadata::discover(project_path, &system)?;
-        // Explicitly point ty to the .venv to avoid any set VIRTUAL_ENV variable to take precedence.
         project_metadata.set_override_options(Options {
             environment: Some(EnvironmentOptions {
                 python: Some(RelativePathBuf::cli(".venv")),
@@ -420,9 +413,6 @@ impl TaskSource {
             })?;
             sources.push(TaskSource::new(dir)?);
         }
-        // Sort our sources so that we always run in the same order.
-        // And also so that the CSV output is deterministic across
-        // all platforms.
         sources.sort_by(|source1, source2| source1.name.cmp(&source2.name));
         Ok(sources)
     }
@@ -563,9 +553,6 @@ fn copy_project(src_dir: &SystemPath, dst_dir: &SystemPath) -> anyhow::Result<Ve
         let name = src
             .strip_prefix(src_dir)
             .expect("descendent of `src_dir` must start with `src`");
-        // let name = src
-        // .file_name()
-        // .ok_or_else(|| anyhow::anyhow!("path `{src}` is missing a basename"))?;
         let dst = dst_dir.join(name);
         if dent.file_type().is_dir() {
             std::fs::create_dir_all(dst.as_std_path())
@@ -596,23 +583,14 @@ fn copy_project(src_dir: &SystemPath, dst_dir: &SystemPath) -> anyhow::Result<Ve
 /// When an underlying I/O error occurs.
 fn copy_file(src: &SystemPath, dst: &SystemPath) -> anyhow::Result<Vec<Cursor>> {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
-        // Our module/symbol identifier regex here is certainly more
-        // permissive than necessary, but I think that should be fine
-        // for this silly little syntax. ---AG
         Regex::new(r"<CURSOR:\s*(?<module>(?:[\S--.]+\.)*)(?<symbol>[\S--.]+)>").unwrap()
     });
 
     let src_data =
         std::fs::read(src).with_context(|| format!("failed to read `{src}` for copying"))?;
     let mut cursors = vec![];
-    // The new data, without cursor directives.
     let mut new = Vec::with_capacity(src_data.len());
-    // An index into `src_data` corresponding to either the start of
-    // the data or the end of the previous cursor directive that we
-    // found.
     let mut prev_match_end = 0;
-    // The total bytes removed so far by replacing cursor directives
-    // with empty strings.
     let mut bytes_removed = 0;
     for (index, caps) in RE.captures_iter(&src_data).enumerate() {
         let overall = caps.get(0).expect("zeroth group is always available");

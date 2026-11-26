@@ -109,7 +109,6 @@ pub fn run_server() -> anyhow::Result<()> {
     let _ = print_interactive_warning();
     let four = NonZeroUsize::new(4).unwrap();
 
-    // by default, we set the number of worker threads to `num_cpus`, with a maximum of 4.
     let worker_threads = std::thread::available_parallelism()
         .unwrap_or(four)
         .min(four);
@@ -127,7 +126,6 @@ pub fn run_server() -> anyhow::Result<()> {
         })?
     };
 
-    // This is to complement the `LSPSystem` if the document is not available in the index.
     let fallback_system = Arc::new(OsSystem::new(cwd));
 
     let server_result = Server::new(worker_threads, connection, fallback_system, false)

@@ -155,7 +155,6 @@ fn version_check(
     op: CmpOp,
     comparator: &Expr,
 ) {
-    // Single digit comparison, e.g., `sys.version_info[0] == 2`.
     if expected == ExpectedComparator::MajorDigit {
         if !is_int_constant(comparator) {
             checker.report_diagnostic_if_enabled(UnrecognizedVersionInfoCheck, test.range());
@@ -163,19 +162,14 @@ fn version_check(
         return;
     }
 
-    // Tuple comparison, e.g., `sys.version_info == (3, 4)`.
     let Expr::Tuple(tuple) = comparator else {
         checker.report_diagnostic_if_enabled(UnrecognizedVersionInfoCheck, test.range());
         return;
     };
 
     if !tuple.iter().all(is_int_constant) {
-        // All tuple elements must be integers, e.g., `sys.version_info == (3, 4)` instead of
-        // `sys.version_info == (3.0, 4)`.
         checker.report_diagnostic_if_enabled(UnrecognizedVersionInfoCheck, test.range());
     } else if tuple.len() > 2 {
-        // Must compare against major and minor version only, e.g., `sys.version_info == (3, 4)`
-        // instead of `sys.version_info == (3, 4, 0)`.
         checker.report_diagnostic_if_enabled(PatchVersionComparison, test.range());
     }
 
@@ -212,8 +206,6 @@ impl ExpectedComparator {
             return Some(ExpectedComparator::AnyTuple);
         };
 
-        // Only allow: (1) simple slices of the form `[:n]`, or (2) explicit indexing into the first
-        // element (major version) of the tuple.
         match slice.as_ref() {
             Expr::Slice(ast::ExprSlice {
                 lower: None,

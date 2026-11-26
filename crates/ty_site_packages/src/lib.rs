@@ -76,7 +76,6 @@ impl SitePackagesPath {
 
 impl PartialEq for SitePackagesPath {
     fn eq(&self, other: &Self) -> bool {
-        // The diagnostic anchor is metadata for this path, not part of the path's set identity.
         self.path == other.path
     }
 }
@@ -119,9 +118,6 @@ impl SitePackagesPaths {
     /// Tries to detect the version from the layout of the `site-packages` directory.
     pub fn python_version_from_layout(&self) -> Option<PythonVersionWithSource> {
         if cfg!(windows) {
-            // The path to `site-packages` on Unix is
-            // `<sys.prefix>/lib/pythonX.Y/site-packages`,
-            // but on Windows it's `<sys.prefix>/Lib/site-packages`.
             return None;
         }
 
@@ -133,8 +129,6 @@ impl SitePackagesPaths {
             .rev()
             .skip(1)
             .map(|c| {
-                // This should have all been validated in `site_packages.rs`
-                // when we resolved the search paths for the project.
                 debug_assert_matches!(
                     c,
                     Utf8Component::Normal(_),
@@ -393,10 +387,8 @@ impl PythonEnvironment {
     ) -> SitePackagesDiscoveryResult<Self> {
         let path = PythonEnvironmentPath::new(path.as_ref(), origin, system)?;
 
-        // Attempt to inspect as a virtual environment first
         match VirtualEnvironment::new(path.sys_prefix(), system) {
             Ok(venv) => Ok(Self::Virtual(venv)),
-            // If there's not a `pyvenv.cfg` marker, attempt to inspect as a system environment
             Err(SitePackagesDiscoveryError::NoPyvenvCfgFile(_, _, _))
                 if !path.origin().must_be_virtual_env() =>
             {
@@ -588,10 +580,6 @@ impl PythonInterpreterLayout {
         {
             let mut variant = PythonBuildVariant::Default;
 
-            // CPython's Unix installer hard-links `pythonX.Y` to its versioned executable for a
-            // free-threaded build, so neither the file name nor canonicalization can distinguish
-            // the two executable paths. Debug builds use the `td` ABI flags but retain the `t`
-            // suffix for their library directory.
             for abi_flags in ["t", "td"] {
                 let free_threaded_executable = parent.join(format!(
                     "python{version}{abi_flags}{}",
@@ -629,8 +617,6 @@ impl PythonInterpreterLayout {
             Ok(version) => version,
             Err(_) if variant == PythonBuildVariant::FreeThreaded => return None,
             Err(_) => {
-                // PyPy also uses generic executable names such as `python` and `python3`, so an
-                // unversioned name in the `python` family does not identify the implementation.
                 let implementation = if implementation.is_cpython() {
                     PythonImplementation::Unknown
                 } else {
@@ -646,8 +632,6 @@ impl PythonInterpreterLayout {
             return None;
         }
 
-        // CPython may install `pythonX.Y` as a hard link to `pythonX.Yt`, so defer the build
-        // variant until `from_path` can compare the two executable paths.
         let variant = if variant == PythonBuildVariant::Default
             && implementation.is_cpython()
             && version.free_threaded_build_available()
@@ -704,7 +688,6 @@ impl PythonBuildVariant {
     }
 
     fn split_executable_suffix(version: &str) -> (&str, Self) {
-        // Debug builds add `d` to the ABI flags, but this does not change the library layout.
         let version = version.strip_suffix('d').unwrap_or(version);
 
         if let Some(version) = version.strip_suffix('t') {
@@ -788,9 +771,6 @@ impl VirtualEnvironment {
             parent_environment,
         } = parsed_pyvenv_cfg;
 
-        // The `home` key is read by the standard library's `site.py` module, so a missing
-        // key indicates an irredeemably broken virtual environment. An unresolvable value
-        // can still be tolerated when the base interpreter is not needed.
         let Some(base_executable_home_path) = base_executable_home_path else {
             return Err(SitePackagesDiscoveryError::PyvenvCfgParseError(
                 pyvenv_cfg_path,
@@ -817,8 +797,6 @@ impl VirtualEnvironment {
             }
         };
 
-        // Since the `extends-environment` key is nonstandard,
-        // for now we only trust it if the virtual environment was created with `uv`.
         let parent_environment = if created_with_uv {
             parent_environment
                 .and_then(|sys_prefix| {
@@ -846,11 +824,6 @@ impl VirtualEnvironment {
             None
         };
 
-        // but the `version`/`version_info` key is not read by the standard library,
-        // and is provided under different keys depending on which virtual-environment creation tool
-        // created the `pyvenv.cfg` file. Lenient parsing is appropriate here:
-        // the file isn't really *invalid* if it doesn't have this key,
-        // or if the value doesn't parse according to our expectations.
         let version = version.and_then(|(version_string, range)| {
             let mut version_info_parts = version_string.split('.');
             let (major, minor) = (version_info_parts.next()?, version_info_parts.next()?);
@@ -919,9 +892,6 @@ impl VirtualEnvironment {
                 .as_ref()
                 .and_then(SysPrefixPath::from_executable_home_path);
 
-            // If we fail to resolve the `sys.prefix` path from the base executable home path,
-            // or if we fail to resolve the `site-packages` from the `sys.prefix` path,
-            // we should probably print a warning but *not* abort type checking
             if let Some(sys_prefix_path) = system_sys_prefix {
                 match site_packages_directories_from_sys_prefix(&sys_prefix_path, layout, system) {
                     Ok(system_directories) => {
@@ -956,18 +926,11 @@ impl VirtualEnvironment {
             base_executable_home_path,
             implementation,
             version,
-            // Unlike site-packages, what we're looking for is never inside the virtual environment
-            // so this is only used for diagnostics.
             root_path,
-            // We don't need to respect this setting
             include_system_site_packages: _,
-            // We don't need to inherit any info from the parent environment
             parent_environment: _,
         } = self;
 
-        // Unconditionally follow the same logic that `site_packages_directories` uses when
-        // `include_system_site_packages` is true, as those site-packages should be a subdir
-        // of the dir we're looking for.
         let version = version.as_ref().map(|v| v.version);
         let layout = PythonInterpreterLayout::unknown(*implementation, version);
         if let Some(system_sys_prefix) = base_executable_home_path
@@ -1016,43 +979,32 @@ impl CondaEnvironmentKind {
     /// `/usr/local/conda/envs/<name>`. Note that the name `CONDA_DEFAULT_ENV` is misleading, it's
     /// the active environment name, not a constant base environment name.
     fn from_prefix_path(system: &dyn System, path: &SystemPath) -> Self {
-        // Pixi has no base environment, and its environment names need not match the prefix.
         if system.is_file(&path.join("conda-meta/pixi")) {
             return Self::Child;
         }
 
-        // If `_CONDA_ROOT` is set and matches `CONDA_PREFIX`, it's the base environment.
         if let Ok(conda_root) = system.env_var(EnvVars::CONDA_ROOT)
             && path.as_str() == conda_root
         {
             return Self::Base;
         }
 
-        // Next, we'll use a heuristic based on `CONDA_DEFAULT_ENV`
         let Ok(current_env) = system.env_var(EnvVars::CONDA_DEFAULT_ENV) else {
             return Self::Child;
         };
 
-        // Environments created with `conda create -p` use their full prefix as the name.
         if path == SystemPath::new(&current_env) {
             return Self::Child;
         }
 
-        // If the environment name is "base" or "root", treat it as a base environment
-        //
-        // These are the expected names for the base environment; and is retained for backwards
-        // compatibility, but in a future breaking release we should remove this special-casing.
         if current_env == "base" || current_env == "root" {
             return Self::Base;
         }
 
-        // For other environment names, use the path-based logic
         let Some(name) = path.file_name() else {
             return Self::Child;
         };
 
-        // If the environment is in a directory matching the name of the environment, it's not
-        // usually a base environment.
         if name == current_env {
             Self::Child
         } else {
@@ -1062,8 +1014,6 @@ impl CondaEnvironmentKind {
 }
 
 fn conda_prefix_has_python(path: &SystemPath, system: &dyn System) -> bool {
-    // A Conda or Pixi environment can supply tools or native libraries without installing
-    // Python. CPython's `make altinstall` may install only a versioned executable.
     let bin_dirs: &[&str] = if cfg!(windows) {
         &["", "Scripts", "bin"]
     } else {
@@ -1078,8 +1028,6 @@ fn environment_from_binary(system: &dyn System, binary: &str) -> Option<PythonEn
     let binary = system.which(binary).ok()?;
     let env = PythonEnvironment::new(binary, SysPrefixPathOrigin::PythonBinary, system).ok()?;
 
-    // TODO: replace this with better shim support, e.g. pyenv
-    // sanity check to filter out shims
     env.site_packages_paths(system).ok()?;
 
     Some(env)
@@ -1136,8 +1084,6 @@ impl<'s> PyvenvCfgParser<'s> {
         let key_end = cursor.offset();
 
         if !cursor.eat_char('=') {
-            // Skip over any lines that do not contain '=' characters, same as the CPython stdlib
-            // <https://github.com/python/cpython/blob/e64395e8eb8d3a9e35e3e534e87d427ff27ab0a5/Lib/site.py#L625-L632>
             cursor.eat_char('\n');
             return Ok(());
         }
@@ -1159,8 +1105,6 @@ impl<'s> PyvenvCfgParser<'s> {
                 data.include_system_site_packages = value.eq_ignore_ascii_case("true");
             }
             "home" => data.base_executable_home_path = Some(value),
-            // `virtualenv` and `uv` call this key `version_info`,
-            // but the stdlib venv module calls it `version`
             "version" | "version_info" => {
                 let version_range = TextRange::at(value_start, value.text_len());
                 data.version = Some((value, version_range));
@@ -1548,9 +1492,6 @@ fn probe_package_dirs(
     };
     let settings_diagnostic_path = || settings_diagnostic_path.map(SystemPath::to_path_buf);
 
-    // Try to insert the CPython-style package path into `directories`.
-    // Returns `true` if a matching directory was found, so the caller can
-    // decide whether to fall back to probing other implementations.
     let probe_cpython_path = |directories: &mut SitePackagesPaths| {
         let path = |variant: PythonBuildVariant| {
             prefix_dir.join(format!(
@@ -1562,7 +1503,6 @@ fn probe_package_dirs(
         let path = match variant {
             PythonBuildVariant::Default | PythonBuildVariant::FreeThreaded => path(variant),
             PythonBuildVariant::Unknown => {
-                // Preserve the existing regular-first fallback when the build flavor is unknown.
                 let regular = path(PythonBuildVariant::Default);
                 if system.is_directory(&regular) || !python_version.free_threaded_build_available()
                 {
@@ -1581,8 +1521,6 @@ fn probe_package_dirs(
         }
     };
 
-    // Try to insert the PyPy-style package path into `directories`.
-    // Returns `true` if a matching directory was found.
     let probe_pypy_path = |directories: &mut SitePackagesPaths| {
         let path = prefix_dir.join(format!("pypy{python_version}/{suffix}"));
         if system.is_directory(&path) {
@@ -1689,42 +1627,12 @@ fn site_packages_directories_from_sys_prefix(
             });
     }
 
-    // In the Python standard library's `site.py` module (used for finding `site-packages`
-    // at runtime), we can find this in [the non-Windows branch]:
-    //
-    // ```py
-    // libdirs = [sys.platlibdir]
-    // if sys.platlibdir != "lib":
-    //     libdirs.append("lib")
-    // ```
-    //
-    // We generally only care about the `site-packages` directory insofar as it allows
-    // us to discover Python source code that can be used for inferring type
-    // information regarding third-party dependencies. In theory, therefore, that means
-    // that we don't need to care about any possible `lib64/site-packages` directories,
-    // since [the `sys`-module documentation] states that `sys.platlibdir` is *only* ever
-    // used for C extensions, never for pure-Python modules. However, in practice,
-    // some installers appear to do [some strange things on Fedora] that mean that `.py`
-    // files *can* end up in `lib64/site-packages` in some edge cases. And we'll probably
-    // need to start looking in `lib64/site-packages` directories in the future anyway, in
-    // order to distinguish between "unresolved import" and "resolved to an opaque C
-    // extension" in diagnostic messages.
-    //
-    // [the non-Windows branch]: https://github.com/python/cpython/blob/a8be8fc6c4682089be45a87bd5ee1f686040116c/Lib/site.py#L401-L410
-    // [the `sys`-module documentation]: https://docs.python.org/3/library/sys.html#sys.platlibdir
-    // [some strange things on Fedora]: https://github.com/astral-sh/ty/issues/1043
 
     let mut directories = SitePackagesPaths::default();
     let is_debian_system_prefix = sys_prefix_path.as_str() == "/usr";
     let settings_diagnostic_path =
         settings_diagnostic_path_from_sys_prefix(sys_prefix_path, system);
 
-    // On Debian/Ubuntu with sys.prefix=/usr, pip-installed packages go to
-    // /usr/local/lib/pythonX.Y/dist-packages and take priority over system
-    // packages in /usr/lib (they appear earlier in sys.path at runtime).
-    // Insert these first for correct precedence.
-    // Only check /usr/local/lib (not lib64): Debian/Ubuntu pip installs
-    // do not use /usr/local/lib64.
     if layout.version.is_some() {
         if is_debian_system_prefix {
             probe_package_dirs(
@@ -1775,9 +1683,6 @@ fn site_packages_directories_from_sys_prefix(
         }
     }
 
-    // Debian/Ubuntu also uses `/usr/lib/python3/dist-packages/` (without minor version)
-    // for packages that work across multiple Python versions.
-    // See: https://wiki.debian.org/Python#Deviations_from_upstream
     if matches!(
         layout.implementation,
         PythonImplementation::CPython | PythonImplementation::Unknown
@@ -1832,15 +1737,12 @@ fn real_stdlib_directory_from_sys_prefix(
         );
     }
 
-    // If we were able to figure out what Python version this installation is,
-    // we should be able to avoid iterating through all items in the `lib/` directory:
     if let Some(expected_relative_path) = layout.relative_stdlib_path() {
         let expected_absolute_path = sys_prefix_path.join(expected_relative_path);
         if system.is_directory(&expected_absolute_path) {
             return Ok(expected_absolute_path);
         }
 
-        // CPython free-threaded (3.13+) variant: pythonXYt
         if let Some(alternative_relative_path) = layout.free_threaded_stdlib_fallback_path() {
             let alternative_path = sys_prefix_path.join(alternative_relative_path);
             if system.is_directory(&alternative_path) {
@@ -1849,16 +1751,7 @@ fn real_stdlib_directory_from_sys_prefix(
         }
     }
 
-    // Either we couldn't figure out the version before calling this function
-    // (e.g., from a `pyvenv.cfg` file if this was a venv),
-    // or we couldn't find a stdlib folder at the expected location given
-    // the parsed version
-    //
-    // Note: the `python3.x` part of the stdlib path can't be computed from
-    // the `--python-version` the user has passed, as they might be running Python 3.12 locally
-    // even if they've requested that we type check their code "as if" they're running 3.8.
     for entry_result in system
-        // must be `lib`, not `lib64`, for the stdlib
         .read_directory(&sys_prefix_path.join(UnixLibDir::Lib))
         .map_err(|io_err| {
             StdlibDiscoveryError::CouldNotReadLibDirectory(
@@ -1915,10 +1808,6 @@ pub struct SysPrefixPath {
 
 fn sys_prefix_from_executable_path(path: &SystemPath) -> Option<&SystemPath> {
     if cfg!(windows) {
-        // On Windows, the relative path to the executable from `sys.prefix` is different
-        // depending on whether it's a virtual environment or a system installation.
-        // System installations have their executable at `<sys.prefix>/python.exe`,
-        // whereas virtual environments have their executable at `<sys.prefix>/Scripts/python.exe`.
         let parent = path.parent()?;
         if parent.file_name() == Some("Scripts") {
             parent.parent()
@@ -1926,8 +1815,6 @@ fn sys_prefix_from_executable_path(path: &SystemPath) -> Option<&SystemPath> {
             Some(parent)
         }
     } else {
-        // On Unix, `sys.prefix` is always the grandparent directory of the Python executable,
-        // regardless of whether it's a virtual environment or a system installation.
         path.ancestors().nth(2)
     }
 }
@@ -1971,9 +1858,6 @@ impl PythonEnvironmentPath {
             unvalidated_path
         };
 
-        // It's important to resolve symlinks here rather than simply making the path absolute,
-        // since system Python installations often only put symlinks in the "expected"
-        // locations for `home` and `site-packages`
         let sys_prefix = match system.canonicalize_path(unvalidated_sys_prefix) {
             Ok(path) => path,
             Err(io_err) => {
@@ -2012,9 +1896,6 @@ impl PythonEnvironmentPath {
                 .ok()
                 .and_then(|path| PythonInterpreterLayout::from_path(&path, system));
 
-            // A complete layout from the symlink target describes the actual interpreter, while
-            // the selected path may only be a facade. Keep its layout as a fallback when the
-            // target name does not include a version.
             if let Some(layout) = canonical_layout
                 && layout.version.is_some()
             {
@@ -2074,9 +1955,6 @@ impl PythonEnvironmentPath {
 
 impl SysPrefixPath {
     fn from_executable_home_path(path: &PythonHomePath) -> Option<Self> {
-        // No need to check whether `path.parent()` is a directory:
-        // the parent of a canonicalised path that is known to exist
-        // is guaranteed to be a directory.
         if cfg!(target_os = "windows") {
             Some(Self {
                 inner: path.to_path_buf(),
@@ -2094,24 +1972,8 @@ impl SysPrefixPath {
     fn from_executable_home_path_real(system: &dyn System, path: &PythonHomePath) -> Option<Self> {
         let mut home_path = path.0.clone();
 
-        // Try to find the python executable in the given directory and canonicalize it
-        // to resolve any symlink. This is (at least) necessary for homebrew pythons
-        // and the macOS system python.
-        //
-        // In python installations like homebrew, the home path points to a directory like
         // `/opt/homebrew/opt/python@3.13/bin` and indeed if you look for `../lib/python3.13/`
-        // you *will* find `site-packages` but you *won't* find the stdlib! (For the macOS
-        // system install you won't even find `site-packages` here.)
-        //
         // However if you look at `/opt/homebrew/opt/python@3.13/bin/python3.13` (the actual
-        // python executable in that dir) you will find that it's a symlink to something like
-        // `../Frameworks/Python.framework/Versions/3.13/bin/python3.13`
-        //
-        // From this Framework binary path if you go to `../../lib/python3.13/` you will then
-        // find the python stdlib as expected (and a different instance of site-packages).
-        //
-        // FIXME: it would be nice to include a "we know the python name" fastpath like in
-        // `real_stdlib_directory_from_sys_prefix`.
         if let Ok(dir) = system.read_directory(&home_path) {
             for entry_result in dir {
                 let Ok(entry) = entry_result else {
@@ -2146,9 +2008,6 @@ impl SysPrefixPath {
             }
         }
 
-        // No need to check whether `path.parent()` is a directory:
-        // the parent of a canonicalised path that is known to exist
-        // is guaranteed to be a directory.
         if cfg!(target_os = "windows") {
             Some(Self {
                 inner: home_path.to_path_buf(),
@@ -2310,9 +2169,6 @@ struct PythonHomePath(SystemPathBuf);
 impl PythonHomePath {
     fn new(path: impl AsRef<SystemPath>, system: &dyn System) -> io::Result<Self> {
         let path = path.as_ref();
-        // It's important to resolve symlinks here rather than simply making the path absolute,
-        // since system Python installations often only put symlinks in the "expected"
-        // locations for `home` and `site-packages`
         let canonicalized = system.canonicalize_path(path)?;
         system
             .is_directory(&canonicalized)
@@ -2550,7 +2406,6 @@ mod tests {
                 pyvenv_cfg_contents.push('\n');
             }
 
-            // Deliberately using weird casing here to test that our pyvenv.cfg parsing is case-insensitive:
             if *system_site_packages {
                 pyvenv_cfg_contents.push_str("include-system-site-packages = TRuE\n");
             }
@@ -2783,8 +2638,6 @@ mod tests {
 
     #[test]
     fn can_find_site_packages_directory_no_virtual_env() {
-        // Shouldn't be converted to an mdtest because mdtest automatically creates a
-        // pyvenv.cfg file for you if it sees you creating a `site-packages` directory.
         let test = PythonEnvironmentTestCase {
             system: TestSystem::default(),
             minor_version: 12,
@@ -2809,8 +2662,6 @@ mod tests {
 
     #[test]
     fn can_find_site_packages_directory_no_virtual_env_freethreaded() {
-        // Shouldn't be converted to an mdtest because mdtest automatically creates a
-        // pyvenv.cfg file for you if it sees you creating a `site-packages` directory.
         let test = PythonEnvironmentTestCase {
             system: TestSystem::default(),
             minor_version: 13,
@@ -2849,8 +2700,6 @@ mod tests {
 
     #[test]
     fn can_find_site_packages_directory_no_virtual_env_at_origin_self_environment() {
-        // Test that ty can discover dependencies in a system Python environment
-        // that it's installed into (issue #2068).
         let test = PythonEnvironmentTestCase {
             system: TestSystem::default(),
             minor_version: 13,
@@ -2863,8 +2712,6 @@ mod tests {
 
     #[test]
     fn can_find_site_packages_directory_venv_style_version_field_in_pyvenv_cfg() {
-        // Shouldn't be converted to an mdtest because we want to assert
-        // that we parsed the `version` field correctly in `test.run()`.
         let test = PythonEnvironmentTestCase {
             system: TestSystem::default(),
             minor_version: 12,
@@ -2880,8 +2727,6 @@ mod tests {
 
     #[test]
     fn can_find_site_packages_directory_uv_style_version_field_in_pyvenv_cfg() {
-        // Shouldn't be converted to an mdtest because we want to assert
-        // that we parsed the `version` field correctly in `test.run()`.
         let test = PythonEnvironmentTestCase {
             system: TestSystem::default(),
             minor_version: 12,
@@ -2897,8 +2742,6 @@ mod tests {
 
     #[test]
     fn can_find_site_packages_directory_virtualenv_style_version_field_in_pyvenv_cfg() {
-        // Shouldn't be converted to an mdtest because we want to assert
-        // that we parsed the `version` field correctly in `test.run()`.
         let test = PythonEnvironmentTestCase {
             system: TestSystem::default(),
             minor_version: 12,
@@ -2929,9 +2772,6 @@ mod tests {
 
     #[test]
     fn finds_system_site_packages() {
-        // Can't be converted to an mdtest because the system installation's `sys.prefix`
-        // path is at a different location relative to the `pyvenv.cfg` file's `home` value
-        // on Windows.
         let test = PythonEnvironmentTestCase {
             system: TestSystem::default(),
             minor_version: 13,
@@ -3036,8 +2876,6 @@ mod tests {
             .memory_file_system()
             .create_directory_all("/env")
             .unwrap();
-        // Environment creation succeeds, but site-packages retrieval fails reading the `lib`
-        // directory
         let env =
             PythonEnvironment::new("/env", SysPrefixPathOrigin::PythonCliFlag, &system).unwrap();
         let site_packages = env.site_packages_paths(&system);
@@ -3047,8 +2885,6 @@ mod tests {
                 Err(SitePackagesDiscoveryError::CouldNotReadLibDirectory(..))
             );
         } else {
-            // On Windows, we look for `Lib/site-packages` directly instead of listing the entries
-            // of `lib/...` — so we don't see the intermediate failure
             assert_matches!(
                 site_packages,
                 Err(SitePackagesDiscoveryError::NoSitePackagesDirFound(..))
@@ -3070,7 +2906,6 @@ mod tests {
                 .create_directory_all("/env/Lib")
                 .unwrap();
         }
-        // Environment creation succeeds, but site-packages retrieval fails
         let env =
             PythonEnvironment::new("/env", SysPrefixPathOrigin::PythonCliFlag, &system).unwrap();
         let site_packages = env.site_packages_paths(&system);
@@ -3305,7 +3140,6 @@ mod tests {
         let system = TestSystem::default();
         let memory_fs = system.memory_file_system();
 
-        // Create a system Python installation with both site-packages and dist-packages
         let sys_prefix = SystemPathBuf::from("/usr");
         let site_packages = sys_prefix.join("lib/python3.12/site-packages");
         let dist_packages = sys_prefix.join("lib/python3.12/dist-packages");
@@ -3349,8 +3183,6 @@ mod tests {
         let system = TestSystem::default();
         let memory_fs = system.memory_file_system();
 
-        // Create a Debian-style system Python installation
-        // Debian uses /usr/lib/python3/dist-packages for packages that work across versions
         let sys_prefix = SystemPathBuf::from("/usr");
         let site_packages = sys_prefix.join("lib/python3.12/site-packages");
         let debian_dist_packages = sys_prefix.join("lib/python3/dist-packages");
@@ -3533,10 +3365,8 @@ mod tests {
         let system = TestSystem::default();
         let memory_fs = system.memory_file_system();
 
-        // Simulate a pyenv-style installation (sys.prefix != "/usr")
         let sys_prefix = SystemPathBuf::from("/home/user/.pyenv/versions/3.12.0");
         let site_packages = sys_prefix.join("lib/python3.12/site-packages");
-        // Also create a /usr/local path to ensure it isn't picked up
         let usr_local_dist = SystemPathBuf::from("/usr/local/lib/python3.12/dist-packages");
 
         memory_fs.create_directory_all(&site_packages).unwrap();
@@ -3575,8 +3405,6 @@ mod tests {
         let system = TestSystem::default();
         let memory_fs = system.memory_file_system();
 
-        // Create a system Python installation without the Debian-specific python3/dist-packages
-        // This forces the fallback enumeration to run
         let sys_prefix = SystemPathBuf::from("/usr");
         let site_packages = sys_prefix.join("lib/python3.11/site-packages");
         let dist_packages = sys_prefix.join("lib/python3.11/dist-packages");
@@ -3589,7 +3417,6 @@ mod tests {
             origin: SysPrefixPathOrigin::PythonCliFlag,
         };
 
-        // Use Unknown implementation to trigger fallback enumeration
         let directories = site_packages_directories_from_sys_prefix(
             &sys_prefix_path,
             PythonInterpreterLayout::unknown(PythonImplementation::Unknown, None),
@@ -3616,7 +3443,6 @@ mod tests {
         let system = TestSystem::default();
         let memory_fs = system.memory_file_system();
 
-        // Create a system Python installation with Debian's python3/dist-packages
         let sys_prefix = SystemPathBuf::from("/usr");
         let site_packages = sys_prefix.join("lib/python3.11/site-packages");
         let debian_dist_packages = sys_prefix.join("lib/python3/dist-packages");
@@ -3631,7 +3457,6 @@ mod tests {
             origin: SysPrefixPathOrigin::PythonCliFlag,
         };
 
-        // Use Unknown implementation to trigger fallback enumeration
         let directories = site_packages_directories_from_sys_prefix(
             &sys_prefix_path,
             PythonInterpreterLayout::unknown(PythonImplementation::Unknown, None),
@@ -3640,7 +3465,6 @@ mod tests {
         .unwrap();
 
         let dirs: Vec<_> = directories.into_iter().collect();
-        // The Debian-specific check runs first and finds python3/dist-packages
         assert!(
             dirs.iter()
                 .any(|p| p.as_str().contains("python3/dist-packages")),
@@ -3656,7 +3480,6 @@ mod tests {
         let memory_fs = system.memory_file_system();
 
         let sys_prefix = SystemPathBuf::from("/usr");
-        // Only create the /usr/local path; no /usr/lib dirs so phase 1 finds nothing
         let usr_local_dist_packages =
             SystemPathBuf::from("/usr/local/lib/python3.12/dist-packages");
         memory_fs
@@ -3776,7 +3599,6 @@ mod tests {
         let memory_fs = system.memory_file_system();
 
         let sys_prefix = SystemPathBuf::from("/usr");
-        // Create the correct version's path AND a wrong version's path under /usr/local
         let correct = SystemPathBuf::from("/usr/local/lib/python3.12/dist-packages");
         let wrong = SystemPathBuf::from("/usr/local/lib/python3.11/dist-packages");
 

@@ -155,8 +155,6 @@ pub(crate) fn subscript(checker: &Checker, value: &Expr, expr: &Expr) {
         return;
     };
 
-    // Avoid flagging on non-DataFrames (e.g., `{"a": 1}.at[0]`), and on irrelevant bindings
-    // (like imports).
     if !matches!(
         test_expression(value, checker.semantic()),
         Resolution::RelevantLocal
@@ -167,16 +165,13 @@ pub(crate) fn subscript(checker: &Checker, value: &Expr, expr: &Expr) {
     let range = expr.range();
 
     match attr.as_str() {
-        // PD007
         "ix" if checker.is_rule_enabled(Rule::PandasUseOfDotIx) => {
             let mut diagnostic = checker.report_diagnostic(PandasUseOfDotIx, range);
             diagnostic.add_primary_tag(ruff_db::diagnostic::DiagnosticTag::Deprecated);
         }
-        // PD008
         "at" if checker.is_rule_enabled(Rule::PandasUseOfDotAt) => {
             checker.report_diagnostic(PandasUseOfDotAt, range);
         }
-        // PD009
         "iat" if checker.is_rule_enabled(Rule::PandasUseOfDotIat) => {
             checker.report_diagnostic(PandasUseOfDotIat, range);
         }

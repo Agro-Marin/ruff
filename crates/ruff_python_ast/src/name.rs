@@ -406,7 +406,6 @@ impl<'a> QualifiedName<'a> {
             return None;
         }
 
-        // Attribute traversal visits the outermost member first; keep the prefix in order.
         segments.as_mut_slice()[prefix.len()..].reverse();
         Some(Self(segments))
     }
@@ -514,18 +513,14 @@ pub struct UnqualifiedName<'a>(SegmentsVec<'a>);
 impl<'a> UnqualifiedName<'a> {
     /// Convert an `Expr` to its [`UnqualifiedName`] (like `["typing", "List"]`).
     pub fn from_expr(expr: &'a Expr) -> Option<Self> {
-        // Unroll the loop up to eight times, to match the maximum number of expected attributes.
-        // In practice, unrolling appears to give about a 4x speed-up on this hot path.
         let attr1 = match expr {
             Expr::Attribute(attr1) => attr1,
-            // Ex) `foo`
             Expr::Name(ExprName { id, .. }) => return Some(Self::from_slice(&[id.as_str()])),
             _ => return None,
         };
 
         let attr2 = match attr1.value.as_ref() {
             Expr::Attribute(attr2) => attr2,
-            // Ex) `foo.bar`
             Expr::Name(ExprName { id, .. }) => {
                 return Some(Self::from_slice(&[id.as_str(), attr1.attr.as_str()]));
             }
@@ -534,7 +529,6 @@ impl<'a> UnqualifiedName<'a> {
 
         let attr3 = match attr2.value.as_ref() {
             Expr::Attribute(attr3) => attr3,
-            // Ex) `foo.bar.baz`
             Expr::Name(ExprName { id, .. }) => {
                 return Some(Self::from_slice(&[
                     id.as_str(),
@@ -547,7 +541,6 @@ impl<'a> UnqualifiedName<'a> {
 
         let attr4 = match attr3.value.as_ref() {
             Expr::Attribute(attr4) => attr4,
-            // Ex) `foo.bar.baz.bop`
             Expr::Name(ExprName { id, .. }) => {
                 return Some(Self::from_slice(&[
                     id.as_str(),
@@ -561,7 +554,6 @@ impl<'a> UnqualifiedName<'a> {
 
         let attr5 = match attr4.value.as_ref() {
             Expr::Attribute(attr5) => attr5,
-            // Ex) `foo.bar.baz.bop.bap`
             Expr::Name(ExprName { id, .. }) => {
                 return Some(Self::from_slice(&[
                     id.as_str(),
@@ -576,7 +568,6 @@ impl<'a> UnqualifiedName<'a> {
 
         let attr6 = match attr5.value.as_ref() {
             Expr::Attribute(attr6) => attr6,
-            // Ex) `foo.bar.baz.bop.bap.bab`
             Expr::Name(ExprName { id, .. }) => {
                 return Some(Self::from_slice(&[
                     id.as_str(),
@@ -592,7 +583,6 @@ impl<'a> UnqualifiedName<'a> {
 
         let attr7 = match attr6.value.as_ref() {
             Expr::Attribute(attr7) => attr7,
-            // Ex) `foo.bar.baz.bop.bap.bab.bob`
             Expr::Name(ExprName { id, .. }) => {
                 return Some(Self::from_slice(&[
                     id.as_str(),
@@ -609,7 +599,6 @@ impl<'a> UnqualifiedName<'a> {
 
         let attr8 = match attr7.value.as_ref() {
             Expr::Attribute(attr8) => attr8,
-            // Ex) `foo.bar.baz.bop.bap.bab.bob.bib`
             Expr::Name(ExprName { id, .. }) => {
                 return Some(Self(SegmentsVec::from([
                     id.as_str(),
@@ -647,7 +636,6 @@ impl<'a> UnqualifiedName<'a> {
 
         segments.reverse();
 
-        // Append the attributes we visited before calling into the recursion.
         segments.extend_from_slice(&[
             attr8.attr.as_str(),
             attr7.attr.as_str(),

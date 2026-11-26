@@ -86,14 +86,12 @@ fn is_magic_value(
     unary_op: Option<&UnaryOp>,
     settings: &Settings,
 ) -> bool {
-    // Check if the literal type is in the allowed types list
     if let Some(constant_type) = ConstantType::try_from_literal_expr(literal_expr) {
         if settings.allow_magic_value_types.contains(&constant_type) {
             return false;
         }
     }
 
-    // Check if the literal value is in the allowed values list
     if settings
         .allow_magic_values
         .iter()
@@ -102,7 +100,6 @@ fn is_magic_value(
         return false;
     }
 
-    // Ignore `None`, `Bool`, and `Ellipsis` constants.
     !matches!(
         literal_expr,
         LiteralExpressionRef::NoneLiteral(_)
@@ -129,8 +126,6 @@ fn is_sys_version_comparand(expr: &Expr, semantic: &SemanticModel) -> bool {
 /// PLR2004
 pub(crate) fn magic_value_comparison(checker: &Checker, operands: &[Expr]) {
     for (left, right) in operands.iter().tuple_windows() {
-        // If both of the comparators are literals, skip rule for the whole expression.
-        // R0133: comparison-of-constants
         if as_literal(left).is_some() && as_literal(right).is_some() {
             return;
         }

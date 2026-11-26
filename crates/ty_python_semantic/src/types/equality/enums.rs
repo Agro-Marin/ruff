@@ -436,7 +436,6 @@ impl<'db> EnumValueSet<'db> {
             (value_set.member_count(db) > 0).then_some(value_set)
         }
 
-        // A cycle prevents extracting a finite enum domain, so fall back to general comparison.
         if !active_types.insert(ty) {
             return None;
         }
@@ -536,8 +535,6 @@ impl<'db> EnumValueSet<'db> {
             return Some(value_set);
         }
 
-        // Other intersection components can only reduce the represented enum values. Ignoring
-        // them therefore preserves a safe upper bound without transferring them during narrowing.
         let mut value_sets = intersection
             .positive(db)
             .iter()

@@ -17,10 +17,8 @@ pub(crate) fn show_files(
     config_arguments: &ConfigArguments,
     writer: &mut impl Write,
 ) -> Result<()> {
-    // Collect all files in the hierarchy.
     let (mut paths, _resolver) = project_files_in_path(files, root_settings, config_arguments)?;
 
-    // Filter out paths for file types not supported for linting
     paths.retain(|path| {
         if let Ok(ResolvedFile::Root(path) | ResolvedFile::Nested(path)) = path {
             matches!(
@@ -38,7 +36,6 @@ pub(crate) fn show_files(
         return Ok(());
     }
 
-    // Print the list of files.
     for path in paths
         .into_iter()
         .flatten()

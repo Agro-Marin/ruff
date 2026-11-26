@@ -72,12 +72,10 @@ pub(crate) fn nunique_constant_series_check(checker: &Checker, compare: &ast::Ex
         return;
     };
 
-    // Operators may be ==, !=, <=, >.
     if !matches!(op, CmpOp::Eq | CmpOp::NotEq | CmpOp::LtE | CmpOp::Gt,) {
         return;
     }
 
-    // Right should be the integer 1.
     if !matches!(
         right,
         Expr::NumberLiteral(ast::ExprNumberLiteral {
@@ -89,7 +87,6 @@ pub(crate) fn nunique_constant_series_check(checker: &Checker, compare: &ast::Ex
         return;
     }
 
-    // Check if call is `.nuniuqe()`.
     let Expr::Call(ast::ExprCall { func, .. }) = left else {
         return;
     };
@@ -102,7 +99,6 @@ pub(crate) fn nunique_constant_series_check(checker: &Checker, compare: &ast::Ex
         return;
     }
 
-    // Avoid flagging on non-Series (e.g., `{"a": 1}.at[0]`).
     if !matches!(
         test_expression(value, checker.semantic()),
         Resolution::RelevantLocal

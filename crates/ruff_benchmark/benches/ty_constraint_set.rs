@@ -338,7 +338,6 @@ fn benchmark_counterexample_behind_implied_bound(criterion: &mut Criterion) {
             2 * i, 2 * i + 1
         ))
         .join(" & ");
-    // Falsifying a long disjunction requires one continuous path through every bound.
     let alternatives = (1000..1033)
         .map(|i| format!("ConstraintSet.lower_bound(Literal[{i}], U)"))
         .join(" | ");
@@ -453,7 +452,6 @@ def check[T: tuple[Any]]() -> None:
               | ConstraintSet.lower_bound(tuple[Literal[-2]], T))
 ",
     );
-    // Allocate the choice first so traversal reaches it after the 64 shared lower bounds.
     for i in 0..64 {
         writeln!(
             &mut code,
@@ -487,7 +485,6 @@ fn benchmark_pandas_tdd(criterion: &mut Criterion) {
             df["a"] ** 2 + df["b"] ** 2 + df["c"] ** 2)
         "#;
 
-    // This example was reported in https://github.com/astral-sh/ty/issues/3039.
     criterion.bench_function("ty_micro[pandas_tdd]", |b| {
         b.iter_batched_ref(
             || setup_micro_case_inner(code, Some(&venv_path)),
@@ -579,7 +576,6 @@ fn benchmark_missing_key_typed_dict_union_copy(criterion: &mut Criterion) {
 
     setup_rayon();
 
-    // Regression benchmark for https://github.com/astral-sh/ty/issues/4176.
     let mut code = "from typing import Literal, NotRequired, TypedDict\n\n".to_string();
     for i in 0..NUM_VARIANTS {
         writeln!(
@@ -625,7 +621,6 @@ fn benchmark_recursive_typed_dict_union_contextual_inference(criterion: &mut Cri
 
     setup_rayon();
 
-    // Regression benchmark for https://github.com/astral-sh/ty/issues/3663.
     let mut code = "from typing import Literal, TypedDict\n\n".to_string();
     for i in 0..NUM_BRANCHES {
         writeln!(
@@ -681,7 +676,6 @@ fn benchmark_invariant_generic_return_union(criterion: &mut Criterion) {
 
     setup_rayon();
 
-    // Regression benchmark for https://github.com/astral-sh/ty/issues/3896.
     let mut code = String::new();
     for i in 0..NUM_VARIANTS {
         writeln!(&mut code, "class M{i}: pass").ok();
@@ -730,7 +724,6 @@ fn benchmark_sequence_literal_union_access(criterion: &mut Criterion) {
 
     setup_rayon();
 
-    // Regression benchmark for https://github.com/astral-sh/ty/issues/4089.
     let mut code = String::from(
         "from collections.abc import Sequence\nfrom typing import Literal\n\nItem = Literal[\n",
     );
@@ -805,7 +798,6 @@ consume(ALIASES.items())
 fn benchmark_many_invariant_typevars(criterion: &mut Criterion) {
     setup_rayon();
 
-    // Regression benchmark for https://github.com/astral-sh/ty/issues/3989.
     let code = r#"
 class Invariant[T]:
     x: T
@@ -889,17 +881,8 @@ fn benchmark_pydantic_core_schema_dict(criterion: &mut Criterion) {
 
     setup_rayon();
 
-    // Minimized from the pydantic and hydra-zen ecosystem regressions seen during the
-    // SpecializationBuilder pending-constraint-set migration. Pydantic has several empty dict
-    // literals with a type context equivalent to `dict[Hashable, core_schema.CoreSchema]`
-    // (including `schema.setdefault("metadata", {})` and tagged-union choice tables).
-    // `CoreSchema` is a large union of TypedDict schema types; this local `CoreSchema` alias is
-    // derived from pydantic-core's real `CoreSchema`, but reduced to enough variants to show the
-    // regression quickly. Solving the empty-dict specialization creates one lower-bound constraint
     // per union element for `_VT@dict`. Combined with `_KT@dict = Hashable`,
-    // PathAssignments/SequentMap traversal derives cross-typevar facts like
     // `TypedDictSchema <= _VT@dict <= Hashable`. This benchmark tracks the cost until constraint
-    // projection / path-bounds solving can avoid that work.
     let mut code = "from collections.abc import Hashable\nfrom typing import Literal, NotRequired, TypedDict\n\n"
         .to_string();
     for i in 0..NUM_CORE_SCHEMA_VARIANTS {

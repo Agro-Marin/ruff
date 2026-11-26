@@ -130,8 +130,6 @@ fn find_runtime_varying_call<'a>(
                     return Some((expr, name));
                 }
             }
-            // Recurse into the callee (catches method chains like `datetime.now().isoformat()`)
-            // and into arguments (catches wrappers like `str(datetime.now())`).
             find_runtime_varying_call(func, semantic)
                 .or_else(|| {
                     arguments
@@ -160,9 +158,6 @@ fn find_runtime_varying_call<'a>(
         Expr::UnaryOp(ast::ExprUnaryOp { operand, .. }) => {
             find_runtime_varying_call(operand, semantic)
         }
-        // Lambda defers execution — `lambda: datetime.now()` does not call
-        // `now()` at DAG parse time, so traversing into the body would be a
-        // false positive.
         Expr::Lambda(_) => None,
         Expr::If(ast::ExprIf {
             test, body, orelse, ..

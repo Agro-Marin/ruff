@@ -81,14 +81,10 @@ pub(crate) fn constant_imported_as_non_constant(
         return;
     }
 
-    // Single-character names are ambiguous.
-    // It could be a class or a constant, so allow it to be imported
-    // as `SCREAMING_SNAKE_CASE` *or* `CamelCase`.
     if name.chars().nth(1).is_none() && helpers::is_camelcase(asname) {
         return;
     }
 
-    // Ignore any explicitly-allowed names.
     if ignore_names.matches(name) || ignore_names.matches(asname) {
         return;
     }

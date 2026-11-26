@@ -39,9 +39,6 @@ export function DiagnosticDetailItem({
 
   const locationLabel = `[Ln ${location.startLineNumber}, Col ${location.startColumn}]`;
 
-  // Keep the message outside the button so that only the bracketed source
-  // location is presented as a navigation link. If the whole message is
-  // hyperlinked, it becomes distracting.
   return (
     <>
       {severity}

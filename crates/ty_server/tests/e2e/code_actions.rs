@@ -68,12 +68,10 @@ unused-ignore-comment = \"warn\"
 
     server.open_text_document(foo, foo_content, 1);
 
-    // Wait for diagnostics to be computed.
     let diagnostics = server.document_diagnostic_request(foo, None);
     let range = full_range(foo_content);
     let code_action_params = code_actions_at(&server, diagnostics, foo, range);
 
-    // Get code actions for the line with the unused ignore comment.
     let code_action_id = server.send_request::<CodeActionRequest>(code_action_params);
     let code_actions = server.await_response::<CodeActionRequest>(&code_action_id);
 
@@ -86,7 +84,6 @@ unused-ignore-comment = \"warn\"
 fn code_action_unsafe_fix() -> Result<()> {
     let workspace_root = SystemPath::new("src");
     let foo = SystemPath::new("src/foo.py");
-    // Removing the suppression is unsafe because it would activate `fmt: off`.
     let foo_content = "\
 # ty: ignore[division-by-zero] # fmt: off
 x = 20 / 2
@@ -168,24 +165,19 @@ unused-ignore-comment = \"warn\"
 
     server.open_text_document(foo, foo_content, 1);
 
-    // Wait for diagnostics to be computed.
     let diagnostics = server.document_diagnostic_request(foo, None);
 
-    // Get code actions for a range that doesn't overlap with the diagnostic.
-    // The diagnostic is at characters 12-42, so we request actions for characters 0-10.
     let range = Range::new(Position::new(0, 0), Position::new(0, 10));
     let code_action_params = code_actions_at(&server, diagnostics, foo, range);
 
     let code_action_id = server.send_request::<CodeActionRequest>(code_action_params);
     let code_actions = server.await_response::<CodeActionRequest>(&code_action_id);
 
-    // Should return None because the range doesn't overlap with the diagnostic.
     assert_eq!(code_actions, None);
 
     Ok(())
 }
 
-// `Literal` is available from two places so we should suggest two possible imports
 #[test]
 fn code_action_undefined_reference_multi() -> Result<()> {
     let workspace_root = SystemPath::new("src");
@@ -206,12 +198,10 @@ x: Literal[1] = 1
 
     server.open_text_document(foo, foo_content, 1);
 
-    // Wait for diagnostics to be computed.
     let diagnostics = server.document_diagnostic_request(foo, None);
     let range = full_range(foo_content);
     let code_action_params = code_actions_at(&server, diagnostics, foo, range);
 
-    // Get code actions
     let code_action_id = server.send_request::<CodeActionRequest>(code_action_params);
     let code_actions = server.await_response::<CodeActionRequest>(&code_action_id);
 
@@ -242,8 +232,6 @@ x: Literal[1] = 1
     let mut code_action_params =
         code_actions_at(&server, diagnostics, foo, full_range(foo_content));
 
-    // The ty VS Code extension replaces the diagnostic code with a link label.
-    // The original diagnostic ID in `data` must still drive lazy code actions.
     for diagnostic in &mut code_action_params.context.diagnostics {
         diagnostic.code = Some(lsp_types::Code::String(
             "Click for full diagnostic".to_string(),
@@ -280,12 +268,10 @@ def my_func(): ...
 
     server.open_text_document(foo, foo_content, 1);
 
-    // Wait for diagnostics to be computed.
     let diagnostics = server.document_diagnostic_request(foo, None);
     let range = full_range(foo_content);
     let code_action_params = code_actions_at(&server, diagnostics, foo, range);
 
-    // Get code actions
     let code_action_id = server.send_request::<CodeActionRequest>(code_action_params);
     let code_actions = server.await_response::<CodeActionRequest>(&code_action_id);
 
@@ -318,12 +304,10 @@ def my_func(): ...
 
     server.open_text_document(foo, foo_content, 1);
 
-    // Wait for diagnostics to be computed.
     let diagnostics = server.document_diagnostic_request(foo, None);
     let range = full_range(foo_content);
     let code_action_params = code_actions_at(&server, diagnostics, foo, range);
 
-    // Get code actions
     let code_action_id = server.send_request::<CodeActionRequest>(code_action_params);
     let code_actions = server.await_response::<CodeActionRequest>(&code_action_id);
 
@@ -332,7 +316,6 @@ def my_func(): ...
     Ok(())
 }
 
-// Accessing `typing.Literal` without `typing` imported (ideally we suggest importing `typing`)
 #[test]
 fn code_action_attribute_access_on_unimported() -> Result<()> {
     let workspace_root = SystemPath::new("src");
@@ -353,12 +336,10 @@ x: typing.Literal[1] = 1
 
     server.open_text_document(foo, foo_content, 1);
 
-    // Wait for diagnostics to be computed.
     let diagnostics = server.document_diagnostic_request(foo, None);
     let range = full_range(foo_content);
     let code_action_params = code_actions_at(&server, diagnostics, foo, range);
 
-    // Get code actions
     let code_action_id = server.send_request::<CodeActionRequest>(code_action_params);
     let code_actions = server.await_response::<CodeActionRequest>(&code_action_id);
 
@@ -367,7 +348,6 @@ x: typing.Literal[1] = 1
     Ok(())
 }
 
-// Accessing `html.parser` when we've imported `html` but not `html.parser`
 #[test]
 fn code_action_possible_missing_submodule_attribute() -> Result<()> {
     let workspace_root = SystemPath::new("src");
@@ -389,12 +369,10 @@ html.parser
 
     server.open_text_document(foo, foo_content, 1);
 
-    // Wait for diagnostics to be computed.
     let diagnostics = server.document_diagnostic_request(foo, None);
     let range = full_range(foo_content);
     let code_action_params = code_actions_at(&server, diagnostics, foo, range);
 
-    // Get code actions
     let code_action_id = server.send_request::<CodeActionRequest>(code_action_params);
     let code_actions = server.await_response::<CodeActionRequest>(&code_action_id);
 
@@ -425,12 +403,10 @@ ab: "foobar"
 
     server.open_text_document(foo, foo_content, 1);
 
-    // Wait for diagnostics to be computed.
     let diagnostics = server.document_diagnostic_request(foo, None);
     let range = full_range(foo_content);
     let code_action_params = code_actions_at(&server, diagnostics, foo, range);
 
-    // Get code actions for the line with the unused ignore comment.
     let code_action_id = server.send_request::<CodeActionRequest>(code_action_params);
     let code_actions = server.await_response::<CodeActionRequest>(&code_action_id);
 

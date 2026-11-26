@@ -69,7 +69,6 @@ impl<'ast> Visitor<'ast> for LoopBindingsVisitor {
                 for target in &node.targets {
                     self.add_place_from_target(target);
                 }
-                // Visit the value expression to find named expressions (walrus operator).
                 self.visit_expr(&node.value);
             }
             ast::Stmt::AugAssign(node) => {
@@ -134,12 +133,10 @@ impl<'ast> Visitor<'ast> for LoopBindingsVisitor {
             ast::Stmt::FunctionDef(node) => {
                 self.bound_places
                     .push(PlaceExpr::Symbol(Symbol::new(node.name.id.clone())));
-                // Don't descend into function bodies - they're different scopes.
             }
             ast::Stmt::ClassDef(node) => {
                 self.bound_places
                     .push(PlaceExpr::Symbol(Symbol::new(node.name.id.clone())));
-                // Don't descend into class bodies - they're different scopes.
             }
             ast::Stmt::Match(node) => {
                 self.visit_expr(&node.subject);
@@ -161,7 +158,6 @@ impl<'ast> Visitor<'ast> for LoopBindingsVisitor {
     }
 
     fn visit_expr(&mut self, expr: &'ast ast::Expr) {
-        // the walrus operator
         if let ast::Expr::Named(node) = expr {
             self.add_place_from_target(&node.target);
         }
@@ -200,7 +196,6 @@ mod tests {
     use ruff_python_parser::parse_module;
     use ruff_python_trivia::textwrap::dedent;
 
-    // Test collecting `while` loop bindings.
 
     fn collect_while_loop_place_names(code: &str) -> Vec<String> {
         let parsed = parse_module(code).expect("valid Python code");
@@ -229,7 +224,6 @@ mod tests {
                 z = 4
             ",
         ));
-        // `z` is not collected, because it's not visible to the loopback edge.
         assert_eq!(bindings, vec!["x", "y", "x"]);
     }
 
@@ -248,8 +242,6 @@ mod tests {
                 [g := 42 for x in [h := 99 for _ in 'hello world']]
             ",
         ));
-        // Note that "x", the comprehension variable, is not included, but "g", a walrus assignment
-        // within the comprehension, is included.
         assert_eq!(bindings, vec!["a", "b", "c", "d", "f", "h", "g"]);
     }
 
@@ -264,7 +256,6 @@ mod tests {
         assert_eq!(bindings, vec!["x", "y"]);
     }
 
-    // Test collecting `for` loop bindings.
 
     fn collect_for_loop_place_names(code: &str) -> Vec<String> {
         let parsed = parse_module(code).expect("valid Python code");
@@ -293,7 +284,6 @@ mod tests {
                 z = 4
             ",
         ));
-        // `z` is not collected, because it's not visible to the loopback edge.
         assert_eq!(bindings, vec!["i", "x", "y", "x"]);
     }
 
@@ -312,8 +302,6 @@ mod tests {
                 [g := 42 for x in [h := 99 for _ in 'hello world']]
             ",
         ));
-        // Note that "x", the comprehension variable, is not included, but "g", a walrus assignment
-        // within the comprehension, is included.
         assert_eq!(bindings, vec!["i", "a", "b", "c", "d", "f", "h", "g"]);
     }
 
@@ -458,7 +446,6 @@ mod tests {
                 "seq_a",
                 "seq_b",
                 "deleted_variable",
-                // Only the LHS of walrus operators gets collected from comprehensions.
                 "walrus_in_list_comp",
                 "walrus_in_comp_iter",
             ];

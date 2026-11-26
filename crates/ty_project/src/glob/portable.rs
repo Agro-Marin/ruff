@@ -44,16 +44,10 @@ impl<'a> PortableGlobPattern<'a> {
             chars.next_if(|(_, c)| *c == '!');
         }
 
-        // A `..` is on a parent directory indicator at the start of the string or after a directory
-        // separator.
         let mut start_or_slash = true;
-        // The number of consecutive stars before the current character.
         while let Some((offset, c)) = chars.next() {
             let pos = offset + 1;
 
-            // `***` or `**literals` can be correctly represented with less stars. They are banned by
-            // `glob`, they are allowed by `globset` and PEP 639 is ambiguous, so we're filtering them
-            // out.
             if c == '*' {
                 let mut star_run = 1;
                 while let Some((_, c)) = chars.peek() {
@@ -66,13 +60,11 @@ impl<'a> PortableGlobPattern<'a> {
                 }
                 if star_run >= 3 {
                     return Err(PortableGlobError::TooManyStars {
-                        // We don't update pos for the stars.
                         pos,
                     });
                 } else if star_run == 2 {
                     if chars.peek().is_some_and(|(_, c)| *c != '/') {
                         return Err(PortableGlobError::TooManyStars {
-                            // We don't update pos for the stars.
                             pos,
                         });
                     }
@@ -90,7 +82,6 @@ impl<'a> PortableGlobPattern<'a> {
             } else if c == '[' {
                 for (pos, c) in chars.by_ref() {
                     if c.is_alphanumeric() || matches!(c, '_' | '-' | '.') {
-                        // Allowed.
                     } else if c == ']' {
                         break;
                     } else {
@@ -104,12 +95,9 @@ impl<'a> PortableGlobPattern<'a> {
             } else if c == '\\' {
                 match chars.next() {
                     Some((pos, '/' | '\\')) => {
-                        // For cross-platform compatibility, we don't allow forward slashes or
-                        // backslashes to be escaped.
                         return Err(PortableGlobError::InvalidEscapee { pos });
                     }
                     Some(_) => {
-                        // Escaped character
                     }
                     None => {
                         return Err(PortableGlobError::TrailingEscape { pos });
@@ -139,7 +127,6 @@ impl<'a> PortableGlobPattern<'a> {
         let mut negated = false;
 
         if matches!(self.kind, PortableGlobKind::Exclude) {
-            // If the pattern starts with `!`, we need to remove it and then anchor the rest.
             if let Some(after) = self.pattern.strip_prefix('!') {
                 pattern = after;
                 negated = true;
@@ -169,7 +156,6 @@ impl<'a> PortableGlobPattern<'a> {
 
         let mut output = String::with_capacity(prefix.as_str().len() + rest.len());
 
-        // The directory is a literal path; only `rest` contains glob syntax.
         for component in prefix.components() {
             match component {
                 camino::Utf8Component::Prefix(utf8_prefix_component) => {
@@ -193,7 +179,6 @@ impl<'a> PortableGlobPattern<'a> {
 
         output.push_str(rest);
         if negated {
-            // If the pattern is negated, we need to keep the leading `!`.
             AbsolutePortableGlobPattern {
                 absolute: format!("!{output}"),
                 relative: self.pattern.to_string(),
@@ -208,8 +193,6 @@ impl<'a> PortableGlobPattern<'a> {
 }
 
 fn escape_glob_path_component(component: &str) -> String {
-    // The matchers treat `\` as an escape. A literal `\` in the path therefore needs
-    // `\\` in the glob; `globset::escape` does not make that substitution.
     globset::escape(&component.replace('\\', r"\\"))
 }
 
@@ -341,7 +324,6 @@ mod tests {
             parse_err(r"**/@test"),
             @"Invalid character `@` at position 4. hint: Characters can be escaped with a backslash"
         );
-        // Escapes are not allowed in strict PEP 639 mode
         assert_snapshot!(
             parse_err(r"public domain/Gulliver\\’s Travels.txt"),
             @"Invalid character ` ` at position 7. hint: Characters can be escaped with a backslash"
@@ -350,7 +332,6 @@ mod tests {
             parse_err(r"**/@test"),
             @"Invalid character `@` at position 4. hint: Characters can be escaped with a backslash"
         );
-        // Escaping slashes is not allowed.
         assert_snapshot!(
             parse_err(r"licenses\\MIT.txt"),
             @"Path separators can't be escaped, invalid character at position 9"
@@ -373,7 +354,6 @@ mod tests {
             r"*/**",
             r"LICENSE..txt",
             r"LICENSE_file-1.txt",
-            // (google translate)
             r"licenses/라이센스*.txt",
             r"licenses/ライセンス*.txt",
             r"licenses/执照*.txt",
@@ -381,7 +361,6 @@ mod tests {
         ];
         let cases_uv = [
             r"public-domain/Gulliver\’s\ Travels.txt",
-            // https://github.com/astral-sh/uv/issues/13280
             r"**/\@test",
         ];
         for case in cases.iter().chain(cases_uv.iter()) {

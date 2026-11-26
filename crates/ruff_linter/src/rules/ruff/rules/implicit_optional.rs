@@ -195,7 +195,6 @@ pub(crate) fn implicit_optional(checker: &Checker, parameters: &Parameters) {
         };
 
         if let Expr::StringLiteral(string_expr) = annotation {
-            // Quoted annotation.
             if let Ok(parsed_annotation) = checker.parse_type_annotation(string_expr) {
                 let Some(expr) = type_hint_explicitly_allows_none(
                     parsed_annotation.expression(),
@@ -214,7 +213,6 @@ pub(crate) fn implicit_optional(checker: &Checker, parameters: &Parameters) {
                 }
             }
         } else {
-            // Unquoted annotation.
             let Some(expr) =
                 type_hint_explicitly_allows_none(annotation, checker, checker.target_version())
             else {

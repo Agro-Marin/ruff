@@ -16,9 +16,6 @@ from typing_extensions import LiteralString
 
 from ._internal import TypeOf as _TypeOf
 
-# ------------------
-# Special operations
-# ------------------
 
 def static_assert(condition: object, msg: LiteralString | None = None) -> None:
     """Make sure that a certain condition holds at type-check time.
@@ -31,9 +28,6 @@ def static_assert(condition: object, msg: LiteralString | None = None) -> None:
 
     At runtime, a false condition raises `AssertionError` (even with Python optimization enabled)."""
 
-# -------------
-# Special forms
-# -------------
 
 Not: _SpecialForm
 """
@@ -152,9 +146,6 @@ eagerly.
 [Any]: https://typing.python.org/en/latest/spec/special-types.html#any
 """
 
-# -----
-# Types
-# -----
 
 AlwaysTruthy: _SpecialForm
 """

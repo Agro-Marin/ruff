@@ -72,7 +72,6 @@ pub(crate) fn mutable_fromkeys_value(checker: &Checker, call: &ast::ExprCall) {
         return;
     };
 
-    // Check that the call is to `dict.fromkeys`.
     if attr != "fromkeys" {
         return;
     }
@@ -81,7 +80,6 @@ pub(crate) fn mutable_fromkeys_value(checker: &Checker, call: &ast::ExprCall) {
         return;
     }
 
-    // Check that the value parameter is a mutable object.
     let [keys, value] = &*call.arguments.args else {
         return;
     };
@@ -104,14 +102,12 @@ fn generate_dict_comprehension(
     generator: Generator,
     semantic: &SemanticModel<'_>,
 ) -> String {
-    // Construct `key`.
     let key = ast::ExprName {
         id: fresh_binding_name(semantic, "key"),
         ctx: ast::ExprContext::Load,
         range: TextRange::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
     };
-    // Construct `key in keys`.
     let comp = ast::Comprehension {
         target: key.clone().into(),
         iter: keys.clone(),
@@ -120,7 +116,6 @@ fn generate_dict_comprehension(
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
         is_async: false,
     };
-    // Construct the dict comprehension.
     let dict_comp = ast::ExprDictComp {
         key: Some(Box::new(key.into())),
         value: Box::new(value.clone()),

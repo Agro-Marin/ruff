@@ -1,5 +1,3 @@
-// This gives tons of false positives in this file because of
-// "reStructuredText."
 #![allow(clippy::doc_markdown)]
 
 use std::cmp::Ordering;
@@ -113,45 +111,28 @@ use crate::{DocstringCodeLineWidth, FormatModuleError, prelude::*};
 pub(crate) fn format(normalized: &NormalizedString, f: &mut PyFormatter) -> FormatResult<()> {
     let docstring = &normalized.text();
 
-    // Black doesn't change the indentation of docstrings that contain an escaped newline
     if contains_unescaped_newline(docstring) {
         return normalized.fmt(f);
     }
 
-    // is_borrowed is unstable :/
     let already_normalized = matches!(docstring, Cow::Borrowed(_));
 
-    // Use `split` instead of `lines` to preserve the closing quotes on their own line
-    // if they have no indentation (in which case the last line is `\n` which
-    // `lines` omit for the last element).
     let mut lines = docstring.split('\n').peekable();
 
-    // Start the string
     let kind = normalized.flags();
     let quotes = StringQuotes::from(kind);
     write!(f, [kind.prefix(), quotes])?;
-    // We track where in the source docstring we are (in source code byte offsets)
     let mut offset = normalized.start();
 
-    // The first line directly after the opening quotes has different rules than the rest, mainly
-    // that we remove all leading whitespace as there's no indentation
     let first = lines.next().unwrap_or_default();
-    // Black trims whitespace using [`str.strip()`](https://docs.python.org/3/library/stdtypes.html#str.strip)
-    // https://github.com/psf/black/blob/b4dca26c7d93f930bbd5a7b552807370b60d4298/src/black/strings.py#L77-L85
-    // So we use the unicode whitespace definition through `trim_{start,end}` instead of the python
-    // tokenizer whitespace definition in `trim_whitespace_{start,end}`.
     let trim_end = first.trim_end();
     let trim_both = trim_end.trim_start();
 
-    // Edge case: The first line is `""" "content`, so we need to insert chaperone space that keep
-    // inner quotes and closing quotes from getting to close to avoid `""""content`
     if trim_both.starts_with(quotes.quote_char.as_char()) {
         space().fmt(f)?;
     }
 
     if !trim_end.is_empty() {
-        // For the first line of the docstring we strip the leading and trailing whitespace, e.g.
-        // `"""   content   ` to `"""content`
         let leading_whitespace = trim_end.text_len() - trim_both.text_len();
         let trimmed_line_range =
             TextRange::at(offset, trim_end.text_len()).add_start(leading_whitespace);
@@ -163,10 +144,7 @@ pub(crate) fn format(normalized: &NormalizedString, f: &mut PyFormatter) -> Form
     }
     offset += first.text_len();
 
-    // Check if we have a single line (or empty) docstring
     if docstring[first.len()..].trim().is_empty() {
-        // For `"""\n"""` or other whitespace between the quotes, black keeps a single whitespace,
-        // but `""""""` doesn't get one inserted.
         if needs_chaperone_space(normalized.flags(), trim_end)
             || (trim_end.is_empty() && !docstring.is_empty())
         {
@@ -177,16 +155,10 @@ pub(crate) fn format(normalized: &NormalizedString, f: &mut PyFormatter) -> Form
     }
 
     hard_line_break().fmt(f)?;
-    // We know that the normalized string has \n line endings
     offset += "\n".text_len();
 
-    // If some line of the docstring is less indented than the function body, we pad all lines to
-    // align it with the docstring statement. Conversely, if all lines are over-indented, we strip
-    // the extra indentation. We call this stripped indentation since it's relative to the block
-    // indent printer-made indentation.
     let stripped_indentation = lines
         .clone()
-        // We don't want to count whitespace-only lines as miss-indented
         .filter(|line| !line.trim().is_empty())
         .map(Indentation::from_str)
         .min_by_key(|indentation| indentation.columns())
@@ -203,7 +175,6 @@ pub(crate) fn format(normalized: &NormalizedString, f: &mut PyFormatter) -> Form
     }
     .add_iter(lines)?;
 
-    // Same special case in the last line as for the first line
     let trim_end = docstring
         .as_ref()
         .trim_end_matches(|c: char| c.is_whitespace() && c != '\n');
@@ -279,7 +250,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
                 offset: self.offset,
                 next: lines.peek().copied(),
             };
-            // We know that the normalized string has \n line endings.
             self.offset += line.line.text_len() + "\n".text_len();
             self.add_one(line)?;
         }
@@ -294,12 +264,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
     /// of an existing code snippet, then the lines will get buffered until
     /// the code snippet is complete.
     fn add_one(&mut self, line: InputDocstringLine<'src>) -> FormatResult<()> {
-        // Just pass through the line as-is without looking for a code snippet
-        // when docstring code formatting is disabled. And also when we are
-        // formatting a code snippet so as to avoid arbitrarily nested code
-        // snippet formatting. We avoid this because it's likely quite tricky
-        // to get right 100% of the time, although perhaps not impossible. It's
-        // not clear that it's worth the effort to support.
         if !self.f.options().docstring_code().is_enabled() || self.f.context().docstring().is_some()
         {
             return self.print_one(&line.as_output());
@@ -323,10 +287,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
                 }
                 CodeExampleAddAction::Format { mut kind } => {
                     let Some(formatted_lines) = self.format(&mut kind)? else {
-                        // Since we've failed to emit these lines, we need to
-                        // put them back in the queue but have them jump to the
-                        // front of the queue to get processed before any other
-                        // action.
                         self.action_queue.push_front(CodeExampleAddAction::Reset {
                             code: kind.into_code(),
                         });
@@ -351,8 +311,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
                             let Some(min_indent) = litblock.min_indent else {
                                 continue;
                             };
-                            // This looks suspicious, but it's consistent with the whitespace
-                            // normalization that will occur anyway.
                             let indent = " ".repeat(min_indent.columns());
                             for docline in formatted_lines {
                                 self.print_one(
@@ -361,8 +319,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
                             }
                         }
                         CodeExampleKind::Markdown(fenced) => {
-                            // This looks suspicious, but it's consistent with the whitespace
-                            // normalization that will occur anyway.
                             let indent = " ".repeat(fenced.opening_fence_indent.columns());
                             for docline in formatted_lines {
                                 self.print_one(
@@ -386,9 +342,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
         let trim_end = line.line.trim_end();
         if trim_end.is_empty() {
             return if line.is_last {
-                // If the doc string ends with `    """`, the last line is
-                // `    `, but we don't want to insert an empty line (but close
-                // the docstring).
                 Ok(())
             } else {
                 empty_line().fmt(self.f)
@@ -396,7 +349,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
         }
 
         let indent_offset = match self.f.options().indent_style() {
-            // Normalize all indent to spaces.
             IndentStyle::Space => {
                 let tab_or_non_ascii_space = trim_end
                     .chars()
@@ -406,12 +358,8 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
                 if tab_or_non_ascii_space {
                     None
                 } else {
-                    // It's guaranteed that the `indent` is all spaces because `tab_or_non_ascii_space` is
-                    // `false` (indent contains neither tabs nor non-space whitespace).
                     let stripped_indentation_len = self.stripped_indentation.text_len();
 
-                    // Take the string with the trailing whitespace removed, then also
-                    // skip the leading whitespace.
                     Some(stripped_indentation_len)
                 }
             }
@@ -425,11 +373,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
 
                 let trimmed = line_indent.trim_start(self.stripped_indentation);
 
-                // Preserve tabs that are used for indentation, but only if the indent isn't
-                // * a mix of tabs and spaces
-                // * the `stripped_indentation` is a prefix of the line's indent
-                // * the trimmed indent isn't spaces followed by tabs because that would result in a
-                //   mixed tab, spaces, tab indentation, resulting in instabilities.
                 let preserve_indent = !non_ascii_whitespace
                     && trimmed.is_some_and(|trimmed| !trimmed.is_spaces_tabs());
                 preserve_indent.then_some(self.stripped_indentation.text_len())
@@ -437,8 +380,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
         };
 
         if let Some(indent_offset) = indent_offset {
-            // Take the string with the trailing whitespace removed, then also
-            // skip the leading whitespace.
             if self.already_normalized {
                 let trimmed_line_range =
                     TextRange::at(line.offset, trim_end.text_len()).add_start(indent_offset);
@@ -447,22 +388,12 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
                 text(&trim_end[indent_offset.to_usize()..]).fmt(self.f)?;
             }
         } else {
-            // We strip the indentation that is shared with the docstring
-            // statement, unless a line was indented less than the docstring
-            // statement, in which case we strip only this much indentation to
-            // implicitly pad all lines by the difference, or all lines were
-            // overindented, in which case we strip the additional whitespace
-            // (see example in [`format_docstring`] doc comment). We then
-            // prepend the in-docstring indentation to the string.
             let indent_len =
                 Indentation::from_str(trim_end).columns() - self.stripped_indentation.columns();
             let in_docstring_indent = " ".repeat(indent_len) + trim_end.trim_start();
             text(&in_docstring_indent).fmt(self.f)?;
         }
 
-        // We handled the case that the closing quotes are on their own line
-        // above (the last line is empty except for whitespace). If they are on
-        // the same line as content, we don't insert a line break.
         if !line.is_last {
             hard_line_break().fmt(self.f)?;
         }
@@ -502,7 +433,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
                     .to_ascii_spaces(indent_width)
                     .saturating_add(kind.extra_indent_ascii_spaces());
 
-                // Add the in-docstring indentation
                 current_indent = current_indent.saturating_add(
                     u16::try_from(
                         kind.indent()
@@ -531,17 +461,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
             .options()
             .clone()
             .with_line_width(line_width)
-            // It's perhaps a little odd to be hard-coding the indent
-            // style here, but I believe it is necessary as a result
-            // of the whitespace normalization otherwise done in
-            // docstrings. Namely, tabs are rewritten with ASCII
-            // spaces. If code examples in docstrings are formatted
-            // with tabs and those tabs end up getting rewritten, this
-            // winds up screwing with the indentation in ways that
-            // results in formatting no longer being idempotent. Since
-            // tabs will get erased anyway, we just clobber them here
-            // instead of later, and as a result, get more consistent
-            // results.
             .with_indent_style(IndentStyle::Space)
             .with_source_map_generation(SourceMapGeneration::Disabled);
         let printed = match docstring_format_source(options, self.quote_char, &codeblob) {
@@ -551,17 +470,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
                 return Ok(None);
             }
         };
-        // This is a little hokey, but we want to determine whether the
-        // reformatted code snippet will lead to an overall invalid docstring.
-        // So attempt to parse it as Python code, but ensure it is wrapped
-        // within a docstring using the same quotes as the docstring we're in
-        // right now.
-        //
-        // This is an unfortunate stop-gap to attempt to prevent us from
-        // writing invalid Python due to some oddity of the code snippet within
-        // a docstring. As we fix corner cases over time, we can perhaps
-        // remove this check. See the `doctest_invalid_skipped` tests in
-        // `docstring_code_examples.py` for when this check is relevant.
         let wrapped = match self.quote_char {
             Quote::Single => std::format!("'''{}'''", printed.as_code()),
             Quote::Double => {
@@ -570,8 +478,6 @@ impl<'src> DocstringLinePrinter<'_, '_, '_, '_, 'src> {
         };
         let result =
             ruff_python_parser::parse(&wrapped, ParseOptions::from(self.f.options().source_type()));
-        // If the resulting code is not valid, then reset and pass through
-        // the docstring lines as-is.
         if result.is_err() {
             return Ok(None);
         }
@@ -701,9 +607,6 @@ impl<'src> CodeExample<'src> {
         queue: &mut VecDeque<CodeExampleAddAction<'src>>,
     ) {
         match self.kind.take() {
-            // There's no existing code example being built, so we look for
-            // the start of one or otherwise tell the caller we couldn't find
-            // anything.
             None => {
                 self.add_start(original, queue);
             }
@@ -723,12 +626,6 @@ impl<'src> CodeExample<'src> {
             }
             Some(CodeExampleKind::Markdown(fenced)) => {
                 let Some(fenced) = fenced.add_code_line(original, queue) else {
-                    // For Markdown, the last line in a block should be printed
-                    // as-is. Especially since the last line in many Markdown
-                    // fenced code blocks is identical to the start of a code
-                    // block. So if we try to start a new code block with
-                    // the last line, we risk opening another Markdown block
-                    // inappropriately.
                     return;
                 };
                 self.kind = Some(CodeExampleKind::Markdown(fenced));
@@ -880,9 +777,6 @@ impl<'src> CodeExampleDoctest<'src> {
     /// returned, along with the code example line.
     fn new(original: InputDocstringLine<'src>) -> Option<CodeExampleDoctest<'src>> {
         let trim_start = original.line.trim_start();
-        // Prompts must be followed by an ASCII space character[1].
-        //
-        // [1]: https://github.com/python/cpython/blob/0ff6368519ed7542ad8b443de01108690102420a/Lib/doctest.py#L809-L812
         let code = trim_start.strip_prefix(">>> ")?;
         let indent_len = original
             .line
@@ -914,20 +808,10 @@ impl<'src> CodeExampleDoctest<'src> {
             queue.push_back(self.into_format_action());
             return None;
         };
-        // PS2 prompts must have the same indentation as their
-        // corresponding PS1 prompt.[1] While the 'doctest' Python
-        // module will error in this case, we just treat this line as a
-        // non-doctest line.
-        //
-        // [1]: https://github.com/python/cpython/blob/0ff6368519ed7542ad8b443de01108690102420a/Lib/doctest.py#L733
         if self.ps1_indent != ps2_indent {
             queue.push_back(self.into_format_action());
             return None;
         }
-        // PS2 prompts must be followed by an ASCII space character unless
-        // it's an otherwise empty line[1].
-        //
-        // [1]: https://github.com/python/cpython/blob/0ff6368519ed7542ad8b443de01108690102420a/Lib/doctest.py#L809-L812
         let code = match ps2_after.strip_prefix(' ') {
             None if ps2_after.is_empty() => "",
             None => {
@@ -1025,21 +909,8 @@ impl<'src> CodeExampleRst<'src> {
             if let Some(litblock) = CodeExampleRst::new_code_block(original) {
                 return Some(litblock);
             }
-            // In theory, we could still have something that looks like a literal block,
-            // but if the line starts with `.. `, then it seems like it probably shouldn't
-            // be a literal block. For example:
-            //
-            //     .. code-block::
-            //
-            //         cool_stuff( 1 )
-            //
-            // The above is not valid because the `language` argument is missing from
-            // the `code-block` directive. Because of how we handle it here, the above
-            // is not treated as a code snippet.
             return None;
         }
-        // At this point, we know we didn't find a code block, so the only
-        // thing we can hope for is a literal block which must end with a `::`.
         if !rest.trim_end().ends_with("::") {
             return None;
         }
@@ -1055,23 +926,6 @@ impl<'src> CodeExampleRst<'src> {
     /// `code-block` or `sourcecode` directive. If one couldn't be found, then
     /// `None` is returned.
     fn new_code_block(original: InputDocstringLine<'src>) -> Option<CodeExampleRst<'src>> {
-        // This regex attempts to parse the start of a reStructuredText code
-        // block [directive]. From the reStructuredText spec:
-        //
-        // > Directives are indicated by an explicit markup start (".. ")
-        // > followed by the directive type, two colons, and whitespace
-        // > (together called the "directive marker"). Directive types
-        // > are case-insensitive single words (alphanumerics plus
-        // > isolated internal hyphens, underscores, plus signs, colons,
-        // > and periods; no whitespace).
-        //
-        // The language names matched here (e.g., `python` or `py`) are taken
-        // from the [Pygments lexer names], which is referenced from the docs
-        // for the [code-block] directive.
-        //
-        // [directives]: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#directives
-        // [Pygments lexer names]: https://pygments.org/docs/lexers/
-        // [code-block]: https://www.sphinx-doc.org/en/master/usage/restructuredtext/directives.html#directive-code-block
         static DIRECTIVE_START: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(
                 r"(?m)^\s*\.\. \s*(?i:code-block|sourcecode)::\s*(?i:python|py|python3|py3)$",
@@ -1128,16 +982,11 @@ impl<'src> CodeExampleRst<'src> {
         original: InputDocstringLine<'src>,
         queue: &mut VecDeque<CodeExampleAddAction<'src>>,
     ) -> Option<CodeExampleRst<'src>> {
-        // If we haven't started populating the minimum indent yet, then
-        // we haven't found the first code line and may need to find and
-        // pass through leading empty lines.
         let Some(min_indent) = self.min_indent else {
             return self.add_first_line(original, queue);
         };
         let (indent, rest) = indent_with_suffix(original.line);
         if rest.is_empty() {
-            // This is the standard way we close a block: when we see
-            // an empty line followed by an unindented non-empty line.
             if let Some(next) = original.next {
                 let (next_indent, next_rest) = indent_with_suffix(next);
                 if !next_rest.is_empty()
@@ -1156,19 +1005,9 @@ impl<'src> CodeExampleRst<'src> {
         }
         let indent_len = Indentation::from_str(indent);
         if indent_len <= self.opening_indent {
-            // If we find an unindented non-empty line at the same (or less)
-            // indentation of the opening line at this point, then we know it
-            // must be wrong because we didn't see it immediately following an
-            // empty line.
             queue.push_back(self.into_reset_action());
             return None;
         } else if indent_len < min_indent {
-            // While the minimum indent is usually the indentation of the first
-            // line in a code snippet, it is not guaranteed to be the case.
-            // And indeed, reST is happy to let blocks have a first line whose
-            // indentation is greater than a subsequent line in the block. The
-            // only real restriction is that every line in the block must be
-            // indented at least past the indentation of the `::` line.
             self.min_indent = Some(indent_len);
         }
         self.push(original);
@@ -1202,25 +1041,16 @@ impl<'src> CodeExampleRst<'src> {
     ) -> Option<CodeExampleRst<'src>> {
         assert!(self.min_indent.is_none());
 
-        // While the rst spec isn't completely clear on this point, through
-        // experimentation, I found that multiple empty lines before the first
-        // non-empty line are ignored.
         let (indent, rest) = indent_with_suffix(original.line);
         if rest.is_empty() {
             queue.push_back(CodeExampleAddAction::Print { original });
             return Some(self);
         }
-        // Ignore parameters in field lists. These can only occur in
-        // directives, not literal blocks.
         if self.is_directive && is_rst_option(rest) {
             queue.push_back(CodeExampleAddAction::Print { original });
             return Some(self);
         }
         let min_indent = Indentation::from_str(indent);
-        // At this point, we found a non-empty line. The only thing we require
-        // is that its indentation is strictly greater than the indentation of
-        // the line containing the `::`. Otherwise, we treat this as an invalid
-        // block and bail.
         if min_indent <= self.opening_indent {
             queue.push_back(self.into_reset_action());
             return None;
@@ -1233,10 +1063,6 @@ impl<'src> CodeExampleRst<'src> {
 
     /// Pushes the given line as part of this code example.
     fn push(&mut self, original: InputDocstringLine<'src>) {
-        // N.B. We record the code portion as identical to the original line.
-        // When we go to reformat the code lines, we change them by removing
-        // the `min_indent`. This design is necessary because the true value of
-        // `min_indent` isn't known until the entire block has been parsed.
         let code = original.line;
         self.lines.push(CodeExampleLine { original, code });
     }
@@ -1347,7 +1173,6 @@ impl<'src> CodeExampleMarkdown<'src> {
         });
 
         let (opening_fence_indent, rest) = indent_with_suffix(original.line);
-        // Quit quickly in the vast majority of cases.
         if !rest.starts_with("```") && !rest.starts_with("~~~") {
             return None;
         }
@@ -1385,16 +1210,6 @@ impl<'src> CodeExampleMarkdown<'src> {
             queue.push_back(CodeExampleAddAction::Print { original });
             return None;
         }
-        // When a line in a Markdown fenced closed block is indented *less*
-        // than the opening indent, we treat the entire block as invalid.
-        //
-        // I believe that code blocks of this form are actually valid Markdown
-        // in some cases, but the interplay between it and our docstring
-        // whitespace normalization leads to undesirable outcomes. For example,
-        // if the line here is unindented out beyond the initial indent of the
-        // docstring itself, then this causes the entire docstring to have
-        // its indent normalized. And, at the time of writing, a subsequent
-        // formatting run undoes this indentation, thus violating idempotency.
         if !original.line.trim_whitespace().is_empty()
             && Indentation::from_str(original.line) < self.opening_fence_indent
         {
@@ -1410,23 +1225,16 @@ impl<'src> CodeExampleMarkdown<'src> {
     /// Returns true when given line ends this fenced code block.
     fn is_end(&self, original: InputDocstringLine<'src>) -> bool {
         let (_, rest) = indent_with_suffix(original.line);
-        // We can bail early if we don't have at least three backticks or
-        // tildes.
         if !rest.starts_with("```") && !rest.starts_with("~~~") {
             return false;
         }
-        // We do need to check that we have the right number of
-        // backticks/tildes...
         let fence_len = rest
             .chars()
             .take_while(|&ch| ch == self.fence_kind.to_char())
             .count();
-        // A closing fence only needs *at least* the number of ticks/tildes
-        // that are in the opening fence.
         if fence_len < self.fence_len {
             return false;
         }
-        // And, also, there can only be trailing whitespace. Nothing else.
         assert!(
             self.fence_kind.to_char().is_ascii(),
             "fence char should be ASCII",
@@ -1436,9 +1244,6 @@ impl<'src> CodeExampleMarkdown<'src> {
 
     /// Pushes the given line as part of this code example.
     fn push(&mut self, original: InputDocstringLine<'src>) {
-        // Unlike reStructuredText blocks, for Markdown fenced code blocks, the
-        // indentation that we want to strip from each line is known when the
-        // block is opened. So we can strip it as we collect lines.
         let code = self.opening_fence_indent.trim_start_str(original.line);
         self.lines.push(CodeExampleLine { original, code });
     }
@@ -1449,21 +1254,6 @@ impl<'src> CodeExampleMarkdown<'src> {
     /// that looked like a block, but later determined that it wasn't a valid
     /// block.
     fn into_format_action(self) -> CodeExampleAddAction<'src> {
-        // Note that unlike in reStructuredText blocks, if a Markdown fenced
-        // code block is unclosed, then *all* remaining lines should be treated
-        // as part of the block[1]:
-        //
-        // > If the end of the containing block (or document) is reached and no
-        // > closing code fence has been found, the code block contains all of the
-        // > lines after the opening code fence until the end of the containing
-        // > block (or document).
-        //
-        // This means that we don't need to try and trim trailing empty lines.
-        // Those will get fed into the code formatter and ultimately stripped,
-        // which is what you'd expect if those lines are treated as part of the
-        // block.
-        //
-        // [1]: https://spec.commonmark.org/0.30/#fenced-code-blocks
         CodeExampleAddAction::Format {
             kind: CodeExampleKind::Markdown(self),
         }
@@ -1597,20 +1387,12 @@ fn docstring_format_source(
 /// so `content\\"""` doesn't need a space while `content\\\"""` does.
 pub(super) fn needs_chaperone_space(flags: AnyStringFlags, trim_end: &str) -> bool {
     if count_consecutive_chars_from_end(trim_end, '\\') % 2 == 1 {
-        // Odd backslash count; chaperone avoids escaping closing quotes
-        // `"\ "` -> prevent that this becomes `"\"` which escapes the closing quote.
         return true;
     }
 
     if flags.is_triple_quoted() {
         if let Some(before_quote) = trim_end.strip_suffix(flags.quote_style().as_char()) {
             if count_consecutive_chars_from_end(before_quote, '\\').is_multiple_of(2) {
-                // Even backslash count preceding quote;
-                // ```py
-                // """a "  """
-                // """a \\"  """
-                // ```
-                // The chaperon is needed or the triple quoted string "ends" with 4 instead of 3 quotes.
                 return true;
             }
         }
@@ -1660,7 +1442,6 @@ impl Indentation {
         let tabs = iter.peeking_take_while(|c| *c == '\t').count();
 
         if tabs == 0 {
-            // No indent, or spaces only indent
             return Self::Spaces(spaces);
         }
 
@@ -1671,7 +1452,6 @@ impl Indentation {
                 return Self::Tabs(tabs);
             }
 
-            // At this point it's either a smart tab (tabs followed by spaces) or a wild mix of tabs and spaces.
             if iter.peek().copied() != Some('\t') {
                 return Self::TabSpaces {
                     tabs,
@@ -1682,14 +1462,12 @@ impl Indentation {
             return Self::SpacesTabs { spaces, tabs };
         }
 
-        // Sequence of spaces.. tabs, spaces, tabs...
         let mut width = spaces + tabs * Self::TAB_INDENT_WIDTH + align_spaces;
         // SAFETY: Safe because Ruff doesn't support files larger than 4GB.
         let mut len = TextSize::try_from(spaces + tabs + align_spaces).unwrap();
 
         for char in iter {
             if char == '\t' {
-                // Pad to the next multiple of tab_width
                 width += tab_offset(width, Self::TAB_INDENT_WIDTH);
                 len += '\t'.text_len();
             } else if char.is_whitespace() {
@@ -1700,7 +1478,6 @@ impl Indentation {
             }
         }
 
-        // Mixed tabs and spaces
         Self::Mixed { width, len }
     }
 
@@ -1748,7 +1525,6 @@ impl Indentation {
             Self::Spaces(spaces) => (0usize, spaces),
             Self::Tabs(tabs) => (tabs, 0usize),
             Self::TabSpaces { tabs, spaces } => (tabs, spaces),
-            // Handle spaces here because it is the only indent where the spaces come before the tabs.
             Self::SpacesTabs {
                 spaces: left_spaces,
                 tabs: left_tabs,
@@ -1823,7 +1599,6 @@ impl Indentation {
                 return trimmed;
             }
             if char == '\t' {
-                // Pad to the next multiple of tab_width
                 seen_indent_len += tab_offset(seen_indent_len, Self::TAB_INDENT_WIDTH);
                 trimmed = &trimmed[1..];
             } else if char.is_whitespace() {

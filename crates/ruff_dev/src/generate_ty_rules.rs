@@ -89,7 +89,6 @@ fn generate_markdown() -> String {
 }
 
 fn write_rule(output: &mut String, lint: LintId, aliases: &FxHashMap<LintId, Vec<LintName>>) {
-    // Keep links to the old rule heading working after a rename.
     let names = aliases.get(&lint).map_or_default(Vec::as_slice);
     if !names.is_empty() {
         for name in names {
@@ -98,12 +97,10 @@ fn write_rule(output: &mut String, lint: LintId, aliases: &FxHashMap<LintId, Vec
         output.push('\n');
     }
 
-    // Reformat headers as bold text
     let mut in_code_fence = false;
     let documentation = lint
         .documentation_lines()
         .map(|line| {
-            // Toggle the code fence state if we encounter a boundary
             if line.starts_with("```") {
                 in_code_fence = !in_code_fence;
             }
@@ -185,8 +182,6 @@ Default level: <a href="../../rules#rule-levels" title="This lint has a default 
     );
 }
 
-// Replace `rule-name` with [`rule-name`](url) for any known rule names,
-// turning them into inline links automatically.
 fn link_rule_names(text: &str) -> Cow<'_, str> {
     static RULE_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`([^`]+)`").unwrap());
     RULE_LINK.replace_all(text, |caps: &Captures| {

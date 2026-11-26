@@ -92,8 +92,6 @@ pub(crate) fn class_pattern_coverage_target<'db>(
     pattern: &ClassPatternPredicateKind<'db>,
 ) -> Type<'db> {
     let class_ty = infer_same_file_expression_type(db, pattern.class, TypeContext::default());
-    // After `cls is A`, the type of `A` can be `<class 'A'> & type[T]`. The class literal
-    // still fixes the runtime class that the pattern tests, so coverage can use it directly.
     match class_ty {
         Type::Intersection(intersection) => intersection
             .positive(db)
@@ -179,8 +177,6 @@ pub(crate) fn sequence_pattern_type_builder<'db>(
                 .to_instance(db, env)
                 .top_materialization(db, env),
         )
-        // `str`, `bytes`, and `bytearray` are sequences, but Python sequence
-        // patterns explicitly do not match them or their subclasses.
         .add_negative(KnownClass::Str.to_instance(db, env))
         .add_negative(KnownClass::Bytes.to_instance(db, env))
         .add_negative(KnownClass::Bytearray.to_instance(db, env))
@@ -246,7 +242,6 @@ pub(crate) fn exact_sequence_pattern_type<'db>(
         return sequence_pattern_type_builder(db, env).build();
     };
 
-    // `False == 0` and `True == 1`, so the protocol must accept both literals.
     let length_type = match length {
         0 => UnionType::from_two_elements(db, env, Type::int_literal(0), Type::bool_literal(false)),
         1 => UnionType::from_two_elements(db, env, Type::int_literal(1), Type::bool_literal(true)),
@@ -839,9 +834,6 @@ fn definite_match_pattern_type_for_subject_impl<'pattern, 'db>(
                 resolved_subject_ty,
                 cache,
             ) {
-                // A nested subject-dependent pattern rejected the context-free approximation.
-                // Reusing that approximation for the surrounding sequence would reintroduce the
-                // values that the recursive analysis deliberately excluded.
                 return Type::Never;
             }
             let top_subject_ty = resolved_subject_ty.top_materialization(db, env);
@@ -916,10 +908,6 @@ fn pattern_fallthrough_type<'db>(
 ) -> Type<'db> {
     if let PatternPredicateKind::Value(value) = kind {
         let value_ty = infer_same_file_expression_type(db, *value, TypeContext::default());
-        // A subject confined to the same enum cannot contain cross-type values that compare equal
-        // to the pattern, so direct subtraction avoids repeated equality evaluation in large enum
-        // matches. This includes narrowed intersections containing `Self` or another type variable
-        // whose upper bound is that enum.
         if let Some(enum_literal) = value_ty.as_enum_literal()
             && is_same_enum_pattern_domain(db, env, subject_ty, enum_literal)
             && equality_truthiness(
@@ -952,8 +940,6 @@ fn pattern_fallthrough_type<'db>(
         }
     }
 
-    // Reachability and capture inference both walk OR patterns in order. Caching the difference
-    // lets them reuse the remaining subject type after each alternative fails.
     let definitely_matched = definite_match_pattern_type_for_subject(db, env, kind, subject_ty);
     IntersectionType::from_positive_and_negative(db, env, subject_ty, definitely_matched)
 }
@@ -979,7 +965,6 @@ pub(crate) fn same_enum_or_pattern_type<'db>(
         return None;
     }
 
-    // Expression inference already resolves aliases to canonical member literals.
     let mut members = FxOrderSet::from_iter([Type::enum_literal(first)]);
     for literal in literals {
         let literal = literal?;
@@ -992,8 +977,6 @@ pub(crate) fn same_enum_or_pattern_type<'db>(
     if members.len() == 1 {
         return members.first().copied();
     }
-    // A general union builder can widen a large literal union to the whole enum, which would
-    // incorrectly exclude the unmatched members when the pattern fails.
     let members: Box<[_]> = members.into_iter().collect();
     Some(Type::Union(UnionType::new(
         db,
@@ -1051,8 +1034,6 @@ fn try_pattern_binding_fallthrough_type<'db>(
         PatternPredicateKind::Or(patterns)
             if let Some(matched) = same_enum_or_pattern_type(db, env, patterns, subject_ty) =>
         {
-            // Subtract all the members in one intersection so we don't rebuild the growing list
-            // of exclusions for every alternative, especially when the subject is `Self`.
             Ok(IntersectionType::from_positive_and_negative(
                 db, env, subject_ty, matched,
             ))
@@ -1111,9 +1092,6 @@ fn try_sequence_pattern_binding_fallthrough_type<'db>(
     let resolved = subject_ty.resolve_type_alias(db);
     let narrowed = match resolved {
         Type::Union(union) => {
-            // Wait until every element fits within the expansion budget before simplifying the
-            // union. Otherwise, we can spend substantial time simplifying a partial result that
-            // must be discarded when a later element exceeds the budget.
             let mapped = union
                 .elements(db)
                 .iter()
@@ -1165,8 +1143,6 @@ fn try_sequence_pattern_binding_fallthrough_type<'db>(
                     )
                 })
         }
-        // An irrefutable sequence pattern can only fail if the subject is not eligible for sequence
-        // matching. Unlike length and indexed-element facts, eligibility is unaffected by mutation.
         _ if kind.is_irrefutable() => IntersectionBuilder::new(db, env)
             .add_positive(resolved)
             .add_negative(sequence_pattern_type_builder(db, env).build())
@@ -1356,8 +1332,6 @@ pub(crate) fn definite_match_pattern_type<'db>(
         PatternPredicateKind::Singleton(singleton) => singleton_pattern_type(db, env, *singleton),
         PatternPredicateKind::Value(value) => {
             let ty = infer_same_file_expression_type(db, *value, TypeContext::default());
-            // Only return the type if it's guaranteed to match itself.
-            // Otherwise, we can't definitively exclude it from subsequent patterns.
             let policy = ComparisonSoundnessPolicy::from_analysis_settings(
                 db.analysis_settings(value.file(db)),
             );

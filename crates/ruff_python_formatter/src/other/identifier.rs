@@ -56,16 +56,7 @@ impl<'a> DotDelimitedIdentifier<'a> {
 
 impl Format<PyFormatContext<'_>> for DotDelimitedIdentifier<'_> {
     fn fmt(&self, f: &mut PyFormatter) -> FormatResult<()> {
-        // An import identifier can contain whitespace around the dots:
-        // ```python
-        // import importlib   .   metadata
-        // ```
-        // It can also contain newlines by inserting continuations (backslashes) after
-        // a dot-delimited segment, as in:
-        // ```python
-        // import foo\
         //     .bar
-        // ```
         if f.context().source()[self.0.range()]
             .chars()
             .any(|c| is_python_whitespace(c) || matches!(c, '\n' | '\r' | '\\'))

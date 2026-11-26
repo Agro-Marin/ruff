@@ -6,9 +6,6 @@ use rustc_hash::FxHasher;
 use std::hash::{Hash as _, Hasher as _};
 use std::ops::{Deref, DerefMut};
 
-// Selected using performance and memory profiling across the 162-project ecosystem corpus.
-// Symbol-name equality is cheap enough that raising the cutoff from 8 to 16 reduced retained
-// memory without a measurable performance regression.
 const LINEAR_SEARCH_THRESHOLD: usize = 16;
 
 /// Uniquely identifies a symbol in a given scope.
@@ -258,7 +255,6 @@ impl SymbolTable {
 
 impl PartialEq for SymbolTable {
     fn eq(&self, other: &Self) -> bool {
-        // It's sufficient to compare the symbols as the map is only a reverse lookup.
         self.symbols == other.symbols
     }
 }

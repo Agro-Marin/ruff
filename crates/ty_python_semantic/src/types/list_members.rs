@@ -143,8 +143,6 @@ pub(crate) fn all_reachable_members<'db>(
         .flatten()
 }
 
-// `__init__`, `__repr__`, `__eq__`, `__ne__` and `__hash__` are always included via `object`,
-// so we don't need to list them here.
 const SYNTHETIC_DATACLASS_ATTRIBUTES: &[&str] = &[
     "__lt__",
     "__le__",
@@ -180,9 +178,6 @@ impl<'db> AllMembers<'db> {
             }
             Type::Union(union) => {
                 fn is_dynamic(db: &dyn Db, ty: Type<'_>) -> bool {
-                    // We don't need to use recursion here because
-                    // `Type` guarantees that unions/intersections
-                    // are kept in DNF (i.e., they are flattened).
                     ty.is_dynamic()
                         || match ty {
                             Type::Intersection(intersection) => {
@@ -230,8 +225,6 @@ impl<'db> AllMembers<'db> {
                         ClassLiteral::Static(class_literal),
                     );
                 } else {
-                    // For dynamic classes, we can't enumerate instance members (requires body scope),
-                    // but we can still add synthetic members for dataclass-like classes.
                     self.extend_with_synthetic_members(db, env, ty, class.class_literal(db));
                 }
             }
@@ -304,8 +297,6 @@ impl<'db> AllMembers<'db> {
                             ClassLiteral::Static(class_literal),
                         );
                     }
-                    // A structural implementation can use any metaclass, so only members of
-                    // `type` itself are guaranteed in addition to the protocol interface.
                     self.extend_with_type(db, env, KnownClass::Type.to_instance(db, env));
                 }
                 _ => {
@@ -420,9 +411,6 @@ impl<'db> AllMembers<'db> {
 
             Type::ModuleLiteral(literal) => {
                 let module = literal.module(db);
-                // Looking up `__file__` on `types.ModuleType` will not give as precise a type
-                // as we infer in type inference, but it's confusing if autocomplete etc.
-                // shows a different type in the tooltip to the one inferred by the type checker.
                 let dunder_file_type = if module.file(db).is_some() {
                     KnownClass::Str.to_instance(db, env)
                 } else {
@@ -613,11 +601,6 @@ impl<'db> AllMembers<'db> {
             }
         }
 
-        // This is very similar to `extend_with_class_members`,
-        // but uses the type of the class instance to query the
-        // class member. This gets us the right type for each
-        // member, e.g., `SomeClass.__delattr__` is not a bound
-        // method, but `instance_of_SomeClass.__delattr__` is.
         for memberdef in all_end_of_scope_members(db, class_body_scope) {
             let result = ty.member(db, env, memberdef.member.name.as_str());
             let Some(ty) = result.place.ignore_possibly_undefined() else {
@@ -836,7 +819,6 @@ impl<'db> Member<'db> {
             }
         }
 
-        // A property can retain a getter even though only its setter is an end-of-scope binding.
         for function in member_functions {
             if !functions.contains(&function) {
                 functions.push(function);

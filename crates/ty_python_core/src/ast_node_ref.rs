@@ -44,9 +44,6 @@ pub struct AstNodeRef<T> {
     kind: ruff_python_ast::NodeKind,
     #[cfg(debug_assertions)]
     range: ruff_text_size::TextRange,
-    // Note that because the module address is not stored in release builds, `AstNodeRef`
-    // cannot implement `Eq`, as indices are only unique within a given instance of the
-    // AST.
     #[cfg(debug_assertions)]
     file: File,
     #[cfg(debug_assertions)]
@@ -104,8 +101,6 @@ where
             (self.file, self.python_version),
             "an `AstNodeRef` cannot be used with a module parsed for a different file or Python version"
         );
-        // The user guarantees that the module is from the same file, Python version, and Salsa
-        // revision, so the file contents cannot have changed.
         module_ref
             .get_by_index(self.index)
             .try_into()
@@ -130,7 +125,6 @@ where
                 .field("range", &self.range)
                 .finish(),
             _ => {
-                // Unfortunately we have no access to the AST here.
                 f.debug_tuple("AstNodeRef").finish_non_exhaustive()
             }
         }

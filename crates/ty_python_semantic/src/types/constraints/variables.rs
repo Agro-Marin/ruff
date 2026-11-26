@@ -221,12 +221,8 @@ impl<'db> AtomicConstraint<'db> {
         let choose_lower_bound = move |bound: Type<'db>| {
             let bound = Self::normalize_bound(db, typevar, bound);
             match bound {
-                // Two identical typevars must always solve to the same type, so it is not useful to
-                // have a lower bound that is the typevar being constrained.
                 Type::TypeVar(lower) if typevar.is_same_typevar_as(db, lower) => None,
 
-                // The same applies for a lower bound that's an intersection containing the typevar
-                // being constrained.
                 Type::Intersection(intersection)
                     if intersection.positive(db).iter().any(|element| {
                         element.as_typevar().is_some_and(|element_bound_typevar| {
@@ -237,8 +233,6 @@ impl<'db> AtomicConstraint<'db> {
                     None
                 }
 
-                // And if we find the _negation_ of the typevar being constrained, the overall result
-                // is unsatisfiable.
                 Type::Intersection(intersection)
                     if intersection.negative(db).iter().any(|element| {
                         element.as_typevar().is_some_and(|element_bound_typevar| {
@@ -249,27 +243,22 @@ impl<'db> AtomicConstraint<'db> {
                     Some(Err(UnsatisfiableBound))
                 }
 
-                // Otherwise we construct the correct lower-bound constraint.
 
-                // Comparing two typevars
                 Type::TypeVar(lower) if typevar.domain(db) == lower.domain(db) => {
                     let constraint = TypeVarRangeBound::new(db, provenance, lower, typevar).into();
                     Some(Ok(constraint))
                 }
                 Type::TypeVar(_) => Some(Err(UnsatisfiableBound)),
 
-                // Comparing a paramspec with a callable type
                 Type::Callable(_) if typevar.domain(db) == TypeVarDomain::ParameterSignature => {
                     let constraint = ConcreteLowerBound::new(provenance, typevar, bound).into();
                     Some(Ok(constraint))
                 }
 
-                // Cannot compare a paramspec with a non-callable type
                 _ if typevar.domain(db) == TypeVarDomain::ParameterSignature => {
                     Some(Err(UnsatisfiableBound))
                 }
 
-                // Comparing a typevar with a type
                 _ => {
                     let constraint = ConcreteLowerBound::new(provenance, typevar, bound).into();
                     Some(Ok(constraint))
@@ -277,12 +266,6 @@ impl<'db> AtomicConstraint<'db> {
             }
         };
 
-        // It's not useful for a lower bound to be a union type. Because the following equivalence
-        // holds, we can break these bounds apart and create an equivalent BDD with more nodes but
-        // simpler constraints. (Fewer, simpler constraints mean that our sequent maps won't grow
-        // pathologically large.)
-        //
-        //   (α | β) ≤ T   ⇔ (α ≤ T) ∧ (β ≤ T)
         match bound {
             Type::Union(bound) => Either::Left(
                 bound
@@ -310,12 +293,8 @@ impl<'db> AtomicConstraint<'db> {
         let choose_upper_bound = move |bound: Type<'db>| {
             let bound = Self::normalize_bound(db, typevar, bound);
             match bound {
-                // Two identical typevars must always solve to the same type, so it is not useful to
-                // have an upper bound that is the typevar being constrained.
                 Type::TypeVar(upper) if typevar.is_same_typevar_as(db, upper) => None,
 
-                // The same applies for an upper bound that's a union containing the typevar
-                // being constrained.
                 Type::Union(union)
                     if union.elements(db).iter().any(|element| {
                         element.as_typevar().is_some_and(|element_bound_typevar| {
@@ -326,27 +305,22 @@ impl<'db> AtomicConstraint<'db> {
                     None
                 }
 
-                // Otherwise we construct the correct upper-bound constraint.
 
-                // Comparing two typevars
                 Type::TypeVar(upper) if typevar.domain(db) == upper.domain(db) => {
                     let constraint = TypeVarRangeBound::new(db, provenance, typevar, upper).into();
                     Some(Ok(constraint))
                 }
                 Type::TypeVar(_) => Some(Err(UnsatisfiableBound)),
 
-                // Comparing a paramspec with a callable type
                 Type::Callable(_) if typevar.domain(db) == TypeVarDomain::ParameterSignature => {
                     let constraint = ConcreteUpperBound::new(provenance, typevar, bound).into();
                     Some(Ok(constraint))
                 }
 
-                // Cannot compare a paramspec with a non-callable type
                 _ if typevar.domain(db) == TypeVarDomain::ParameterSignature => {
                     Some(Err(UnsatisfiableBound))
                 }
 
-                // Comparing a typevar with a type
                 _ => {
                     let constraint = ConcreteUpperBound::new(provenance, typevar, bound).into();
                     Some(Ok(constraint))
@@ -354,13 +328,6 @@ impl<'db> AtomicConstraint<'db> {
             }
         };
 
-        // It's not useful for an upper bound to be an intersection type. Because the following
-        // equivalences hold, we can break these bounds apart and create an equivalent BDD with
-        // more nodes but simpler constraints. (Fewer, simpler constraints mean that our sequent
-        // maps won't grow pathologically large.)
-        //
-        //   T ≤ (α & β)   ⇔ (T ≤ α) ∧ (T ≤ β)
-        //   T ≤ (¬α & ¬β) ⇔ (T ≤ ¬α) ∧ (T ≤ ¬β)
         match bound {
             Type::Intersection(bound) => {
                 let positive = bound.iter_positive(db);
@@ -408,13 +375,9 @@ impl<'db> AtomicConstraint<'db> {
 
         let normalized_bound = Self::normalize_bound(db, typevar, bound);
         let constraint = match normalized_bound {
-            // Two identical typevars must always solve to the same type, so it is not useful to
-            // have an equivalence bound that is the typevar being constrained.
             Type::TypeVar(bound_typevar) if typevar.is_same_typevar_as(db, bound_typevar) => None,
 
-            // Otherwise we construct the correct equivalence constraint.
 
-            // Comparing two typevars
             Type::TypeVar(bound_typevar) if typevar.domain(db) == bound_typevar.domain(db) => {
                 let constraint =
                     TypeVarEquivalenceBound::new(db, provenance, typevar, bound_typevar).into();
@@ -422,20 +385,16 @@ impl<'db> AtomicConstraint<'db> {
             }
             Type::TypeVar(_) => Some(Err(UnsatisfiableBound)),
 
-            // Comparing a paramspec with a callable type
             Type::Callable(_) if typevar.domain(db) == TypeVarDomain::ParameterSignature => {
-                // We already normalized the callable into a paramspec_value above
                 let constraint =
                     ConcreteEquivalenceBound::new(provenance, typevar, normalized_bound).into();
                 Some(Ok(constraint))
             }
 
-            // Cannot compare a paramspec with a non-callable type
             _ if typevar.domain(db) == TypeVarDomain::ParameterSignature => {
                 Some(Err(UnsatisfiableBound))
             }
 
-            // Comparing a typevar with a type
             _ => {
                 let constraint =
                     ConcreteEquivalenceBound::new(provenance, typevar, normalized_bound).into();
@@ -456,7 +415,6 @@ impl<'db> AtomicConstraint<'db> {
                     && signature.generic_context.is_none()
                     && let Some(paramspec) = signature.parameters().as_paramspec()
                 {
-                    // Callable[P, anything] should be treated the same as P
                     Type::TypeVar(paramspec)
                 } else {
                     Type::Callable(callable.into_paramspec_value(db))
@@ -484,7 +442,6 @@ impl<'db> AtomicConstraint<'db> {
         bound: Option<Type<'db>>,
         unspecialized_type_var_policy: UnspecializedTypeVarPolicy,
     ) -> bool {
-        // Validity bounds are never used as inference evidence.
         if self.provenance().contains(ConstraintProvenance::VALIDITY) {
             return false;
         }
@@ -500,7 +457,6 @@ impl<'db> AtomicConstraint<'db> {
         bound: Option<Type<'db>>,
         unspecialized_type_var_policy: UnspecializedTypeVarPolicy,
     ) -> bool {
-        // Validity constraints are retained even if they contain unspecialized type variables.
         if self.provenance().contains(ConstraintProvenance::VALIDITY) {
             return true;
         }
@@ -769,7 +725,6 @@ pub(super) struct ConcreteLowerBound<'db> {
     pub(super) provenance: ConstraintProvenance,
     pub(super) typevar: BoundTypeVarInstance<'db>,
     pub(super) bound: Type<'db>,
-    // Always construct via the `new` method
     _phantom: PhantomData<()>,
 }
 
@@ -888,7 +843,6 @@ pub(super) struct ConcreteUpperBound<'db> {
     pub(super) provenance: ConstraintProvenance,
     pub(super) typevar: BoundTypeVarInstance<'db>,
     pub(super) bound: Type<'db>,
-    // Always construct via the `new` method
     _phantom: PhantomData<()>,
 }
 
@@ -1004,7 +958,6 @@ pub(super) struct ConcreteEquivalenceBound<'db> {
     pub(super) provenance: ConstraintProvenance,
     pub(super) typevar: BoundTypeVarInstance<'db>,
     pub(super) bound: Type<'db>,
-    // Always construct via the `new` method
     _phantom: PhantomData<()>,
 }
 
@@ -1140,7 +1093,6 @@ pub(super) struct TypeVarRangeBound<'db> {
     pub(super) provenance: ConstraintProvenance,
     pub(super) left: BoundTypeVarInstance<'db>,
     pub(super) right: BoundTypeVarInstance<'db>,
-    // Always construct via the `new` method
     _phantom: PhantomData<()>,
 }
 
@@ -1251,7 +1203,6 @@ pub(super) struct TypeVarEquivalenceBound<'db> {
     pub(super) provenance: ConstraintProvenance,
     pub(super) left: BoundTypeVarInstance<'db>,
     pub(super) right: BoundTypeVarInstance<'db>,
-    // Always construct via the `new` method
     _phantom: PhantomData<()>,
 }
 

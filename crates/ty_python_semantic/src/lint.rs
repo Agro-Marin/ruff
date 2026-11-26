@@ -262,7 +262,6 @@ macro_rules! declare_lint {
         $vis: vis static $name: ident = {
             summary: $summary: literal,
             status: $status: expr,
-            // Optional properties
             $( $key:ident: $value:expr, )*
         }
     ) => {
@@ -677,8 +676,6 @@ impl RuleSelection {
     }
 }
 
-// The default `LintId` debug implementation prints the entire lint metadata.
-// This is way too verbose.
 impl fmt::Debug for RuleSelection {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let lints = self.lints.iter().sorted_by_key(|(lint, _)| lint.name);

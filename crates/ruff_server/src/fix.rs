@@ -31,7 +31,6 @@ pub(crate) fn fix_all(
     let settings = query.settings();
     let document_path = query.virtual_file_path();
 
-    // If the document is excluded, return an empty list of fixes.
     if is_document_excluded_for_linting(
         &document_path,
         &settings.file_resolver,
@@ -63,12 +62,7 @@ pub(crate) fn fix_all(
         None
     };
 
-    // We need to iteratively apply all safe fixes onto a single file and then
-    // create a diff between the modified file and the original source to use as a single workspace
-    // edit.
     // If we simply generated the diagnostics with `check_path` and then applied fixes individually,
-    // there's a possibility they could overlap or introduce new problems that need to be fixed,
-    // which is inconsistent with how `ruff check --fix` works.
     let FixerResult {
         transformed,
         result,
@@ -84,11 +78,9 @@ pub(crate) fn fix_all(
     )?;
 
     if result.has_invalid_syntax() {
-        // If there's a syntax error, then there won't be any fixes to apply.
         return Ok(Fixes::default());
     }
 
-    // fast path: if `transformed` is still borrowed, no changes were made and we can return early
     if let Cow::Borrowed(_) = transformed {
         return Ok(Fixes::default());
     }

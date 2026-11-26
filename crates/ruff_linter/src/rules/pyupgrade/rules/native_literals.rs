@@ -174,9 +174,6 @@ fn is_redundant_keyword(builtin: &str, keyword: &ast::Keyword) -> bool {
     };
     match builtin {
         "str" => arg == "object",
-        // Python 3.14 emits a `SyntaxWarning` for `complex(real=1j)`. While this
-        // does change the behavior, upgrading it to 1j is very much in the spirit of this rule
-        // and removing the `SyntaxWarning` is a nice side effect.
         "complex" => arg == "real",
         _ => false,
     }
@@ -220,7 +217,6 @@ pub(crate) fn native_literals(
         return;
     };
 
-    // There's no way to rewrite, e.g., `f"{f'{str()}'}"` within a nested f-string.
     if semantic.in_f_string() {
         if semantic
             .current_expressions()
@@ -240,8 +236,6 @@ pub(crate) fn native_literals(
             let expr = literal_type.as_zero_value_expr(checker);
             let mut content = checker.generator().expr(&expr);
 
-            // Attribute access on an integer requires the integer to be parenthesized to disambiguate from a float
-            // Ex) `(0).denominator` is valid but `0.denominator` is not
             if literal_type == LiteralType::Int && matches!(parent_expr, Some(Expr::Attribute(_))) {
                 content = format!("({content})");
             }
@@ -266,7 +260,6 @@ pub(crate) fn native_literals(
                 {
                     (true, literal_expr)
                 } else {
-                    // Only allow unary operators for numbers.
                     return;
                 }
             } else {
@@ -284,12 +277,6 @@ pub(crate) fn native_literals(
             let arg_code = checker.locator().slice(arg);
 
             let mut needs_space = false;
-            // Look for the `Rpar` token of the call expression and check if there is a keyword token right
-            // next to it without any space separating them. Without this check, the fix for this
-            // rule would create a syntax error.
-            // Ex) `bool(True)and None` no space between `)` and the keyword `and`.
-            //
-            // Subtract 1 from the end of the range to include `Rpar` token in the slice.
             if let [paren_token, next_token, ..] =
                 tokens.after(call.range().sub_end(1.into()).end())
             {
@@ -298,10 +285,8 @@ pub(crate) fn native_literals(
             }
 
             let mut content = match (parent_expr, literal_type, has_unary_op) {
-                // Expressions including newlines must be parenthesised to be valid syntax
                 (_, _, true) if find_newline(arg_code).is_some() => format!("({arg_code})"),
 
-                // Implicitly concatenated strings spanning multiple lines must be parenthesized
                 (_, LiteralType::Str | LiteralType::Bytes, _)
                     if literal_expr.is_implicit_concatenated()
                         && find_newline(arg_code).is_some() =>
@@ -309,10 +294,6 @@ pub(crate) fn native_literals(
                     format!("({arg_code})")
                 }
 
-                // Attribute access on an integer requires the integer to be parenthesized to disambiguate from a float
-                // Ex) `(7).denominator` is valid but `7.denominator` is not
-                // Note that floats do not have this problem
-                // Ex) `(1.0).real` is valid and `1.0.real` is too
                 (Some(Expr::Attribute(_)), LiteralType::Int, _) => format!("({arg_code})"),
 
                 (Some(parent), _, _) => {

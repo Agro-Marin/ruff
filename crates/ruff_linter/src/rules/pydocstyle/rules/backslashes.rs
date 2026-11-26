@@ -69,7 +69,6 @@ pub(crate) fn backslashes(checker: &Checker, docstring: &Docstring) {
         return;
     }
 
-    // Docstring contains at least one backslash.
     let body = docstring.body();
     let bytes = body.as_bytes();
     let mut offset = 0;
@@ -80,18 +79,15 @@ pub(crate) fn backslashes(checker: &Checker, docstring: &Docstring) {
 
         let after_escape = &body[position + offset + 1..];
 
-        // End of Docstring.
         let Some(escaped_char) = &after_escape.chars().next() else {
             break;
         };
 
         if matches!(escaped_char, '"' | '\'') {
-            // If the next three characters are equal to """, it indicates an escaped docstring pattern.
             if after_escape.starts_with("\"\"\"") || after_escape.starts_with("\'\'\'") {
                 offset += position + 3;
                 continue;
             }
-            // If the next three characters are equal to "\"\", it indicates an escaped docstring pattern.
             if after_escape.starts_with("\"\\\"\\\"") || after_escape.starts_with("\'\\\'\\\'") {
                 offset += position + 5;
                 continue;
@@ -100,7 +96,6 @@ pub(crate) fn backslashes(checker: &Checker, docstring: &Docstring) {
 
         offset += position + escaped_char.len_utf8();
 
-        // Only allow continuations (backslashes followed by newlines) and Unicode escapes.
         if !matches!(*escaped_char, '\r' | '\n' | 'u' | 'U' | 'N') {
             let mut diagnostic =
                 checker.report_diagnostic(EscapeSequenceInDocstring, docstring.range());

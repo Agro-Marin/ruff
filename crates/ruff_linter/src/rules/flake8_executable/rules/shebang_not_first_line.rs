@@ -46,12 +46,10 @@ impl Violation for ShebangNotFirstLine {
 
 /// EXE005
 pub(crate) fn shebang_not_first_line(range: TextRange, locator: &Locator, context: &LintContext) {
-    // If the shebang is at the beginning of the file, abort.
     if range.start() == TextSize::from(0) {
         return;
     }
 
-    // If the entire prefix is whitespace, abort (this is handled by EXE004).
     if locator
         .up_to(range.start())
         .chars()

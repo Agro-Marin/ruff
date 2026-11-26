@@ -391,7 +391,6 @@ fn unnecessary_return_none(checker: &Checker, decorator_list: &[Decorator], stac
             continue;
         }
 
-        // Skip property functions
         if is_property(
             decorator_list,
             checker.settings().pydocstyle.property_decorators(),
@@ -429,8 +428,6 @@ fn implicit_return_value(checker: &Checker, stack: &Stack) {
 
 /// Return `true` if the `func` appears to be non-returning.
 fn is_noreturn_func(func: &Expr, semantic: &SemanticModel) -> bool {
-    // First, look for known functions that never return from the standard library and popular
-    // libraries.
     if semantic
         .resolve_qualified_name(func)
         .is_some_and(|qualified_name| {
@@ -447,7 +444,6 @@ fn is_noreturn_func(func: &Expr, semantic: &SemanticModel) -> bool {
         return true;
     }
 
-    // Second, look for `NoReturn` annotations on the return type.
     let Some(func_binding) = semantic.lookup_attribute(func) else {
         return false;
     };
@@ -509,7 +505,6 @@ fn has_implicit_return(checker: &Checker, stmt: &Stmt) -> bool {
                 return true;
             }
 
-            // Check if we don't have an else clause
             matches!(
                 elif_else_clauses.last(),
                 None | Some(ast::ElifElseClause { test: Some(_), .. })
@@ -570,7 +565,6 @@ pub(crate) fn unnecessary_assign(checker: &Checker, function_stmt: &Stmt) {
         return;
     };
     for (assign, return_, stmt, enclosing_finally) in &stack.assignment_return {
-        // Identify, e.g., `return x`.
         let Some(value) = return_.value.as_ref() else {
             continue;
         };
@@ -582,7 +576,6 @@ pub(crate) fn unnecessary_assign(checker: &Checker, function_stmt: &Stmt) {
             continue;
         };
 
-        // Identify, e.g., `x = 1`.
         if assign.targets.len() > 1 {
             continue;
         }
@@ -602,12 +595,10 @@ pub(crate) fn unnecessary_assign(checker: &Checker, function_stmt: &Stmt) {
             continue;
         }
 
-        // Ignore variables that have an annotation defined elsewhere.
         if stack.annotations.contains(assigned_id.as_str()) {
             continue;
         }
 
-        // Ignore `nonlocal` and `global` variables.
         if stack.non_locals.contains(assigned_id.as_str()) {
             continue;
         }
@@ -618,9 +609,6 @@ pub(crate) fn unnecessary_assign(checker: &Checker, function_stmt: &Stmt) {
         else {
             continue;
         };
-        // Ignore assignments whose name is read or deleted in an enclosing `finally`, which runs
-        // after the `return`. A reference resolving to a later rebinding in the `finally` counts
-        // too, so check every binding of the name.
         if !enclosing_finally.is_empty()
             && function_scope
                 .get_all(assigned_id)
@@ -634,8 +622,6 @@ pub(crate) fn unnecessary_assign(checker: &Checker, function_stmt: &Stmt) {
         {
             continue;
         }
-        // Check if there's any reference made to `assigned_binding` in another scope, e.g, nested
-        // functions. If there is, ignore them.
         if assigned_binding
             .references()
             .map(|reference_id| checker.semantic().reference(reference_id))
@@ -651,9 +637,6 @@ pub(crate) fn unnecessary_assign(checker: &Checker, function_stmt: &Stmt) {
             value.range(),
         );
         diagnostic.try_set_fix(|| {
-            // Delete the `return` statement. There's no need to treat this as an isolated
-            // edit, since we're editing the preceding statement, so no conflicting edit would
-            // be allowed to remove that preceding statement.
             let delete_return =
                 edits::delete_stmt(stmt, None, checker.locator(), checker.indexer());
 
@@ -665,7 +648,6 @@ pub(crate) fn unnecessary_assign(checker: &Checker, function_stmt: &Stmt) {
                 .unwrap();
 
             let content = checker.source();
-            // Replace the `x = 1` statement with `return 1`.
             let replace_assign = Edit::range_replacement(
                 if content[eq_token.end().to_usize()..]
                     .chars()
@@ -676,8 +658,6 @@ pub(crate) fn unnecessary_assign(checker: &Checker, function_stmt: &Stmt) {
                 } else {
                     "return ".to_string()
                 },
-                // Replace from the start of the assignment statement to the end of the equals
-                // sign.
                 TextRange::new(assign.start(), eq_token.range().end()),
             );
 
@@ -732,18 +712,14 @@ fn create_stack<'a>(
 ) -> Option<Stack<'a>> {
     let ast::StmtFunctionDef { body, .. } = function_def;
 
-    // Find the last statement in the function.
     let Some(last_stmt) = body.last() else {
-        // Skip empty functions.
         return None;
     };
 
-    // Skip functions that consist of a single return statement.
     if body.len() == 1 && matches!(last_stmt, Stmt::Return(_)) {
         return None;
     }
 
-    // Traverse the function body, to collect the stack.
     let stack = {
         let mut visitor = ReturnVisitor::new(checker.semantic());
         for stmt in body {
@@ -752,7 +728,6 @@ fn create_stack<'a>(
         visitor.stack
     };
 
-    // Avoid false positives for generators.
     if stack.is_generator {
         return None;
     }
@@ -786,12 +761,10 @@ pub(crate) fn function(checker: &Checker, function_def: &ast::StmtFunctionDef) {
         superfluous_elif_else(checker, &stack);
     }
 
-    // Skip any functions without return statements.
     if stack.returns.is_empty() {
         return;
     }
 
-    // If we have at least one non-`None` return...
     if result_exists(&stack.returns) {
         if checker.is_rule_enabled(Rule::ImplicitReturnValue) {
             implicit_return_value(checker, &stack);
@@ -801,7 +774,6 @@ pub(crate) fn function(checker: &Checker, function_def: &ast::StmtFunctionDef) {
         }
     } else {
         if checker.is_rule_enabled(Rule::UnnecessaryReturnNone) {
-            // Skip functions that have a return annotation that is not `None`.
             if returns.as_deref().is_none_or(Expr::is_none_literal_expr) {
                 unnecessary_return_none(checker, decorator_list, &stack);
             }
@@ -816,33 +788,26 @@ fn remove_else(checker: &Checker, elif_else: &ElifElseClause) -> Result<Fix> {
     let stylist = checker.stylist();
 
     if elif_else.test.is_some() {
-        // Ex) `elif` -> `if`
         Ok(Fix::safe_edit(Edit::deletion(
             elif_else.start(),
             elif_else.start() + TextSize::from(2),
         )))
     } else {
-        // the start of the line where the `else`` is
         let else_line_start = locator.line_start(elif_else.start());
 
-        // making a tokenizer to find the Colon for the `else`, not always on the same line!
         let mut else_line_tokenizer =
             SimpleTokenizer::starts_at(elif_else.start(), locator.contents());
 
-        // find the Colon for the `else`
         let Some(else_colon) =
             else_line_tokenizer.find(|token| token.kind == SimpleTokenKind::Colon)
         else {
             return Err(anyhow::anyhow!("Cannot find `:` in `else` statement"));
         };
 
-        // get the indentation of the `else`, since that is the indent level we want to end with
         let Some(desired_indentation) = indentation(locator.contents(), elif_else) else {
             return Err(anyhow::anyhow!("Compound statement cannot be inlined"));
         };
 
-        // If the statement is on the same line as the `else`, just remove the `else: `.
-        // Ex) `else: return True` -> `return True`
         if let Some(first) = elif_else.body.first() {
             if indexer.preceded_by_multi_statement_line(first, locator.contents()) {
                 return Ok(Fix::safe_edit(Edit::deletion(
@@ -852,12 +817,8 @@ fn remove_else(checker: &Checker, elif_else: &ElifElseClause) -> Result<Fix> {
             }
         }
 
-        // we're deleting the `else`, and it's Colon, and the rest of the line(s) they're on,
-        // so here we get the last position of the line the Colon is on
         let else_colon_end = locator.full_line_end(else_colon.end());
 
-        // if there is a comment on the same line as the Colon, let's keep it
-        // and give it the proper indentation once we unindent it
         let else_comment_after_colon = else_line_tokenizer
             .find(|token| token.kind.is_comment())
             .and_then(|token| {

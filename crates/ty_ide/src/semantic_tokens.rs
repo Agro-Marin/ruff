@@ -58,7 +58,6 @@ use ty_python_semantic::{
 /// Semantic token types supported by the language server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SemanticTokenType {
-    // This enum must be kept in sync with the SemanticTokenType below.
     Namespace,
     Class,
     Parameter,
@@ -271,8 +270,6 @@ fn script_metadata_tokens(tag: &ScriptTag, range: Option<TextRange>) -> Vec<Sema
                 return;
             };
 
-            // Multiline TOML values are interrupted by Python comment prefixes in the source.
-            // Highlight each metadata line separately so those prefixes remain comments.
             for line in text.split_inclusive('\n') {
                 let content = line.strip_suffix('\n').unwrap_or(line);
                 let token_range = tag
@@ -342,10 +339,7 @@ impl<'db> SemanticTokenVisitor<'db> {
             return;
         }
 
-        // Only emit tokens that intersect with the range filter, if one is specified
         if let Some(range_filter) = self.range_filter {
-            // Only include ranges that have a non-empty overlap. Adjacent ranges
-            // should be excluded.
             if range
                 .intersect(range_filter)
                 .is_none_or(TextRange::is_empty)
@@ -354,7 +348,6 @@ impl<'db> SemanticTokenVisitor<'db> {
             }
         }
 
-        // Debug assertion to ensure tokens are added in file order
         debug_assert!(
             self.tokens
                 .last()
@@ -381,7 +374,6 @@ impl<'db> SemanticTokenVisitor<'db> {
         &self,
         name: &ast::ExprName,
     ) -> Option<(SemanticTokenType, SemanticTokenModifier)> {
-        // First try to classify the token based on its definition kind.
         let definition = definition_for_name(
             self.model,
             name,
@@ -395,7 +387,6 @@ impl<'db> SemanticTokenVisitor<'db> {
             }
         }
 
-        // Fall back to type-based classification.
         let ty = name.inferred_type(self.model).unwrap_or(Type::unknown());
         let name_str = name.id.as_str();
         self.classify_from_type_and_name_str(ty, name_str)
@@ -416,7 +407,6 @@ impl<'db> SemanticTokenVisitor<'db> {
 
         match definition.kind(db) {
             DefinitionKind::Function(_) => {
-                // Check if this is a method based on current scope
                 if self.in_class_scope {
                     Some((SemanticTokenType::Method, modifiers))
                 } else {
@@ -462,13 +452,9 @@ impl<'db> SemanticTokenVisitor<'db> {
             DefinitionKind::Import(_)
             | DefinitionKind::ImportFrom(_)
             | DefinitionKind::StarImport(_) => {
-                // For imports, return None to fall back to type-based classification
-                // This allows imported names to be classified based on what they actually are
-                // (e.g., imported classes as Class, imported functions as Function, etc.)
                 None
             }
             kind => {
-                // For other definition kinds (assignments, etc.), apply constant naming convention
                 if Self::is_constant_name(name_str) {
                     modifiers |= SemanticTokenModifier::READONLY;
                 }
@@ -541,7 +527,6 @@ impl<'db> SemanticTokenVisitor<'db> {
                 (SemanticTokenType::TypeParameter, modifiers)
             }
             Type::FunctionLiteral(_) => {
-                // Check if this is a method based on current scope
                 if self.in_class_scope {
                     (SemanticTokenType::Method, modifiers)
                 } else {
@@ -551,11 +536,9 @@ impl<'db> SemanticTokenVisitor<'db> {
             Type::BoundMethod(_) => (SemanticTokenType::Method, modifiers),
             Type::ModuleLiteral(_) => (SemanticTokenType::Namespace, modifiers),
             _ => {
-                // Check for constant naming convention
                 if Self::is_constant_name(name_str) {
                     modifiers |= SemanticTokenModifier::READONLY;
                 }
-                // For other types (variables, modules, etc.), assume variable
                 (SemanticTokenType::Variable, modifiers)
             }
         })
@@ -569,8 +552,6 @@ impl<'db> SemanticTokenVisitor<'db> {
             return None;
         }
 
-        // In type-form contexts, these types all denote class-like type expressions that should be
-        // highlighted like `int` in `x: int`, even if their inferred type is instance-shaped.
         match ty {
             Type::ClassLiteral(_)
             | Type::GenericAlias(_)
@@ -635,24 +616,20 @@ impl<'db> SemanticTokenVisitor<'db> {
         let mut all_properties_are_readonly = true;
 
         for element in elements {
-            // Classify based on the inferred type of the attribute
             match element {
                 Type::ClassLiteral(_) => {
                     token_type.add(SemanticTokenType::Class);
                 }
                 Type::FunctionLiteral(_) => {
-                    // This is a function accessed as an attribute, likely a method
                     token_type.add(SemanticTokenType::Method);
                 }
                 Type::BoundMethod(_) | Type::KnownBoundMethod(_) => {
-                    // Method bound to an instance
                     token_type.add(SemanticTokenType::Method);
                 }
                 Type::Callable(callable) if callable.is_method_like(db) => {
                     token_type.add(SemanticTokenType::Method);
                 }
                 Type::ModuleLiteral(_) => {
-                    // Module accessed as an attribute (e.g., from os import path)
                     token_type.add(SemanticTokenType::Namespace);
                 }
                 Type::PropertyInstance(property) => {
@@ -672,13 +649,10 @@ impl<'db> SemanticTokenVisitor<'db> {
             return Some((uniform, modifiers));
         }
 
-        // Check for constant naming convention
         if Self::is_constant_name(attr_name_str) {
             modifiers |= SemanticTokenModifier::READONLY;
         }
 
-        // For other types (variables, constants, etc.), classify as variable
-        // Should this always be property?
         Some((SemanticTokenType::Variable, modifiers))
     }
 
@@ -726,7 +700,6 @@ impl<'db> SemanticTokenVisitor<'db> {
         let name_str = name.id.as_str();
         let name_start = name.start();
 
-        // Split the dotted name and calculate positions for each part
         let mut current_offset = TextSize::default();
         for part in name_str.split('.') {
             if !part.is_empty() {
@@ -736,7 +709,6 @@ impl<'db> SemanticTokenVisitor<'db> {
                     SemanticTokenModifier::empty(),
                 );
             }
-            // Move past this part and the dot
             current_offset += part.text_len() + '.'.text_len();
         }
     }
@@ -749,8 +721,6 @@ impl<'db> SemanticTokenVisitor<'db> {
         self.classify_from_type_and_name_str(ty, local_name.id.as_str())
     }
 
-    // Visit parameters for a function or lambda expression and classify
-    // them as parameters, selfParameter, or clsParameter as appropriate.
     fn visit_parameters(
         &mut self,
         parameters: &ast::Parameters,
@@ -760,7 +730,6 @@ impl<'db> SemanticTokenVisitor<'db> {
             let parameter = any_param.as_parameter();
 
             let token_type = match any_param {
-                // For non-variadic parameters in function defs, preserve self/cls classification.
                 ast::AnyParameterRef::NonVariadic(_) => func
                     .map_or(SemanticTokenType::Parameter, |func| {
                         self.classify_parameter(parameter, param_index == 0, func)
@@ -774,7 +743,6 @@ impl<'db> SemanticTokenVisitor<'db> {
                 SemanticTokenModifier::DEFINITION,
             );
 
-            // Handle parameter type annotations
             if let Some(annotation) = &parameter.annotation {
                 self.visit_annotation(annotation);
             }
@@ -817,8 +785,6 @@ impl<'db> SemanticTokenVisitor<'db> {
 
 impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
     fn enter_node(&mut self, node: AnyNodeRef<'_>) -> TraversalSignal {
-        // If we have a range filter and this node doesn't intersect, skip it
-        // and all its children as an optimization
         if let Some(range_filter) = self.range_filter {
             if node.range().intersect(range_filter).is_none() {
                 return TraversalSignal::Skip;
@@ -832,12 +798,10 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
         self.expecting_docstring = false;
         match stmt {
             ast::Stmt::FunctionDef(func) => {
-                // Visit decorator expressions
                 for decorator in &func.decorator_list {
                     self.visit_decorator(decorator);
                 }
 
-                // Function name
                 self.add_token(
                     func.name.range(),
                     self.classify_function_definition(func),
@@ -848,7 +812,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                     },
                 );
 
-                // Type parameters (Python 3.12+ syntax)
                 if let Some(type_params) = &func.type_params {
                     for type_param in &type_params.type_params {
                         self.visit_type_param(type_param);
@@ -857,13 +820,10 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
 
                 self.visit_parameters(&func.parameters, Some(func));
 
-                // Handle return type annotation
                 if let Some(returns) = &func.returns {
                     self.visit_annotation(returns);
                 }
 
-                // Clear the in_class_scope flag so inner functions
-                // are not treated as methods
                 let prev_in_class = self.in_class_scope;
 
                 self.in_class_scope = false;
@@ -873,26 +833,22 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 self.in_class_scope = prev_in_class;
             }
             ast::Stmt::ClassDef(class) => {
-                // Visit decorator expressions
                 for decorator in &class.decorator_list {
                     self.visit_decorator(decorator);
                 }
 
-                // Class name
                 self.add_token(
                     class.name.range(),
                     SemanticTokenType::Class,
                     SemanticTokenModifier::DEFINITION,
                 );
 
-                // Type parameters (Python 3.12+ syntax)
                 if let Some(type_params) = &class.type_params {
                     for type_param in &type_params.type_params {
                         self.visit_type_param(type_param);
                     }
                 }
 
-                // Handle base classes and type annotations in inheritance
                 if let Some(arguments) = &class.arguments {
                     walk_arguments(self, arguments);
                 }
@@ -905,14 +861,12 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 self.in_class_scope = prev_in_class;
             }
             ast::Stmt::TypeAlias(type_alias) => {
-                // Type alias name
                 self.add_token(
                     type_alias.name.range(),
                     SemanticTokenType::Class,
                     SemanticTokenModifier::DEFINITION,
                 );
 
-                // Type parameters (Python 3.12+ syntax)
                 if let Some(type_params) = &type_alias.type_params {
                     for type_param in &type_params.type_params {
                         self.visit_type_param(type_param);
@@ -923,7 +877,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
             }
             ast::Stmt::Import(import) => {
                 for alias in &import.names {
-                    // Create separate tokens for each part of a dotted module name
                     self.add_dotted_name_tokens(&alias.name, SemanticTokenType::Namespace);
 
                     if let Some(asname) = &alias.asname {
@@ -937,7 +890,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
             }
             ast::Stmt::ImportFrom(import) => {
                 if let Some(module) = &import.module {
-                    // Create separate tokens for each part of a dotted module name
                     self.add_dotted_name_tokens(module, SemanticTokenType::Namespace);
                 }
                 for alias in &import.names {
@@ -956,10 +908,8 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                         });
 
                     if let Some((token_type, modifiers)) = classification {
-                        // Add token for the imported name (Y in "from X import Y" or "from X import Y as Z")
                         self.add_token(&alias.name, token_type, modifiers);
 
-                        // For aliased imports (from X import Y as Z), also add a token for the alias Z
                         if let Some(asname) = &alias.asname {
                             self.add_token(asname, token_type, modifiers);
                         }
@@ -967,7 +917,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 }
             }
             ast::Stmt::Nonlocal(nonlocal_stmt) => {
-                // Handle nonlocal statements - classify identifiers as variables
                 for identifier in &nonlocal_stmt.names {
                     self.add_token(
                         identifier.range(),
@@ -1004,8 +953,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 self.visit_annotation(&assignment.annotation);
 
                 if let Some(value) = &assignment.value {
-                    // PEP 613 alias values are type forms even though they appear as annotated
-                    // assignments rather than dedicated `type` statements.
                     if self.model.is_type_alias_annotation(&assignment.annotation) {
                         self.visit_annotation(value);
                     } else {
@@ -1065,7 +1012,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 self.in_docstring = false;
             }
             _ => {
-                // For all other statement types, let the default visitor handle them
                 walk_stmt(self, stmt);
             }
         }
@@ -1088,10 +1034,8 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 walk_expr(self, expr);
             }
             ast::Expr::Attribute(attr) => {
-                // Visit the base expression first (e.g., 'os' in 'os.path')
                 self.visit_expr(&attr.value);
 
-                // Then add token for the attribute name (e.g., 'path' in 'os.path')
                 let classification = self
                     .classify_type_alias_from_resolved_definitions(&definitions_for_attribute(
                         self.model, attr,
@@ -1129,12 +1073,10 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 );
             }
             ast::Expr::Lambda(lambda) => {
-                // Handle lambda parameters
                 if let Some(parameters) = &lambda.parameters {
                     self.visit_parameters(parameters, None);
                 }
 
-                // Visit the lambda body
                 self.visit_expr(&lambda.body);
             }
 
@@ -1147,7 +1089,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 self.visit_expr(&named.value);
             }
             ast::Expr::StringLiteral(string_expr) => {
-                // Highlight the sub-AST of a string annotation
                 if let Some((sub_ast, sub_model)) = self.model.enter_string_annotation(string_expr)
                 {
                     let mut sub_visitor = SemanticTokenVisitor::new(&sub_model, self.range_filter);
@@ -1169,8 +1110,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
             ast::Expr::Call(call) => {
                 self.visit_expr(call.func.as_ref());
 
-                // Determine whether each argument should be considered a type form or a value
-                // based on the position.
                 let argument_forms = call_argument_forms(self.model, call);
                 for (argument, form) in call.arguments.iter_source_order().zip(argument_forms) {
                     match form {
@@ -1183,14 +1122,12 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 }
             }
             _ => {
-                // For all other expression types, let the default visitor handle them
                 walk_expr(self, expr);
             }
         }
     }
 
     fn visit_string_literal(&mut self, string_literal: &StringLiteral) {
-        // Emit a semantic token for this string literal part
         let modifiers = if self.in_docstring {
             SemanticTokenModifier::DOCUMENTATION
         } else {
@@ -1200,7 +1137,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
     }
 
     fn visit_bytes_literal(&mut self, bytes_literal: &BytesLiteral) {
-        // Emit a semantic token for this bytes literal part
         self.add_token(
             bytes_literal.range(),
             SemanticTokenType::String,
@@ -1214,7 +1150,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
     ) {
         match interpolated_string_element {
             InterpolatedStringElement::Literal(literal) => {
-                // Emit a String token for literal parts of f-strings/t-strings
                 self.add_token(
                     literal.range(),
                     SemanticTokenType::String,
@@ -1222,7 +1157,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 );
             }
             InterpolatedStringElement::Interpolation(_) => {
-                // The default walker handles visiting the expression and format spec
                 walk_interpolated_string_element(self, interpolated_string_element);
             }
         }
@@ -1247,7 +1181,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
     }
 
     fn visit_type_param(&mut self, type_param: &TypeParam) {
-        // Emit token for the type parameter name
         let name_range = type_param.name().range();
         self.add_token(
             name_range,
@@ -1255,9 +1188,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
             SemanticTokenModifier::DEFINITION,
         );
 
-        // Visit bound expression (for TypeVar)
-        // TODO: We don't call `walk_type_param` here, because, as of today (20th Oct 2025),
-        // `walk_type_param` calls `visit_expr` instead of `visit_annotation`.
         match type_param {
             TypeParam::TypeVar(type_var) => {
                 if let Some(bound) = &type_var.bound {
@@ -1283,12 +1213,10 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
     fn visit_except_handler(&mut self, except_handler: &ast::ExceptHandler) {
         match except_handler {
             ast::ExceptHandler::ExceptHandler(handler) => {
-                // Visit the exception type expression if present
                 if let Some(type_expr) = &handler.type_ {
                     self.visit_expr(type_expr);
                 }
 
-                // Handle the exception variable name (after "as")
                 if let Some(name) = &handler.name {
                     self.add_token(
                         name.range(),
@@ -1297,7 +1225,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                     );
                 }
 
-                // Visit the handler body
                 self.visit_body(&handler.body);
             }
         }
@@ -1306,12 +1233,10 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
     fn visit_pattern(&mut self, pattern: &ast::Pattern) {
         match pattern {
             ast::Pattern::MatchAs(pattern_as) => {
-                // Visit the nested pattern first to maintain source order
                 if let Some(nested_pattern) = &pattern_as.pattern {
                     self.visit_pattern(nested_pattern);
                 }
 
-                // Now add the "as" variable name token
                 if let Some(name) = &pattern_as.name {
                     self.add_token(
                         name.range(),
@@ -1321,9 +1246,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 }
             }
             ast::Pattern::MatchMapping(pattern_mapping) => {
-                // `**rest` can appear before or after the key-value pairs
-                // (the parser can produce either AST, but emits an
-                // invalid-syntax error for the former).
                 let rest_before_keys = pattern_mapping.rest.as_ref().filter(|rest| {
                     pattern_mapping
                         .keys
@@ -1361,7 +1283,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 }
             }
             ast::Pattern::MatchStar(pattern_star) => {
-                // Just the one ident here
                 if let Some(rest_name) = &pattern_star.name {
                     self.add_token(
                         rest_name.range(),
@@ -1371,7 +1292,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 }
             }
             _ => {
-                // For all other pattern types, use the default walker
                 ruff_python_ast::visitor::source_order::walk_pattern(self, pattern);
             }
         }
@@ -1623,9 +1543,6 @@ value = 1
 
     #[test]
     fn semantic_tokens_class_args() {
-        // This used to cause a panic because of an incorrect
-        // insertion-order when visiting arguments inside
-        // class definitions.
         let test = SemanticTokenTest::new("class Foo(m=x, m)");
 
         let tokens = test.highlight_file();
@@ -1665,9 +1582,6 @@ def f(x: Annotated[int, Metadata.field]): ...
 
     #[test]
     fn semantic_tokens_match_class_pattern_keyword_before_positional() {
-        // Regression test for https://github.com/astral-sh/ty/issues/2417
-        // This used to cause a panic because keyword patterns and positional
-        // patterns in a match class were not visited in source order.
         let test = SemanticTokenTest::new(
             "
 import ast
@@ -2146,17 +2060,12 @@ def function2():
 
         let full_tokens = test.highlight_file();
 
-        // Get the range that covers only the second function
-        // Hardcoded offsets: function2 starts at position 42, source ends at position 108
         let range = TextRange::new(TextSize::from(42u32), TextSize::from(108u32));
 
         let range_tokens = test.highlight_range(range);
 
-        // Range-based tokens should have fewer tokens than full scan
-        // (should exclude tokens from function1)
         assert!(range_tokens.len() < full_tokens.len());
 
-        // Test both full tokens and range tokens with snapshots
         assert_snapshot!(test.to_snapshot(&full_tokens), @r#"
         "function1" @ 5..14: Function [definition]
         "x" @ 22..23: Variable [definition]
@@ -2181,7 +2090,6 @@ def function2():
         "z" @ 104..105: Variable
         "#);
 
-        // Verify that no tokens from range_tokens have ranges outside the requested range
         for token in range_tokens.iter() {
             assert!(
                 range.contains_range(token.range()),
@@ -2204,9 +2112,6 @@ z = 3
 ",
         );
 
-        // Range [6..13) starts where "1" ends and ends where "z" starts.
-        // Expected: only "y" @ 7..8 and "2" @ 11..12 (non-empty overlap with target range).
-        // Not included: "1" @ 5..6 and "z" @ 13..14 (adjacent, but not overlapping at offsets 6 and 13).
         let range = TextRange::new(TextSize::from(6), TextSize::from(13));
 
         let range_tokens = test.highlight_range(range);
@@ -2609,8 +2514,6 @@ x = Foo.prop
 
     #[test]
     fn property_readonly_modifier() {
-        // Verify that the readonly modifier is set for getter-only properties
-        // and NOT set for properties that also have a setter.
         let test = SemanticTokenTest::new(
             "
 class Config:
@@ -2977,8 +2880,6 @@ q = Baz.prop        # prop should be property on the class as well
 
     #[test]
     fn attribute_on_union_3() {
-        // This is a test where the unions are not actually composed of the same elements,
-        // so the regular fallback logic should apply.
         let test = SemanticTokenTest::new(
             "
 from random import random
@@ -4931,8 +4832,6 @@ def foo(self, **key, value=10):
 
     #[test]
     fn import_from_as() {
-        // Test that both the imported name and its alias get highlighted
-        // See: https://github.com/astral-sh/ty/issues/2547
         let test = SemanticTokenTest::new(
             r#"
 from pathlib import Path as P
@@ -4941,7 +4840,6 @@ from collections.abc import Set as AbstractSet
         );
 
         let tokens = test.highlight_file();
-        // Both the imported name and the alias should get the same highlighting
         assert_snapshot!(test.to_snapshot(&tokens), @r#"
         "pathlib" @ 6..13: Namespace
         "Path" @ 21..25: Class
@@ -4968,8 +4866,6 @@ def f():
 
     #[test]
     fn private_builtin_helpers_do_not_receive_semantic_tokens() {
-        // Private helpers excluded from implicit builtin lookup must remain unresolved for IDE
-        // highlighting instead of receiving tokens from their typeshed definitions.
         let test = SemanticTokenTest::new("_T_co\n_P\n");
 
         let tokens = test.highlight_file();

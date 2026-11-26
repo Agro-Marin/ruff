@@ -51,13 +51,11 @@ fn generate_set(output: &mut String, set: Set, parents: &mut Vec<Set>) {
 
     parents.push(set);
 
-    // Generate the fields.
     for (name, field) in &fields {
         emit_field(output, name, field, parents.as_slice());
         output.push_str("---\n\n");
     }
 
-    // Generate all the sub-sets.
     for (set_name, sub_set) in &sets {
         generate_set(
             output,
@@ -105,8 +103,6 @@ fn emit_field(output: &mut String, name: &str, field: &OptionField, parents: &[S
             "{header_level} [`{name}`](#{parents_anchor}_{name}) {{: #{parents_anchor}_{name} }}"
         );
 
-        // the anchor used to just be the name, but now it's the group name
-        // for backwards compatibility, we need to keep the old anchor
         let _ = writeln!(output, "<span id=\"{name}\"></span>");
     }
 

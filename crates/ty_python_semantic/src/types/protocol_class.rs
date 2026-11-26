@@ -165,11 +165,7 @@ impl<'db> ProtocolClass<'db> {
             let place_table = place_table(db, parent_scope);
             let mut direct_members = FxHashMap::default();
 
-            // Bindings that are not declared in the class body are invalid protocol members, but
-            // runtime-checkable protocols still consider them members for `isinstance()` and
-            // `issubclass()`.
             for (symbol_id, _) in use_def_map.all_end_of_scope_symbol_bindings() {
-                // Defaults retain inherited annotations, just as they do for ordinary classes.
                 let member = class_member_with_symbol(db, parent_scope, Some(symbol_id)).inner;
                 if let Place::Defined(place) = member.place {
                     let ty = if member.is_class_var() {
@@ -177,7 +173,6 @@ impl<'db> ProtocolClass<'db> {
                     } else {
                         place.ty
                     };
-                    // Function declarations below replace the class context with their own scope.
                     let self_binding_context = ty.contains_self(db, env).then(|| {
                         let class = inherited_class_body_declaration(db, parent_scope, symbol_id)
                             .map_or(parent, |inherited| inherited.class);
@@ -205,8 +200,6 @@ impl<'db> ProtocolClass<'db> {
                     );
                 let first_declaration = place_result.first_declaration;
                 let place = place_result.ignore_conflicting_declarations();
-                // Class member lookup includes the defaults of bare qualifiers, even when
-                // another branch supplies a type. It also includes unannotated ClassVar defaults.
                 if (place_result.has_qualifier_only_declaration
                     || (place.is_class_var() && !place.place.is_definitely_bound()))
                     && direct_members.contains_key(&symbol_id)
@@ -346,9 +339,6 @@ impl<'db> ProtocolClass<'db> {
         let Some((class, _)) = self.static_class_literal(db) else {
             return;
         };
-        // TODO: Validate protocols with inherited members too. This single-base pattern skips
-        // subclasses such as `class Child(Base[T], Protocol[T])`, even when their declared
-        // variance disagrees with the inherited interface.
         let [Type::KnownInstance(KnownInstanceType::SubscriptedProtocol(Some(generic_context)))] =
             class.explicit_bases(db)
         else {
@@ -587,9 +577,6 @@ impl<'db> ProtocolInterfaceView<'db> {
                 return true;
             }
 
-            // Class access to an ordinary instance method requires only that the method
-            // exists. Its unbound `self` is not part of structural compatibility and can
-            // recursively refer to this protocol, so do not materialize that signature.
             if materialized.is_instance_method() {
                 return false;
             }
@@ -926,7 +913,6 @@ impl<'db> ProtocolInterface<'db> {
         env: &'a ProgramEnvironment<'db>,
     ) -> impl Iterator<Item = (Type<'db>, TypeVarVariance)> + 'a {
         self.members(db).flat_map(move |member| {
-            // Instance methods are checked only through their bound instance signature.
             let is_instance_method = member.is_instance_method();
             [
                 ProtocolMemberAccessMode::Instance,
@@ -1469,7 +1455,6 @@ struct ProtocolMemberAccess<'a, 'db> {
 
 impl<'a, 'db> ProtocolMemberAccess<'a, 'db> {
     fn unbound_instance_method(self, db: &'db dyn Db) -> Option<&'db CallableSignature<'db>> {
-        // Raw declaration signatures do not include a pending materialization.
         if self.mode != ProtocolMemberAccessMode::Instance || self.materialization.is_some() {
             return None;
         }
@@ -1506,7 +1491,6 @@ impl<'a, 'db> ProtocolMemberAccess<'a, 'db> {
         receiver: Type<'db>,
     ) -> bool {
         self.read().is_some_and(|read| {
-            // A descriptor may support only instance access or only class access.
             !self.declaration.is_class_var() || read.result_type(db, env, Some(receiver)).is_some()
         })
     }
@@ -1603,7 +1587,6 @@ fn walk_protocol_member_access<'db, V: super::visitor::TypeVisitor<'db> + ?Sized
             read: Some(read), ..
         } = access.declaration.kind
     {
-        // Fall back to the accessor callable when its read type cannot be extracted.
         visitor.visit_type(db, read.ty());
     }
 
@@ -1617,7 +1600,6 @@ fn walk_protocol_member_access<'db, V: super::visitor::TypeVisitor<'db> + ?Sized
     if let Some(write_ty) = write_ty {
         visitor.visit_type(db, write_ty);
     } else if let Some(domain) = write.declaration.domain() {
-        // Apply the same accessor fallback when the write type cannot be extracted.
         visitor.visit_type(db, domain.ty());
     }
     if let Some(ProtocolMemberWriteRequirement::Descriptor { descriptor_ty, .. }) = requirement {
@@ -1640,11 +1622,6 @@ impl<'db> ProtocolMemberReadAccess<'_, 'db> {
     ) -> Option<Type<'db>> {
         let annotation = match self.access.declaration.kind {
             ProtocolMemberKind::Method(ty, kind) => {
-                // TODO: Passing `None` binds the method without a concrete receiver type.
-                // Supply the actual receiver type instead. For `Example.create()`, a classmethod
-                // receives `cls: type[Example]`, while `Self` must be replaced with `Example`.
-                // Binding therefore needs separate types for the receiver and for `Self`.
-                // See https://github.com/astral-sh/ruff/pull/28671.
                 let ty = if let Type::Callable(callable) = ty
                     && (kind == ProtocolMethodKind::Class
                         || (kind == ProtocolMethodKind::Instance
@@ -1668,9 +1645,6 @@ impl<'db> ProtocolMemberReadAccess<'_, 'db> {
                 if let Some(receiver) = self_type
                     && self.access.declaration.is_class_var() =>
             {
-                // The unbound lookup supplies the stored value to normal attribute lookup, which
-                // invokes the descriptor itself. When comparing a read on a particular receiver,
-                // expose the result of that same descriptor binding.
                 let read = annotation
                     .bind_self(db, env, receiver)
                     .class_variable_read_type(
@@ -2219,7 +2193,6 @@ impl<'a, 'db> ProtocolMember<'a, 'db> {
         class_origin: ClassLiteral<'db>,
     ) -> bool {
         if let ProtocolMemberKind::Property { read, write } = self.data.kind {
-            // The proof supports resolved ordinary property accessors, excluding descriptors.
             return matches!(
                 (read, write),
                 (
@@ -2561,17 +2534,10 @@ fn descriptor_protocol_member<'db>(
         .class_member_with_policy(db, env, "__get__", MemberLookupPolicy::REQUIRE_CONCRETE)
         .place;
     if candidate.qualifiers.contains(TypeQualifiers::NESTED_CLASS) && !getter.is_undefined() {
-        // A nested descriptor's getter can return different types on instance and class access.
-        // Modeling just the instance read as a property would accept property-only implementations.
-        // Keep the unbound descriptor as an ordinary attribute until we can model both reads.
         candidate.qualifiers.remove(TypeQualifiers::NESTED_CLASS);
         return Some(ProtocolMemberData::attribute(candidate));
     }
 
-    // Applying a generic descriptor decorator to a method that refers to an enclosing type
-    // variable can currently materialize that variable as `Unknown`. Reducing the descriptor to
-    // its `__get__` result would then erase the remaining descriptor structure and weaken the
-    // protocol member to a bare `Unknown`.
     if super::visitor::any_over_type(db, env, descriptor_ty, false, |ty| ty.is_unknown()) {
         return None;
     }
@@ -2613,8 +2579,6 @@ fn descriptor_protocol_member<'db>(
     };
     let read = Some(ProtocolPropertyType::with_definition(read_ty, definition));
     let mut member = ProtocolMemberData::property(read, write, definition);
-    // Without `__get__`, a nested descriptor still exposes its class object on both the
-    // protocol instance and its class. Only instance writes invoke the descriptor setter.
     member.qualifiers = candidate.qualifiers & TypeQualifiers::NESTED_CLASS;
     Some(member)
 }
@@ -2655,8 +2619,6 @@ fn protocol_member_read_type<'db>(
     member: &ProtocolMember<'_, 'db>,
     access: ProtocolMemberAccessMode,
 ) -> Option<Type<'db>> {
-    // A callback protocol describes call syntax. Use the candidate's callable type instead of an
-    // explicitly resolved `__call__` attribute, which can differ for class objects.
     if access == ProtocolMemberAccessMode::Instance
         && member.is_method()
         && member.name == "__call__"
@@ -2664,8 +2626,6 @@ fn protocol_member_read_type<'db>(
         return Some(ty);
     }
 
-    // Module-level functions and ordinary methods on class objects are matched through direct
-    // member access. Special instance methods still use special-method lookup on the meta-type.
     let lookup = if access == ProtocolMemberAccessMode::Instance
         && member.is_instance_method()
         && !matches!(ty, Type::ModuleLiteral(_))
@@ -2679,8 +2639,6 @@ fn protocol_member_read_type<'db>(
                 env.program(db),
                 ty,
                 member.name,
-                // The undefined fallback excludes instance members. Keep the class
-                // member lookup from reintroducing dynamic instance fallbacks.
                 MemberLookupPolicy::NO_INSTANCE_FALLBACK,
             ),
             ty,
@@ -2737,8 +2695,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         let mut checker = self.clone();
         checker.typevar_evaluation = TypeVarEvaluation::Lazy;
         let result = checker.check_callable_signature_pair(db, &source, &target);
-        // This is a sufficient proof. A failed nominal comparison does not rule out a
-        // structural match, even between specializations of the same protocol.
         (!result.is_never_satisfied(db, self.env, self.inferable)).then_some(result)
     }
 
@@ -2751,8 +2707,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         required: ProtocolMemberAccess<'_, 'db>,
     ) -> ConstraintSet<'db, 'c> {
         let env = self.env;
-        // Reading a member as `object` imposes no constraint on the type read. A class
-        // attribute establishes presence without inferring a shadowing instance assignment.
         if !member.is_method()
             && required
                 .read()
@@ -2779,10 +2733,7 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return self.never();
         };
 
-        // `Self` in a protocol member names the value satisfying the protocol. `Self` in a
         // method on a class object names instances of that class: a `@classmethod` returning
-        // `Self` returns `Factory`, not `type[Factory]`. Keep the bindings separate so a method
-        // that returns an instance cannot satisfy a protocol that promises the class object.
         let protocol_self_binding_ty = ty.literal_fallback_instance(db, env).unwrap_or(ty);
         if !member.is_method() {
             return required
@@ -2821,8 +2772,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             && method.signature_receiver(db) == protocol_receiver_binding_ty
             && let Some(source) = method.unbound_signatures(db)
         {
-            // A stored bound method keeps its captured receiver; only descriptor binding to
-            // this object lets us use the target's receiver restriction as a premise.
             let source_descriptor = ty
                 .class_member_with_policy(
                     db,
@@ -2882,8 +2831,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 .when_some_and(db, self.constraints, |callables| {
                     callables.iter().when_all(db, self.constraints, |callable| {
                         if callable.is_function_like(db) {
-                            // Require a positional receiver before binding: a zero-argument static
-                            // method otherwise loses no parameters while the protocol loses `self`.
                             let signatures = CallableSignature::from_overloads(
                                 callable
                                     .signatures(db)
@@ -2965,10 +2912,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             && member.is_instance_method()
             && required.read().is_some()
         {
-            // The instance-side check is authoritative for the signature of a method
-            // implementation. Class access only establishes that the member is present. Callable
-            // types and several callable literal forms do not expose a useful `__call__` member
-            // through their meta-type.
             return ConstraintSet::from_bool(
                 self.constraints,
                 member.name == "__call__"
@@ -3006,7 +2949,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     write
                         .requirement(db, env, Some(fallback_ty))
                         .map(|requirement| {
-                            // TODO: Check if using `Unknown` here is correct
                             requirement.accepted_type().unwrap_or_else(Type::unknown)
                         })
                         .when_some_and(db, self.constraints, |write_ty| {
@@ -3176,8 +3118,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             && source_member.is_method()
             && target_member.is_instance_method()
         {
-            // The instance-side check is authoritative for an ordinary method's signature. Class
-            // access only establishes that the source member is also present on the class.
             return ConstraintSet::from_bool(self.constraints, source.read().is_some());
         }
         let target = target_member.access(access);
@@ -3240,13 +3180,11 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         target
                             .requirement(db, env, Some(source_type))
                             .map(|requirement| {
-                                // TODO: Check if using `Unknown` here is correct
                                 requirement.accepted_type().unwrap_or_else(Type::unknown)
                             }),
                         source
                             .requirement(db, env, Some(source_type))
                             .map(|requirement| {
-                                // TODO: Check if using `Unknown` here is correct
                                 requirement.accepted_type().unwrap_or_else(Type::unknown)
                             }),
                     ) else {
@@ -3419,9 +3357,6 @@ impl<'c, 'db> DisjointnessChecker<'_, 'c, 'db> {
                     return self.never();
                 }
 
-                // Disjointness distributes over unions. Compare the overload return arms
-                // directly so that recursive return types do not require canonicalizing an
-                // intermediate union merely to distribute it again.
                 method
                     .signatures(db)
                     .iter()
@@ -3514,7 +3449,6 @@ struct ProtocolMemberCandidate<'db> {
     ty: Type<'db>,
     qualifiers: TypeQualifiers,
     definition: Option<Definition<'db>>,
-    // A default's value provenance can differ from the declaration that scopes `Self`.
     self_binding_context: Option<BindingContext<'db>>,
     bound_on_class: BoundOnClass,
 }
@@ -3549,9 +3483,6 @@ impl<'db> ProtocolMemberCandidate<'db> {
     ) {
         match self.ty {
             Type::PropertyInstance(property) => {
-                // A property exposes its getter return and setter value types. Walking the
-                // accessor callables themselves would also visit their receiver and make every
-                // generic protocol property appear recursive.
                 for member in [
                     property
                         .getter(db)
@@ -3644,8 +3575,6 @@ fn supports_protocol_variance_inference<'db>(
     };
     interface.variance_types(db, &env).all(|(ty, _)| {
         if let Type::Callable(callable) = ty {
-            // Bound receivers constrain when a method can be called, but they are not input
-            // or output positions in variance inference. Match `Signature::variance_of`.
             callable.signatures(db).iter().all(|signature| {
                 signature
                     .parameters()
@@ -3811,7 +3740,6 @@ fn protocol_apply_self_with_receiver<'db>(
 fn callable_has_only_non_never_returns<'db>(db: &'db dyn Db, callable: CallableType<'db>) -> bool {
     let mut signatures = callable.signatures(db).iter();
     let Some(first) = signatures.next() else {
-        // An empty signature previously produced `Unknown`, which cannot establish disjointness.
         return false;
     };
 
@@ -3833,15 +3761,11 @@ pub(super) fn has_all_protocol_members_defined<'db>(
 
     match ty {
         Type::ProtocolInstance(source_protocol) => {
-            // Specializing a generic protocol's interface computes the types of all its members.
-            // A missing name can rule out compatibility before we need any of those types.
             if let Some(class) = source_protocol.class_origin(db)
                 && matches!(*class, ClassType::Generic(_))
             {
                 let program = class.class_literal(db).program_file(db).program(db);
                 let object_names = object_member_names(db, program);
-                // Probe at most one name: if the protocols are compatible, scanning every
-                // member here would duplicate work in the full interface comparison below.
                 if let Some(member) = target_interface
                     .members(db)
                     .find(|member| !object_names.contains(member.name()))

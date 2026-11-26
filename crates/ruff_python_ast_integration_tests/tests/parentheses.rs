@@ -150,7 +150,6 @@ fn test_call_arguments_not_counted() {
         .first()
         .expect("call should have an argument");
     let result = parenthesized_range(arg.into(), (&call.arguments).into(), tokens);
-    // The parentheses belong to the call, not the argument
     assert_eq!(result, None);
 }
 

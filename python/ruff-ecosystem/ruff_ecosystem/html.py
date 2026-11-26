@@ -49,7 +49,6 @@ def render_html(result: Result, command: RuffCommand, title: str) -> str:
         else:
             for file in PatchSet("\n".join(comparison.diff.lines)):
                 for hunk in file:
-                    # The baseline may have been formatted, so source lines are approximate.
                     url = repo.url_for(quote(file.path), hunk.source_start)
                     for line in str(hunk).splitlines():
                         rows.append(

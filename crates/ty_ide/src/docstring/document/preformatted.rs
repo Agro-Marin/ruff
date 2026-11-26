@@ -32,10 +32,6 @@ impl<'a> MarkdownFence<'a> {
         let fence_len = line.len() - without_leading_fence.len();
         let fence = &line[..fence_len];
 
-        // Backticks are not allowed in a backtick fence's info string.
-        // This also keeps code spans such as ```hello``` from being mistaken for fenced blocks.
-        //
-        // <https://spec.commonmark.org/0.31.2/#fenced-code-blocks>
         (!has_tick_fence || !without_leading_fence.contains('`')).then_some(Self { marker: fence })
     }
 
@@ -159,7 +155,6 @@ impl RestLiteralBlockScanner {
         match self.state {
             RestLiteralBlockState::Active(RestLiteralBlockKind::Indented { marker_indent }) => {
                 if !line_is_empty && current_indent <= marker_indent {
-                    // We've reached the de-dent that marks the end of the literal block.
                     self.state = RestLiteralBlockState::Inactive;
                     false
                 } else {
@@ -182,14 +177,11 @@ impl RestLiteralBlockScanner {
                 allows_quoted_literal_block,
             } if !line_is_empty => {
                 if current_indent > marker_indent {
-                    // We just entered a new literal block.
                     self.state = RestLiteralBlockState::Active(RestLiteralBlockKind::Indented {
                         marker_indent,
                     });
                     true
                 } else if MarkdownFence::find(line).is_some() {
-                    // Without indentation to start a reST literal, let the outer scanner handle
-                    // the Markdown fence.
                     self.state = RestLiteralBlockState::Inactive;
                     false
                 } else if allows_quoted_literal_block

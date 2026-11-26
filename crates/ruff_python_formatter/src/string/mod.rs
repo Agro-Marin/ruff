@@ -18,7 +18,6 @@ mod normalize;
 
 impl Format<PyFormatContext<'_>> for AnyStringPrefix {
     fn fmt(&self, f: &mut PyFormatter) -> FormatResult<()> {
-        // Remove the unicode prefix `u` if any because it is meaningless in Python 3+.
         if !matches!(
             self,
             AnyStringPrefix::Regular(StringLiteralPrefix::Empty | StringLiteralPrefix::Unicode)
@@ -78,14 +77,12 @@ impl From<Quote> for QuoteStyle {
     }
 }
 
-// Extension trait that adds formatter specific helper methods to `StringLike`.
 pub(crate) trait StringLikeExtensions {
     fn is_multiline(&self, context: &PyFormatContext) -> bool;
 }
 
 impl StringLikeExtensions for ast::StringLike<'_> {
     fn is_multiline(&self, context: &PyFormatContext) -> bool {
-        // Helper for f-string and t-string parts
         fn contains_line_break_or_comments(
             elements: &ast::InterpolatedStringElements,
             context: &PyFormatContext,
@@ -96,17 +93,6 @@ impl StringLikeExtensions for ast::StringLike<'_> {
                     triple_quotes.is_yes() && context.source().contains_line_break(literal.range())
                 }
                 ast::InterpolatedStringElement::Interpolation(expression) => {
-                    // Expressions containing comments can't be joined.
-                    //
-                    // Format specifiers needs to be checked as well. For example, the
-                    // following should be considered multiline because the literal
-                    // part of the format specifier contains a newline at the end
-                    // (`.3f\n`):
-                    //
-                    // ```py
-                    // x = f"hello {a + b + c + d:.3f
-                    // } world"
-                    // ```
                     context.comments().contains_comments(expression.into())
                         || expression.format_spec.as_deref().is_some_and(|spec| {
                             contains_line_break_or_comments(&spec.elements, context, triple_quotes)

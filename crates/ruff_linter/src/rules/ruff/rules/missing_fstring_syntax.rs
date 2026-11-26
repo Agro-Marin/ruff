@@ -85,13 +85,10 @@ impl AlwaysFixableViolation for MissingFStringSyntax {
 pub(crate) fn missing_fstring_syntax(checker: &Checker, literal: &ast::StringLiteral) {
     let semantic = checker.semantic();
 
-    // fstrings are never correct as type definitions
     if semantic.in_type_definition() {
         return;
     }
 
-    // we want to avoid statement expressions that are just a string literal.
-    // there's no reason to have standalone f-strings and this lets us avoid docstrings too
     if let ast::Stmt::Expr(ast::StmtExpr { value, .. }) = semantic.current_statement() {
         match value.as_ref() {
             ast::Expr::StringLiteral(_) | ast::Expr::FString(_) => return,
@@ -102,12 +99,6 @@ pub(crate) fn missing_fstring_syntax(checker: &Checker, literal: &ast::StringLit
     let logger_objects = &checker.settings().logger_objects;
     let fastapi_seen = semantic.seen_module(Modules::FASTAPI);
 
-    // We also want to avoid:
-    // - Expressions inside `gettext()` calls
-    // - Expressions passed to logging calls (since the `logging` module evaluates them lazily:
-    //   https://docs.python.org/3/howto/logging-cookbook.html#using-particular-formatting-styles-throughout-your-application)
-    // - `fastAPI` paths: https://fastapi.tiangolo.com/tutorial/path-params/
-    // - Expressions where a method is immediately called on the string literal
     if semantic
         .current_expressions()
         .filter_map(ast::Expr::as_call_expr)
@@ -201,8 +192,6 @@ fn should_be_fstring(
         return false;
     };
 
-    // For Python < 3.12, reject if the parser detected any PEP 701 f-string
-    // features.
     if target_version < PythonVersion::PY312 {
         let has_pep701 = parsed
             .unsupported_syntax_errors()
@@ -213,7 +202,6 @@ fn should_be_fstring(
         }
     }
 
-    // Note: Range offsets for `value` are based on `fstring_expr`
     let ast::Expr::FString(ast::ExprFString { value, .. }) = parsed.expr() else {
         return false;
     };
@@ -244,9 +232,6 @@ fn should_be_fstring(
                     return false;
                 }
                 if semantic
-                    // the parsed expression nodes have incorrect ranges
-                    // so we need to use the range of the literal for the
-                    // lookup in order to get reasonable results.
                     .simulate_runtime_load_at_location_in_scope(
                         id,
                         literal.range(),
@@ -274,11 +259,8 @@ fn should_be_fstring(
     true
 }
 
-// fast check to disqualify any string literal without brackets
 #[inline]
 fn has_brackets(possible_fstring: &str) -> bool {
-    // this qualifies rare false positives like "{ unclosed bracket"
-    // but it's faster in the general case
     memchr2_iter(b'{', b'}', possible_fstring.as_bytes())
         .nth(1)
         .is_some()

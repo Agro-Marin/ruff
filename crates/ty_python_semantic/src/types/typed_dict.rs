@@ -288,7 +288,6 @@ impl<'db> TypedDictType<'db> {
                 ClassLiteral::Dynamic(_)
                 | ClassLiteral::DynamicNamedTuple(_)
                 | ClassLiteral::DynamicEnum(_) => {
-                    // A `TypedDictType::Class` is only constructed from classes known to be TypedDicts.
                     unreachable!("non-TypedDict dynamic class wrapped in `TypedDictType`")
                 }
             };
@@ -535,8 +534,6 @@ impl<'db> TypedDictType<'db> {
     }
 
     pub(crate) fn items(self, db: &'db dyn Db) -> &'db TypedDictSchema<'db> {
-        // Field annotations can recursively inspect this schema while the class fields are still
-        // being collected, e.g. through `typing.Self` in a `TypedDict` field.
         #[salsa::tracked(
             returns(ref),
             cycle_initial=|_, _, _| TypedDictSchema::default(),
@@ -573,7 +570,6 @@ impl<'db> TypedDictType<'db> {
 
         match self {
             Self::Class(defining_class) => {
-                // Check if this is a dynamic TypedDict
                 if let ClassLiteral::DynamicTypedDict(class) = defining_class.class_literal(db) {
                     return class.items(db);
                 }
@@ -616,7 +612,6 @@ impl<'db> TypedDictType<'db> {
         tcx: TypeContext<'db>,
         visitor: &ApplyTypeMappingVisitor<'_, 'db>,
     ) -> Self {
-        // TODO: Materialization of gradual TypedDicts needs more logic
         match self {
             Self::Class(defining_class) => {
                 Self::Class(defining_class.apply_type_mapping_impl(db, type_mapping, tcx, visitor))
@@ -713,8 +708,6 @@ impl<'db> TypedDictType<'db> {
 }
 
 impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
-    // Subtyping between `TypedDict`s follows the algorithm described at:
-    // https://typing.python.org/en/latest/spec/typeddict.html#subtyping-between-typeddict-types
     pub(super) fn check_typeddict_pair(
         &self,
         db: &'db dyn Db,
@@ -742,8 +735,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                             {
                                 continue;
                             }
-                            // A mutation cannot write an undeclared key: a subtype of the
-                            // destination may give that key an incompatible type.
                             TypedDictOpenness::ImplicitlyOpen | TypedDictOpenness::Closed => {
                                 return self.never();
                             }
@@ -762,9 +753,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 }
             }
 
-            // An open source can hide items that overlap the destination's declared fields.
-            // For example, a source declaring only `name: str` may also contain `count: str`,
-            // so it cannot update a destination declaring `count: int`.
             let source_extra_items = if !is_update_patch && target_openness.is_implicitly_open() {
                 source.explicit_extra_items(db)
             } else {
@@ -809,9 +797,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return result;
         }
 
-        // First do a quick nominal check that (if it succeeds) means that we can avoid
-        // materializing the full `TypedDict` schema for either `source` or `target`.
-        // This should be cheaper in many cases, and also helps us avoid some cycles.
         if let Some(defining_class) = source.defining_class()
             && let Some(target_defining_class) = target.defining_class()
             && self.is_class_subtype(db, defining_class, target_defining_class)
@@ -823,14 +808,10 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         let target_items = target.items(db);
         let source_openness = source.openness(db);
         let target_openness = target.openness(db);
-        // Many rules violations short-circuit with "never", but asking whether one field is
-        // [relation] to/of another can produce more complicated constraints, and we collect those.
         let mut result = self.always();
         for (target_item_name, target_item_field) in target_items {
             let field_constraints = if target_item_field.is_required() {
-                // required target fields
                 let Some(source_item_field) = source_items.get(target_item_name.as_str()) else {
-                    // Self is missing a required field.
                     if let Some(context) = self.report_context() {
                         context.push(ErrorContext::TypedDictFieldMissing {
                             field_name: target_item_name.clone(),
@@ -840,7 +821,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return self.never();
                 };
                 if !source_item_field.is_required() {
-                    // A required field is not required in self.
                     if let Some(context) = self.report_context() {
                         context.push(ErrorContext::TypedDictFieldNotRequiredInSource {
                             field_name: target_item_name.clone(),
@@ -851,10 +831,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return self.never();
                 }
                 if target_item_field.is_read_only() {
-                    // For `ReadOnly[]` fields in the target, the corresponding fields in
-                    // self need to have the same assignability/subtyping/etc relation
-                    // individually that we're looking for overall between the
-                    // `TypedDict`s.
                     self.check_type_pair(
                         db,
                         source_item_field.declared_ty,
@@ -862,7 +838,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     )
                 } else {
                     if source_item_field.is_read_only() {
-                        // A read-only field can't be assigned to a mutable target.
                         if let Some(context) = self.report_context() {
                             context.push(ErrorContext::TypedDictFieldReadOnlyInSource {
                                 field_name: target_item_name.clone(),
@@ -872,11 +847,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         }
                         return self.never();
                     }
-                    // For mutable fields in the target, the relation needs to apply both
-                    // ways, or else mutating the target could violate the structural
-                    // invariants of self. For fully-static types, this is "equivalence".
-                    // For gradual types, it depends on the relation, but mutual
-                    // assignability is "consistency".
                     self.check_type_pair(
                         db,
                         source_item_field.declared_ty,
@@ -891,11 +861,7 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     })
                 }
             } else {
-                // `NotRequired[]` target fields
                 if target_item_field.is_read_only() {
-                    // A missing read-only field is checked against the source's effective extra
-                    // items. Missing mutable fields below require explicit mutable extra items and
-                    // a relation in both directions.
                     if let Some(source_item_field) = source_items.get(target_item_name.as_str()) {
                         self.check_type_pair(
                             db,
@@ -904,7 +870,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         )
                     } else {
                         match source_openness.effective_extra_items() {
-                            // A closed source cannot contain this key, so the check succeeds.
                             None => self.always(),
                             Some(source_extra_items) => self.check_type_pair(
                                 db,
@@ -916,7 +881,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 } else {
                     if let Some(source_item_field) = source_items.get(target_item_name.as_str()) {
                         if source_item_field.is_read_only() {
-                            // A read-only field can't be assigned to a mutable target.
                             if let Some(context) = self.report_context() {
                                 context.push(ErrorContext::TypedDictFieldReadOnlyInSource {
                                     field_name: target_item_name.clone(),
@@ -927,8 +891,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                             return self.never();
                         }
                         if source_item_field.is_required() {
-                            // A required field can't be assigned to a not-required, mutable field
-                            // in the target, because `del` is allowed on the target field.
                             if let Some(context) = self.report_context() {
                                 context.push(
                                     ErrorContext::TypedDictFieldNotRequiredAndMutableInTarget {
@@ -941,8 +903,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                             return self.never();
                         }
 
-                        // As above, for mutable fields in the target, the relation needs
-                        // to apply both ways.
                         self.check_type_pair(
                             db,
                             source_item_field.declared_ty,
@@ -1056,8 +1016,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 }
             }
             TypedDictOpenness::ImplicitlyOpen | TypedDictOpenness::Extra(_) => {
-                // An open target shares the read-only extra-items path, using `object` as its
-                // effective extra-items type.
                 let target_extra_items = target_openness.effective_extra_items().expect(
                     "open or read-only extra-items TypedDict should have effective extra items",
                 );
@@ -1166,13 +1124,10 @@ impl<'c, 'db> DisjointnessChecker<'_, 'c, 'db> {
                 if let Some(context) = self.report_context() {
                     context.take();
                 }
-                // Condition 1 above.
                 if left_field.is_required() || right_field.is_required() {
                     if (!left_field.is_required() && !left_field.is_read_only())
                         || (!right_field.is_required() && !right_field.is_read_only())
                     {
-                        // One side demands a `Required` source field, while the other side demands a
-                        // `NotRequired` one. They must be disjoint.
                         if let Some(context) = self.report_context() {
                             let (required, not_required) = if left_field.is_required() {
                                 (left, right)
@@ -1189,8 +1144,6 @@ impl<'c, 'db> DisjointnessChecker<'_, 'c, 'db> {
                     }
                 }
                 let result = if !left_field.is_read_only() && !right_field.is_read_only() {
-                    // Condition 2 above. This field is mutable on both sides, so the so the types must
-                    // be compatible, i.e. mutually assignable.
                     self.check_relation_with_context(
                         db,
                         self.as_relation_checker(TypeRelation::Assignability),
@@ -1212,7 +1165,6 @@ impl<'c, 'db> DisjointnessChecker<'_, 'c, 'db> {
                     )
                     .negate(db, self.constraints)
                 } else if !left_field.is_read_only() {
-                    // Half of condition 3 above.
                     self.check_relation_with_context(
                         db,
                         self.as_relation_checker(TypeRelation::Assignability),
@@ -1226,7 +1178,6 @@ impl<'c, 'db> DisjointnessChecker<'_, 'c, 'db> {
                     )
                     .negate(db, self.constraints)
                 } else if !right_field.is_read_only() {
-                    // The other half of condition 3 above.
                     self.check_relation_with_context(
                         db,
                         self.as_relation_checker(TypeRelation::Assignability),
@@ -1240,7 +1191,6 @@ impl<'c, 'db> DisjointnessChecker<'_, 'c, 'db> {
                     )
                     .negate(db, self.constraints)
                 } else {
-                    // Condition 4 above.
                     self.check_type_pair(db, left_field.declared_ty, right_field.declared_ty)
                 };
                 if let Some(context) = self.report_context()
@@ -1437,9 +1387,6 @@ impl<'db> VarianceInferable<'db> for TypedDictType<'db> {
     ) -> VarianceTerm<'db> {
         match self {
             Self::Class(class) if class.static_class_literal(db).is_some() => {
-                // Compose each type parameter's variance with its type argument. Inferred variance
-                // is computed on the unspecialized class: expanding specialized fields here would
-                // not terminate for a recursive item such as `child: Node[list[T]]`.
                 class.variance_of(db, env, typevar)
             }
             Self::Class(class) => {
@@ -1559,9 +1506,6 @@ pub(super) fn deferred_functional_typed_dict_openness<'db>(
 pub(super) fn typed_dict_params_from_class_def(class_stmt: &StmtClassDef) -> TypedDictParams {
     let mut typed_dict_params = TypedDictParams::default();
 
-    // Check for `total` keyword argument in the class definition
-    // Note that it is fine to only check for Boolean literals here
-    // (https://typing.python.org/en/latest/spec/typeddict.html#totality)
     if let Some(arguments) = &class_stmt.arguments {
         for keyword in &arguments.keywords {
             if keyword.arg.as_deref() == Some("total")
@@ -1624,7 +1568,6 @@ impl<'db> TypedDictKeyAssignment<'_, 'db, '_> {
     pub(super) fn validate(&self) -> bool {
         let db = self.context.db();
 
-        // Check if key exists in `TypedDict` or is accepted by explicit extra items.
         let Some(item) = self.typed_dict.item(db, self.key) else {
             if self.emit_diagnostic {
                 report_invalid_key_on_typed_dict(
@@ -1673,7 +1616,6 @@ impl<'db> TypedDictKeyAssignment<'_, 'db, '_> {
             return false;
         }
 
-        // Key exists, check if value type is assignable to declared type
         if self.value_ty.is_assignable_to(db, env, item.declared_ty) {
             return true;
         }
@@ -1682,7 +1624,6 @@ impl<'db> TypedDictKeyAssignment<'_, 'db, '_> {
             return false;
         }
 
-        // Invalid assignment - emit diagnostic
         if self.emit_diagnostic
             && let Some(builder) = self
                 .context
@@ -1959,7 +1900,6 @@ pub(crate) fn extract_unpacked_typed_dict_from_value_type<'db>(
             })
         }
         Type::Intersection(intersection) => {
-            // Collect TypedDict shapes from all TypedDicts in the intersection.
             let unpacked_elements: Vec<_> = intersection
                 .positive(db)
                 .iter()
@@ -1972,7 +1912,6 @@ pub(crate) fn extract_unpacked_typed_dict_from_value_type<'db>(
                 return None;
             }
 
-            // Union all keys from all TypedDicts, intersecting value types for shared keys.
             let mut result: BTreeMap<Name, UnpackedTypedDictKey<'db>> = BTreeMap::new();
 
             for unpacked in &unpacked_elements {
@@ -2090,7 +2029,6 @@ pub(crate) fn extract_unpacked_typed_dict_from_value_type<'db>(
         Type::TypeAlias(alias) => {
             extract_unpacked_typed_dict_from_value_type(db, env, alias.value_type(db))
         }
-        // All other types cannot contain a TypedDict
         Type::Dynamic(_)
         | Type::Divergent(_)
         | Type::Never
@@ -2626,20 +2564,15 @@ pub(super) fn validate_typed_dict_constructor<'db, 'ast>(
                 arguments.args.len(),
             ));
         }
-        // TODO: Consider validating the first positional argument too, without producing
-        // duplicate TypedDict diagnostics for invalid multi-positional calls.
         return;
     }
 
-    // Check for a single positional argument, and whether it's a dict literal.
     let has_single_positional_arg = arguments.args.len() == 1;
     let positional_dict_literal = arguments.args.first().and_then(ast::Expr::as_dict_expr);
 
     let unpacked_keyword_types = infer_unpacked_keyword_types(arguments, &mut expression_type_fn);
 
     if has_single_positional_arg && !arguments.keywords.is_empty() {
-        // Mixed positional-and-keyword construction: guaranteed keyword-provided keys override the
-        // positional mapping, so validate the positional argument against the remaining schema.
         let keyword_keys = validate_from_keywords(
             context,
             typed_dict,
@@ -2704,8 +2637,6 @@ pub(super) fn validate_typed_dict_constructor<'db, 'ast>(
         provided_keys.extend(keyword_keys);
         validate_typed_dict_required_keys(context, typed_dict, &provided_keys, error_node);
     } else if let Some(dict_expr) = positional_dict_literal {
-        // Single positional dict literal: validate keys and value types directly from the literal,
-        // which also allows us to report extra keys that aren't in the `TypedDict` schema.
         let provided_keys = validate_from_dict_literal(
             context,
             typed_dict,
@@ -2716,10 +2647,6 @@ pub(super) fn validate_typed_dict_constructor<'db, 'ast>(
         );
         validate_typed_dict_required_keys(context, typed_dict, &provided_keys, error_node);
     } else if has_single_positional_arg {
-        // Single positional argument: check if assignable to the target TypedDict.
-        // This handles TypedDict, intersections, unions, and type aliases correctly.
-        // Assignability already checks for required keys and type compatibility,
-        // so we don't need separate validation.
         let arg = &arguments.args[0];
         let arg_ty = expression_type_fn(arg, TypeContext::preference(Some(typed_dict_ty)));
 
@@ -2733,8 +2660,6 @@ pub(super) fn validate_typed_dict_constructor<'db, 'ast>(
             }
         }
     } else {
-        // Keyword-only construction: validate each keyword argument, then check for missing
-        // required keys.
         let provided_keys = validate_from_keywords(
             context,
             typed_dict,
@@ -2794,7 +2719,6 @@ fn validate_from_keywords<'db, 'ast>(
 
     let mut guaranteed_keys = BTreeMap::new();
 
-    // Validate that each key is assigned a type that is compatible with the key's value type
     for (keyword, unpacked_type) in arguments
         .keywords
         .iter()
@@ -2803,7 +2727,6 @@ fn validate_from_keywords<'db, 'ast>(
         let keyword_node: AnyNodeRef<'ast> = keyword.into();
 
         if let Some(arg_name) = &keyword.arg {
-            // Explicit keyword argument: e.g., `name="Alice"`
             record_guaranteed_typed_dict_constructor_key(
                 context,
                 typed_dict,
@@ -2830,15 +2753,9 @@ fn validate_from_keywords<'db, 'ast>(
             }
             .validate();
         } else {
-            // Keyword unpacking: e.g., `**other_typed_dict`
-            // Unlike positional TypedDict arguments, unpacking passes all keys as explicit
-            // keyword arguments, so extra keys should be flagged as errors (consistent with
-            // explicitly providing those keys).
             let Some(unpacked_type) = unpacked_type else {
                 continue;
             };
-            // Keep one unpack local while applying merged-dict overwrite semantics, then compare
-            // the resulting keys against neighboring constructor keywords.
             let mut unpacked_guaranteed_keys = BTreeMap::new();
             let mut shadowed_keys = OrderSet::new();
             validate_merged_unpacked_keyword_argument(
@@ -3022,8 +2939,6 @@ fn validate_merged_unpacked_keyword_argument<'db, 'ast>(
         );
     }
 
-    // Never and Dynamic types are special: they can have any keys, so we skip validation and mark
-    // all target keys as provided.
     if unpacked_keyword_is_gradual(db, unpacked_type) {
         shadowed_keys.extend(items.keys().cloned());
         for key_name in items.keys() {
@@ -3148,7 +3063,6 @@ pub struct SynthesizedTypedDictType<'db> {
     pub(crate) openness: TypedDictOpenness<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for SynthesizedTypedDictType<'_> {}
 
 impl<'db> SynthesizedTypedDictType<'db> {
@@ -3384,29 +3298,24 @@ where
         {
             match left_key.cmp(right_key) {
                 Ordering::Equal => {
-                    // Matching keys. Yield the key and both values, then advance both iterators.
                     left_items.next();
                     right_items.next();
                     return Some((left_key, left_val, right_val));
                 }
                 Ordering::Less => {
-                    // `left_items` is behind `right_items` in key order. Advance `left_items`.
                     left_items.next();
                 }
                 Ordering::Greater => {
-                    // The opposite.
                     right_items.next();
                 }
             }
         }
-        // We've exhausted one or both of the maps, so there can be no more matching keys.
         None
     })
 }
 
 #[test]
 fn btreemap_overlapping_items() {
-    // A case with partial overlap and gaps.
     let left = BTreeMap::from_iter([("a", 1), ("b", 2), ("c", 3), ("d", 4), ("e", 5)]);
     let right = BTreeMap::from_iter([("b", 2.0), ("d", 4.0), ("f", 6.0)]);
     assert_eq!(
@@ -3418,7 +3327,6 @@ fn btreemap_overlapping_items() {
         vec![(&"b", &2.0, &2), (&"d", &4.0, &4)],
     );
 
-    // A case where one side is empty.
     let left = BTreeMap::<i32, i32>::new();
     let right = BTreeMap::<i32, i32>::from_iter([(1, 1), (2, 2)]);
     assert!(btreemap_items_with_same_key(&left, &right).next().is_none());

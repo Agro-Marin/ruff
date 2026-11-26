@@ -65,7 +65,6 @@ impl FileRoots {
         let normalized_path = path.as_std_path().to_slash().unwrap();
 
         if let Ok(existing) = self.by_path.at(&normalized_path) {
-            // Only if it is an exact match
             if existing.value.path(db) == &*path {
                 return *existing.value;
             }
@@ -73,19 +72,14 @@ impl FileRoots {
 
         tracing::debug!("Adding new file root '{path}' of kind {kind:?}");
 
-        // normalize the path to use `/` separators and escape the '{' and '}' characters,
-        // which matchit uses for routing parameters
         let mut route = normalized_path.replace('{', "{{").replace('}', "}}");
 
-        // Insert a new source root
         let root = FileRoot::builder(path.into(), kind)
             .durability(Durability::NEVER_CHANGE)
             .new(db);
 
-        // Insert a path that matches the root itself
         self.by_path.insert(route.clone(), root).unwrap();
 
-        // Insert a path that matches all subdirectories and files
         if !route.ends_with("/") {
             route.push('/');
         }

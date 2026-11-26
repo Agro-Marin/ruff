@@ -105,17 +105,14 @@ fn add_required_import(
     source_type: PySourceType,
     context: &LintContext,
 ) {
-    // Don't add imports to semantically-empty files.
     if parsed.suite().iter().all(is_docstring_stmt) {
         return;
     }
 
-    // We don't need to add `__future__` imports to stubs.
     if source_type.is_stub() && required_import.is_future_import(target_version) {
         return;
     }
 
-    // If the import is already present in a top-level block, don't add it.
     if parsed
         .suite()
         .iter()
@@ -124,7 +121,6 @@ fn add_required_import(
         return;
     }
 
-    // Always insert the diagnostic at top-of-file.
     let mut diagnostic = context.report_diagnostic(
         MissingRequiredImport(required_import.to_string()),
         TextRange::default(),

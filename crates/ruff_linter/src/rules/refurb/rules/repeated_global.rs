@@ -67,7 +67,6 @@ pub(crate) fn repeated_global(checker: &Checker, mut suite: &[Stmt]) {
 
         suite = &suite[idx..];
 
-        // Collect until we see a non-`global` (or non-`nonlocal`) statement.
         let (globals_sequence, next_suite) = suite.split_at(
             suite
                 .iter()
@@ -75,8 +74,6 @@ pub(crate) fn repeated_global(checker: &Checker, mut suite: &[Stmt]) {
                 .unwrap_or(suite.len()),
         );
 
-        // If there are at least two consecutive `global` (or `nonlocal`) statements, raise a
-        // diagnostic.
         if let [first, .., last] = globals_sequence {
             let range = first.range().cover(last.range());
 

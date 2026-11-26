@@ -63,8 +63,6 @@ impl PlaceExpr {
     pub fn try_from_expr<'e>(expr: impl Into<ast::ExprRef<'e>>) -> Option<Self> {
         let expr = expr.into();
 
-        // For named expressions (walrus operator), extract the target. The grammar only permits
-        // names as targets; parser recovery may still produce other expressions here.
         let expr = match expr {
             ast::ExprRef::Named(named) if named.target.is_name_expr() => {
                 named.target.as_ref().into()
@@ -191,7 +189,6 @@ pub struct PlaceTable {
 
 impl Hash for PlaceTable {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // The reverse-lookup indexes are also ignored by equality.
         self.symbols.iter().len().hash(state);
         for symbol in self.symbols.iter() {
             symbol.name().hash(state);
@@ -406,7 +403,6 @@ impl PlaceTableBuilder {
 
             let member = self.member.member(id);
 
-            // iterate over parents
             for parent_id in
                 ParentPlaceIter::for_member(member.expression(), &self.symbols, &self.member)
             {
@@ -641,33 +637,24 @@ impl<'db, 'a> PossiblyNarrowedPlacesBuilder<'db, 'a> {
 
     fn expression_node(&self, expr: &ast::Expr) -> PossiblyNarrowedPlaces {
         match expr {
-            // Simple expressions that directly narrow a place.
             ast::Expr::Name(_) => self.simple_expr(expr),
-            // Attribute truthiness can also narrow its base (nominal tagged unions).
             ast::Expr::Attribute(attribute) => {
                 let mut places = self.simple_expr(expr);
                 places.extend(self.simple_expr(&attribute.value));
                 places
             }
-            // Subscript truthiness can also narrow its base (`TypedDict` and tuple unions).
             ast::Expr::Subscript(subscript) => {
                 let mut places = self.simple_expr(expr);
                 places.extend(self.simple_expr(&subscript.value));
                 places
             }
-            // Compare expressions can narrow places on either side
             ast::Expr::Compare(expr_compare) => self.expr_compare(expr_compare),
-            // Call expressions (isinstance, issubclass, hasattr, TypeGuard, len, bool, etc.)
             ast::Expr::Call(expr_call) => self.expr_call(expr_call),
-            // Unary not just delegates to its operand
             ast::Expr::UnaryOp(unary_op) if unary_op.op == ast::UnaryOp::Not => {
                 self.expression_node(&unary_op.operand)
             }
-            // Boolean operations combine places from all sub-expressions
             ast::Expr::BoolOp(bool_op) => self.expr_bool_op(bool_op),
-            // Conditional expressions combine places from all branches and the test.
             ast::Expr::If(expr_if) => self.expr_if(expr_if),
-            // Named expressions narrow both the target and the value
             ast::Expr::Named(expr_named) => {
                 let mut places = self.simple_expr(&expr_named.target);
                 places.extend(self.expression_node(&expr_named.value));
@@ -702,7 +689,6 @@ impl<'db, 'a> PossiblyNarrowedPlacesBuilder<'db, 'a> {
             [ast::CmpOp::Eq | ast::CmpOp::NotEq | ast::CmpOp::Is | ast::CmpOp::IsNot]
         );
 
-        // Tagged-union checks can also narrow the base of a subscript or attribute on either side.
         for expr in &expr_compare.operands {
             if can_narrow_tagged_union_base
                 && let ast::Expr::Subscript(subscript) = expr.expression_value()
@@ -728,12 +714,6 @@ impl<'db, 'a> PossiblyNarrowedPlacesBuilder<'db, 'a> {
     fn expr_call(&self, expr_call: &ast::ExprCall) -> PossiblyNarrowedPlaces {
         let mut places = PossiblyNarrowedPlaces::default();
 
-        // Under the current narrowing semantics, we only ever use the first two positional
-        // arguments: argument 0 for most narrowing calls, and argument 1 for unbound
-        // TypeGuard/TypeIs methods (e.g. `C.f(C(), x)`). TypeGuard and TypeIs calls can also
-        // narrow an explicit keyword argument. We don't know which keyword maps to the target
-        // parameter while building the semantic index, so include every explicit keyword here.
-        // This set is only a conservative upper bound.
         for argument in expr_call.arguments.args.iter().take(2).chain(
             expr_call
                 .arguments
@@ -747,7 +727,6 @@ impl<'db, 'a> PossiblyNarrowedPlacesBuilder<'db, 'a> {
             {
                 places.insert(place);
             }
-            // Checking a tuple element can also eliminate alternatives of its tuple union.
             if let ast::Expr::Subscript(subscript) = argument.expression_value()
                 && let Some(place_expr) = PlaceExpr::try_from_expr(&subscript.value)
                 && let Some(place) = self.places.place_id((&place_expr).into())
@@ -756,7 +735,6 @@ impl<'db, 'a> PossiblyNarrowedPlacesBuilder<'db, 'a> {
             }
         }
 
-        // `bool(expr)` can delegate to narrowing `expr` itself, e.g. `bool(x is not None)`
         if let Some(first_arg) = expr_call.arguments.args.first() {
             if expr_call.arguments.args.len() == 1 && expr_call.arguments.keywords.is_empty() {
                 places.extend(self.expression_node(first_arg));
@@ -791,7 +769,6 @@ impl<'db, 'a> PossiblyNarrowedPlacesBuilder<'db, 'a> {
         }
 
         match expr.expression_value() {
-            // type(x) is Y can narrow x
             ast::Expr::Call(call) if call.arguments.args.len() == 1 => {
                 if let Some(first_arg) = call.arguments.args.first()
                     && let Some(place_expr) = PlaceExpr::try_from_expr(first_arg)
@@ -800,7 +777,6 @@ impl<'db, 'a> PossiblyNarrowedPlacesBuilder<'db, 'a> {
                     places.insert(place);
                 }
             }
-            // x.__class__ is Y can narrow x
             ast::Expr::Attribute(attribute) if attribute.attr.as_str() == "__class__" => {
                 if let Some(place_expr) = PlaceExpr::try_from_expr(&attribute.value)
                     && let Some(place) = self.places.place_id((&place_expr).into())

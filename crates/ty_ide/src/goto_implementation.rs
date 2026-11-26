@@ -99,9 +99,6 @@ pub fn goto_implementation(
                 return Vec::new();
             };
 
-            // Go-to-implementation searches can scan the whole project, so release closed files'
-            // ASTs as we go. Keep the guard through target conversion, which can also load this
-            // file's AST.
             let _ast_guard = parsed_module(db, file.python_file(db)).load_then_clear_on_drop(db);
             definitions_to_implementation_targets(db, definitions)
         })
@@ -1449,8 +1446,6 @@ class MyClass:
 
     #[test]
     fn implementation_attribute_bound_to_class() {
-        // An attribute that resolves to a class object is a class reference, not a member
-        // lookup, matching how a bare name bound to a class behaves.
         let test = cursor_test(
             r#"
             class Dog:
@@ -1553,8 +1548,6 @@ class MyClass:
 
     #[test]
     fn implementation_class_instance_reference_is_unsupported() {
-        // A bare reference to an instance is not a class reference, so it does not resolve to the
-        // class implementation family.
         let test = cursor_test(
             r#"
             class Animal:
@@ -1865,8 +1858,6 @@ class MyClass:
 
     #[test]
     fn implementation_attribute_class_body_takes_priority_over_instance() {
-        // When a class defines the attribute both in its body and on `self`, the class-body
-        // definition wins for that class, matching the goto-definition lookup.
         let test = cursor_test(
             r#"
             class Animal:
@@ -1936,10 +1927,6 @@ class MyClass:
 
     #[test]
     fn implementation_attribute_protocol_method_nominal_only() {
-        // TODO: the receiver is a `Protocol`, so implementations should be determined by structural
-        // subtyping and return all three `speak` definitions (`Speaker`, `Dog`, and `Cat`). We
-        // currently use nominal inheritance only and return `Speaker.speak` and `Cat.speak`. See
-        // https://github.com/astral-sh/ruff/pull/25410#discussion_r3344203732.
         let test = cursor_test(
             r#"
             from typing import Protocol
@@ -1979,8 +1966,6 @@ class MyClass:
 
     #[test]
     fn implementation_attribute_unreachable_override_excluded() {
-        // `FutureDog.speak` is defined in an unreachable block, so member lookup must not return
-        // it as an override.
         let test = cursor_test(
             r#"
             import sys

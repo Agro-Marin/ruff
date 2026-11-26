@@ -57,8 +57,6 @@ pub trait Violation: ViolationMetadata + Sized {
     /// The message used to describe the violation.
     fn message(&self) -> String;
 
-    // TODO(micha): Move `fix_title` to `Fix`, add new `advice` method that is shown as an advice.
-    // Change the `Diagnostic` renderer to show the advice, and render the fix message after the `Suggested fix: <here>`
 
     /// Returns the title for the fix. The message is also shown as an advice as part of the diagnostics.
     ///

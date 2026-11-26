@@ -101,23 +101,19 @@ impl Violation for AsyncFunctionWithTimeout {
 
 /// ASYNC109
 pub(crate) fn async_function_with_timeout(checker: &Checker, function_def: &ast::StmtFunctionDef) {
-    // Detect `async` calls with a `timeout` argument.
     if !function_def.is_async {
         return;
     }
 
-    // If the function doesn't have a `timeout` parameter, avoid raising the diagnostic.
     let Some(timeout) = function_def.parameters.find("timeout") else {
         return;
     };
 
     // Ignore methods decorated with `@typing.override`, since changing the signature
-    // would make the override invalid.
     if visibility::is_override(&function_def.decorator_list, checker.semantic()) {
         return;
     }
 
-    // Get preferred module.
     let module = if checker.semantic().seen_module(Modules::ANYIO) {
         AsyncModule::AnyIo
     } else if checker.semantic().seen_module(Modules::TRIO) {
@@ -126,7 +122,6 @@ pub(crate) fn async_function_with_timeout(checker: &Checker, function_def: &ast:
         AsyncModule::AsyncIo
     };
 
-    // asyncio.timeout feature was first introduced in Python 3.11
     if module == AsyncModule::AsyncIo && checker.target_version() < PythonVersion::PY311 {
         return;
     }

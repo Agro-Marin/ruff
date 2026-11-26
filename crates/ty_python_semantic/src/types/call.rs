@@ -108,9 +108,6 @@ fn reflected_method_priority<'db>(
         return ReflectedMethodPriority::Never;
     }
 
-    // Positive intersection components retain their nominal subclass relationships, even
-    // when a negative component prevents a subtype check against the full intersection.
-    // Any component can establish possible or definite priority for the reflected method.
     match (left_ty, right_ty) {
         (Type::Intersection(intersection), _) => {
             return intersection
@@ -264,19 +261,7 @@ impl<'db> Type<'db> {
         right_ty: Type<'db>,
         policy: MemberLookupPolicy,
     ) -> Result<Bindings<'db>, CallBinOpError> {
-        // We either want to call lhs.__op__ or rhs.__rop__. The full decision tree from
-        // the Python spec [1] is:
-        //
-        //   - If rhs is a (proper) subclass of lhs, and it provides a different
-        //     implementation of __rop__, use that.
-        //   - Otherwise, if lhs implements __op__, use that.
-        //   - Otherwise, if lhs and rhs are different types, and rhs implements __rop__,
-        //     use that.
-        //
-        // [1] https://docs.python.org/3/reference/datamodel.html#object.__radd__
 
-        // Runtime classes determine reflected priority, but static operand types may only
-        // establish that priority conditionally.
         let reflected_priority = reflected_method_priority(db, env, left_ty, right_ty);
 
         let left_class = left_ty.to_meta_type(db, env);
@@ -284,8 +269,6 @@ impl<'db> Type<'db> {
         if reflected_priority != ReflectedMethodPriority::Never {
             let reflected_dunder = op.reflected_dunder();
             let rhs_reflected = right_class.member(db, env, reflected_dunder).place;
-            // TODO: if `rhs_reflected` is possibly unbound, we should union the two possible
-            // Bindings together
             if !rhs_reflected.is_undefined()
                 && !rhs_reflected.is_equal_ignoring_provenance(
                     left_class.member(db, env, reflected_dunder).place,
@@ -473,12 +456,8 @@ pub(super) enum CallDunderError<'db> {
     /// with the specified arguments without any binding errors
     /// but it is possibly unbound.
     PossiblyUnbound {
-        // Describes the places where the dunder was indeed defined.
         bindings: Box<Bindings<'db>>,
 
-        // Lists the types on which the dunder was undefined (e.g., the specific
-        // members of a union on which the dunder was missing). `None` means
-        // that the call path does not track where the dunder may be unbound.
         unbound_on: Option<Box<[Type<'db>]>>,
     },
 

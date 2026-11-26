@@ -98,7 +98,6 @@ impl ModuleGlobSet {
             return ModuleNameMatch::None;
         }
 
-        // Find the last matching pattern (by index order, which is the order patterns were added).
         let Some(last_match_index) = self.regex_set.matches(module.as_str()).iter().next_back()
         else {
             return ModuleNameMatch::None;
@@ -157,7 +156,6 @@ impl ModuleGlobSetBuilder {
             return Err(ModuleGlobError::EmptyPattern);
         }
 
-        // Handle negation prefix.
         let (negated, pattern_without_negation) = if let Some(rest) = pattern.strip_prefix('!') {
             (true, rest)
         } else {
@@ -269,7 +267,6 @@ fn glob_to_regex(pattern: &str) -> Result<Box<str>, ModuleGlobError> {
         return Err(ModuleGlobError::EmptyPattern);
     }
 
-    // Check for leading or trailing dots.
     if pattern.starts_with('.') {
         return Err(ModuleGlobError::LeadingDot);
     }
@@ -290,7 +287,6 @@ fn glob_to_regex(pattern: &str) -> Result<Box<str>, ModuleGlobError> {
             return Err(ModuleGlobError::ConsecutiveDots);
         }
 
-        // Check for `**` mixed with other characters.
         if component.contains("**") && component != "**" {
             return Err(ModuleGlobError::InvalidDoubleStarUsage(Box::from(
                 component,
@@ -301,41 +297,28 @@ fn glob_to_regex(pattern: &str) -> Result<Box<str>, ModuleGlobError> {
 
         if component == "**" {
             if is_first {
-                // Pattern is just "**" - matches everything.
                 if is_last {
                     regex.push_str(".*");
                 } else {
-                    // "**.foo" - matches zero or more components at the start.
-                    // Matches: "foo", "x.foo", "x.y.foo", etc.
-                    // The pattern includes the trailing dot if there are prefix components.
                     regex.push_str("(?:[^.]+\\.)*");
                     prev_was_double_star_at_start = true;
                 }
             } else {
-                // "foo.**" or "foo.**.bar" - matches zero or more components.
-                // Matches: "foo", "foo.x", "foo.x.y", "foo.bar", "foo.x.bar", etc.
                 regex.push_str("(?:\\.[^.]+)*");
             }
         } else {
-            // Add dot separator if not at the beginning and not after `**` at the start.
-            // When `**` is at position 0, it already includes the trailing dot in its pattern.
             if !is_first && !prev_was_double_star_at_start {
                 regex.push_str("\\.");
             }
             prev_was_double_star_at_start = false;
 
-            // Handle `*` as a complete component vs `*` mixed with text differently.
             if component == "*" {
-                // `*` as a complete component matches exactly one non-empty component.
                 regex.push_str("[^.]+");
             } else {
-                // Convert the component, handling `*` wildcards mixed with text.
                 for c in component.chars() {
                     if c == '*' {
-                        // `*` mixed with text matches zero or more characters except `.`.
                         regex.push_str("[^.]*");
                     } else if regex_syntax::is_meta_character(c) {
-                        // Escape regex special characters.
                         regex.push('\\');
                         regex.push(c);
                     } else {
@@ -487,18 +470,15 @@ mod tests {
 
         assert_include(&set, "test.foo");
         assert_include(&set, "test.bar");
-        // Last match wins - !test.internal matches last, so it excludes.
         assert_excludes(&set, "test.internal");
     }
 
     #[test]
     fn test_negated_pattern_override() {
-        // The negation comes first, but test.* comes last and overrides it.
         let set = ModuleGlobSet::from_patterns(["!test.internal", "test.*"]).unwrap();
 
         assert_include(&set, "test.foo");
         assert_include(&set, "test.bar");
-        // test.* matches last, so test.internal is included.
         assert_include(&set, "test.internal");
     }
 

@@ -123,55 +123,23 @@ impl FormatNodeRule<ExprTuple> for FormatExprTuple {
         let comments = f.context().comments().clone();
         let dangling = comments.dangling(item);
 
-        // Handle the edge cases of an empty tuple and a tuple with one element
-        //
-        // there can be dangling comments, and they can be in two
-        // positions:
-        // ```python
-        // a3 = (  # end-of-line
-        //     # own line
-        // )
-        // ```
-        // In all other cases comments get assigned to a list element
         match elts.as_slice() {
             [] => empty_parenthesized("(", dangling, ")").fmt(f),
             [single] => match self.parentheses {
                 TupleParentheses::Preserve if !is_parenthesized => {
                     single.format().fmt(f)?;
-                    // The `TupleParentheses::Preserve` is only set by subscript expression
-                    // formatting. With PEP 646, a single element starred expression in the slice
-                    // position of a subscript expression is actually a tuple expression. For
-                    // example:
-                    //
-                    // ```python
-                    // data[*x]
-                    // #    ^^ single element tuple expression without a trailing comma
-                    //
-                    // data[*x,]
-                    // #    ^^^ single element tuple expression with a trailing comma
-                    // ```
-                    //
-                    //
-                    // This means that the formatter should only add a trailing comma if there is
-                    // one already.
                     if has_trailing_comma(TextRange::new(single.end(), item.end()), f.context()) {
                         token(",").fmt(f)?;
                     }
                     Ok(())
                 }
                 _ =>
-                // A single element tuple always needs parentheses and a trailing comma, except when inside of a subscript
                 {
                     parenthesized("(", &format_args![single.format(), token(",")], ")")
                         .with_dangling_comments(dangling)
                         .fmt(f)
                 }
             },
-            // If the tuple has parentheses, we generally want to keep them. The exception are for
-            // loops, see `TupleParentheses::NeverPreserve` doc comment.
-            //
-            // Unlike other expression parentheses, tuple parentheses are part of the range of the
-            // tuple itself.
             _ if *is_parenthesized
                 && !(self.parentheses == TupleParentheses::NeverPreserve
                     && dangling.is_empty()) =>

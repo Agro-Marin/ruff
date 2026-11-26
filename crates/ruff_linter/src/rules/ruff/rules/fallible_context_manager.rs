@@ -132,10 +132,6 @@ impl Visitor<'_> for YieldFinallyVisitor<'_, '_> {
                 finalbody,
                 ..
             }) => {
-                // Only the `try` body itself catches exceptions. Yields in
-                // `except` / `else` / `finally` are unprotected, but they
-                // inherit the surrounding terminal position because the
-                // `try` statement itself sits in that slot.
                 let prev = self.in_protected_try;
                 let terminal = self.in_terminal_position;
                 self.in_protected_try = true;

@@ -23,15 +23,6 @@ impl FormatNodeRule<ExprDictComp> for FormatExprDictComp {
         let comments = f.context().comments().clone();
         let dangling = comments.dangling(item);
 
-        // Dangling comments can either appear after the open bracket, or around the key-value
-        // pairs:
-        // ```python
-        // {  # open_parenthesis_comments
-        //     x:  # key_value_comments
-        //     y
-        //     for (x, y) in z
-        // }
-        // ```
         let first_expression = key.as_deref().unwrap_or(value);
         let (open_parenthesis_comments, key_value_comments) = dangling
             .split_at(dangling.partition_point(|comment| comment.end() < first_expression.start()));

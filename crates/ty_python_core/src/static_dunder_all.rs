@@ -103,8 +103,6 @@ impl<'a> SourceOrderVisitor<'a> for UnknownDunderAllUse {
     }
 
     fn visit_stmt(&mut self, stmt: &'a ast::Stmt) {
-        // A wildcard import can replace an existing `__all__`, but one before the literal
-        // assignment is overwritten by that assignment.
         if self.initialized
             && let ast::Stmt::ImportFrom(import) = stmt
             && import.names.iter().any(|alias| &alias.name == "*")

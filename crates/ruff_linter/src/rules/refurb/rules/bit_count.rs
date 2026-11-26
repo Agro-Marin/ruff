@@ -66,7 +66,6 @@ impl AlwaysFixableViolation for BitCount {
 
 /// FURB161
 pub(crate) fn bit_count(checker: &Checker, call: &ExprCall) {
-    // `int.bit_count()` was added in Python 3.10
     if checker.target_version() < PythonVersion::PY310 {
         return;
     }
@@ -75,7 +74,6 @@ pub(crate) fn bit_count(checker: &Checker, call: &ExprCall) {
         return;
     };
 
-    // Ensure that we're performing a `.count(...)`.
     if attr.as_str() != "count" {
         return;
     }
@@ -94,7 +92,6 @@ pub(crate) fn bit_count(checker: &Checker, call: &ExprCall) {
         return;
     };
 
-    // Ensure that we're performing a `.count("1")`.
     if count_value != "1" {
         return;
     }
@@ -113,20 +110,15 @@ pub(crate) fn bit_count(checker: &Checker, call: &ExprCall) {
         return;
     };
 
-    // Ensure that we're performing a `bin(...)`.
     if !checker.semantic().match_builtin_expr(func, "bin") {
         return;
     }
 
-    // If is a starred expression, it returns.
     if arg.is_starred_expr() {
         return;
     }
-    // Extract, e.g., `x` in `bin(x)`.
     let literal_text = checker.locator().slice(arg);
 
-    // If we're calling a method on an integer, or an expression with lower precedence, parenthesize
-    // it.
     let parenthesize = match arg {
         Expr::NumberLiteral(ast::ExprNumberLiteral { .. }) => {
             let mut chars = literal_text.chars();
@@ -172,7 +164,6 @@ pub(crate) fn bit_count(checker: &Checker, call: &ExprCall) {
         | Expr::Subscript(_) => false,
     };
 
-    // check if the fix is safe or not
     let applicability: Applicability = match ResolvedPythonType::from(arg) {
         ResolvedPythonType::Atom(PythonType::Number(NumberLike::Integer | NumberLike::Bool)) => {
             Applicability::Safe

@@ -24,7 +24,6 @@ pub(crate) fn remove_import_members(
         })
         .collect();
 
-    // Reconstruct the source code by skipping any names that are in `members`.
     let mut output = String::with_capacity(import_from_stmt.range().len().to_usize());
     let mut last_pos = import_from_stmt.start();
     let mut is_first = true;
@@ -47,9 +46,6 @@ pub(crate) fn remove_import_members(
             )
         };
 
-        // Add all contents from `last_pos` to `fix.location`.
-        // It's possible that `last_pos` is after `fix.location`, if we're removing the
-        // first _two_ members.
         if range.start() > last_pos {
             let slice = locator.slice(TextRange::new(last_pos, range.start()));
             output.push_str(slice);
@@ -58,7 +54,6 @@ pub(crate) fn remove_import_members(
         last_pos = range.end();
     }
 
-    // Add the remaining content.
     let slice = locator.slice(TextRange::new(last_pos, import_from_stmt.end()));
     output.push_str(slice);
     output

@@ -100,15 +100,7 @@ pub(crate) fn needless_bool(checker: &Checker, stmt: &Stmt) {
         ..
     } = stmt_if;
 
-    // Extract an `if` or `elif` (that returns) followed by an else (that returns the same value)
     let (if_test, if_body, else_body, range) = match elif_else_clauses.as_slice() {
-        // if-else case:
-        // ```python
-        // if x > 0:
-        //     return True
-        // else:
-        //     return False
-        // ```
         [
             ElifElseClause {
                 body: else_body,
@@ -121,13 +113,6 @@ pub(crate) fn needless_bool(checker: &Checker, stmt: &Stmt) {
             else_body.as_slice(),
             stmt_if.range(),
         ),
-        // elif-else case
-        // ```python
-        // if x > 0:
-        //     return True
-        // elif x < 0:
-        //     return False
-        // ```
         [
             ..,
             ElifElseClause {
@@ -148,19 +133,11 @@ pub(crate) fn needless_bool(checker: &Checker, stmt: &Stmt) {
             else_body.as_slice(),
             TextRange::new(elif_range.start(), else_range.end()),
         ),
-        // if-implicit-else case:
-        // ```python
-        // if x > 0:
-        //     return True
-        // return False
-        // ```
         [] => {
-            // Fetching the next sibling is expensive, so do some validation early.
             if is_one_line_return_bool(if_body).is_none() {
                 return;
             }
 
-            // Fetch the next sibling statement.
             let Some(next_stmt) = checker
                 .semantic()
                 .current_statement_parent()
@@ -170,7 +147,6 @@ pub(crate) fn needless_bool(checker: &Checker, stmt: &Stmt) {
                 return;
             };
 
-            // If the next sibling is not a return statement, abort.
             if !next_stmt.is_return_stmt() {
                 return;
             }
@@ -185,7 +161,6 @@ pub(crate) fn needless_bool(checker: &Checker, stmt: &Stmt) {
         _ => return,
     };
 
-    // Both branches must be one-liners that return a boolean.
     let (Some(if_return), Some(else_return)) = (
         is_one_line_return_bool(if_body),
         is_one_line_return_bool(else_body),
@@ -193,39 +168,26 @@ pub(crate) fn needless_bool(checker: &Checker, stmt: &Stmt) {
         return;
     };
 
-    // Determine whether the return values are inverted, as in:
-    // ```python
-    // if x > 0:
-    //     return False
-    // else:
-    //     return True
-    // ```
     let inverted = match (if_return, else_return) {
         (Bool::True, Bool::False) => false,
         (Bool::False, Bool::True) => true,
-        // If the branches have the same condition, abort (although the code could be
-        // simplified).
         _ => return,
     };
 
-    // Avoid suggesting ternary for `if sys.version_info >= ...`-style checks.
     if is_sys_version_block(stmt_if, checker.semantic()) {
         return;
     }
 
-    // Avoid suggesting ternary for `if TYPE_CHECKING:`-style checks.
     if is_type_checking_block(stmt_if, checker.semantic()) {
         return;
     }
 
-    // Generate the replacement condition.
     let condition = if checker
         .comment_ranges()
         .has_comments(&range, checker.source())
     {
         None
     } else {
-        // If the return values are inverted, wrap the condition in a `not`.
         if inverted {
             match if_test {
                 Expr::UnaryOp(ast::ExprUnaryOp {
@@ -260,11 +222,8 @@ pub(crate) fn needless_bool(checker: &Checker, stmt: &Stmt) {
                 })),
             }
         } else if if_test.is_compare_expr() {
-            // If the condition is a comparison, we can replace it with the condition, since we
-            // know it's a boolean.
             Some(if_test.clone())
         } else if checker.semantic().has_builtin_binding("bool") {
-            // Otherwise, we need to wrap the condition in a call to `bool`.
             let func_node = ast::ExprName {
                 id: Name::new_static("bool"),
                 ctx: ExprContext::Load,
@@ -288,7 +247,6 @@ pub(crate) fn needless_bool(checker: &Checker, stmt: &Stmt) {
         }
     };
 
-    // Generate the replacement `return` statement.
     let replacement = condition.as_ref().map(|expr| {
         Stmt::Return(ast::StmtReturn {
             value: Some(Box::new(expr.clone())),
@@ -297,7 +255,6 @@ pub(crate) fn needless_bool(checker: &Checker, stmt: &Stmt) {
         })
     });
 
-    // Generate source code.
     let replacement = replacement
         .as_ref()
         .map(|stmt| checker.generator().stmt(stmt));

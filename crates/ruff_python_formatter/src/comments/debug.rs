@@ -102,7 +102,6 @@ impl Debug for NodeKindWithSource<'_> {
                     f.write_str(head)?;
                     f.write_str("...")?;
 
-                    // Take the last 10 characters
                     let tail = &rest[rest.len().saturating_sub(10)..];
                     f.write_str(tail)?;
                 } else {

@@ -50,7 +50,6 @@ fn version() -> &'static str {
 pub fn run(preview: Option<bool>, workspace_trust: WorkspaceTrust) -> Result<()> {
     let four = NonZeroUsize::new(4).unwrap();
 
-    // by default, we set the number of worker threads to `num_cpus`, with a maximum of 4.
     let worker_threads = std::thread::available_parallelism()
         .unwrap_or(four)
         .min(four);

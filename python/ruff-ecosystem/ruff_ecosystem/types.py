@@ -16,7 +16,6 @@ class Serializable:
     """
 
     def jsonable(self) -> Any:
-        # Default implementation for dataclasses
         if is_dataclass(self) and not isinstance(self, type):
             return dataclasses.asdict(self)
 
@@ -27,19 +26,16 @@ class Diff(Serializable):
     def __init__(self, lines: Iterable[str], leading_spaces: int = 0) -> None:
         self.lines = list(lines)
 
-        # Compute added and removed lines once
         self.added = [
             line[2:]
             for line in self.lines
             if line.startswith("+" + " " * leading_spaces)
-            # Do not include patch headers
             and not line.startswith("+++")
         ]
         self.removed = [
             line[2:]
             for line in self.lines
             if line.startswith("-" + " " * leading_spaces)
-            # Do not include patch headers
             and not line.startswith("---")
         ]
 

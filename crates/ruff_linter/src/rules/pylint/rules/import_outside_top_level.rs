@@ -67,12 +67,9 @@ impl Violation for ImportOutsideTopLevel {
 /// PLC0415
 pub(crate) fn import_outside_top_level(checker: &Checker, stmt: &Stmt) {
     if checker.semantic().current_scope().kind.is_module() {
-        // "Top-level" imports are allowed
         return;
     }
 
-    // Check if any of the non-top-level imports are banned by TID253
-    // before emitting the diagnostic to avoid conflicts.
     if checker.is_rule_enabled(Rule::BannedModuleLevelImports) {
         let mut all_aliases_banned = true;
         let mut has_alias = false;
@@ -81,7 +78,6 @@ pub(crate) fn import_outside_top_level(checker: &Checker, stmt: &Stmt) {
                 has_alias = true;
                 all_aliases_banned &= is_banned_module_level_import(&policy, checker);
             }
-            // If the entire import is banned
             else if is_banned_module_level_import(&policy, checker) {
                 return;
             }
@@ -92,7 +88,6 @@ pub(crate) fn import_outside_top_level(checker: &Checker, stmt: &Stmt) {
         }
     }
 
-    // Emit the diagnostic
     checker.report_diagnostic(ImportOutsideTopLevel, stmt.range());
 }
 

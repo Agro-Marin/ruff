@@ -127,37 +127,7 @@ pub(crate) fn multiple_with_statements(
     with_stmt: &ast::StmtWith,
     with_parent: Option<&Stmt>,
 ) {
-    // Make sure we fix from top to bottom for nested with statements, e.g. for
-    // ```python
-    // with A():
-    //     with B():
-    //         with C():
-    //             print("hello")
-    // ```
-    // suggests
-    // ```python
-    // with A(), B():
-    //     with C():
-    //         print("hello")
-    // ```
-    // but not the following
-    // ```python
-    // with A():
-    //     with B(), C():
-    //         print("hello")
-    // ```
-    //
-    // Only defer to the parent when it can actually combine with this statement.
-    // Differing async/sync (or an exempt standalone manager) means the parent will
-    // not emit SIM117 for this nesting, so we must still check here — e.g.:
-    // ```python
-    // with sync_cm():
-    //     async with async_cm1():
-    //         async with async_cm2():
-    //             ...
-    // ```
     if let Some(Stmt::With(parent_with)) = with_parent {
-        // Parent will report SIM117 for this nesting; fix top-to-bottom.
         if mergeable_child(checker, parent_with).is_some() {
             return;
         }

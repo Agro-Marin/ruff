@@ -40,13 +40,10 @@ impl Violation for SelfAssigningVariable {
 
 /// PLW0127
 pub(crate) fn self_assignment(checker: &Checker, assign: &ast::StmtAssign) {
-    // Assignments in class bodies are attributes (e.g., `x = x` assigns `x` to `self.x`, and thus
-    // is not a self-assignment).
     if checker.semantic().current_scope().kind.is_class() {
         return;
     }
 
-    // For `x = value`, `array_combinations` would allocate a buffer just to yield one pair.
     if let [target] = assign.targets.as_slice() {
         visit_assignments(checker, target, assign.value.as_ref());
         return;
@@ -68,8 +65,6 @@ pub(crate) fn self_annotated_assignment(checker: &Checker, assign: &ast::StmtAnn
         return;
     };
 
-    // Assignments in class bodies are attributes (e.g., `x = x` assigns `x` to `self.x`, and thus
-    // is not a self-assignment).
     if checker.semantic().current_scope().kind.is_class() {
         return;
     }

@@ -299,8 +299,6 @@ fn extract_options(source: &str) -> Option<ParseOptions> {
     options.map(ParseOptions::from)
 }
 
-// Test that is intentionally ignored by default.
-// Use it for quickly debugging a parser issue.
 #[test]
 #[ignore]
 #[expect(clippy::print_stdout)]
@@ -322,8 +320,6 @@ f'{foo!r'
         let source_code = SourceCode::new(source, &line_index);
 
         for error in parsed.errors() {
-            // Sometimes the code frame doesn't show the error message, so we print
-            // the message as well.
             println!("Syntax Error: {error}");
             println!(
                 "{}\n",
@@ -347,11 +343,9 @@ struct CodeFrame<'a> {
 
 impl std::fmt::Display for CodeFrame<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        // Copied and modified from ruff_linter/src/message/text.rs
         let content_start_index = self.source_code.line_index(self.range.start());
         let mut start_index = content_start_index.saturating_sub(2);
 
-        // Trim leading empty lines.
         while start_index < content_start_index {
             if !self.source_code.line_text(start_index).trim().is_empty() {
                 break;
@@ -364,7 +358,6 @@ impl std::fmt::Display for CodeFrame<'_> {
             .saturating_add(2)
             .min(OneIndexed::from_zero_indexed(self.source_code.line_count()));
 
-        // Trim trailing empty lines.
         while end_index > content_end_index {
             if !self.source_code.line_text(end_index).trim().is_empty() {
                 break;
@@ -458,13 +451,11 @@ impl ValidateAstVisitor<'_> {
     /// Check that the node's start doesn't fall within a token.
     /// Called in `enter_node` before visiting children.
     fn assert_start_boundary(&mut self, node: AnyNodeRef<'_>) {
-        // Skip tokens that end at or before the node starts.
         self.tokens
             .peeking_take_while(|t| t.end() <= node.start())
             .last();
 
         if let Some(next) = self.tokens.peek() {
-            // At this point, next_token.end() > node.start()
             assert!(
                 next.start() >= node.start(),
                 "\
@@ -483,13 +474,11 @@ Root: {root:#?}",
     /// Called in `leave_node` after visiting children, so all tokens
     /// within the node have been consumed.
     fn assert_end_boundary(&mut self, node: AnyNodeRef<'_>) {
-        // Skip tokens that end at or before the node ends.
         self.tokens
             .peeking_take_while(|t| t.end() <= node.end())
             .last();
 
         if let Some(next) = self.tokens.peek() {
-            // At this point, `next_token.end() > node.end()`
             assert!(
                 next.start() >= node.end(),
                 "\

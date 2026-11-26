@@ -93,9 +93,6 @@ impl Violation for ReimplementedOperator {
 
 /// FURB118
 pub(crate) fn reimplemented_operator(checker: &Checker, target: &FunctionLike) {
-    // Ignore methods.
-    // Methods can be defined via a `def` statement in a class scope,
-    // or via a lambda appearing on the right-hand side of an assignment in a class scope.
     if checker.semantic().current_scope().kind.is_class()
         && (target.is_function_def()
             || checker
@@ -106,7 +103,6 @@ pub(crate) fn reimplemented_operator(checker: &Checker, target: &FunctionLike) {
         return;
     }
 
-    // Skip decorated functions
     if let FunctionLike::Function(func) = target {
         if !func.decorator_list.is_empty() {
             return;
@@ -252,7 +248,6 @@ fn subscript_slice_to_string<'a>(expr: &Expr, locator: &Locator<'a>) -> Cow<'a, 
         Cow::Owned(slice_expr_to_slice_call(expr_slice, locator))
     } else if let Expr::Tuple(tuple) = expr {
         if locator.slice(tuple).contains(':') {
-            // We cannot perform a trivial replacement if there's a `:` in the expression
             let inner = tuple
                 .iter()
                 .map(|expr| match expr {
@@ -278,12 +273,10 @@ fn itemgetter_op(expr: &ExprSubscript, params: &Parameters, locator: &Locator) -
         return None;
     };
 
-    // The argument to the lambda must match the subscripted value, as in: `lambda x: x[1]`.
     if !is_same_expression(arg, &expr.value) {
         return None;
     }
 
-    // The subscripted expression can't contain references to the argument, as in: `lambda x: x[x]`.
     if any_over_expr(expr.slice.as_ref(), |expr| is_same_expression(arg, expr)) {
         return None;
     }
@@ -442,9 +435,6 @@ fn cmp_op(expr: &ast::ExprCompare, params: &Parameters) -> Option<&'static str> 
         ast::CmpOp::Is => match_arguments(arg1, arg2, left, right).then_some("is_"),
         ast::CmpOp::IsNot => match_arguments(arg1, arg2, left, right).then_some("is_not"),
         ast::CmpOp::In => {
-            // Note: `operator.contains` reverses the order of arguments. That is:
-            // `operator.contains` is equivalent to `lambda x, y: y in x`, rather than
-            // `lambda x, y: x in y`.
             match_arguments(arg1, arg2, right, left).then_some("contains")
         }
         ast::CmpOp::NotIn => None,

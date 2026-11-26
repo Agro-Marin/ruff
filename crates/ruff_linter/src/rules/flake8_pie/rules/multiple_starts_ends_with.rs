@@ -117,9 +117,6 @@ pub(crate) fn multiple_starts_ends_with(checker: &Checker, expr: &Expr) {
             continue;
         };
 
-        // If the argument is bound to a tuple, skip it, since we don't want to suggest
-        // `startswith((x, y))` where `x` or `y` are tuples. (Tuple literals are okay, since we
-        // inline them below.)
         if is_bound_to_tuple(arg, checker.semantic()) {
             continue;
         }
@@ -130,7 +127,6 @@ pub(crate) fn multiple_starts_ends_with(checker: &Checker, expr: &Expr) {
             .push(index);
     }
 
-    // Generate a `Diagnostic` for each duplicate.
     for ((attr_name, arg_name), indices) in duplicates {
         if indices.len() > 1 {
             let mut diagnostic = checker.report_diagnostic(
@@ -209,7 +205,6 @@ pub(crate) fn multiple_starts_ends_with(checker: &Checker, expr: &Expr) {
             });
             let call = node3;
 
-            // Generate the combined `BoolOp`.
             let mut call = Some(call);
             let node = Expr::BoolOp(ast::ExprBoolOp {
                 op: BoolOp::Or,

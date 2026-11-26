@@ -37,7 +37,6 @@ pub struct InternedConstraintSet<'db> {
     pub(super) detailed_display: bool,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for InternedConstraintSet<'_> {}
 
 impl<'db> InternedConstraintSet<'db> {
@@ -57,7 +56,6 @@ pub struct InternedConstraintSetSolution<'db> {
     pub(super) bindings: Box<[TypeVarSolution<'db>]>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for InternedConstraintSetSolution<'_> {}
 
 /// A salsa-interned payload for `functools.partial(...)` instances.
@@ -69,7 +67,6 @@ pub struct FunctoolsPartialInstance<'db> {
     pub partial: CallableType<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for FunctoolsPartialInstance<'_> {}
 
 /// A classmethod or staticmethod descriptor that retains the complete wrapped callable.
@@ -104,8 +101,6 @@ impl<'db> MethodWrapper<'db> {
         kind: MethodWrapperKind,
     ) -> Type<'db> {
         match wrapped {
-            // Descriptor access can expose the ordinary function while retaining its declaration
-            // metadata. Reapplying the declared wrapper restores its descriptor state.
             Type::FunctionLiteral(function)
                 if function.has_known_decorator(
                     db,
@@ -130,8 +125,6 @@ impl<'db> MethodWrapper<'db> {
                     },
                 ))
             }
-            // These callables already encode the matching descriptor behavior in their kind,
-            // so they do not need another method wrapper.
             Type::Callable(callable)
                 if match kind {
                     MethodWrapperKind::Classmethod => callable.is_classmethod_like(db),
@@ -328,7 +321,6 @@ pub(super) fn walk_known_instance_type<'db, V: visitor::TypeVisitor<'db> + ?Size
         | KnownInstanceType::ConstraintSet(_)
         | KnownInstanceType::GenericContext(_)
         | KnownInstanceType::Specialization(_) => {
-            // Nothing to visit
         }
         KnownInstanceType::ConstraintSetSolution(solution) => {
             for binding in solution.bindings(db) {
@@ -358,7 +350,6 @@ pub(super) fn walk_known_instance_type<'db, V: visitor::TypeVisitor<'db> + ?Size
             visitor.visit_newtype_instance_type(db, newtype);
         }
         KnownInstanceType::Sentinel(_) => {
-            // Nothing to visit
         }
         KnownInstanceType::NamedTupleSpec(spec) => {
             for field in spec.fields(db) {
@@ -403,7 +394,6 @@ impl<'db> KnownInstanceType<'db> {
         nested: bool,
     ) -> Option<Self> {
         match self {
-            // Nothing to normalize
             Self::SubscriptedProtocol(context) => Some(Self::SubscriptedProtocol(context)),
             Self::SubscriptedGeneric(context) => Some(Self::SubscriptedGeneric(context)),
             Self::Deprecated(deprecated) => Some(Self::Deprecated(deprecated)),
@@ -422,8 +412,6 @@ impl<'db> KnownInstanceType<'db> {
                 .recursive_type_normalized_impl(db, env, div, true)
                 .map(Self::Literal),
             Self::Annotated(ty) => {
-                // Keep the runtime Annotated object when its wrapped type diverges. The wrapped
-                // type is still nested: TypeOf can make it another runtime Annotated object.
                 let inner = ty.recursive_type_normalized_impl(db, env, div, true);
                 if nested {
                     inner.map(Self::Annotated)
@@ -436,8 +424,6 @@ impl<'db> KnownInstanceType<'db> {
             Self::TypeGenericAlias(ty) => ty
                 .recursive_type_normalized_impl(db, env, div, true)
                 .map(Self::TypeGenericAlias),
-            // A stringified alias is still a string value when its aliased type diverges.
-            // Preserve the wrapper so type-expression checks can validate uses of the alias.
             Self::LiteralStringAlias(ty) => Some(Self::LiteralStringAlias(
                 ty.recursive_type_normalized_impl(db, env, div, true)
                     .unwrap_or_else(|| InternedType::new(db, div)),
@@ -684,7 +670,6 @@ impl<'db> KnownInstanceType<'db> {
             | KnownInstanceType::NamedTupleSpec(_)
             | KnownInstanceType::NewType(_)
             | KnownInstanceType::Sentinel(_) => {
-                // TODO: For some of these, we may need to apply the type mapping to inner types.
                 Type::KnownInstance(self)
             }
         }
@@ -756,7 +741,6 @@ pub struct FieldInstance<'db> {
     pub frozen: ConfigBoolean,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for FieldInstance<'_> {}
 
 impl<'db> FieldInstance<'db> {
@@ -770,7 +754,6 @@ impl<'db> FieldInstance<'db> {
         let default_type = self
             .default_type(db)
             .map(|ty| ty.apply_type_mapping_impl(db, type_mapping, tcx, visitor));
-        // The converter's input is a callable parameter, so it is contravariant.
         let converter = self.converter(db).map(|(input_ty, output_ty)| {
             (
                 input_ty.apply_type_mapping_impl(db, &type_mapping.flip(), tcx, visitor),
@@ -848,13 +831,8 @@ impl<'db> FunctoolsPartialInstance<'db> {
         nested: bool,
     ) -> Option<Self> {
         let env = &ProgramEnvironment::from_program(program);
-        // Repeated `f = partial(f)` assignments add a new layer to the wrapped callable.
-        // Treat it as nested so that cycle recovery can collapse these layers while
-        // preserving the reduced signature of the outer partial.
         let wrapped = match self.wrapped(db).inner(db) {
             Type::Union(union) if !nested => {
-                // Keep known callable alternatives in `func`, even if another alternative
-                // diverges. For example, `p = partial(p.func)` does not add wrapped layers.
                 let mut builder = UnionBuilder::new(db, env)
                     .cycle_recovery(true)
                     .or_recursively_defined(union.recursively_defined(db));

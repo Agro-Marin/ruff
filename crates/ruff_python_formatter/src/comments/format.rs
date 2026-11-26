@@ -91,8 +91,6 @@ impl Format<PyFormatContext<'_>> for FormatLeadingAlternateBranchComments<'_> {
         }) {
             write!(f, [empty_line(), leading_comments(self.comments)])?;
         } else if let Some(first_leading) = self.comments.first() {
-            // Leading comments only preserves the lines after the comment but not before.
-            // Insert the necessary lines.
             write!(
                 f,
                 [empty_lines(lines_before(
@@ -103,25 +101,6 @@ impl Format<PyFormatContext<'_>> for FormatLeadingAlternateBranchComments<'_> {
 
             write!(f, [leading_comments(self.comments)])?;
         } else if let Some(last_preceding) = self.last_node {
-            // The leading comments formatting ensures that it preserves the right amount of lines
-            // after We need to take care of this ourselves, if there's no leading `else` comment.
-            // Since the `last_node` could be a compound node, we need to skip _all_ trivia.
-            //
-            // For example, here, when formatting the `if` statement, the `last_node` (the `while`)
-            // would end at the end of `pass`, but we want to skip _all_ comments:
-            // ```python
-            // if True:
-            //     while True:
-            //         pass
-            //         # comment
-            //
-            //     # comment
-            // else:
-            //     ...
-            // ```
-            //
-            // `lines_after_ignoring_trivia` is safe here, as we _know_ that the `else` doesn't
-            // have any leading comments.
             write!(
                 f,
                 [empty_lines(lines_after_ignoring_trivia(
@@ -152,13 +131,6 @@ impl Format<PyFormatContext<'_>> for FormatTrailingComments<'_> {
             if has_trailing_own_line_comment {
                 let lines_before_comment = lines_before(trailing.start(), f.context().source());
 
-                // A trailing comment at the end of a body or list
-                // ```python
-                // def test():
-                //      pass
-                //
-                //      # Some comment
-                // ```
                 write!(
                     f,
                     [
@@ -167,21 +139,12 @@ impl Format<PyFormatContext<'_>> for FormatTrailingComments<'_> {
                                 empty_lines(lines_before_comment),
                                 format_comment(trailing),
                             ],
-                            // Reserving width isn't necessary because we don't split
-                            // comments and the empty lines expand any enclosing group.
                             0
                         ),
                         expand_parent()
                     ]
                 )?;
             } else {
-                // A trailing comment at the end of a line has a reserved width to
-                // consider during line measurement.
-                // ```python
-                // tup = (
-                //     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                // )  # Some comment
-                // ```
                 trailing_end_of_line_comment(trailing).fmt(f)?;
             }
 
@@ -346,7 +309,6 @@ impl Format<PyFormatContext<'_>> for FormatEmptyLines {
                 _ => write!(f, [empty_line()]),
             },
 
-            // Remove all whitespace in parenthesized expressions
             NodeLevel::Expression(_) | NodeLevel::ParenthesizedExpression => {
                 write!(f, [hard_line_break()])
             }
@@ -377,7 +339,6 @@ impl Format<PyFormatContext<'_>> for FormatTrailingEndOfLineComment<'_> {
 
         let normalized_comment = normalize_comment(self.comment, source)?;
 
-        // Don't reserve width for pragma comments. Comments containing a trailing pragma
         // (e.g., `# comment # noqa: F401`) only reserve width for the non-pragma prefix.
         let non_pragma_comment_part = match find_trailing_pragma_offset(&normalized_comment) {
             Some(offset) => normalized_comment[..offset].trim_end(),
@@ -387,7 +348,6 @@ impl Format<PyFormatContext<'_>> for FormatTrailingEndOfLineComment<'_> {
         let reserved_width = if non_pragma_comment_part.is_empty() {
             0
         } else {
-            // Start with 2 because of the two leading spaces.
             2u32.saturating_add(
                 TextWidth::from_text(non_pragma_comment_part, f.options().indent_width())
                     .width()
@@ -480,24 +440,17 @@ fn normalize_comment<'a>(
         return Ok(Cow::Borrowed("#"));
     }
 
-    // Fast path for correctly formatted comments: if the comment starts with a space, or any
-    // of the allowed characters, then it's included verbatim (apart for trimming any trailing
-    // whitespace).
     if content.starts_with([' ', '!', ':', '#', '\'', '|']) {
         return Ok(Cow::Borrowed(trimmed));
     }
 
-    // Otherwise, we need to normalize the comment by adding a space after the `#`.
     if content.starts_with('\u{A0}') {
         let trimmed = content.trim_start_matches('\u{A0}');
         if trimmed.trim_start().starts_with("type:") {
-            // Black adds a space before the non-breaking space if part of a type pragma.
             Ok(Cow::Owned(std::format!("# {content}")))
         } else if trimmed.starts_with(' ') {
-            // Black replaces the non-breaking space with a space if followed by a space.
             Ok(Cow::Owned(std::format!("# {trimmed}")))
         } else {
-            // Otherwise we replace the first non-breaking space with a regular space.
             Ok(Cow::Owned(std::format!("# {}", &content["\u{A0}".len()..])))
         }
     } else {
@@ -564,7 +517,6 @@ impl Format<PyFormatContext<'_>> for FormatEmptyLinesBeforeTrailingComments<'_> 
             .iter()
             .find(|comment| comment.line_position().is_own_line())
         {
-            // Black has different rules for stub vs. non-stub and top level vs. indented
             let empty_lines = match (f.options().source_type(), f.context().node_level()) {
                 (PySourceType::Stub, NodeLevel::TopLevel(_)) => 1,
                 (PySourceType::Stub, _) => u32::from(self.node_kind == NodeKind::StmtClassDef),
@@ -613,7 +565,6 @@ impl Format<PyFormatContext<'_>> for FormatEmptyLinesAfterLeadingComments<'_> {
             .rev()
             .find(|comment| comment.line_position().is_own_line())
         {
-            // Black has different rules for stub vs. non-stub and top level vs. indented
             let empty_lines = match (f.options().source_type(), f.context().node_level()) {
                 (PySourceType::Stub, NodeLevel::TopLevel(_)) => 1,
                 (PySourceType::Stub, _) => 0,
@@ -622,13 +573,10 @@ impl Format<PyFormatContext<'_>> for FormatEmptyLinesAfterLeadingComments<'_> {
             };
 
             let actual = lines_after(comment.end(), f.context().source()).saturating_sub(1);
-            // If there are no empty lines, keep the comment tight to the node.
             if actual == 0 {
                 return Ok(());
             }
 
-            // If there are more than enough empty lines already, `leading_comments` will
-            // trim them as necessary.
             if actual >= empty_lines {
                 return Ok(());
             }

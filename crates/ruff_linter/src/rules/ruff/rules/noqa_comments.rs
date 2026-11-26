@@ -115,7 +115,6 @@ pub(crate) fn noqa_comments(
             })
             .count();
 
-        // Avoid a diagnostic if all of the codes are external.
         if external_codes == codes.len() {
             return;
         }
@@ -131,20 +130,11 @@ pub(crate) fn noqa_comments(
 
     let mut diagnostic = context.report_diagnostic(NoqaComments { file_level }, range);
 
-    // If some codes are external, return without a fix.
     if has_external_codes {
         return;
     }
 
-    // Similarly, return without a fix if any unused codes are present. This avoids potentially
-    // activating an unused `noqa` comment on its own line like:
-    //
-    // ```py
     // # noqa: F401
-    // import math
-    // ```
-    //
-    // by converting it to a valid `ruff: ignore` comment.
     if has_unused_codes {
         return;
     }

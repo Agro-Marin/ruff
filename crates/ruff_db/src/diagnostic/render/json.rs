@@ -92,7 +92,6 @@ pub(super) fn diagnostic_to_json<'a>(
         },
     });
 
-    // In preview, the code can be optional and the severity is displayed.
     let (code, severity) = if config.preview {
         (
             diagnostic.secondary_code().map(|code| code.as_str()),
@@ -138,14 +137,6 @@ impl Serialize for ExpandedEdits<'_> {
                 let mut end_location = source_code.line_column(edit.end());
 
                 if let Some(notebook_index) = &self.notebook_index {
-                    // There exists a newline between each cell's source code in the
-                    // concatenated source code in Ruff. This newline doesn't actually
-                    // exists in the JSON source field.
-                    //
-                    // Now, certain edits may try to remove this newline, which means
-                    // the edit will spill over to the first character of the next cell.
-                    // If it does, we need to translate the end location to the last
-                    // character of the previous cell.
                     match (
                         notebook_index.cell(location.line),
                         notebook_index.cell(end_location.line),

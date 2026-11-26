@@ -63,11 +63,9 @@ pub(crate) fn dunder_function_name(
     if !visibility::is_magic(name) {
         return;
     }
-    // Allowed under PEP 562 (https://peps.python.org/pep-0562/).
     if matches!(scope.kind, ScopeKind::Module) && (name == "__getattr__" || name == "__dir__") {
         return;
     }
-    // Ignore any explicitly-allowed names.
     if ignore_names.matches(name) {
         return;
     }

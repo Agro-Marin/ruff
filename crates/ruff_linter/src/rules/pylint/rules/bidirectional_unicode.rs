@@ -5,24 +5,17 @@ use crate::codes::Category;
 use crate::{Violation, checkers::ast::LintContext};
 
 const BIDI_UNICODE: [char; 11] = [
-    '\u{202A}', //{LEFT-TO-RIGHT EMBEDDING}
-    '\u{202B}', //{RIGHT-TO-LEFT EMBEDDING}
-    '\u{202C}', //{POP DIRECTIONAL FORMATTING}
-    '\u{202D}', //{LEFT-TO-RIGHT OVERRIDE}
-    '\u{202E}', //{RIGHT-TO-LEFT OVERRIDE}
-    '\u{2066}', //{LEFT-TO-RIGHT ISOLATE}
-    '\u{2067}', //{RIGHT-TO-LEFT ISOLATE}
-    '\u{2068}', //{FIRST STRONG ISOLATE}
-    '\u{2069}', //{POP DIRECTIONAL ISOLATE}
-    // The following was part of PEP 672:
-    // https://peps.python.org/pep-0672/
-    // so the list above might not be complete
-    '\u{200F}', //{RIGHT-TO-LEFT MARK}
-    '\u{061C}', //{ARABIC LETTER MARK}
-                // We don't use
-                //   "\u200E" # \n{LEFT-TO-RIGHT MARK}
-                // as this is the default for latin files and can't be used
-                // to hide code
+    '\u{202A}',
+    '\u{202B}',
+    '\u{202C}',
+    '\u{202D}',
+    '\u{202E}',
+    '\u{2066}',
+    '\u{2067}',
+    '\u{2068}',
+    '\u{2069}',
+    '\u{200F}',
+    '\u{061C}',
 ];
 
 /// ## What it does
@@ -64,8 +57,6 @@ impl Violation for BidirectionalUnicode {
 /// PLE2502
 pub(crate) fn bidirectional_unicode(line: &Line, context: &LintContext) {
     let text = line.as_str();
-    // All characters in BIDI_UNICODE start with 0xD8 or 0xE2 in UTF-8. These are leading
-    // bytes, so the first match is a character boundary and the preceding text can be skipped.
     if let Some(start) = memchr::memchr2(0xD8, 0xE2, text.as_bytes())
         && text[start..].contains(BIDI_UNICODE)
     {

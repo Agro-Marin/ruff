@@ -113,7 +113,6 @@ fn tuple_diagnostic(checker: &Checker, tuple: &ast::ExprTuple, aliases: &[&Expr]
     }
     let semantic = checker.semantic();
     if semantic.has_builtin_binding("OSError") {
-        // Filter out any `OSErrors` aliases.
         let mut remaining: Vec<Expr> = tuple
             .iter()
             .filter_map(|element| {
@@ -125,7 +124,6 @@ fn tuple_diagnostic(checker: &Checker, tuple: &ast::ExprTuple, aliases: &[&Expr]
             })
             .collect();
 
-        // If `OSError` itself isn't already in the tuple, add it.
         if tuple
             .iter()
             .all(|elem| !semantic.match_builtin_expr(elem, "OSError"))
@@ -171,7 +169,6 @@ pub(crate) fn os_error_alias_handlers(checker: &Checker, handlers: &[ExceptHandl
                 atom_diagnostic(checker, expr);
             }
             Expr::Tuple(tuple) => {
-                // List of aliases to replace with `OSError`.
                 let mut aliases: Vec<&Expr> = vec![];
                 for element in tuple {
                     if is_alias(element, checker.semantic()) {

@@ -89,7 +89,6 @@ fn is_string(expr: &Expr, semantic: &SemanticModel) -> bool {
 
 /// PLC0207
 pub(crate) fn missing_maxsplit_arg(checker: &Checker, value: &Expr, slice: &Expr, expr: &Expr) {
-    // Check the sliced expression is a function
     let Expr::Call(ExprCall {
         func, arguments, ..
     }) = value
@@ -97,7 +96,6 @@ pub(crate) fn missing_maxsplit_arg(checker: &Checker, value: &Expr, slice: &Expr
         return;
     };
 
-    // Check the slice index is either 0 or -1 (first or last value)
     let index = match slice {
         Expr::NumberLiteral(ExprNumberLiteral {
             value: Number::Int(number_value),
@@ -127,17 +125,12 @@ pub(crate) fn missing_maxsplit_arg(checker: &Checker, value: &Expr, slice: &Expr
         return;
     };
 
-    // Check the function is "split" or "rsplit"
     let actual_split_type = attr.as_str();
     if !matches!(actual_split_type, "split" | "rsplit") {
         return;
     }
 
     let mut target_instance = value;
-    // The value being split on could be the result of a chained split, e.g.
-    // `s.split('(')[0].split('[')[0]`. We recurse through subscripts and
-    // split/rsplit calls to find the original string value, since
-    // `str.split()` returns `list[str]` and subscripting that gives a `str`.
     loop {
         match target_instance.as_ref() {
             Expr::Subscript(ExprSubscript { value, .. }) => {
@@ -161,17 +154,14 @@ pub(crate) fn missing_maxsplit_arg(checker: &Checker, value: &Expr, slice: &Expr
         }
     }
 
-    // Check the function is called on a string
     if !is_string(target_instance, checker.semantic()) {
         return;
     }
 
-    // Check the function does not have maxsplit set
     if arguments.find_argument_value("maxsplit", 1).is_some() {
         return;
     }
 
-    // Check maxsplit kwarg not set via unpacked dict literal
     for keyword in &*arguments.keywords {
         let Keyword { value, .. } = keyword;
 
@@ -195,7 +185,6 @@ pub(crate) fn missing_maxsplit_arg(checker: &Checker, value: &Expr, slice: &Expr
     let maxsplit_argument_edit =
         fix::edits::add_argument("maxsplit=1", arguments, checker.tokens());
 
-    // Only change `actual_split_type` if it doesn't match `suggested_split_type`
     let split_type_edit: Option<Edit> = if actual_split_type == suggested_split_type {
         None
     } else {
@@ -216,7 +205,6 @@ pub(crate) fn missing_maxsplit_arg(checker: &Checker, value: &Expr, slice: &Expr
     diagnostic.set_fix(Fix::applicable_edits(
         maxsplit_argument_edit,
         split_type_edit,
-        // Mark the fix as unsafe, if there are `*args` or `**kwargs`
         if arguments.args.iter().any(Expr::is_starred_expr)
             || arguments
                 .keywords

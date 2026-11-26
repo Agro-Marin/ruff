@@ -37,10 +37,6 @@ mod path;
 pub fn system_path_to_file(db: &dyn Db, path: impl AsRef<SystemPath>) -> Result<File, FileError> {
     let file = db.files().system(db, path.as_ref());
 
-    // It's important that `vfs.file_system` creates a `VfsFile` even for files that don't exist or don't
-    // exist anymore so that Salsa can track that the caller of this function depends on the existence of
-    // that file. This function filters out files that don't exist, but Salsa will know that it must
-    // re-run the calling query whenever the `file`'s status changes (because of the `.status` call here).
     match file.status(db) {
         FileStatus::Exists => Ok(file),
         FileStatus::IsADirectory => Err(FileError::IsADirectory),
@@ -108,13 +104,6 @@ impl Files {
     /// The operation always succeeds even if the path doesn't exist on disk, isn't accessible or if the path points to a directory.
     /// In these cases, a file with the appropriate [`FileStatus`] is returned.
     fn system(&self, db: &dyn Db, path: &SystemPath) -> File {
-        // All cache keys are normalized, absolute paths. However, an absolute path does not need
-        // to be fully normalized for this lookup: Camino's equality and hashing ignore redundant
-        // separators and `.` components, so `/foo/bar.py`, `/foo//bar.py`, and `/foo/./bar.py`
-        // all match the same cached `File`. A `..` component is not ignored, so a path such as
-        // `/foo/baz/../bar.py` misses the cache and falls through to full normalization. Since
-        // this fast path only returns an existing entry and never inserts one, it cannot create
-        // separate `File` identities for different spellings of the same path.
         if path.is_absolute()
             && let Some(file) = self.inner.system_by_path.get(path)
         {
@@ -123,7 +112,6 @@ impl Files {
 
         let absolute = SystemPath::absolute(path, db.system().current_directory());
 
-        // DashMap's entry API requires an owned key. Avoid cloning it for cached paths.
         if let Some(file) = self.inner.system_by_path.get(absolute.as_path()) {
             return *file;
         }
@@ -166,7 +154,6 @@ impl Files {
 
     /// Tries to look up the file for the given system path, returns `None` if no such file exists yet
     pub fn try_system(&self, db: &dyn Db, path: &SystemPath) -> Option<File> {
-        // As in `system`, path equality normalizes redundant separators and `.`, but not `..`.
         if path.is_absolute()
             && let Some(file) = self.inner.system_by_path.get(path)
         {
@@ -392,7 +379,6 @@ pub struct File {
     pub source_text_override: Option<SourceText>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for File {}
 
 struct SyncPathResult {
@@ -409,14 +395,12 @@ impl File {
 
         match path {
             FilePath::System(system) => {
-                // Add a dependency on the revision to ensure the operation gets re-executed when the file changes.
                 let _ = self.revision(db);
 
                 db.system().read_to_string(system)
             }
             FilePath::Vendored(vendored) => db.vendored().read_to_string(vendored),
             FilePath::SystemVirtual(system_virtual) => {
-                // Add a dependency on the revision to ensure the operation gets re-executed when the file changes.
                 let _ = self.revision(db);
 
                 db.system().read_virtual_path_to_string(system_virtual)
@@ -433,7 +417,6 @@ impl File {
 
         match path {
             FilePath::System(system) => {
-                // Add a dependency on the revision to ensure the operation gets re-executed when the file changes.
                 let _ = self.revision(db);
 
                 db.system().read_to_notebook(system)
@@ -443,7 +426,6 @@ impl File {
                 "Reading a notebook from the vendored file system is not supported.",
             ))),
             FilePath::SystemVirtual(system_virtual) => {
-                // Add a dependency on the revision to ensure the operation gets re-executed when the file changes.
                 let _ = self.revision(db);
 
                 db.system().read_virtual_path_to_notebook(system_virtual)
@@ -486,7 +468,6 @@ impl File {
                 Self::touch_parent_directory_after_sync(db, &system, result);
             }
             FilePath::Vendored(_) => {
-                // Readonly, can never be out of date.
             }
             FilePath::SystemVirtual(_) => {
                 VirtualFile(self).sync(db);
@@ -634,8 +615,6 @@ impl VirtualFile {
     }
 }
 
-// The types in here need to be public because they're salsa ingredients but we
-// don't want them to be publicly accessible. That's why we put them into a private module.
 mod private {
     #[derive(Copy, Clone, Debug, Eq, PartialEq, Default, get_size2::GetSize)]
     pub enum FileStatus {

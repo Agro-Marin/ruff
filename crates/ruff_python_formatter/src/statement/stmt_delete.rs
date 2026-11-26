@@ -26,11 +26,6 @@ impl FormatNodeRule<StmtDelete> for FormatStmtDelete {
                 write!(
                     f,
                     [
-                        // Handle special case of delete statements without targets.
-                        // ```
-                        // del (
-                        //     # Dangling comment
-                        // )
                         token("("),
                         block_indent(&dangling_node_comments(item)),
                         token(")"),

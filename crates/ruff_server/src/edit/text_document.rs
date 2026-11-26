@@ -137,7 +137,6 @@ impl TextDocument {
         });
     }
 
-    // A private function for modifying the document's internal state
     fn modify(&mut self, func: impl FnOnce(&mut String, &mut DocumentVersion)) {
         self.modify_with_manual_index(|c, v, i| {
             func(c, v);
@@ -145,7 +144,6 @@ impl TextDocument {
         });
     }
 
-    // A private function for overriding how we update the line index by default.
     fn modify_with_manual_index(
         &mut self,
         func: impl FnOnce(&mut String, &mut DocumentVersion, &mut LineIndex),
@@ -179,7 +177,6 @@ def interface():
             0,
         );
 
-        // Add an `s`, remove it again (back to the original code), and then re-add the `s`
         document.apply_changes(
             vec![
                 TextDocumentContentChangeEvent::TextDocumentContentChangePartial(

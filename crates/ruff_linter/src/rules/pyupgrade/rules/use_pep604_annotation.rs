@@ -151,19 +151,12 @@ pub(crate) fn non_pep604_annotation(
     slice: &Expr,
     operator: Pep604Operator,
 ) {
-    // `NamedTuple` is not a type; it's a type constructor. Using it in a type annotation doesn't
-    // make much sense. But since type checkers will currently (incorrectly) _not_ complain about it
-    // being used in a type annotation, we just ignore `Optional[typing.NamedTuple]` and
-    // `Union[...]` containing `NamedTuple`.
-    // <https://github.com/astral-sh/ruff/issues/18619>
     if is_optional_named_tuple(checker, operator, slice)
         || is_union_with_named_tuple(checker, operator, slice)
     {
         return;
     }
 
-    // Avoid fixing forward references, types not in an annotation, and expressions that would
-    // lead to invalid syntax.
     let fixable = checker.semantic().in_type_definition()
         && !checker.semantic().in_complex_string_type_definition()
         && is_allowed_value(slice)
@@ -211,10 +204,8 @@ pub(crate) fn non_pep604_annotation(
             if fixable {
                 match slice {
                     Expr::Tuple(_) => {
-                        // Invalid type annotation.
                     }
                     _ => {
-                        // Unwrap all nested Optional[...] and wrap once as `X | None`.
                         let mut inner = slice;
                         while let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = inner {
                             if let Some(Pep604Operator::Optional) =
@@ -226,11 +217,6 @@ pub(crate) fn non_pep604_annotation(
                             }
                         }
 
-                        // If the inner expression is a `BitOr` union that already
-                        // contains `None`, strip it out and re-add it only at the end.
-                        // This avoids generating `None | None` which is a runtime
-                        // `TypeError`. For example, `Optional[None | int]` should
-                        // become `int | None`, not `None | int | None`.
                         let fix_expr = if let Expr::BinOp(ast::ExprBinOp {
                             op: Operator::BitOr,
                             ..
@@ -238,7 +224,6 @@ pub(crate) fn non_pep604_annotation(
                         {
                             let elements = collect_non_none(inner);
                             if elements.is_empty() {
-                                // All elements were `None`; don't provide a fix.
                                 None
                             } else {
                                 Some(pep_604_optional(&pep_604_union(&elements)))
@@ -264,20 +249,14 @@ pub(crate) fn non_pep604_annotation(
             if fixable {
                 match slice {
                     Expr::Slice(_) => {
-                        // Invalid type annotation.
                     }
                     Expr::Tuple(ast::ExprTuple { elts, .. }) => {
                         let replacement = checker.generator().expr(&pep_604_union(elts));
                         diagnostic.set_fix(create_fix(replacement));
                     }
                     _ => {
-                        // Single argument.
                         let inner = checker.locator().slice(slice);
                         let replacement = if checker.locator().contains_line_break(slice.range()) {
-                            // If the inner expression spans multiple lines, wrap in
-                            // parentheses since the `Union[...]` brackets that
-                            // previously provided implicit line continuation are being
-                            // removed.
                             format!("({inner})")
                         } else {
                             inner.to_string()
@@ -294,17 +273,6 @@ pub(crate) fn non_pep604_annotation(
 /// `false` for lambdas, yield expressions, and other expressions that are invalid in such a
 /// context.
 fn is_allowed_value(expr: &Expr) -> bool {
-    // TODO(charlie): If the expression requires parentheses when multi-line, and the annotation
-    // itself is not parenthesized, this should return `false`. Consider, for example:
-    // ```python
-    // x: Union[
-    //     "Sequence["
-    //         "int"
-    //     "]",
-    //     float,
-    // ]
-    // ```
-    // Converting this to PEP 604 syntax requires that the multiline string is parenthesized.
     match expr {
         Expr::BoolOp(_)
         | Expr::BinOp(_)
@@ -331,9 +299,7 @@ fn is_allowed_value(expr: &Expr) -> bool {
         | Expr::Name(_)
         | Expr::List(_) => true,
         Expr::Tuple(tuple) => tuple.iter().all(is_allowed_value),
-        // Maybe require parentheses.
         Expr::Named(_) => false,
-        // Invalid in binary expressions.
         Expr::Await(_)
         | Expr::Lambda(_)
         | Expr::Yield(_)

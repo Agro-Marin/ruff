@@ -257,7 +257,6 @@ fn indirect_dependencies_use_uv_module_ownership() -> anyhow::Result<()> {
 fn indirect_dependencies_use_updated_declarations() -> anyhow::Result<()> {
     let case = dependency_workspace_case()?;
     let mut command = uv_sync_command(&case, None)?;
-    // Leave the lockfile stale so ty has to refresh the dependency metadata.
     let output = uv_command(&case)
         .args([
             "add",
@@ -448,7 +447,6 @@ fn explicit_script_path_disables_uv_workspace_discovery() -> anyhow::Result<()> 
         "#,
     )?;
 
-    // Checking a script reports its own diagnostics without querying the project's uv metadata.
     let mut command = case.command();
     set_uv_envs(&mut command, &case, None);
     command.current_dir(&member_directory).arg("member.py");

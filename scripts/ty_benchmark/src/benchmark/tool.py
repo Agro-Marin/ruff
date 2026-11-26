@@ -33,7 +33,6 @@ def which_tool(name: str, path: Path | None = None) -> Path:
 def exclude_regex(pattern: str) -> str:
     """Convert a project exclusion glob to a regex for mypy and Zuban."""
     regex = glob.translate(pattern, recursive=True, include_hidden=True, seps="/\\")
-    # Project interpreters older than Python 3.14 do not recognize \z.
     return r"\A" + regex.removesuffix(r"\z") + r"(?:[/\\].*)?$"
 
 
@@ -175,7 +174,6 @@ class Mypy(Tool):
             "--python-version",
             project.python_version,
             "--no-pretty",
-            # A dedicated config disables project and user overrides.
             "--config-file=mypy-benchmark.toml",
             "--follow-imports=normal",
             "--check-untyped-defs",
@@ -208,7 +206,6 @@ class Mypy(Tool):
 
     @override
     def lsp_command(self, project: Project, venv: Venv) -> list[str] | None:
-        # Mypy doesn't have official LSP support.
         return None
 
 
@@ -219,7 +216,6 @@ class Pyright(Tool):
     def __init__(self, *, path: Path | None = None):
         if path:
             self.path = path
-            # Assume langserver is in the same directory.
             if sys.platform == "win32":
                 self.lsp_path = path.with_name("pyright-langserver.cmd")
             else:
@@ -246,10 +242,7 @@ class Pyright(Tool):
                     "include": list(project.include or ["."]),
                     "exclude": list(project.exclude),
                     "analyzeUnannotatedFunctions": True,
-                    # Set the `venv` config for pyright. Pyright only respects the `--venvpath`
-                    # CLI option when `venv` is set in the configuration... 🤷‍♂️
                     "venv": venv.name,
-                    # This is not the path to the venv folder, but the folder that contains the venv...
                     "venvPath": str(venv.path.parent.as_posix()),
                     "pythonVersion": project.python_version,
                     "extraPaths": list(project.import_roots),
@@ -270,7 +263,6 @@ class Pyright(Tool):
 
     @override
     def lsp_command(self, project: Project, venv: Venv) -> list[str] | None:
-        # Pyright LSP server is a separate executable.
         return [str(self.lsp_path), "--stdio"]
 
 
@@ -319,9 +311,6 @@ class Pyrefly(Tool):
 
     @override
     def lsp_command(self, project: Project, venv: Venv) -> list[str] | None:
-        # Pyrefly LSP server.
-        # Turn-off pyrefly's indexing mode as it results in significant load after opening the first file,
-        # skewing benchmark results and we don't use any of the features that require indexing.
         return [str(self.path), "lsp", "--indexing-mode", "none"]
 
 
@@ -345,7 +334,6 @@ class Zuban(Tool):
                 path = path.parent
             search_paths.add(path)
 
-        # Zuban matches exclusions relative to each source import root.
         excludes = list(project.exclude)
         for path in sorted(search_paths):
             relative_root = path.relative_to(venv.project_path).as_posix()
@@ -361,7 +349,6 @@ class Zuban(Tool):
             "mode": "mypy",
             "python_version": project.python_version,
             "python_executable": venv.python.as_posix(),
-            # Match native discovery's physical paths to avoid duplicate module identities.
             "mypy_path": sorted({path.resolve().as_posix() for path in search_paths}),
             "files": list(project.include),
             "exclude": [exclude_regex(pattern) for pattern in dict.fromkeys(excludes)],
@@ -401,8 +388,6 @@ class Zuban(Tool):
             else tomlkit.document()
         )
         tool = document.setdefault("tool", tomlkit.table())
-        # An empty mypy table stops Zuban's search before mypy.ini/setup.cfg.
-        # Its own settings are applied afterwards, matching the isolated CLI config.
         tool["mypy"] = tomlkit.table()
         tool["zuban"] = self._settings(project, venv)
         try:

@@ -35,27 +35,6 @@ impl FormatNodeRule<StmtClassDef> for FormatStmtClassDef {
         let (leading_definition_comments, trailing_definition_comments) =
             dangling_comments.split_at(trailing_definition_comments_start);
 
-        // If the class contains leading comments, insert newlines before them.
-        // For example, given:
-        // ```python
-        // # comment
-        //
-        // class Class:
-        //     ...
-        // ```
-        //
-        // At the top-level in a non-stub file, reformat as:
-        // ```python
-        // # comment
-        //
-        //
-        // class Class:
-        //     ...
-        // ```
-        // Note that this is only really relevant for the specific case in which there's a single
-        // newline between the comment and the node, but we _require_ two newlines. If there are
-        // _no_ newlines between the comment and the node, we don't insert _any_ newlines; if there
-        // are more than two, then `leading_comments` will preserve the correct number of newlines.
         empty_lines_after_leading_comments(comments.leading(item)).fmt(f)?;
 
         write!(
@@ -75,47 +54,6 @@ impl FormatNodeRule<StmtClassDef> for FormatStmtClassDef {
                         }
 
                         if let Some(arguments) = arguments.as_deref() {
-                            // Drop empty the arguments node entirely (i.e., remove the parentheses) if it is empty,
-                            // e.g., given:
-                            // ```python
-                            // class A():
-                            //     ...
-                            // ```
-                            //
-                            // Format as:
-                            // ```python
-                            // class A:
-                            //     ...
-                            // ```
-                            //
-                            // However, preserve any dangling end-of-line comments, e.g., given:
-                            // ```python
-                            // class A(  # comment
-                            // ):
-                            //     ...
-                            //
-                            // Format as:
-                            // ```python
-                            // class A:  # comment
-                            //     ...
-                            // ```
-                            //
-                            // However, the arguments contain any dangling own-line comments, we retain the
-                            // parentheses, e.g., given:
-                            // ```python
-                            // class A(  # comment
-                            //     # comment
-                            // ):
-                            //     ...
-                            // ```
-                            //
-                            // Format as:
-                            // ```python
-                            // class A(  # comment
-                            //     # comment
-                            // ):
-                            //     ...
-                            // ```
                             if arguments.is_empty()
                                 && comments
                                     .dangling(arguments)
@@ -138,22 +76,6 @@ impl FormatNodeRule<StmtClassDef> for FormatStmtClassDef {
             ]
         )?;
 
-        // If the class contains trailing comments, insert newlines before them.
-        // For example, given:
-        // ```python
-        // class Class:
-        //     ...
-        // # comment
-        // ```
-        //
-        // At the top-level in a non-stub file, reformat as:
-        // ```python
-        // class Class:
-        //     ...
-        //
-        //
-        // # comment
-        // ```
         empty_lines_before_trailing_comments(comments.trailing(item), NodeKind::StmtClassDef)
             .fmt(f)?;
 
@@ -176,9 +98,6 @@ impl Format<PyFormatContext<'_>> for FormatDecorators<'_> {
             if self.leading_definition_comments.is_empty() {
                 write!(f, [hard_line_break()])?;
             } else {
-                // Write any leading definition comments (between last decorator and the header)
-                // while maintaining the right amount of empty lines between the comment
-                // and the last decorator.
                 let leading_line = if lines_after_ignoring_end_of_line_trivia(
                     last_decorator.end(),
                     f.context().source(),

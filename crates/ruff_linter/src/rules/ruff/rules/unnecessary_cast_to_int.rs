@@ -90,17 +90,6 @@ pub(crate) fn unnecessary_cast_to_int(checker: &Checker, call: &ExprCall) {
         checker.source(),
     );
 
-    // Comments outside the argument's range can be lost when removing the call,
-    // so check both ends.
-    //
-    // For example:
-    // ```python
-    // int( # comment
-    //     round(
-    //         42.1
-    //     ) # comment
-    // )
-    // ```
     let applicability = {
         let comment_ranges = checker.comment_ranges();
         let call_to_arg_start = TextRange::new(call.start(), argument.start());
@@ -129,17 +118,14 @@ fn call_applicability(checker: &Checker, inner_call: &ExprCall) -> Option<Applic
     let qualified_name = checker.semantic().resolve_qualified_name(func)?;
 
     match qualified_name.segments() {
-        // Always returns a strict instance of `int`
         ["" | "builtins", "len" | "id" | "hash" | "ord" | "int"]
         | [
             "math",
             "comb" | "factorial" | "gcd" | "lcm" | "isqrt" | "perm",
         ] => Some(Applicability::Safe),
 
-        // Depends on `ndigits` and `number.__round__`
         ["" | "builtins", "round"] => round_applicability(arguments, checker.semantic()),
 
-        // Depends on `__ceil__`/`__floor__`/`__trunc__`
         ["math", "ceil" | "floor" | "trunc"] => Some(Applicability::Unsafe),
 
         _ => None,
@@ -176,12 +162,6 @@ fn round_applicability(arguments: &Arguments, semantic: &SemanticModel) -> Optio
     let (_rounded, rounded_value, ndigits_value) = rounded_and_ndigits(arguments, semantic)?;
 
     match (rounded_value, ndigits_value) {
-        // ```python
-        // int(round(2, -1))
-        // int(round(2, 0))
-        // int(round(2))
-        // int(round(2, None))
-        // ```
         (
             RoundedValue::Int(InferredType::Equivalent),
             NdigitsValue::LiteralInt { .. }
@@ -189,21 +169,10 @@ fn round_applicability(arguments: &Arguments, semantic: &SemanticModel) -> Optio
             | NdigitsValue::NotGivenOrNone,
         ) => Some(Applicability::Safe),
 
-        // ```python
-        // int(round(2.0))
-        // int(round(2.0, None))
-        // ```
         (RoundedValue::Float(InferredType::Equivalent), NdigitsValue::NotGivenOrNone) => {
             Some(Applicability::Safe)
         }
 
-        // ```python
-        // a: int = 2 # or True
-        // int(round(a, -2))
-        // int(round(a, 1))
-        // int(round(a))
-        // int(round(a, None))
-        // ```
         (
             RoundedValue::Int(InferredType::AssignableTo),
             NdigitsValue::LiteralInt { .. }
@@ -211,12 +180,6 @@ fn round_applicability(arguments: &Arguments, semantic: &SemanticModel) -> Optio
             | NdigitsValue::NotGivenOrNone,
         ) => Some(Applicability::Unsafe),
 
-        // ```python
-        // int(round(2.0))
-        // int(round(2.0, None))
-        // int(round(x))
-        // int(round(x, None))
-        // ```
         (
             RoundedValue::Float(InferredType::AssignableTo) | RoundedValue::Other,
             NdigitsValue::NotGivenOrNone,

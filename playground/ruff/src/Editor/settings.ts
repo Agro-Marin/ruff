@@ -3,9 +3,6 @@ import { fetchPlayground, savePlayground } from "./api";
 
 export type Settings = { [K: string]: any };
 
-/**
- * Stringify a settings object to JSON.
- */
 export function stringify(settings: Settings): string {
   return JSON.stringify(
     settings,
@@ -20,9 +17,6 @@ export function stringify(settings: Settings): string {
   );
 }
 
-/**
- * Save the configuration and return a shareable URL.
- */
 async function shareUrl(
   settingsSource: string,
   pythonSource: string,
@@ -31,9 +25,6 @@ async function shareUrl(
   return `${window.location.origin}/${encodeURIComponent(id)}`;
 }
 
-/**
- * Persist the configuration and copy a shareable URL to clipboard.
- */
 export async function persist(
   settingsSource: string,
   pythonSource: string,
@@ -42,9 +33,6 @@ export async function persist(
   await navigator.clipboard.writeText(url);
 }
 
-/**
- * Persist the configuration and copy a markdown link to clipboard.
- */
 export async function copyAsMarkdownLink(
   settingsSource: string,
   pythonSource: string,
@@ -53,9 +41,6 @@ export async function copyAsMarkdownLink(
   await navigator.clipboard.writeText(`[Playground](${url})`);
 }
 
-/**
- * Persist the configuration and copy markdown with code to clipboard.
- */
 export async function copyAsMarkdown(
   settingsSource: string,
   pythonSource: string,
@@ -84,12 +69,7 @@ ${settingsBlock}
   );
 }
 
-/**
- * Restore the configuration from a URL.
- */
 export async function restore(): Promise<[string, string] | null> {
-  // Legacy URLs, stored as encoded strings in the hash, like:
-  //     https://play.ruff.rs/#eyJzZXR0aW5nc1NvdXJjZ...
   const hash = window.location.hash.slice(1);
   if (hash) {
     const value = lzstring.decompressFromEncodedURIComponent(
@@ -99,8 +79,6 @@ export async function restore(): Promise<[string, string] | null> {
     return [settingsSource.replaceAll("$$$$$$", "$$$"), pythonSource];
   }
 
-  // URLs stored in the database, like:
-  //     https://play.ruff.rs/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
   const id = window.location.pathname.slice(1);
   if (id) {
     const playground = await fetchPlayground(id);
@@ -111,7 +89,6 @@ export async function restore(): Promise<[string, string] | null> {
     return [settingsSource, pythonSource];
   }
 
-  // If no URL is present, restore from local storage.
   return restoreLocal();
 }
 
@@ -134,9 +111,6 @@ export function persistLocal({
 }) {
   const totalLength = settingsSource.length + pythonSource.length;
 
-  // Don't persist large files to local storage because they can exceed the local storage quota
-  // The number here is picked rarely arbitrarily. Also note, JS uses UTF 16:
-  // that means the limit here is strings larger than 1MB (because UTf 16 uses 2 bytes per character)
   if (totalLength > 500_000) {
     return;
   }

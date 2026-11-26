@@ -64,8 +64,6 @@ enum ChangeKind {
 ///
 /// Returns `None` if no relevant changes were detected.
 fn change_detected(event: &notify::Event) -> Option<ChangeKind> {
-    // If any `.toml` files were modified, return `ChangeKind::Configuration`. Otherwise, return
-    // `ChangeKind::SourceFile` if any `.py`, `.pyi`, `.pyw`, or `.ipynb` files were modified.
     let mut source_file = false;
 
     if event.kind.is_access() || event.kind.is_other() {
@@ -94,7 +92,6 @@ fn change_detected(event: &notify::Event) -> Option<ChangeKind> {
 
 /// Returns true if the command should read from standard input.
 fn is_stdin(files: &[PathBuf], stdin_filename: Option<&Path>) -> bool {
-    // If the user provided a `--stdin-filename`, always read from standard input.
     if stdin_filename.is_some() {
         if let Some(file) = files.iter().find(|file| file.as_path() != Path::new("-")) {
             warn_user_once!(
@@ -108,7 +105,6 @@ fn is_stdin(files: &[PathBuf], stdin_filename: Option<&Path>) -> bool {
     let [file] = files else {
         return false;
     };
-    // If the user provided exactly `-`, read from standard input.
     file == Path::new("-")
 }
 
@@ -126,7 +122,6 @@ fn resolve_default_files(files: Vec<PathBuf>, is_stdin: bool) -> Vec<PathBuf> {
 }
 
 pub fn run(args: Args) -> Result<ExitStatus> {
-    // Set color before so all outputs are properly colored
     let color = TerminalColor::resolve(args.global_options.color);
     colored::control::set_override(color.should_colorize(&io::stdout()));
 
@@ -151,7 +146,6 @@ pub fn run(args: Args) -> Result<ExitStatus> {
         }));
     }
 
-    // Don't set up logging for the server command, as it has its own logging setup
     // and setting the global logger can only be done once.
     if !matches!(args.command, Command::Server { .. }) {
         set_up_logging(args.global_options.log_level())?;
@@ -237,8 +231,6 @@ fn server(args: ServerCommand) -> Result<ExitStatus> {
 pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<ExitStatus> {
     let (cli, config_arguments) = args.partition(global_options)?;
 
-    // Construct the "default" settings. These are used when no `pyproject.toml`
-    // files are present, or files are injected from outside of the hierarchy.
     let root_settings = resolve::resolve(&config_arguments, cli.stdin_filename.as_deref())?;
 
     let mut writer: Box<dyn Write> = match cli.output_file {
@@ -271,8 +263,6 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
         return Ok(ExitStatus::Success);
     }
 
-    // Extract options that are included in `Settings`, but only apply at the top
-    // level.
     let Settings {
         fix,
         fix_only,
@@ -282,13 +272,6 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
         ..
     } = root_settings.resolved.settings;
 
-    // Fix rules are as follows:
-    // - By default, generate all fixes, but don't apply them to the filesystem.
-    // - If `--fix` or `--fix-only` is set, apply applicable fixes to the filesystem (or
-    //   print them to stdout, if we're reading from stdin).
-    // - If `--diff` or `--fix-only` are set, don't print any violations (only applicable fixes)
-    // - By default, applicable fixes only include [`Applicability::Automatic`], but if
-    //   `--unsafe-fixes` is set, then [`Applicability::Suggested`] fixes are included.
 
     let fix_mode = if cli.diff {
         FixMode::Diff
@@ -310,8 +293,6 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
 
     #[cfg(debug_assertions)]
     if cache {
-        // `--no-cache` doesn't respect code changes, and so is often confusing during
-        // development.
         warn_user!("Detected debug build without --no-cache.");
     }
 
@@ -366,14 +347,11 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
         printer_flags,
     );
 
-    // the settings should already be combined with the CLI overrides at this point
     // TODO: this should reference the global preview mode once https://github.com/astral-sh/ruff/issues/8232
-    //   is resolved.
     let preview = root_settings.resolved.settings.linter.preview;
     let prefer_rule_codes = root_settings.resolved.settings.output_prefer_rule_codes;
 
     if cli.watch {
-        // Configure the file watcher.
         let (tx, rx) = channel();
         let mut watcher = recommended_watcher(tx)?;
         for file in &files {
@@ -383,7 +361,6 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
             watcher.watch(file, RecursiveMode::Recursive)?;
         }
 
-        // Perform an initial run instantly.
         Printer::clear_screen()?;
         printer.write_to_user("Starting linter in watch mode...\n");
 
@@ -398,8 +375,6 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
         )?;
         printer.write_continuously(&mut writer, &diagnostics, preview, prefer_rule_codes)?;
 
-        // In watch mode, we may need to re-resolve the configuration.
-        // TODO(charlie): Re-compute other derivative values, like the `printer`.
         let mut root_settings = root_settings;
 
         loop {
@@ -425,7 +400,6 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
             printer.write_continuously(&mut writer, &diagnostics, preview, prefer_rule_codes)?;
         }
     }
-    // Generate lint violations.
     let diagnostics = if is_stdin {
         commands::check_stdin::check_stdin(
             cli.stdin_filename.map(fs::normalize_path).as_deref(),
@@ -446,9 +420,6 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
         )?
     };
 
-    // Always try to print violations (though the printer itself may suppress output)
-    // If we're writing fixes via stdin, the transformed source code goes to the writer
-    // so send the summary to stderr instead
     let mut summary_writer = if is_stdin && matches!(fix_mode, FixMode::Apply | FixMode::Diff) {
         stderr_writer
     } else {
@@ -473,10 +444,6 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
             .max()
             .unwrap_or(Severity::Info);
         if max_severity.is_fatal() {
-            // When a panic/fatal error is reported, prompt the user to open an issue on github.
-            // Printing the message here instead of attaching it to the diagnostic ensures that we
-            // only print it once instead of repeating it for each diagnostic. Prints to stderr to
-            // prevent the message from being captured by tools parsing the normal output.
             let message = "Panic during linting indicates a bug in Ruff. If you could open an issue at:
 
 https://github.com/astral-sh/ruff/issues/new?title=%5BLinter%20panic%5D
@@ -487,24 +454,16 @@ https://github.com/astral-sh/ruff/issues/new?title=%5BLinter%20panic%5D
             return Ok(ExitStatus::Error);
         }
         if cli.diff {
-            // If we're printing a diff, we always want to exit non-zero if there are
-            // any fixable violations (since we've printed the diff, but not applied the
-            // fixes).
             if !diagnostics.fixed.is_empty() {
                 return Ok(ExitStatus::Failure);
             }
         } else if fix_only {
-            // If we're only fixing, we want to exit zero (since we've fixed all fixable
-            // violations), unless we're explicitly asked to exit non-zero on fix.
             if cli.exit_non_zero_on_fix {
                 if !diagnostics.fixed.is_empty() {
                     return Ok(ExitStatus::Failure);
                 }
             }
         } else {
-            // If we're running the linter (not just fixing), we want to exit non-zero if
-            // there are any violations, unless we're explicitly asked to exit zero on
-            // fix.
             if cli.exit_non_zero_on_fix {
                 if !diagnostics.fixed.is_empty() || !diagnostics.inner.is_empty() {
                     return Ok(ExitStatus::Failure);

@@ -79,8 +79,6 @@ impl DunderMethod {
         value_ty: Type<'db>,
         slice_ty: Type<'db>,
     ) -> Option<Result<Type<'db>, SubscriptError<'db>>> {
-        // The same receiver and key types recur across subscript expressions. Only the return
-        // type and the callable's type are needed after overload resolution.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, get_size2::GetSize, salsa::SalsaValue)]
         enum Outcome<'db> {
             Returned(Type<'db>),
@@ -533,9 +531,6 @@ where
     let mut results = Vec::new();
     let mut errors = Vec::new();
 
-    // Use `positive_elements_or_object` to ensure we always have at least one element.
-    // An intersection with only negative elements (e.g., `~int & ~str`) is implicitly
-    // `object & ~int & ~str`, so we fall back to `object`.
     for element in intersection.positive_elements_or_object(db) {
         match map_fn(element) {
             Ok(result) => results.push(result),
@@ -543,7 +538,6 @@ where
         }
     }
 
-    // If any element succeeded, return the intersection of successful results.
     if !results.is_empty() {
         let mut builder = IntersectionBuilder::new(db, env);
         for result in results {
@@ -552,9 +546,6 @@ where
         return Ok(builder.build());
     }
 
-    // All elements failed. Check if any element has the method available
-    // (even if the call failed). If so, filter out `NotSubscriptable` errors
-    // for elements that lack the method.
     let any_has_method = errors.iter().any(SubscriptError::any_method_available);
 
     let mut builder = IntersectionBuilder::new(db, env);
@@ -584,10 +575,6 @@ where
     ))
 }
 
-// On a closed `TypedDict`, a successful lookup with an arbitrary string must return one of the
-// declared value types. Recover with their union after reporting the invalid subscript. Other
-// invalid keys recover with `Unknown`. Synthesized `__getitem__` overloads cannot express both
-// the error and its recovery type.
 fn typed_dict_subscript<'db>(
     db: &'db dyn Db,
     env: &ProgramEnvironment<'db>,
@@ -692,7 +679,6 @@ impl<'db> Type<'db> {
                 Some(value_ty.subscript(db, env, alias.value_type(db), expr_context))
             }
 
-            // Expand overlapping alternatives before collecting their subscript errors.
             (Type::Union(union), _) if union.has_aliases(db) => Some(
                 union
                     .expand_aliases(db, env)
@@ -762,7 +748,6 @@ impl<'db> Type<'db> {
                 ))
             }
 
-            // Ex) Given `person["name"]`, return `str`
             (Type::TypedDict(typed_dict), _) if expr_context != ast::ExprContext::Store => {
                 Some(typed_dict_subscript(db, env, typed_dict, slice_ty))
             }
@@ -790,7 +775,6 @@ impl<'db> Type<'db> {
                 )))
             }
 
-            // Ex) Given `("a", "b", "c", "d")[1]`, return `"b"`
             (Type::NominalInstance(nominal), Type::LiteralValue(literal))
                 if let Some(i64_int) = literal.as_int()
                     && let Some(tuple) = nominal.tuple_spec(db, env)
@@ -811,7 +795,6 @@ impl<'db> Type<'db> {
                 Some(result)
             }
 
-            // Ex) Given `("a", 1, Null)[0:2]`, return `("a", 1)`
             (value_ty, Type::NominalInstance(maybe_slice_nominal))
                 if let Some(SliceLiteral { start, stop, step }) =
                     maybe_slice_nominal.slice_literal(db)
@@ -833,7 +816,6 @@ impl<'db> Type<'db> {
                 )
             }
 
-            // Ex) Given `"value"[1]`, return `"a"`
             (Type::LiteralValue(lhs_literal), Type::LiteralValue(rhs_literal))
                 if let Some(literal_ty) = lhs_literal.as_string()
                     && let Some(i64_int) = rhs_literal.as_int()
@@ -857,7 +839,6 @@ impl<'db> Type<'db> {
                 Some(result)
             }
 
-            // Ex) Given `"value"[1:3]`, return `"al"`
             (Type::LiteralValue(literal), Type::NominalInstance(nominal))
                 if let Some(literal_ty) = literal.as_string()
                     && let Some(SliceLiteral { start, stop, step }) = nominal.slice_literal(db) =>
@@ -892,7 +873,6 @@ impl<'db> Type<'db> {
                 Some(Ok(Type::literal_string()))
             }
 
-            // Ex) Given `b"value"[1]`, return `97` (i.e., `ord(b"a")`)
             (Type::LiteralValue(lhs_literal), Type::LiteralValue(rhs_literal))
                 if let Some(literal_ty) = lhs_literal.as_bytes()
                     && let Some(i64_int) = rhs_literal.as_int()
@@ -916,7 +896,6 @@ impl<'db> Type<'db> {
                 Some(result)
             }
 
-            // Ex) Given `b"value"[1:3]`, return `b"al"`
             (Type::LiteralValue(literal), Type::NominalInstance(nominal))
                 if let Some(literal_ty) = literal.as_bytes()
                     && let Some(SliceLiteral { start, stop, step }) = nominal.slice_literal(db) =>
@@ -937,7 +916,6 @@ impl<'db> Type<'db> {
                 Some(result)
             }
 
-            // Ex) Given `"value"[True]`, return `"a"`
             (Type::LiteralValue(lhs_literal), Type::LiteralValue(rhs_literal))
                 if (lhs_literal.is_string() || lhs_literal.is_bytes())
                     && let Some(bool) = rhs_literal.as_bool() =>
@@ -953,7 +931,6 @@ impl<'db> Type<'db> {
             }
 
             (Type::KnownInstance(KnownInstanceType::SubscriptedProtocol(_)), _) => {
-                // TODO: emit a diagnostic
                 Some(Ok(todo_type!("doubly-specialized typing.Protocol")))
             }
 
@@ -968,19 +945,14 @@ impl<'db> Type<'db> {
             }
 
             (Type::KnownInstance(KnownInstanceType::SubscriptedGeneric(_)), _) => {
-                // TODO: emit a diagnostic
                 Some(Ok(todo_type!("doubly-specialized typing.Generic")))
             }
 
             (Type::SpecialForm(SpecialFormType::Unpack), _) => {
-                // TODO: Emit an invalid-type-form diagnostic for runtime subscripting of `Unpack`.
                 Some(Ok(Type::unknown()))
             }
 
             (Type::SpecialForm(SpecialFormType::TypeQualifier(TypeQualifier::InitVar)), _) => {
-                // Subscripting `InitVar` gives you (bizarrely) an instance of `InitVar`,
-                // which isn't representable in our model because we don't recognise there as being
-                // an `InitVar` class at all. This doesn't really matter that much, so just infer `Any` here.
                 Some(Ok(Type::any()))
             }
 
@@ -996,7 +968,6 @@ impl<'db> Type<'db> {
                 Some(Ok(todo_type!("Inference of subscript on special form")))
             }
 
-            // Upper-bounded and unconstrained type variables use ordinary method lookup.
             (
                 Type::FunctionLiteral(_)
                 | Type::WrapperDescriptor(_)
@@ -1033,22 +1004,10 @@ impl<'db> Type<'db> {
             return inferred;
         }
 
-        // If the class defines `__getitem__`, return its return type.
-        //
-        // See: https://docs.python.org/3/reference/datamodel.html#class-getitem-versus-getitem
         if let Some(result) = DunderMethod::GetItem.call(db, env, value_ty, slice_ty) {
             return result;
         }
 
-        // Otherwise, if the value is itself a class and defines `__class_getitem__`,
-        // return its return type.
-        //
-        // TODO: lots of classes are only subscriptable at runtime on Python 3.9+,
-        // *but* we should also allow them to be subscripted in stubs
-        // (and in annotations if `from __future__ import annotations` is enabled),
-        // even if the target version is Python 3.8 or lower,
-        // despite the fact that there will be no corresponding `__class_getitem__`
-        // method in these `sys.version_info` branches.
         if value_ty.is_subtype_of(db, env, KnownClass::Type.to_instance(db, env)) {
             if let Some(result) = DunderMethod::ClassGetItem.call(db, env, value_ty, slice_ty) {
                 return result;
@@ -1060,13 +1019,6 @@ impl<'db> Type<'db> {
                 }
 
                 if class.generic_context(db).is_some() {
-                    // TODO: specialize the generic class using these explicit type
-                    // variable assignments. This branch is only encountered when an
-                    // explicit class specialization appears inside of some other subscript
-                    // expression, e.g. `tuple[list[int], ...]`. We have already inferred
-                    // the type of the outer subscript slice as a value expression, which
-                    // means we can't re-infer the inner specialization here as a type
-                    // expression.
                     return Ok(value_ty);
                 }
 

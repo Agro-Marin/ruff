@@ -55,7 +55,6 @@ pub(crate) fn while_one(checker: &Checker, while_stmt: &ast::StmtWhile) {
         return;
     };
 
-    // Also covers other spellings of one, such as `0x1`.
     if value.as_u8() != Some(1) {
         return;
     }

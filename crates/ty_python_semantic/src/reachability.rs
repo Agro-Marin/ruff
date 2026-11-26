@@ -299,8 +299,6 @@ fn type_narrowed_after_pattern<'db>(
 
     let narrowed_by_pattern =
         type_narrowed_by_pattern(db, predicate, narrowed_by_previous_patterns);
-    // If the pattern does not narrow the subject, the guard's truthiness cannot affect the result.
-    // Skipping its inference also avoids cycles through the subject or a pattern capture.
     if narrowed_by_pattern == narrowed_by_previous_patterns
         || !pattern_guard_allows_all_matches(db, predicate)
     {
@@ -312,7 +310,6 @@ fn type_narrowed_after_pattern<'db>(
 
 /// Whether the guard cannot reject a value matched by the pattern.
 fn pattern_guard_allows_all_matches(db: &dyn Db, predicate: PatternPredicate<'_>) -> bool {
-    // Condition analysis recovers cycles as ambiguous, so an unresolved guard cannot exclude values.
     predicate
         .guard(db)
         .is_none_or(|guard| infer_predicate_truthiness(db, guard).is_always_true())
@@ -541,17 +538,6 @@ fn analyze_pattern_predicate<'db>(db: &'db dyn Db, predicate: PatternPredicate<'
     let narrowed_subject_ty =
         type_narrowed_by_previous_patterns(db, predicate, PatternSubjectExpansion::Expanded);
 
-    // Consider a case where we match on a subject type of `Self` with an upper bound of `Answer`,
-    // where `Answer` is a {YES, NO} enum. After a previous pattern matching on `NO`, the narrowed
-    // subject type is `Self & ~Literal[NO]`. This type is *not* equivalent to `Literal[YES]`,
-    // because `Self` could also specialize to `Literal[NO]` or `Never`, making the intersection
-    // empty. However, if the current pattern matches on `YES`, the *next* narrowed subject type
-    // will be `Self & ~Literal[NO] & ~Literal[YES]`, which *is* always equivalent to `Never`. This
-    // means that subsequent patterns can never match. And we know that if we reach this point,
-    // the current pattern will have to match. We return `AlwaysTrue` here, since the call to
-    // `analyze_single_pattern_predicate_kind` below would return `Ambiguous` in this case.
-    // This check concerns the pattern itself. The cached type after the case also accounts for
-    // its guard and may therefore retain values matched by the pattern.
     let next_narrowed_subject_ty = if predicate.guard(db).is_none() {
         type_narrowed_after_pattern(db, predicate, PatternSubjectExpansion::Expanded)
     } else {
@@ -570,8 +556,6 @@ fn analyze_pattern_predicate<'db>(db: &'db dyn Db, predicate: PatternPredicate<'
     );
 
     if truthiness == Truthiness::AlwaysTrue && predicate.guard(db).is_some() {
-        // Fall back to ambiguous, the guard might change the result.
-        // TODO: actually analyze guard truthiness
         Truthiness::Ambiguous
     } else {
         truthiness
@@ -644,8 +628,6 @@ fn analyze_non_terminal_calls_up_to_predicate<'db>(
         .into_iter()
         .all(|id| terminal_reachability(id).is_some())
     {
-        // No branch of this constraint can visit a statement-call predicate. If inferring
-        // the condition itself needs earlier calls, their own reachability walks warm them.
         return false;
     }
     let scope = predicate_scope(db, &predicates[root_predicate]);
@@ -662,8 +644,6 @@ fn analyze_non_terminal_calls_up_to_predicate<'db>(
     let call_predicates = non_terminal_call_predicates(db, scope);
     let call_count = call_predicates.partition_point(|predicate| *predicate <= root_predicate);
     let mut start = 0;
-    // Leave the incomplete final block demand-driven. Its reverse dependency chain is bounded by
-    // the block size, and every eagerly analyzed call remains behind a recoverable range query.
     let mut remaining = call_count / NON_TERMINAL_CALL_CHUNK_SIZE;
     while remaining > 0 {
         let level = remaining.ilog2();
@@ -824,8 +804,6 @@ fn is_reachability_checkpoint(
         return (call_index + 1).is_multiple_of(REACHABILITY_EVALUATION_CHUNK_SIZE);
     }
 
-    // Folding the adjacent bucket prevents regularly interleaved predicate kinds from always
-    // missing the same checkpoint positions.
     let index = predicate.index();
     let checkpoint_position = index ^ (index / CONTROL_FLOW_REACHABILITY_CHECKPOINT_INTERVAL);
     visited >= CONTROL_FLOW_REACHABILITY_CHECKPOINT_INTERVAL
@@ -892,7 +870,6 @@ fn evaluate_reachability_path<'db>(
 
     loop {
         let reachability = if seen.as_mut().is_some_and(|seen| !seen.insert(id)) {
-            // Every visited suffix already contributes to the conjunction.
             Truthiness::AlwaysTrue
         } else if let Some(reachability) = terminal_reachability(id) {
             reachability
@@ -906,8 +883,6 @@ fn evaluate_reachability_path<'db>(
                     Truthiness::Ambiguous => node.if_ambiguous(),
                     Truthiness::AlwaysFalse => node.if_false(),
                     Truthiness::Uninhabited => {
-                        // An uninhabited condition cannot take either branch. Retain only paths
-                        // that bypass the condition, which are represented in both branches.
                         pending.push(node.if_false());
                         seen.get_or_insert_with(FxHashSet::default);
                         node.if_true()
@@ -1240,8 +1215,6 @@ impl<'a, 'db> NarrowingProjector<'a, 'db> {
             _ => {}
         }
 
-        // Reachability gates can mention predicates that do not narrow this place.
-        // Avoid evaluating unrelated expressions, which can introduce inference cycles.
         if !self.predicate_narrowing_targets.contains_place(self.place) {
             return base_ty;
         }
@@ -1320,11 +1293,6 @@ impl<'a, 'db> NarrowingProjector<'a, 'db> {
             return node.if_true;
         }
 
-        // Find and absorb cofactors if we can. (See `ty_python_core::narrowing_constraints` for
-        // more details.)
-        // `if_uncertain` contributes to both cofactors. If either cofactor is already true,
-        // then the remaining cofactor can be lifted into `if_uncertain`, avoiding shapes like
-        // `A or (not A and B)`.
         let when_true = self.or(node.if_true, node.if_uncertain);
         let when_false = self.or(node.if_false, node.if_uncertain);
         if when_true == when_false {
@@ -1544,8 +1512,6 @@ impl<'a, 'db> NarrowingProjector<'a, 'db> {
                 }
                 Action::VisitBranches(id) => {
                     let node = self.constraints.get_interior_node(id);
-                    // This path bypasses the predicate. If it admits every value, the
-                    // conditional paths cannot narrow this place.
                     if self.projected_node(node.if_uncertain)
                         == ProjectedNarrowingNodeId::ALWAYS_TRUE
                     {
@@ -1591,8 +1557,6 @@ impl<'a, 'db> NarrowingProjector<'a, 'db> {
                     let if_true = self.projected_node(node.if_true);
                     let if_uncertain = self.projected_node(node.if_uncertain);
                     let if_false = self.projected_node(node.if_false);
-                    // If the bypass already covers both conditional branches, their
-                    // predicate cannot affect the projection.
                     if [if_true, if_false].into_iter().all(|branch| {
                         branch == ProjectedNarrowingNodeId::ALWAYS_FALSE || branch == if_uncertain
                     }) {
@@ -1602,9 +1566,6 @@ impl<'a, 'db> NarrowingProjector<'a, 'db> {
                     let (pos_constraint, neg_constraint) = self.predicate_constraints(node.atom);
 
                     let projected = if pos_constraint.is_none() && neg_constraint.is_none() {
-                        // This node represents `if_uncertain || (P && if_true) || (!P && if_false)`.
-                        // Since the predicate `P` cannot narrow this place, remove it while retaining only branches that `P` can take.
-                        // Including a statically unreachable branch could erase narrowing from the reachable branch.
                         match self.predicates.evaluate(self.db, self.env, node.atom) {
                             Truthiness::AlwaysTrue => self.or(if_true, if_uncertain),
                             Truthiness::AlwaysFalse => self.or(if_false, if_uncertain),
@@ -1674,8 +1635,6 @@ impl<'db> ProjectedNarrowingContext<'_, 'db> {
     ) -> Type<'db> {
         let db = self.db;
         if self.is_join(id) {
-            // Preserve replacement narrowing order at a join: evaluate the shared suffix once,
-            // then apply the constraints accumulated before the join to its narrowed type.
             let suffix_ty = self.narrow_join(id);
             return apply_accumulated_narrowing(db, self.env, suffix_ty, accumulated);
         }
@@ -1807,8 +1766,6 @@ fn analyze_single_pattern_predicate_kind<'db>(
                         pattern_binding_fallthrough_type(db, env, p, narrowed_subject_ty);
                     truthiness
                 })
-                // this is just a "max", but with a slight optimization:
-                // `AlwaysTrue` is the "greatest" possible element, so we short-circuit if we get there
                 .try_fold(Truthiness::AlwaysFalse, |acc, next| match (acc, next) {
                     (Truthiness::AlwaysTrue, _) | (_, Truthiness::AlwaysTrue) => {
                         ControlFlow::Break(Truthiness::AlwaysTrue)
@@ -1860,8 +1817,6 @@ fn analyze_single_pattern_predicate_kind<'db>(
             }
         }
         PatternPredicateKind::Sequence(kind) => {
-            // Exact tuples are always eligible for sequence patterns. Avoid projecting their
-            // element types into a generic tuple specialization just to establish this fact.
             let is_exact_tuple = |ty: Type<'db>| ty.exact_tuple_instance_spec(db).is_some();
             let is_tuple_subject = match subject_ty {
                 Type::Union(union) => union.elements(db).iter().copied().all(is_exact_tuple),
@@ -1907,10 +1862,6 @@ fn analyze_single_pattern_predicate_kind<'db>(
     returns(copy),
     cycle_initial = |_, _, _| Truthiness::AlwaysTrue,
     cycle_fn = |_, cycle: &salsa::Cycle, previous: &Truthiness, result: Truthiness, _| {
-        // A call can determine whether its own target is reachable, as with `sys.exit()` before
-        // `import sys` in a loop. Expression inference can lose its previous result when it stops
-        // being a cycle head, so widen the predicate itself to ensure convergence. Delay widening
-        // to allow the optimistic initial value to resolve to a terminal call.
         if cycle.iteration() > crate::TAINTED_CYCLES {
             previous.or(result)
         } else {
@@ -1922,12 +1873,6 @@ fn analyze_single_pattern_predicate_kind<'db>(
 fn analyze_non_terminal_call<'db>(db: &'db dyn Db, call: CallableAndCallExpr<'db>) -> Truthiness {
     let callable = call.callable(db);
     let env = ProgramEnvironment::from_scope(callable.scope(db));
-    // We first infer just the type of the callable. In the most likely case that the function is
-    // not marked with `NoReturn`, or that it always returns `NoReturn`, doing so allows us to avoid
-    // the more expensive work of inferring the entire call expression (which could involve
-    // inferring argument types to possibly run the overload selection algorithm). Avoiding this on
-    // the happy path is important because these constraints can be very large in number, since we
-    // add them on all statement-level function calls.
     let ty = infer_same_file_expression_type(db, callable, TypeContext::default());
 
     is_non_terminal_call(db, &env, ty, call.is_await(db), || {
@@ -1944,11 +1889,6 @@ pub(crate) fn is_non_terminal_call<'db>(
     is_await: bool,
     call_type: impl FnOnce() -> Type<'db>,
 ) -> Truthiness {
-    // Short-circuit for well-known types that are known not to return `Never` when called. Without
-    // the short-circuit, we've seen that threads keep blocking each other because they all try to
-    // acquire Salsa's `CallableType` lock that ensures each type is only interned once. The lock is
-    // so heavily congested because there are only very few dynamic types, in which case Salsa's
-    // sharding the locks by value doesn't help much. See <https://github.com/astral-sh/ty/issues/968>.
     if matches!(ty, Type::Dynamic(_)) {
         return Truthiness::AlwaysTrue;
     }
@@ -2404,8 +2344,6 @@ class TargetB:
             .0
             .to_scope_id(&db, program_file);
 
-        // Enter the range directly so it becomes the cycle head when inferring `other.target`
-        // reaches the other module and then re-enters this scope.
         analyze_non_terminal_call_range(&db, setup_scope, 0, 0);
         Ok(())
     }
@@ -2489,8 +2427,6 @@ class TargetB:
                     .unwrap();
                 let predicates: Predicates = std::iter::repeat_n(*predicate, DEPTH).collect();
 
-                // Build `p99_999 or ... or p0`. Each predicate concerns `flag`, so projecting the
-                // graph for `x` removes every interior node and leaves `ALWAYS_TRUE`.
                 let nodes = (0..DEPTH)
                     .map(|index| InteriorNode {
                         atom: ScopedPredicateId::new(index),

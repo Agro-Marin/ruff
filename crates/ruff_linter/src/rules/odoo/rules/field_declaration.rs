@@ -642,8 +642,6 @@ fn check_layout(checker: &Checker, name: &str, call: &ast::ExprCall) {
 
 fn check_dead(checker: &Checker, name: &str, call: &ast::ExprCall) {
     let kind = field_type(call);
-    // A declaration that states no `compute=` may be extending a stored one from
-    // another module, so `store=` is judged only beside the compute it belongs to.
     let stored = truthy(call, "store");
     let computed_here = keyword(call, "compute").is_some();
     let mut problems = Vec::new();
@@ -693,7 +691,6 @@ pub(crate) fn field_declaration(checker: &Checker, class: &ast::StmtClassDef) {
     if is_test_path(checker.path()) {
         return;
     }
-    // Each name bound in the class body, where, and whether that binding was a field.
     let mut bound: FxHashMap<&str, (TextSize, bool)> = FxHashMap::default();
     for statement in &class.body {
         let Some((targets, value)) = bound_names(statement) else {

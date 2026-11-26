@@ -58,7 +58,6 @@ impl AlwaysFixableViolation for DuplicateClassFieldDefinition {
 pub(crate) fn duplicate_class_field_definition(checker: &Checker, body: &[Stmt]) {
     let mut seen_targets: FxHashSet<&str> = FxHashSet::default();
     for stmt in body {
-        // Extract the property name from the assignment statement.
         let (target, value) = match stmt {
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
                 let [Expr::Name(target)] = targets.as_slice() else {
@@ -77,7 +76,6 @@ pub(crate) fn duplicate_class_field_definition(checker: &Checker, body: &[Stmt])
             _ => continue,
         };
 
-        // If this is an unrolled augmented assignment (e.g., `x = x + 1`), skip it.
         if let Some(value) = value
             && any_over_expr(value, |expr| {
                 expr.as_name_expr().is_some_and(|name| name.id == target.id)

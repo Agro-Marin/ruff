@@ -76,16 +76,8 @@ fn documentation_fragment_trim(docs: &str) -> String {
 ///
 /// See: <https://peps.python.org/pep-0257/#handling-docstring-indentation>
 fn documentation_trim(docs: &str) -> String {
-    // First apply tab expansion as we don't want tabs in our output. Python advances tabs to the
-    // next eight-column tab stop.
-    //
-    // We also trim off all trailing whitespace here to eliminate trailing newlines so we
-    // don't need to handle trailing blank lines later. We can't trim away leading
-    // whitespace yet, because we need to identify the first line and handle it specially.
     let expanded = expand_tabs(docs.trim_end());
 
-    // Compute the minimum indention of all non-empty non-first lines
-    // and statistics about leading blank lines to help trim them later.
     let mut min_indent = usize::MAX;
     let mut leading_blank_lines = 0;
     let mut is_first_line = true;
@@ -94,14 +86,11 @@ fn documentation_trim(docs: &str) -> String {
         let line = line_obj.as_str();
         let indent = leading_indentation(line);
         if indent == line {
-            // Blank line
             if !found_non_blank_line {
                 leading_blank_lines += 1;
             }
         } else {
-            // Non-blank line
             found_non_blank_line = true;
-            // First line doesn't affect min-indent
             if !is_first_line {
                 min_indent = min_indent.min(indent.len());
             }
@@ -112,8 +101,6 @@ fn documentation_trim(docs: &str) -> String {
     let mut output = String::new();
     let mut lines = expanded.universal_newlines();
 
-    // If the first line is non-blank then we need to include it *fully* trimmed
-    // As its indentation is ignored (effectively treated as having min_indent).
     if leading_blank_lines == 0 {
         if let Some(first_line) = lines.next() {
             output.push_str(first_line.as_str().trim_whitespace());
@@ -121,10 +108,6 @@ fn documentation_trim(docs: &str) -> String {
         }
     }
 
-    // For the rest of the lines remove the minimum indent (if possible) and trailing whitespace.
-    //
-    // We computed min_indent by only counting python whitespace, and all python whitespace
-    // is ascii, so we can just remove that many bytes from the front.
     for line_obj in lines.skip(leading_blank_lines) {
         let line = line_obj.as_str();
         let trimmed_line = line[min_indent.min(line.len())..].trim_whitespace_end();
@@ -144,9 +127,6 @@ mod tests {
 
     fn bind_docstring_snapshot_filters() -> impl Drop {
         let mut settings = Settings::clone_current();
-        // Markdown hard breaks are encoded as trailing spaces (`"  \n"`), but many editors
-        // trim trailing whitespace in string literals. Replace them with `<HB>` in snapshots
-        // so tests are stable and the expected output stays readable.
         settings.add_filter("  \n", "<HB>\n");
         settings.bind_to_scope()
     }
@@ -168,7 +148,6 @@ Summary.
         );
     }
 
-    // A nice doctest that is surrounded by prose
     #[test]
     fn dunder_escape() {
         let _snap = bind_docstring_snapshot_filters();
@@ -251,8 +230,6 @@ Summary.
         "#);
     }
 
-    // A literal block where the `::` is flush with the paragraph
-    // and should become `:`
     #[test]
     fn literal_colon() {
         let _snap = bind_docstring_snapshot_filters();
@@ -290,8 +267,6 @@ Summary.
         "#);
     }
 
-    // A literal block where the `::`  with the paragraph
-    // and should be erased
     #[test]
     fn literal_space() {
         let _snap = bind_docstring_snapshot_filters();
@@ -329,8 +304,6 @@ Summary.
         "#);
     }
 
-    // A literal block where the `::` is floating
-    // and the whole line should be deleted
     #[test]
     fn literal_own_line() {
         let _snap = bind_docstring_snapshot_filters();
@@ -370,8 +343,6 @@ Summary.
         "#);
     }
 
-    // A literal block where the blank lines are missing
-    // and I have no idea what Should happen but let's record what Does
     #[test]
     fn literal_squeezed() {
         let _snap = bind_docstring_snapshot_filters();
@@ -406,8 +377,6 @@ Summary.
         "#);
     }
 
-    // A literal block where the docstring just ends
-    // and we should tidy up
     #[test]
     fn literal_flush() {
         let _snap = bind_docstring_snapshot_filters();
@@ -440,8 +409,6 @@ Summary.
         "#);
     }
 
-    // `warning` and several other directives are special languages that should actually
-    // still be shown as text and not ```code```.
     #[test]
     fn warning_block() {
         let _snap = bind_docstring_snapshot_filters();
@@ -480,8 +447,6 @@ Summary.
         "#);
     }
 
-    // `warning` and several other directives are special languages that should actually
-    // still be shown as text and not ```code```.
     #[test]
     fn version_blocks() {
         let _snap = bind_docstring_snapshot_filters();
@@ -520,8 +485,6 @@ Summary.
         ");
     }
 
-    // I don't know if this is valid syntax but we preserve stuff before non-code blocks like
-    // `..deprecated ::`
     #[test]
     fn deprecated_prefix_gunk() {
         let _snap = bind_docstring_snapshot_filters();
@@ -538,7 +501,6 @@ Summary.
         ");
     }
 
-    // We should not parse the contents of a markdown codefence
     #[test]
     fn explicit_markdown_block_with_ps1_contents() {
         let _snap = bind_docstring_snapshot_filters();
@@ -567,7 +529,6 @@ Summary.
         ");
     }
 
-    // We should not parse the contents of a markdown codefence
     #[test]
     fn explicit_markdown_block_with_underscore_contents_tick() {
         let _snap = bind_docstring_snapshot_filters();
@@ -594,7 +555,6 @@ Summary.
         ");
     }
 
-    // `~~~` also starts a markdown codefence
     #[test]
     fn explicit_markdown_block_with_underscore_contents_tilde() {
         let _snap = bind_docstring_snapshot_filters();
@@ -621,9 +581,6 @@ Summary.
         ");
     }
 
-    // If an explicit markdown codefence is indented, eat the indent so it renders
-    // "the way the user expects" (as written this is basically invalid markdown,
-    // but it's nice if we handle it anyway because it makes visual sense).
     #[test]
     fn explicit_markdown_block_with_indent_tick() {
         let _snap = bind_docstring_snapshot_filters();
@@ -657,9 +614,6 @@ Summary.
         ");
     }
 
-    // If an explicit markdown codefence is indented, eat the indent so it renders
-    // "the way the user expects" (as written this is basically invalid markdown,
-    // but it's nice if we handle it anyway because it makes visual sense).
     #[test]
     fn explicit_markdown_block_with_indent_tilde() {
         let _snap = bind_docstring_snapshot_filters();
@@ -693,7 +647,6 @@ Summary.
         ");
     }
 
-    // What do we do when we hit the end of the docstring with an unclosed markdown block?
     #[test]
     fn explicit_markdown_block_with_unclosed_fence_tick() {
         let _snap = bind_docstring_snapshot_filters();
@@ -715,7 +668,6 @@ Summary.
         ");
     }
 
-    // What do we do when we hit the end of the docstring with an unclosed markdown block?
     #[test]
     fn explicit_markdown_block_with_unclosed_fence_tilde() {
         let _snap = bind_docstring_snapshot_filters();
@@ -737,8 +689,6 @@ Summary.
         ");
     }
 
-    // Demonstration of where we're unreasonably lax about markdown block parsing.
-    // It's fine to break this test, it's not particularly intentional behaviour.
     #[test]
     fn explicit_markdown_block_messy_corners_tick() {
         let _snap = bind_docstring_snapshot_filters();
@@ -762,8 +712,6 @@ Summary.
         ");
     }
 
-    // Demonstration of where we're unreasonably lax about markdown block parsing.
-    // It's fine to break this test, it's not particularly intentional behaviour.
     #[test]
     fn explicit_markdown_block_messy_corners_tilde() {
         let _snap = bind_docstring_snapshot_filters();
@@ -786,7 +734,6 @@ Summary.
         ");
     }
 
-    // `.. code::` is a literal block and the `.. code::` should be deleted
     #[test]
     fn code_block() {
         let _snap = bind_docstring_snapshot_filters();
@@ -813,7 +760,6 @@ Summary.
         "#);
     }
 
-    // `.. code:: rust` is a literal block with rust syntax highlighting
     #[test]
     fn code_block_lang() {
         let _snap = bind_docstring_snapshot_filters();
@@ -840,7 +786,6 @@ Summary.
         "#);
     }
 
-    // I don't know if this is valid syntax but we preserve stuff before `..code ::`
     #[test]
     fn code_block_prefix_gunk() {
         let _snap = bind_docstring_snapshot_filters();
@@ -859,7 +804,6 @@ Summary.
         ");
     }
 
-    // `.. asdgfhjkl-unknown::` is treated the same as `.. code::`
     #[test]
     fn unknown_block() {
         let _snap = bind_docstring_snapshot_filters();
@@ -886,7 +830,6 @@ Summary.
         "#);
     }
 
-    // `.. asdgfhjkl-unknown:: rust` is treated the same as `.. code:: rust`
     #[test]
     fn unknown_block_lang() {
         let _snap = bind_docstring_snapshot_filters();
@@ -913,7 +856,6 @@ Summary.
         "#);
     }
 
-    // A nice doctest that is surrounded by prose
     #[test]
     fn doctest_simple() {
         let _snap = bind_docstring_snapshot_filters();
@@ -943,7 +885,6 @@ Summary.
         ");
     }
 
-    // A nice doctest that is surrounded by prose with an indent
     #[test]
     fn doctest_simple_indent() {
         let _snap = bind_docstring_snapshot_filters();
@@ -973,7 +914,6 @@ Summary.
         ");
     }
 
-    // A doctest that has nothing around it
     #[test]
     fn doctest_flush() {
         let _snap = bind_docstring_snapshot_filters();
@@ -994,7 +934,6 @@ Summary.
         ");
     }
 
-    // A doctest embedded in a literal block (it's just a literal block)
     #[test]
     fn literal_doctest() {
         let _snap = bind_docstring_snapshot_filters();
@@ -1488,7 +1427,6 @@ Summary.
     #[test]
     fn test_numpy_style_with_tabs_and_mixed_indentation() {
         let _snap = bind_docstring_snapshot_filters();
-        // Using raw strings to avoid tab/space conversion issues in the test
         let docstring = "
         This is a function description.
 
@@ -1553,13 +1491,10 @@ Summary.
     #[test]
     fn test_universal_newlines() {
         let _snap = bind_docstring_snapshot_filters();
-        // Test with Windows-style line endings (\r\n)
         let docstring_windows = "This is a function description.\r\n\r\nArgs:\r\n    param1 (str): The first parameter\r\n    param2 (int): The second parameter\r\n";
 
-        // Test with old Mac-style line endings (\r)
         let docstring_mac = "This is a function description.\r\rArgs:\r    param1 (str): The first parameter\r    param2 (int): The second parameter\r";
 
-        // Test with Unix-style line endings (\n) - should work the same
         let docstring_unix = "This is a function description.\n\nArgs:\n    param1 (str): The first parameter\n    param2 (int): The second parameter\n";
 
         let docstring_windows = Docstring::new(docstring_windows.to_owned());
@@ -1604,10 +1539,6 @@ Summary.
         assert_eq!(docstring_unix.render(MarkupKind::Markdown), markdown);
     }
 
-    // Regression test: a doctest followed by a literal block with blank lines inside.
-    // Previously, in_doctest wasn't reset when ending a doctest, so a blank line inside
-    // a subsequent literal block would incorrectly end the literal block early.
-    // See: https://github.com/astral-sh/ty/issues/2497
     #[test]
     fn doctest_then_literal_block_with_blank_lines() {
         let _snap = bind_docstring_snapshot_filters();
@@ -1631,8 +1562,6 @@ Done.
             .to_owned(),
         );
 
-        // The blank line between foo() and bar() should be preserved inside the code block,
-        // NOT cause the code block to end early with bar() rendered as regular text.
         assert_snapshot!(docstring.render(MarkupKind::Markdown), @r#"
         Example:<HB>
         <HB>

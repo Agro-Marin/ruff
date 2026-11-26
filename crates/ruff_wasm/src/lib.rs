@@ -209,8 +209,6 @@ pub fn before_main() {
     }
 
     // Salsa uses the `inventory` crate, which registers global constructors that may need to be
-    // called explicitly on WASM. See <https://github.com/dtolnay/inventory/blob/master/src/lib.rs#L105>
-    // for details.
     unsafe {
         __wasm_call_ctors();
     }
@@ -223,12 +221,6 @@ pub fn before_main() {}
 pub fn run() {
     before_main();
 
-    // When the `console_error_panic_hook` feature is enabled, we can call the
-    // `set_panic_hook` function at least once during initialization, and then
-    // we will get better error messages if our code ever panics.
-    //
-    // For more details see
-    // https://github.com/rustwasm/console_error_panic_hook#readme
     #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
 }
@@ -299,7 +291,6 @@ impl Workspace {
         serde_wasm_bindgen::to_value(&Options {
             preview: Some(false),
 
-            // Propagate defaults.
             builtins: Some(Vec::default()),
 
             line_length: Some(LineLength::default()),
@@ -342,29 +333,23 @@ impl Workspace {
     pub fn check(&self, contents: &str) -> Result<JsValue, Error> {
         let source_type = PySourceType::default();
 
-        // TODO(dhruvmanila): Support Jupyter Notebooks
         let source_kind = SourceKind::Python {
             code: contents.to_string(),
             is_stub: source_type.is_stub(),
         };
 
-        // Use the unresolved version because we don't have a file path.
         let target_version = self.settings.linter.unresolved_target_version;
 
-        // Parse once.
         let options =
             ParseOptions::from(source_type).with_target_version(target_version.parser_version());
         let parsed = parse_unchecked(source_kind.source_code(), options)
             .try_into_module()
             .expect("`PySourceType` always parses to a `ModModule`.");
 
-        // Map row and column locations to byte slices (lazily).
         let locator = Locator::new(contents);
 
-        // Detect the current code style (lazily).
         let stylist = Stylist::from_tokens(parsed.tokens(), locator.contents());
 
-        // Extra indices from the code.
         let indexer = Indexer::from_tokens(parsed.tokens(), locator.contents());
 
         // Extract the `# noqa` and `# isort: skip` directives from the source.
@@ -382,7 +367,6 @@ impl Workspace {
             &self.settings.linter,
         );
 
-        // Generate checks.
         let diagnostics = check_path(
             Path::new("<filename>"),
             None,
@@ -538,7 +522,6 @@ impl<'a> ParsedModule<'a> {
     }
 
     fn format(&self, settings: &Settings) -> FormatResult<Formatted<PyFormatContext<'_>>> {
-        // TODO(konstin): Add an options for py/pyi to the UI (2/2)
         let options = settings
             .formatter
             .to_format_options(PySourceType::default(), self.source_code, None)

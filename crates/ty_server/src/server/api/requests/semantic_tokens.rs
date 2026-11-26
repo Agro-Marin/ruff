@@ -39,13 +39,6 @@ impl BackgroundDocumentRequestHandler for SemanticTokensRequestHandler {
             return Ok(None);
         };
 
-        // If this document is a notebook cell, limit the highlighting range
-        // to the lines of this cell (instead of highlighting the entire notebook).
-        // Not only avoids this unnecessary work, this is also required
-        // because all ranges in the response must be within this **this document**.
-        //
-        // A cell without a range in the notebook's Python source, such as one that uses a cell
-        // magic, has nothing to highlight.
         let cell_range = if snapshot.document().is_cell() {
             let Some(range) = cell_range(db, file, snapshot.document().uri()) else {
                 return Ok(None);

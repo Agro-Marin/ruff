@@ -25,7 +25,6 @@ fn main() -> Result<()> {
             );
         }
         let source = read_from_stdin()?;
-        // It seems reasonable to give this a dummy name
         let formatted = format_and_debug_print(&source, &cli, Path::new("stdin.py"))?;
         if cli.check {
             if formatted == source {

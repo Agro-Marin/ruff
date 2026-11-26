@@ -25,7 +25,6 @@ fn get_docs(attrs: &[Attribute]) -> syn::Result<String> {
         if attr.path().is_ident("doc") {
             if let Some(lit) = parse_attr(["doc"], attr) {
                 let value = lit.value();
-                // `/// ` adds
                 let line = value.strip_prefix(' ').unwrap_or(&value);
                 explanation.push_str(line);
                 explanation.push('\n');

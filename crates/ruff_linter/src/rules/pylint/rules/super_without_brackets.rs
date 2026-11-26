@@ -72,7 +72,6 @@ impl AlwaysFixableViolation for SuperWithoutBrackets {
 
 /// PLW0245
 pub(crate) fn super_without_brackets(checker: &Checker, func: &Expr) {
-    // The call must be to `super` (without parentheses).
     let Expr::Attribute(ast::ExprAttribute { value, .. }) = func else {
         return;
     };
@@ -91,7 +90,6 @@ pub(crate) fn super_without_brackets(checker: &Checker, func: &Expr) {
 
     let scope = checker.semantic().current_scope();
 
-    // The current scope _must_ be a function.
     let ScopeKind::Function(function_def) = scope.kind else {
         return;
     };
@@ -100,7 +98,6 @@ pub(crate) fn super_without_brackets(checker: &Checker, func: &Expr) {
         return;
     };
 
-    // The function must be a method, class method, or static method.
     let classification = function_type::classify(
         &function_def.name,
         &function_def.decorator_list,

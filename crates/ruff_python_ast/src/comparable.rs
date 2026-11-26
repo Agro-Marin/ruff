@@ -652,12 +652,6 @@ impl<'a> ComparableInterpolatedString<'a> {
                         return Some(element);
                     }
                     ComparableStringElement::Literal(mut text) => {
-                        // In `f"{x}a" "b"`, after the interpolation, `raw.next()`
-                        // returns `Literal(Cow::Borrowed("a"))` by value. The pattern
-                        // moves the `Cow` into the mutable local variable `text`.
-                        // Its `&str` points into the AST. `text += next` appends "b" by
-                        // replacing the local `Cow` with an owned `String` containing "ab".
-                        // In `f"{x}ab"`, "ab" stays borrowed and compares equal by content.
                         while let Some(ComparableStringElement::Literal(next)) =
                             raw.next_if(|next| matches!(next, ComparableStringElement::Literal(_)))
                         {
@@ -1301,8 +1295,6 @@ fn string_literal_fields(node: &ast::ExprStringLiteral) -> &str {
         range: _,
         node_index: _,
     } = node;
-    // `"a" "b"` and `"ab"` both yield "ab". The AST caches the joined text
-    // for the first spelling and lends the single literal's text for the second.
     value.to_str()
 }
 
@@ -1460,12 +1452,6 @@ impl PartialEq for ComparableBytes<'_> {
             return left.as_slice() == right.as_slice();
         }
 
-        // Implicit concatenation makes `b'ab' b'c'` equal to `b'a' b'bc'`.
-        // Compare slices up to the next part boundary on either side so we can
-        // compare the full byte sequences without allocating a joined buffer.
-        // In this example, matching `a` exhausts the first right part. Matching
-        // `b` then exhausts the first left part, leaving `c` in `right` for
-        // the next left part.
         let mut right_parts = other
             .0
             .iter()
@@ -1489,8 +1475,6 @@ impl PartialEq for ComparableBytes<'_> {
                 right = &right[len..];
             }
         }
-        // All left bytes matched. Extra right bytes can be in the current
-        // slice or in a later part. The iterator skips empty parts.
         right.is_empty() && right_parts.next().is_none()
     }
 }
@@ -1509,8 +1493,6 @@ impl Eq for ComparableBytes<'_> {}
 
 impl Hash for ComparableBytes<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // `b'a' b'b'` and `b'ab'` compare equal, so hash both as the slice `b"ab"`.
-        // A hasher can give two one-byte writes a different result from one two-byte write.
         Cow::from(self.0).hash(state);
     }
 }
@@ -2200,7 +2182,6 @@ impl HashableReal {
     }
 }
 
-// `2^64`, the exclusive upper bound for values representable as a `u64`.
 const U64_EXCLUSIVE_UPPER_BOUND: f64 = 18_446_744_073_709_551_616.0;
 
 impl<'a> From<&'a Expr> for HashableExpr<'a> {

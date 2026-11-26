@@ -94,9 +94,6 @@ pub(crate) fn f_string_missing_placeholders(checker: &Checker, expr: &ast::ExprF
         let first_char = checker
             .locator()
             .slice(TextRange::at(f_string.start(), TextSize::new(1)));
-        // f"..."  => f_position = 0
-        // fr"..." => f_position = 0
-        // rf"..." => f_position = 1
         let f_position = u32::from(!(first_char == "f" || first_char == "F"));
         let prefix_range = TextRange::at(
             f_string.start() + TextSize::new(f_position),
@@ -127,13 +124,9 @@ fn convert_f_string_to_regular_string(
     node_range: TextRange,
     locator: &Locator,
 ) -> Edit {
-    // Extract the f-string body.
     let mut content =
         unescape_f_string(locator.slice(TextRange::new(prefix_range.end(), node_range.end())));
 
-    // If the preceding character is equivalent to the quote character, insert a space to avoid a
-    // syntax error. For example, when removing the `f` prefix in `""f""`, rewrite to `"" ""`
-    // instead of `""""`.
     if locator
         .slice(TextRange::up_to(prefix_range.start()))
         .chars()

@@ -54,8 +54,6 @@ pub(crate) fn list_all_modules<'db>(
                 stack.push(children);
             }
         }
-        // Reach local stub overrides through unresolved names;
-        // see the example on `ModuleListing::stub_override_listings`.
         stack.extend(listing.stub_override_listings(db, resolver_environment));
     }
     modules.sort_by_cached_key(|module| module.name(db));
@@ -78,8 +76,6 @@ pub(crate) fn list_submodules<'db>(db: &'db dyn Db, module: Module<'db>) -> Modu
     let resolver_environment = module.resolver_environment(db);
     let context = ResolverContext::new(db, resolver_environment, ModuleResolveMode::Typing);
 
-    // Desperate resolution can use a search path absent from the configuration.
-    // Preserve that path when listing the module's submodules.
     let paths = match module.search_path(db) {
         Some(path)
             if !search_paths(db, resolver_environment, ModuleResolveMode::Typing)
@@ -144,8 +140,6 @@ impl<'a, 'db> ModuleSearchCursor<'a, 'db> {
     ) -> Option<Self> {
         match paths {
             RootSearchPaths::Configured => {
-                // For a search under a configured root path, we can reload search
-                // state from Salsa.
                 let key = ModuleNameIngredient::new(
                     context.db,
                     module_name_prefix,
@@ -155,8 +149,6 @@ impl<'a, 'db> ModuleSearchCursor<'a, 'db> {
                 Self::restore(context, key)
             }
             RootSearchPaths::Supplied(paths) => {
-                // Searches under supplied paths are not cached, so we have to
-                // start from the root and advance the cursor to the right position.
                 let mut cursor = Self::with_supplied_search_paths(context, paths);
                 for component in module_name_prefix.components() {
                     cursor = cursor.advance(component)?;
@@ -244,12 +236,9 @@ impl<'a, 'db> ModuleSearchCursor<'a, 'db> {
                     }
                 }
 
-                // A resolved module takes precedence over unresolved stub override names.
                 continue;
             }
 
-            // The full search found no module, so any remaining candidates belong
-            // to the stub override search (see [`ModuleListing::unresolved_names`]).
             unresolved_names.push(name);
         }
 
@@ -352,7 +341,6 @@ impl<'a, 'db> ModuleSearchCursor<'a, 'db> {
         let name = entry.file_name()?;
         let at_search_root = self.prefix().is_none();
 
-        // Below search roots, initializers define the parent package.
         if !at_search_root && matches!(name, "__init__.py" | "__init__.pyi") {
             return None;
         }
@@ -363,19 +351,15 @@ impl<'a, 'db> ModuleSearchCursor<'a, 'db> {
         };
         let name = match entry.file_type() {
             FileType::Directory => name,
-            // A symlink may name either a Python file or a directory.
             FileType::Symlink => python_stem().unwrap_or(name),
-            // Reject files without a Python source or stub extension.
             FileType::File => python_stem()?,
         };
         let name = if at_search_root {
-            // Strip the suffix that identifies a top-level stub package.
             name.strip_suffix("-stubs").unwrap_or(name)
         } else {
             name
         };
 
-        // Reject invalid Python identifiers and keywords.
         is_identifier(name).then_some(name)
     }
 
@@ -476,7 +460,6 @@ fn module_search_snapshot<'db>(
     let context = ResolverContext::new(db, name.resolver_environment(db), name.mode(db));
     let module_name = name.name(db);
 
-    // Retrieve a cursor positioned just before the leaf of the given module name.
     let cursor = match module_name.parent() {
         Some(parent_name) => ModuleSearchCursor::at_module_name_prefix(
             &context,
@@ -486,7 +469,6 @@ fn module_search_snapshot<'db>(
         None => ModuleSearchCursor::with_configured_search_paths(&context),
     };
 
-    // Advance the cursor through the leaf.
     let cursor = cursor.advance(module_name.last_component())?;
 
     cursor.snapshot()
@@ -618,7 +600,6 @@ impl<'db> PrefixResolver<'db> {
         }
     }
 
-    // Resolves a terminal component of a module name.
     fn resolve_child(
         &self,
         context: &ResolverContext<'db>,
@@ -741,7 +722,6 @@ impl<'db> TypingModeResolver<'db> {
             },
         };
 
-        // Stop if neither search phase has candidates for this module name prefix.
         if resolver.stub_override_candidates.is_empty()
             && resolver.full_search_candidates(context).is_empty()
         {
@@ -800,8 +780,6 @@ impl<'db> TypingModeResolver<'db> {
             true,
         );
 
-        // Advance the second-phase candidates if already computed.
-        // Otherwise, defer that search while the first phase may still find a stub override.
         let full_search_candidates = self.full_search_candidates.get().map(|candidates| {
             advance_candidates(
                 context,
@@ -821,7 +799,6 @@ impl<'db> TypingModeResolver<'db> {
             full_search_candidates: full_search_candidates.map_or_default(OnceCell::from),
         };
 
-        // Stop if neither search phase has candidates for this module name prefix.
         if resolver.stub_override_candidates.is_empty()
             && resolver.full_search_candidates(context).is_empty()
         {
@@ -838,14 +815,10 @@ impl<'db> TypingModeResolver<'db> {
     ) -> Option<ResolvedNames<'db>> {
         let name = full_module_name(Some(&self.prefix), component_name)?;
 
-        // First phase: attempt to resolve the child through a stub override in extra paths.
         let stub_override = advance_candidates(
             context,
             self.stub_override_candidates.clone(),
             name.last_component(),
-            // When resolving `acme.tools`, the stub override search may have entered `acme`
-            // through an ordinary package's `acme/__init__.py`. The requested child must now
-            // come from `tools.pyi` or `tools/__init__.pyi`, not a source (`.py`) file.
             ComponentFileFilter::StubOnly,
             false,
         );
@@ -853,7 +826,6 @@ impl<'db> TypingModeResolver<'db> {
             return Some(stub_override);
         }
 
-        // Second phase: resolve the child using the full search candidates.
         let candidates = advance_candidates(
             context,
             self.full_search_candidates(context).clone(),
@@ -880,9 +852,6 @@ impl<'db> TypingModeResolver<'db> {
             let (_, remaining_stub_package_paths) =
                 stub_package_index(context.db, context.resolver_environment).split_by_extra_paths();
 
-            // Combine candidates across all search paths before traversing the
-            // module name prefix, so that an ordinary package in one search path
-            // can shadow a namespace portion in another.
             let mut candidates = self
                 .root_candidates_from_extra_paths
                 .as_deref()
@@ -1008,9 +977,6 @@ impl<'db> RootSearchPaths<'db> {
                 name.as_str(),
             );
 
-        // Typing mode requires us to consider stub-only packages (such as the package named
-        // `acme-stubs`, which only contains `.pyi` files) when resolving a module name
-        // (e.g., the name `acme`), so we must select all stub package paths here.
         let stub_packages = context.mode.is_typing().then(|| match self {
             Self::Configured => {
                 Cow::Borrowed(stub_package_index(context.db, context.resolver_environment))
@@ -1021,8 +987,6 @@ impl<'db> RootSearchPaths<'db> {
             )),
         });
 
-        // Runtime resolution ignores stub packages, so we can pass the default value for stub
-        // package paths (i.e., no stub package paths at all).
         let stub_paths = stub_packages.as_ref().map_or_default(|index| index.all());
 
         let candidates = discover_roots(
@@ -1081,7 +1045,6 @@ fn discover_roots<'db, 'a>(
         cur_candidates.extend(stub_paths.before_stdlib.iter().filter_map(|search_path| {
             resolve_stub_package_in_search_path(context, search_path, stub_name)
         }));
-        // Defer file probes after stdlib until we know that stdlib does not win.
         pending_stub_paths.extend(stub_paths.after_stdlib.iter().filter(|search_path| {
             ModuleDirectory::new(context, search_path.to_module_path(), Some(true))
                 .may_contain_name(stub_name)
@@ -1089,18 +1052,11 @@ fn discover_roots<'db, 'a>(
     }
 
     for search_path in search_paths {
-        // When a builtin module is imported, standard module resolution is bypassed:
-        // the module name always resolves to the stdlib module,
-        // even if there's a module of the same name in the first-party root
-        // (which would normally result in the stdlib module being overridden).
-        // TODO: offer a diagnostic if there is a first-party module of the same name
         if is_non_shadowable && !search_path.is_standard_library() {
             continue;
         }
 
         let is_stdlib = search_path.is_standard_library();
-        // A terminal candidate can stop the search unless a matching post-stdlib stub package
-        // could still override it. A terminal stdlib candidate always stops the search.
         let can_stop = is_stdlib || pending_stub_paths.is_empty();
         let mut candidate = ModuleResolutionCandidate::root(context, search_path);
         let resolved = resolve_component(
@@ -1114,14 +1070,10 @@ fn discover_roots<'db, 'a>(
         if resolved {
             cur_candidates.push(candidate);
         }
-        // A terminal candidate shadows all later search paths. Keep earlier candidates;
-        // normalization may still discard namespace portions shadowed by this candidate.
         if terminal && can_stop {
             break;
         }
 
-        // Reaching this point for stdlib means that it did not provide a terminal candidate.
-        // The deferred post-stdlib stub packages are therefore eligible, so resolve them now.
         if is_stdlib && let Some(stub_name) = &stub_name {
             cur_candidates.extend(pending_stub_paths.drain(..).filter_map(|search_path| {
                 resolve_stub_package_in_search_path(context, search_path, stub_name)
@@ -1163,8 +1115,6 @@ fn advance_candidates<'db>(
 
         let resolved = resolve_component(context, candidate, component_name, filter).is_ok();
 
-        // A terminal candidate shadows every lower-priority candidate, even if resolving
-        // this component fails. Higher-priority candidates remain in play.
         remaining_are_shadowed = remaining > 0 && candidate.missing_submodule_is_terminal(context);
 
         resolved
@@ -1272,8 +1222,6 @@ mod tests {
             .advance("acme")
             .expect("parent package exists");
 
-        // Advance to the nested package before and after a sibling lookup requires
-        // the parent's second-phase search across all configured paths.
         let tools_before = acme.advance("tools").expect("nested package exists");
         assert_resolves_to(&db, &acme, "runtime", "/src/acme/runtime.py");
         let tools_after = acme.advance("tools").expect("nested package exists");
@@ -1290,7 +1238,6 @@ mod tests {
             .with_src_files(&[("leaf.py", ""), ("sys.py", "")])
             .build()
             .db;
-        // A local file cannot supply a protected name, even when typeshed omits it.
         ListingCase::root().expect_module("leaf").assert(&db);
     }
 
@@ -1316,9 +1263,7 @@ mod tests {
         let db = TestCaseBuilder::new()
             .with_src_files(&[
                 ("acme/package/__init__.py", ""),
-                // The regular package excludes children from the other namespace portion.
                 ("acme/package/local.py", ""),
-                // A file module blocks descendants from a competing namespace directory.
                 ("acme/module.py", ""),
             ])
             .with_site_packages_files(&[
@@ -1426,11 +1371,9 @@ mod tests {
             &FallibleStrategy,
         )?);
 
-        // The ordinary namespace portion supplies names, but resolution can select an alias.
         ListingCase::for_name("acme")
             .expect_modules(&["acme.shared", "acme.visible"])
             .assert(&db);
-        // An initializer symlink does not prevent traversal of its containing directory.
         ListingCase::for_name("regular.nested")
             .expect_module("regular.nested.child")
             .assert(&db);

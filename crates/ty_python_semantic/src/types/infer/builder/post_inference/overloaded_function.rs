@@ -41,9 +41,6 @@ pub(crate) fn check_overloaded_function<'db>(
     seen_overloaded_places: &mut FxHashSet<ScopedPlaceId>,
     seen_public_functions: &mut FxHashSet<FunctionType<'db>>,
 ) {
-    // Collect all the unique overloaded function places in this scope. This requires a set
-    // because an overloaded function uses the same place for each of the overloads and the
-    // implementation.
     let Type::FunctionLiteral(function) = ty else {
         return;
     };
@@ -52,8 +49,6 @@ pub(crate) fn check_overloaded_function<'db>(
     let env = context.program_environment();
 
     if function.file(db) != context.file() {
-        // If the function is not in this file, we don't need to check it.
-        // https://github.com/astral-sh/ruff/pull/17609#issuecomment-2839445740
         return;
     }
 
@@ -83,17 +78,12 @@ pub(crate) fn check_overloaded_function<'db>(
     };
 
     if !function.contains_definition(db, definition) {
-        // The public end-of-scope binding for this place can be a different overloaded function
-        // value assigned to the same name. In that case, the current local overload definition is
-        // shadowed, and checking the public function here would report against the wrong function.
         return;
     }
 
-    // Only mark the place as checked once we know this definition belongs to the public function.
     seen_overloaded_places.insert(place);
 
     if !seen_public_functions.insert(function) {
-        // We have already checked this overloaded function as a public function, so we can skip it.
         return;
     }
 
@@ -118,7 +108,6 @@ pub(crate) fn check_overloaded_function<'db>(
         );
     }
 
-    // Check that the overloaded function has at least two overloads
     if let [single_overload] = overloads {
         let function_node = single_overload.node(db, context.file(), context.module());
         if let Some(builder) = context.report_lint(&SINGLE_OVERLOAD, &function_node.name) {
@@ -135,9 +124,6 @@ pub(crate) fn check_overloaded_function<'db>(
         }
     }
 
-    // Check that the overloaded function has an implementation. Overload definitions
-    // within stub files, protocols, and on abstract methods within abstract base classes
-    // are exempt from this check.
     if implementation.is_none() && !context.in_stub() {
         let mut implementation_required = true;
 
@@ -326,8 +312,6 @@ fn check_non_generic_overload_implementation_consistency<'db>(
         return;
     }
 
-    // TODO: Remove this temporary non-generic restriction once overload implementation consistency
-    // handles type-variable domains.
     if implementation_callables
         .iter()
         .flat_map(|callable| &callable.signatures(db).overloads)

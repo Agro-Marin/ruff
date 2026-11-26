@@ -81,7 +81,6 @@ pub(crate) fn never_union(checker: &Checker, expr: &Expr) {
     };
 
     match expr {
-        // Ex) `typing.NoReturn | int`
         Expr::BinOp(ExprBinOp {
             op: Operator::BitOr,
             left,
@@ -89,7 +88,6 @@ pub(crate) fn never_union(checker: &Checker, expr: &Expr) {
             range: _,
             node_index: _,
         }) => {
-            // Analyze the left-hand side of the `|` operator.
             if let Some(never_like) = NeverLike::from_expr(left, checker.semantic()) {
                 let mut diagnostic = checker.report_diagnostic(
                     NeverUnion {
@@ -98,11 +96,6 @@ pub(crate) fn never_union(checker: &Checker, expr: &Expr) {
                     },
                     left.range(),
                 );
-                // Avoid producing code that would raise an exception when
-                // `Never | None` would be fixed to `None | None`.
-                // Instead do not provide a fix. No action needed for `typing.Union`,
-                // as `Union[None, None]` is valid Python.
-                // See https://github.com/astral-sh/ruff/issues/14567.
                 if !is_pep604_union_with_bare_none(checker.semantic()) {
                     diagnostic.set_fix(Fix::applicable_edit(
                         Edit::range_replacement(
@@ -114,7 +107,6 @@ pub(crate) fn never_union(checker: &Checker, expr: &Expr) {
                 }
             }
 
-            // Analyze the right-hand side of the `|` operator.
             if let Some(never_like) = NeverLike::from_expr(right, checker.semantic()) {
                 let mut diagnostic = checker.report_diagnostic(
                     NeverUnion {
@@ -135,7 +127,6 @@ pub(crate) fn never_union(checker: &Checker, expr: &Expr) {
             }
         }
 
-        // Ex) `typing.Union[typing.NoReturn, int]`
         Expr::Subscript(ast::ExprSubscript {
             value,
             slice,
@@ -147,17 +138,14 @@ pub(crate) fn never_union(checker: &Checker, expr: &Expr) {
                 return;
             };
 
-            // Analyze each element of the `Union`.
             for elt in tuple_slice {
                 if let Some(never_like) = NeverLike::from_expr(elt, checker.semantic()) {
-                    // Collect the other elements of the `Union`.
                     let rest: Vec<Expr> = tuple_slice
                         .iter()
                         .filter(|other| *other != elt)
                         .cloned()
                         .collect();
 
-                    // Ignore, e.g., `typing.Union[typing.NoReturn]`.
                     if rest.is_empty() {
                         return;
                     }
@@ -173,7 +161,6 @@ pub(crate) fn never_union(checker: &Checker, expr: &Expr) {
                     diagnostic.set_fix(Fix::applicable_edit(
                         Edit::range_replacement(
                             if let [only] = rest.as_slice() {
-                                // Ex) `typing.Union[typing.NoReturn, int]` -> `int`
                                 let inner = checker.locator().slice(only);
                                 if checker.locator().contains_line_break(only.range()) {
                                     format!("({inner})")
@@ -181,7 +168,6 @@ pub(crate) fn never_union(checker: &Checker, expr: &Expr) {
                                     inner.to_string()
                                 }
                             } else {
-                                // Ex) `typing.Union[typing.NoReturn, int, str]` -> `typing.Union[int, str]`
                                 checker
                                     .generator()
                                     .expr(&Expr::Subscript(ast::ExprSubscript {

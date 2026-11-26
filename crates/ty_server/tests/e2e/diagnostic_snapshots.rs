@@ -14,9 +14,6 @@ pub(crate) fn condensed_document_diagnostic_snapshot(report: DocumentDiagnosticR
             condensed_full_document_diagnostic_report(full.full_document_diagnostic_report)
                 .join("\n")
         }
-        // NOTE: It might be worth providing more details for these
-        // cases, but I don't think there's currently a use case for
-        // it.
         DocumentDiagnosticReport::RelatedUnchangedDocumentDiagnosticReport(_) => {
             "UNCHANGED".to_string()
         }

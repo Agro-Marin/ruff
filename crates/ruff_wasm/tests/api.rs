@@ -268,8 +268,6 @@ fn optional_fields_serialize_as_null() {
     let annotation = annotations.get(0);
     assert!(property(&annotation, "message").is_null());
 
-    // Ruff currently gives every fix a help message and every annotation a source location.
-    // Round-trip explicit nulls to cover the nullable WASM contract for those fields anyway.
     set_property(&fix, "message", &JsValue::NULL);
     set_property(&annotation, "location", &JsValue::NULL);
     let messages: Vec<ExpandedMessage> = serde_wasm_bindgen::from_value(output).unwrap();

@@ -47,9 +47,7 @@ def markdown_format_result(result: Result) -> str:
     if total_lines_removed == 0 and total_lines_added == 0 and error_count == 0:
         return "\u2705 ecosystem check detected no format changes."
 
-    # Summarize the total changes
     if total_lines_added == 0 and total_lines_added == 0:
-        # Only errors
         s = "s" if error_count != 1 else ""
         lines.append(
             f"\u2139\ufe0f ecosystem check **encountered format errors**. (no format changes; {error_count} project error{s})"
@@ -77,10 +75,9 @@ def markdown_format_result(result: Result) -> str:
 
     lines.append("")
 
-    # Then per-project changes
     for (project, comparison), patch_set in zip(result.completed, patch_sets):
         if not comparison.diff:
-            continue  # Skip empty diffs
+            continue
 
         files = len(patch_set.modified_files)
         s = "s" if files != 1 else ""
@@ -115,18 +112,12 @@ def format_patchset(patch_set: PatchSet, repo: ClonedRepository) -> str:
     lines: list[str] = []
     for file_patch in patch_set:
         for hunk in file_patch:
-            # Note:  When used for `format` checks, the line number is not exact because
-            #        we formatted the repository for a baseline; we can't know the exact
-            #        line number in the original
-            #        source file.
             hunk_link = repo.url_for(file_patch.path, hunk.source_start)
             hunk_lines = str(hunk).splitlines()
 
-            # Add a link before the hunk
             link_title = file_patch.path + "~L" + str(hunk.source_start)
             lines.append(f"<a href='{hunk_link}'>{link_title}</a>")
 
-            # Wrap the contents of the hunk in a diff code block
             lines.append("```diff")
             lines.extend(hunk_lines[1:])
             lines.append("```")
@@ -176,7 +167,6 @@ async def format_then_format(
     with config_overrides.patch_config(
         cloned_repo.path, options.preview, ruff_comparison_executable.resolve()
     ):
-        # Run format to get the baseline
         await format(
             formatter=baseline_formatter,
             executable=ruff_baseline_executable.resolve(),
@@ -184,7 +174,6 @@ async def format_then_format(
             name=cloned_repo.fullname,
             options=options,
         )
-        # Then get the diff from stdout
         return await format(
             formatter=Formatter.ruff,
             executable=ruff_comparison_executable.resolve(),
@@ -206,7 +195,6 @@ async def format_and_format(
     with config_overrides.patch_config(
         cloned_repo.path, options.preview, ruff_comparison_executable.resolve()
     ):
-        # Run format without diff to get the baseline
         await format(
             formatter=baseline_formatter,
             executable=ruff_baseline_executable.resolve(),
@@ -215,17 +203,14 @@ async def format_and_format(
             options=options,
         )
 
-    # Commit the changes
     commit = await cloned_repo.commit(
         message=f"Formatted with baseline {ruff_baseline_executable}"
     )
-    # Then reset
     await cloned_repo.reset()
 
     with config_overrides.patch_config(
         cloned_repo.path, options.preview, ruff_comparison_executable.resolve()
     ):
-        # Then run format again
         await format(
             formatter=Formatter.ruff,
             executable=ruff_comparison_executable.resolve(),
@@ -234,7 +219,6 @@ async def format_and_format(
             options=options,
         )
 
-    # Then get the diff from the commit
     return await cloned_repo.diff(commit)
 
 

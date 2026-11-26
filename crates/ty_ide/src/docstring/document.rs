@@ -181,8 +181,6 @@ impl<'a> DescriptionBuilder<'a> {
     }
 
     fn push_line(&mut self, line: &'a str) {
-        // Keep a leading list item with the block so that its indentation establishes the baseline
-        // for nested items. Ordinary first lines use the allocation-free inline representation.
         if self.inline.is_none()
             && self.continuation_lines.is_empty()
             && !starts_with_markdown_list_item(line.trim_start())

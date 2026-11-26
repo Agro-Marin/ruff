@@ -56,8 +56,6 @@ impl<'db> TypeExpander<'_, 'db> {
         &self,
         elements: impl IntoIterator<Item = Type<'db>>,
     ) -> Option<Vec<Vec<Type<'db>>>> {
-        // Compute the product size before enumerating alternatives: a 37-element sequence of
-        // two-element unions would otherwise allocate 2^37 combinations.
         let per_element: Vec<_> = elements
             .into_iter()
             .map(|element| self.expand(element).unwrap_or_else(|| vec![element]))
@@ -87,7 +85,6 @@ impl<'db> TypeExpander<'_, 'db> {
                     return Some(vec![Type::bool_literal(true), Type::bool_literal(false)]);
                 }
 
-                // If the class is a fixed-length tuple subtype, we expand it to its elements.
                 if let Some(spec) = instance.tuple_spec(db, env) {
                     return match &*spec {
                         Tuple::Fixed(fixed_length_tuple) => self
@@ -100,8 +97,6 @@ impl<'db> TypeExpander<'_, 'db> {
                                         if instance.own_tuple_spec(db).is_some() {
                                             expanded
                                         } else {
-                                            // The element types describe only the tuple base. Keep
-                                            // the subclass identity in every expanded alternative.
                                             IntersectionType::from_two_elements(
                                                 db, env, ty, expanded,
                                             )
@@ -135,15 +130,12 @@ impl<'db> TypeExpander<'_, 'db> {
                     })
                     .collect(),
             ),
-            // For type aliases, expand the underlying value type.
             Type::TypeAlias(alias) => self
                 .visitor
                 .visit(db, ty, || self.expand(alias.value_type(db))),
             Type::Recursive(recursive) => self.visitor.visit(db, ty, || {
                 self.expand(recursive.unfold(db, env).into_unfolded()?)
             }),
-            // We don't handle `type[A | B]` here because it's already stored in the expanded form
-            // i.e., `type[A] | type[B]` which is handled by the `Type::Union` case.
             _ => None,
         }
     }
@@ -198,17 +190,14 @@ mod tests {
         let true_ty = Type::bool_literal(true);
         let false_ty = Type::bool_literal(false);
 
-        // Empty tuple
         let empty_tuple = Type::empty_tuple(db, &env);
         let expanded = expand_type(db, &env, empty_tuple);
         assert!(expanded.is_none());
 
-        // None of the elements can be expanded.
         let tuple_type1 = Type::heterogeneous_tuple(db, &env, [int_ty, str_ty]);
         let expanded = expand_type(db, &env, tuple_type1);
         assert!(expanded.is_none());
 
-        // All elements can be expanded.
         let tuple_type2 = Type::heterogeneous_tuple(
             db,
             &env,
@@ -228,7 +217,6 @@ mod tests {
         let expanded = expand_type(db, &env, tuple_type2).unwrap();
         assert_eq!(expanded, expected_types);
 
-        // Mixed set of elements where some can be expanded while others cannot be.
         let tuple_type3 = Type::heterogeneous_tuple(
             db,
             &env,
@@ -248,7 +236,6 @@ mod tests {
         let expanded = expand_type(db, &env, tuple_type3).unwrap();
         assert_eq!(expanded, expected_types);
 
-        // Variable-length tuples are not expanded.
         let variable_length_tuple = Type::tuple(TupleType::mixed(
             db,
             &env,

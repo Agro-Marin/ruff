@@ -133,24 +133,19 @@ pub fn check_path(
     target_version: TargetVersion,
     suppressions: &Suppressions,
 ) -> Vec<Diagnostic> {
-    // Aggregate all diagnostics.
     let mut context = LintContext::new(path, locator.contents(), settings);
 
-    // Aggregate all semantic syntax errors.
     let mut semantic_syntax_errors = vec![];
 
     let tokens = parsed.tokens();
     let comment_ranges = indexer.comment_ranges();
 
-    // Collect doc lines. This requires a rare mix of tokens (for comments) and AST
-    // (for docstrings), which demands special-casing at this level.
     let use_doc_lines = context.is_rule_enabled(Rule::DocLineTooLong);
     let mut doc_lines = vec![];
     if use_doc_lines {
         doc_lines.extend(doc_lines_from_tokens(tokens));
     }
 
-    // Run the token-based rules.
     if context.has_rules_for(LintSource::Tokens) {
         check_tokens(
             tokens,
@@ -164,7 +159,6 @@ pub fn check_path(
         );
     }
 
-    // Run the filesystem-based rules.
     if context.has_rules_for(LintSource::Filesystem) {
         check_file_path(
             path,
@@ -177,14 +171,12 @@ pub fn check_path(
         );
     }
 
-    // Run the logical line-based rules.
     if context.has_rules_for(LintSource::LogicalLines) {
         crate::checkers::logical_lines::check_logical_lines(
             tokens, locator, indexer, stylist, settings, &context,
         );
     }
 
-    // Run the AST-based rules only if there are no syntax errors.
     if parsed.has_valid_syntax() {
         let cell_offsets = source_kind.as_ipy_notebook().map(Notebook::cell_offsets);
         let notebook_index = source_kind.as_ipy_notebook().map(Notebook::index);
@@ -229,18 +221,15 @@ pub fn check_path(
         }
     }
 
-    // Deduplicate and reorder any doc lines.
     if use_doc_lines {
         doc_lines.sort_unstable();
         doc_lines.dedup();
     }
 
-    // Run the lines-based rules.
     if context.has_rules_for(LintSource::PhysicalLines) {
         check_physical_lines(locator, stylist, indexer, &doc_lines, settings, &context);
     }
 
-    // Raise violations for internal test rules
     #[cfg(any(feature = "test-rules", test))]
     {
         for test_rule in TEST_RULES {
@@ -314,7 +303,6 @@ pub fn check_path(
         }
     }
 
-    // Enforce `noqa` directives.
     if noqa.is_enabled() || context.has_rules_for(LintSource::Noqa) {
         let ignored = check_noqa(
             &mut context,
@@ -336,7 +324,6 @@ pub fn check_path(
     let (mut diagnostics, source_file) = context.into_parts();
 
     if !parsed.has_valid_syntax() {
-        // Avoid fixing in case the source code contains syntax errors.
         for diagnostic in &mut diagnostics {
             diagnostic.remove_fix();
         }
@@ -364,17 +351,13 @@ pub fn add_suppressions_to_path(
     reason: Option<&str>,
     suppression_kind: SuppressionKind,
 ) -> Result<usize> {
-    // Parse once.
     let target_version = settings.resolve_target_version(path);
     let parsed = parse_unchecked_source(source_kind, source_type, target_version.parser_version());
 
-    // Map row and column locations to byte slices (lazily).
     let locator = Locator::new(source_kind.source_code());
 
-    // Detect the current code style (lazily).
     let stylist = Stylist::from_tokens(parsed.tokens(), locator.contents());
 
-    // Extra indices from the code.
     let indexer = Indexer::from_tokens(parsed.tokens(), locator.contents());
 
     // Extract the `# noqa` and `# isort: skip` directives from the source.
@@ -385,11 +368,9 @@ pub fn add_suppressions_to_path(
         &indexer,
     );
 
-    // Parse range suppression comments
     let suppressions =
         Suppressions::from_tokens(locator.contents(), parsed.tokens(), &indexer, settings);
 
-    // Generate diagnostics, ignoring any existing `noqa` directives.
     let diagnostics = check_path(
         path,
         package,
@@ -406,8 +387,6 @@ pub fn add_suppressions_to_path(
         &suppressions,
     );
 
-    // Add any missing suppression comments.
-    // TODO(dhruvmanila): Add support for Jupyter Notebooks
     add_suppression(
         path,
         &diagnostics,
@@ -437,13 +416,10 @@ pub fn lint_only(
 
     let parsed = source.into_parsed(source_kind, source_type, target_version.parser_version());
 
-    // Map row and column locations to byte slices (lazily).
     let locator = Locator::new(source_kind.source_code());
 
-    // Detect the current code style (lazily).
     let stylist = Stylist::from_tokens(parsed.tokens(), locator.contents());
 
-    // Extra indices from the code.
     let indexer = Indexer::from_tokens(parsed.tokens(), locator.contents());
 
     // Extract the `# noqa` and `# isort: skip` directives from the source.
@@ -454,11 +430,9 @@ pub fn lint_only(
         &indexer,
     );
 
-    // Parse range suppression comments
     let suppressions =
         Suppressions::from_tokens(locator.contents(), parsed.tokens(), &indexer, settings);
 
-    // Generate diagnostics.
     let diagnostics = check_path(
         path,
         package,
@@ -527,33 +501,24 @@ pub fn lint_fix<'a>(
 ) -> Result<FixerResult<'a>> {
     let mut transformed = Cow::Borrowed(source_kind);
 
-    // Track the number of fixed errors across iterations.
     let mut fixed = FixTable::default();
 
-    // As an escape hatch, bail after 100 iterations.
     let mut iterations = 0;
 
-    // Track whether the _initial_ source code has valid syntax.
     let mut has_valid_syntax = false;
 
-    // Track whether the _initial_ source code has no unsupported syntax errors.
     let mut has_no_syntax_errors = false;
 
     let target_version = settings.resolve_target_version(path);
 
-    // Continuously fix until the source code stabilizes.
     loop {
-        // Parse once.
         let parsed =
             parse_unchecked_source(&transformed, source_type, target_version.parser_version());
 
-        // Map row and column locations to byte slices (lazily).
         let locator = Locator::new(transformed.source_code());
 
-        // Detect the current code style (lazily).
         let stylist = Stylist::from_tokens(parsed.tokens(), locator.contents());
 
-        // Extra indices from the code.
         let indexer = Indexer::from_tokens(parsed.tokens(), locator.contents());
 
         // Extract the `# noqa` and `# isort: skip` directives from the source.
@@ -564,11 +529,9 @@ pub fn lint_fix<'a>(
             &indexer,
         );
 
-        // Parse range suppression comments
         let suppressions =
             Suppressions::from_tokens(locator.contents(), parsed.tokens(), &indexer, settings);
 
-        // Generate diagnostics.
         let diagnostics = check_path(
             path,
             package,
@@ -589,9 +552,6 @@ pub fn lint_fix<'a>(
             has_valid_syntax = parsed.has_valid_syntax();
             has_no_syntax_errors = !diagnostics.iter().any(Diagnostic::is_invalid_syntax);
         } else {
-            // If the source code had no syntax errors on the first pass, but
-            // does on a subsequent pass, then we've introduced a
-            // syntax error. Return the original code.
             if has_valid_syntax && has_no_syntax_errors {
                 if let Some(error) = parsed.errors().first() {
                     report_fix_syntax_error(
@@ -605,7 +565,6 @@ pub fn lint_fix<'a>(
             }
         }
 
-        // Apply fix.
         if let Some(FixResult {
             code: fixed_contents,
             fixes: applied,
@@ -613,17 +572,14 @@ pub fn lint_fix<'a>(
         }) = fix_file(&diagnostics, &locator, unsafe_fixes)
         {
             if iterations < MAX_ITERATIONS {
-                // Count the number of fixed errors.
                 for (id, code, count) in applied.iter() {
                     *fixed.entry(id).or_default(code) += count;
                 }
 
                 transformed = Cow::Owned(transformed.updated(fixed_contents, &source_map));
 
-                // Increment the iteration count.
                 iterations += 1;
 
-                // Re-run the linter pass (by avoiding the return).
                 continue;
             }
 
@@ -757,8 +713,6 @@ pub fn parse_unchecked_source(
 ) -> Parsed<ModModule> {
     let options = ParseOptions::from(source_type).with_target_version(target_version);
     // SAFETY: Safe because `PySourceType` always parses to a `ModModule`. See
-    // `ruff_python_parser::parse_unchecked_source`. We use `parse_unchecked` (and thus
-    // have to unwrap) in order to pass the `PythonVersion` via `ParseOptions`.
     match source_kind.as_ipy_notebook() {
         Some(notebook) => ruff_python_parser::parse_cells_unchecked(
             source_kind.source_code(),
@@ -918,9 +872,7 @@ mod tests {
         Ok(())
     }
 
-    // Version <4.5, don't emit cell ids
     #[test_case(Path::new("no_cell_id.ipynb"), false; "no_cell_id")]
-    // Version 4.5, cell ids are missing and need to be added
     #[test_case(Path::new("add_missing_cell_id.ipynb"), true; "add_missing_cell_id")]
     fn test_cell_id(path: &Path, has_id: bool) -> Result<()> {
         let source_notebook = Notebook::from_path(&notebook_path(path))?;
@@ -951,7 +903,6 @@ mod tests {
     ) -> Vec<Diagnostic> {
         let source_type = PySourceType::from(path);
         let target_version = settings.resolve_target_version(path);
-        // Mirror the production parse path so notebooks are validated cell by cell.
         let parsed =
             parse_unchecked_source(source_kind, source_type, target_version.parser_version());
         let locator = Locator::new(source_kind.source_code());

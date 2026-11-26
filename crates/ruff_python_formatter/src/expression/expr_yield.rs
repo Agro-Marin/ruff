@@ -46,30 +46,20 @@ impl NeedsParentheses for AnyExpressionYield<'_> {
             return OptionalParentheses::Always;
         }
 
-        // According to https://docs.python.org/3/reference/grammar.html There are two situations
-        // where we do not want to always parenthesize a yield expression:
-        //  1. Right hand side of an assignment, e.g. `x = yield y`
-        //  2. Yield statement, e.g. `def foo(): yield y`
-        // We catch situation 1 below. Situation 2 does not need to be handled here as
-        // FormatStmtExpr, does not add parenthesis
         if parent.is_stmt_assign() || parent.is_stmt_ann_assign() || parent.is_stmt_aug_assign() {
             if let Some(value) = self.value() {
                 if context.is_expression_parenthesized(value.into()) {
-                    // Ex) `x = yield (1)`
                     OptionalParentheses::Never
                 } else {
-                    // Ex) `x = yield f(1, 2, 3)`
                     match value.needs_parentheses(self.into(), context) {
                         OptionalParentheses::BestFit => OptionalParentheses::Never,
                         parentheses => parentheses,
                     }
                 }
             } else {
-                // Ex) `x = yield`
                 OptionalParentheses::Never
             }
         } else {
-            // Ex) `print((yield))`
             OptionalParentheses::Always
         }
     }
@@ -114,7 +104,6 @@ impl Format<PyFormatContext<'_>> for AnyExpressionYield<'_> {
                 ]
             )?;
         } else {
-            // ExprYieldFrom always has Some(value) so we should never get a bare `yield from`
             write!(f, [token(keyword)])?;
         }
         Ok(())

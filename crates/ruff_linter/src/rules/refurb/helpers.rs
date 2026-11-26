@@ -13,14 +13,12 @@ use crate::{Applicability, Edit, Fix};
 
 /// Format a code snippet to call `name.method()`.
 pub(super) fn generate_method_call(name: Name, method: &str, generator: Generator) -> String {
-    // Construct `name`.
     let var = ast::ExprName {
         id: name,
         ctx: ast::ExprContext::Load,
         range: TextRange::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
     };
-    // Construct `name.method`.
     let attr = ast::ExprAttribute {
         value: Box::new(var.into()),
         attr: ast::Identifier::new(method.to_string(), TextRange::default()),
@@ -28,7 +26,6 @@ pub(super) fn generate_method_call(name: Name, method: &str, generator: Generato
         range: TextRange::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
     };
-    // Make it into a call `name.method()`
     let call = ast::ExprCall {
         func: Box::new(attr.into()),
         arguments: ast::Arguments {
@@ -40,7 +37,6 @@ pub(super) fn generate_method_call(name: Name, method: &str, generator: Generato
         range_start: ruff_text_size::TextSize::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
     };
-    // And finally, turn it into a statement.
     let stmt = ast::StmtExpr {
         value: Box::new(call.into()),
         range: TextRange::default(),
@@ -90,7 +86,6 @@ pub(super) fn replace_with_identity_check(
     Fix::applicable_edit(edit, applicability)
 }
 
-// Helpers for read-whole-file and write-whole-file
 #[derive(Debug, Copy, Clone)]
 pub(super) enum OpenMode {
     /// "r"
@@ -227,8 +222,6 @@ fn resolve_file_open<'a>(
     let mut binding_references = binding
         .references()
         .map(|id| semantic.reference(id))
-        // Reassignments in the same scope can carry forward older references. Ignore anything
-        // that appears before this `with` statement and only consider references from this point.
         .filter(|reference| {
             reference.scope_id() == binding.scope && reference.start() >= with.start()
         });
@@ -258,16 +251,12 @@ fn find_file_open<'a>(
     read_mode: bool,
     python_version: PythonVersion,
 ) -> Option<FileOpen<'a>> {
-    // We want to match `open(...) as var`.
     let ast::ExprCall {
         func,
         arguments: ast::Arguments { args, keywords, .. },
         ..
     } = item.context_expr.as_call_expr()?;
 
-    // Ignore calls with `*args` and `**kwargs`. In the exact case of `open(*filename, mode="w")`,
-    // it could be a match; but in all other cases, the call _could_ contain unsupported keyword
-    // arguments, like `buffering`.
     if args.iter().any(Expr::is_starred_expr)
         || keywords.iter().any(|keyword| keyword.arg.is_none())
     {
@@ -278,16 +267,12 @@ fn find_file_open<'a>(
         return None;
     }
 
-    // Match positional arguments, get filename and mode.
     let (filename, pos_mode) = match_open_args(args)?;
 
-    // `open` accepts a file descriptor, but `Path` does not, so a `pathlib` replacement
-    // would fail at runtime. `PTH123` skips these for the same reason.
     if is_file_descriptor(filename, semantic) {
         return None;
     }
 
-    // Match keyword arguments, get keyword arguments to forward and possibly mode.
     let (keywords, kw_mode) = match_open_keywords(keywords, read_mode, python_version)?;
 
     let mode = kw_mode.unwrap_or(pos_mode);
@@ -353,7 +338,6 @@ fn match_open_args(args: &[Expr]) -> Option<(&Expr, OpenMode)> {
     match args {
         [filename] => Some((filename, OpenMode::ReadText)),
         [filename, mode_literal] => match_open_mode(mode_literal).map(|mode| (filename, mode)),
-        // The third positional argument is `buffering` and the pathlib methods don't support it.
         _ => None,
     }
 }
@@ -373,31 +357,17 @@ fn match_open_keywords(
             "newline" => {
                 if read_mode {
                     if target_version < PythonVersion::PY313 {
-                        // `pathlib.Path.read_text` doesn't support `newline` until Python 3.13.
                         return None;
                     }
                 } else if target_version < PythonVersion::PY310 {
-                    // `pathlib.Path.write_text` doesn't support `newline` until Python 3.10.
                     return None;
                 }
 
                 result.push(keyword);
             }
 
-            // This might look bizarre, - why do we re-wrap this optional?
-            //
-            // The answer is quite simple, in the result of the current function
-            // mode being `None` is a possible and correct option meaning that there
-            // was NO "mode" keyword argument.
-            //
-            // The result of `match_open_mode` on the other hand is None
-            // in the cases when the mode is not compatible with `write_text`/`write_bytes`.
-            //
-            // So, here we return None from this whole function if the mode
-            // is incompatible.
             "mode" => mode = Some(match_open_mode(&keyword.value)?),
 
-            // All other keywords cannot be directly forwarded.
             _ => return None,
         }
     }

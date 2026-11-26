@@ -97,8 +97,6 @@ pub(super) struct LiveDeclaration {
 struct PackedDeclarationId(u32);
 
 impl PackedDeclarationId {
-    // Use the high bit to distinguish imported qualifiers without increasing the size of every
-    // declaration. Scope-local IDs retain 31 bits.
     const IMPORTED_QUALIFIER: u32 = 1 << 31;
     const DEFINITION_MASK: u32 = !Self::IMPORTED_QUALIFIER;
 
@@ -211,7 +209,6 @@ impl Declarations {
         previous_definitions: PreviousDefinitions,
     ) {
         if previous_definitions.are_shadowed() {
-            // A real declaration replaces all earlier declarations, including imported qualifiers.
             self.live_declarations.clear();
         }
         self.live_declarations.push(LiveDeclaration::new(
@@ -271,10 +268,6 @@ impl Declarations {
     fn merge(&mut self, b: Self, reachability_constraints: &mut ReachabilityConstraintsBuilder) {
         let a = std::mem::take(self);
 
-        // Invariant: merge_join_by consumes the two iterators in sorted order, which ensures that
-        // the merged `live_declarations` vec remains sorted. If a definition is found in both `a`
-        // and `b`, we combine its reachability constraints. If a definition is found in only one
-        // path, it is used as-is.
         let a = a.live_declarations.into_iter();
         let b = b.live_declarations.into_iter();
         for zipped in a.merge_join_by(b, |a, b| a.declaration().cmp(&b.declaration())) {
@@ -363,8 +356,6 @@ pub struct LiveBinding {
 struct PackedDefinitionId(u32);
 
 impl PackedDefinitionId {
-    // Scope-local definition IDs cannot practically use the high bit, so retain the shadowing
-    // policy there instead of adding a byte plus padding to every `LiveBinding`.
     const DONT_SHADOW: u32 = 1 << 31;
     const DEFINITION_MASK: u32 = !Self::DONT_SHADOW;
 
@@ -456,8 +447,6 @@ impl Bindings {
         previous_definitions: PreviousDefinitions,
         can_be_shadowed: FutureDefinitions,
     ) {
-        // If we are in a class scope, and the unbound name binding was previously visible, but we will
-        // now replace it, record the narrowing constraints on it:
         if is_class_scope
             && is_place_name
             && let Some(binding) = self.live_bindings.first()
@@ -465,8 +454,6 @@ impl Bindings {
         {
             self.unbound_narrowing_constraint = Some(binding.narrowing_constraint);
         }
-        // If the new binding is a shadowing type, it replaces previous live bindings in this path
-        // (unless they're marked as not shadowable), and has no constraints.
         if previous_definitions.are_shadowed() {
             self.live_bindings
                 .retain(|b| b.can_be_shadowed() == FutureDefinitions::DontShadowThisOne);
@@ -527,21 +514,14 @@ impl Bindings {
             self.unbound_narrowing_constraint = Some(narrowing_constraints.add_or_constraint(a, b));
         }
 
-        // Invariant: merge_join_by consumes the two iterators in sorted order, which ensures that
-        // the merged `live_bindings` vec remains sorted. If a definition is found in both `a` and
-        // `b`, we combine its boolean narrowing constraints and its ternary reachability
-        // constraints. If a definition is found in only one path, it is used as-is.
         let a = a.live_bindings.into_iter();
         let b = b.live_bindings.into_iter();
         for zipped in a.merge_join_by(b, |a, b| a.binding().cmp(&b.binding())) {
             match zipped {
                 EitherOrBoth::Both(a, b) => {
-                    // If the same definition is visible through both paths, we OR the narrowing
-                    // constraints: the type should be narrowed by whichever path was taken.
                     let narrowing_constraint = narrowing_constraints
                         .add_or_constraint(a.narrowing_constraint, b.narrowing_constraint);
 
-                    // For reachability constraints, we also merge using a ternary OR operation:
                     let reachability_constraint = reachability_constraints
                         .add_or_constraint(a.reachability_constraint, b.reachability_constraint);
 
@@ -921,7 +901,6 @@ mod tests {
         let mut narrowing_constraints = NarrowingConstraintsBuilder::default();
         let mut reachability_constraints = ReachabilityConstraintsBuilder::default();
 
-        // merging the same definition with the same constraint keeps the constraint
         let mut sym1a = PlaceState::undefined(ScopedReachabilityConstraintId::ALWAYS_TRUE);
         sym1a.record_binding(
             ScopedDefinitionId::from_u32(1),
@@ -951,10 +930,8 @@ mod tests {
             &mut reachability_constraints,
         );
         let mut sym1 = sym1a;
-        // Same constraint on both sides → OR(atom0, atom0) = atom0
         assert_bindings(&sym1, &[(1, atom0)]);
 
-        // merging the same definition with differing constraints produces OR (not empty)
         let mut sym2a = PlaceState::undefined(ScopedReachabilityConstraintId::ALWAYS_TRUE);
         sym2a.record_binding(
             ScopedDefinitionId::from_u32(2),
@@ -985,14 +962,12 @@ mod tests {
             &mut reachability_constraints,
         );
         let sym2 = sym2a;
-        // Different constraints: OR(atom1, atom2) produces a new TDD node (not a terminal)
         let merged_constraint = sym2.bindings().iter().next().unwrap().narrowing_constraint;
         assert_ne!(merged_constraint, ScopedNarrowingConstraint::ALWAYS_TRUE);
         assert_ne!(merged_constraint, ScopedNarrowingConstraint::ALWAYS_FALSE);
         assert_ne!(merged_constraint, atom1);
         assert_ne!(merged_constraint, atom2);
 
-        // merging a constrained definition with unbound keeps both
         let mut sym3a = PlaceState::undefined(ScopedReachabilityConstraintId::ALWAYS_TRUE);
         sym3a.record_binding(
             ScopedDefinitionId::from_u32(3),
@@ -1019,11 +994,10 @@ mod tests {
             .map(|b| (b.binding().as_u32(), b.narrowing_constraint))
             .collect();
         assert_eq!(bindings.len(), 2);
-        assert_eq!(bindings[0].0, 0); // unbound
+        assert_eq!(bindings[0].0, 0);
         assert_eq!(bindings[1].0, 3);
         assert_eq!(bindings[1].1, atom3);
 
-        // merging different definitions keeps them each with their existing constraints
         sym1.merge(
             sym3,
             &mut narrowing_constraints,
@@ -1036,7 +1010,7 @@ mod tests {
             .map(|b| (b.binding().as_u32(), b.narrowing_constraint))
             .collect();
         assert_eq!(bindings.len(), 3);
-        assert_eq!(bindings[0].0, 0); // unbound
+        assert_eq!(bindings[0].0, 0);
         assert_eq!(bindings[1].0, 1);
         assert_eq!(bindings[1].1, atom0);
         assert_eq!(bindings[2].0, 3);

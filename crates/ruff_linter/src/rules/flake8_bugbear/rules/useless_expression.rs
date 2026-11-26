@@ -74,12 +74,10 @@ impl Violation for UselessExpression {
 
 /// B018
 pub(crate) fn useless_expression(checker: &Checker, value: &Expr) {
-    // Ignore comparisons, as they're handled by `useless_comparison`.
     if value.is_compare_expr() {
         return;
     }
 
-    // Ignore strings, to avoid false positives with docstrings.
     if matches!(
         value,
         Expr::FString(_) | Expr::StringLiteral(_) | Expr::EllipsisLiteral(_)
@@ -97,10 +95,7 @@ pub(crate) fn useless_expression(checker: &Checker, value: &Expr) {
         return;
     }
 
-    // Ignore statements that have side effects.
     if contains_effect(value, |id| checker.semantic().has_builtin_binding(id)) {
-        // Flag attributes as useless expressions, even if they're attached to calls or other
-        // expressions.
         if value.is_attribute_expr() {
             checker.report_diagnostic(
                 UselessExpression {

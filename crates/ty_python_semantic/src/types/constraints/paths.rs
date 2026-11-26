@@ -235,7 +235,6 @@ impl PathAssignments {
         let mut ordered = storage.calculate_source_orders(original_source_order);
         ordered.retain(|constraint| self.discovered.contains_key(constraint));
         let mut index = 0;
-        // Once all emitted facts have positions, later appends cannot change their relative order.
         while !emitted.is_subset(&ordered)
             && let Some(constraint) = ordered.get_index(index).copied()
         {
@@ -251,8 +250,6 @@ impl PathAssignments {
             }
             for earlier_index in 0..index {
                 let earlier = ordered[earlier_index];
-                // Pair rules are not commutative. Replay the orientation used by this walk,
-                // which can differ from the order in which the replay reaches its inputs.
                 let pair = [(earlier, constraint), (constraint, earlier)]
                     .into_iter()
                     .find(|pair| self.elaborated_pairs.contains(pair));
@@ -455,8 +452,6 @@ impl PathAssignments {
     pub(super) fn truncate(&mut self, snapshot: &PathSnapshot) {
         self.assignment_queue.clear();
         self.pending_substitutions.clear();
-        // A branch can replenish an assignment more than once. Restore in reverse order while
-        // every referenced assignment still exists.
         for (index, previous_fuel) in self.fuel_undo.drain(snapshot.fuel_undo..).rev() {
             self.assignments[index].1 = previous_fuel;
         }
@@ -511,7 +506,6 @@ impl PathAssignments {
         let snapshot = self.snapshot();
         let start = snapshot.assignments;
 
-        // Add the new assignment and anything we can derive from it.
         tracing::trace!(
             target: "ty_python_semantic::types::constraints::PathAssignment",
             before = %format_args!(
@@ -537,11 +531,6 @@ impl PathAssignments {
                 "new assignments",
             );
         }
-        // Otherwise invoke the callback to keep traversing the BDD. The callback will likely
-        // traverse additional edges, which might add more to our `assignments` set. But even
-        // if that happens, `start..end` will mark the assignments that were added by the
-        // `add_assignment` call above — that is, the new assignment for this edge along with
-        // the derived information we inferred from it.
         let end = self.assignments.len();
         let result = f(storage, self, start..end, found_conflict);
 
@@ -770,7 +759,6 @@ impl PathAssignments {
         storage: &mut ConstraintSetStorage<'db>,
         constraint: AtomicConstraintId,
     ) {
-        // If we've already processed this constraint, we can skip it.
         let (constraint_index, existing) = self.discovered.insert_full(constraint, true);
         let already_processed = existing.is_some_and(|existing| existing);
         if already_processed {
@@ -781,10 +769,6 @@ impl PathAssignments {
         if let Some(map) = SequentMap::for_constraint(db, env, constraint_data) {
             let added = self.add_sequents(db, env, storage, map);
 
-            // `projection_source_order` depends on knowing the order that sequents were discovered for
-            // each constraint. Since we are salsa-caching sequent derivation, we don't have easy
-            // access to that in ConstraintSetStorage, so we need to maintain a local view of that
-            // information here.
             self.single_replay_consequents.insert(
                 constraint,
                 self.sequents[added]
@@ -815,8 +799,6 @@ impl PathAssignments {
                 && constraint_support.is_complete()
                 && !existing_support.overlaps_with(constraint_support)
             {
-                // Independent typevars must be checked for disjoint or invalid constraints, but
-                // are otherwise already constrained and do not participate in sequent discovery.
                 let independent = existing_support
                     .iter()
                     .chain(constraint_support.iter())
@@ -835,7 +817,6 @@ impl PathAssignments {
                 (constraint, constraint_data, *existing, existing_data)
             };
             if self.elaborated_pairs.contains(&(a, b)) {
-                // We've already elaborated this pair of constraints.
                 continue;
             }
 
@@ -845,10 +826,6 @@ impl PathAssignments {
             self.elaborated_pairs.insert((a, b));
             let added = self.add_sequents(db, env, storage, map);
 
-            // `projection_source_order` depends on knowing the order that sequents were discovered for
-            // each constraint. Since we are salsa-caching sequent derivation, we don't have easy
-            // access to that in ConstraintSetStorage, so we need to maintain a local view of that
-            // information here.
             self.pair_replay_consequents.insert(
                 (a, b),
                 self.sequents[added]
@@ -874,9 +851,6 @@ impl PathAssignments {
         while let Some((assignment, fuel)) = self.assignment_queue.pop_front() {
             self.add_assignment(db, env, storage, assignment, source_constraint, fuel)?;
         }
-        // Either fuel limit can prevent a replacement from being admitted. Keep the original
-        // evidence until the replacement actually holds, including when another derivation
-        // supplied it. Process in discovery order to avoid replacing both sides of a cycle.
         for (original, replacement) in self.pending_substitutions.drain(..) {
             if !self
                 .positive_assignment_indices
@@ -913,23 +887,15 @@ impl PathAssignments {
         fuel: AssignmentFuel,
     ) -> Result<(), PathAssignmentConflict> {
         if matches!(assignment, Assignment::Unconstrained(_)) {
-            // An `Unconstrained` assignment means "this constraint can go either way". If there is
-            // already any assignment for this constraint (positive, negative, or unconstrained),
-            // the existing assignment is at least as informative, and we skip.
             if self.contains_constraint(assignment.constraint()) {
                 return Ok(());
             }
 
-            // Since we don't know whether the assignment's constraint holds or not, we cannot
-            // derive any additional information from the sequent map. We still want to record the
-            // assignment, but as an optimization we can return early without actually querying the
-            // sequent map.
             self.assignments
                 .insert(assignment, (source_constraint, fuel.remaining));
             return Ok(());
         }
 
-        // First add this assignment. If it causes a conflict, return that as an error.
         if self.assignment_holds(assignment.negated()) {
             tracing::trace!(
                 target: "ty_python_semantic::types::constraints::PathAssignment",
@@ -963,25 +929,11 @@ impl PathAssignments {
                 let index = entry.index();
                 let (existing_source_constraint, existing_fuel) = entry.get_mut();
 
-                // If a constraint appears both as an "origin" constraint (it actually appears in
-                // the BDD structure) and as a "derived" constraint (we infer it from other
-                // constraints), we should prefer the origin source constraint, regardless of which
-                // order we encounter the various constraints in the BDD.
                 if !fuel.is_derived() {
                     *existing_source_constraint = source_constraint;
                 }
 
-                // We've already seen this assignment, and in theory have already queried the
-                // sequent map for its consequents, which should let us return early.
-                //
-                // However, a new derivation chain can replenish the fuel for this assignment,
-                // giving it more chances to participate in multi-step sequent chains. That means
-                // there might be some consequents that were skipped previously due to a lack of
-                // fuel, that can be added now because of the replinished fuel budget.
 
-                // There is another derivation of this assignment that already provides at least as
-                // much fuel as this constraint. That means replenishing the fuel won't have any
-                // effect.
                 if *existing_fuel >= fuel.remaining {
                     return Ok(());
                 }
@@ -991,11 +943,6 @@ impl PathAssignments {
             }
         }
 
-        // Then use our sequents to add additional facts that we know to be true.
-        //
-        // TODO: This is very naive at the moment, partly for expediency, and partly because we
-        // don't anticipate the sequent maps to be very large. We might consider avoiding the
-        // brute-force search.
 
         self.new_assignments.clear();
         let previous_sequents_len = self.sequents.len();
@@ -1006,24 +953,17 @@ impl PathAssignments {
         self.discover_constraint(db, env, storage, assignment.constraint());
         let sequents_len = self.sequents.len();
 
-        // Previously discovered sequents can only start firing if the assignment that we just
-        // added is one of their antecedents.
         for index in 0..previous_antecedents_len {
             let sequent_index = self.sequent_antecedents[&assignment][index];
             let sequent = self.sequents[sequent_index];
             self.check_sequent(db, env, storage, sequent)?;
         }
 
-        // Sequent elaboration can produce rules whose antecedents do not include the constraint
-        // that caused us to discover them. Check every newly discovered sequent once against the
-        // complete set of assignments on the current path.
         for sequent_index in previous_sequents_len..sequents_len {
             let sequent = self.sequents[sequent_index];
             self.check_sequent(db, env, storage, sequent)?;
         }
 
-        // If we were able to derive any new assignments from this one, add them to the processing
-        // queue.
         self.assignment_queue.extend(self.new_assignments.drain(..));
 
         Ok(())
@@ -1098,8 +1038,6 @@ impl PathAssignments {
         ante: AtomicConstraintId,
     ) -> Result<(), PathAssignmentConflict> {
         if self.assignment_holds(ante.when_false()) {
-            // The sequent map says (ante1) is always true, and the current path asserts that
-            // it's false.
             tracing::trace!(
                 target: "ty_python_semantic::types::constraints::PathAssignment",
                 ante = %ante.into_inner().display(db, env, storage),
@@ -1126,8 +1064,6 @@ impl PathAssignments {
         ante2: AtomicConstraintId,
     ) -> Result<(), PathAssignmentConflict> {
         if self.assignment_holds(ante1.when_true()) && self.assignment_holds(ante2.when_true()) {
-            // The sequent map says (ante1 ∧ ante2) is an impossible combination, and the
-            // current path asserts that both are true.
             tracing::trace!(
                 target: "ty_python_semantic::types::constraints::PathAssignment",
                 ante1 = %ante1.into_inner().display(db, env, storage),
@@ -1159,8 +1095,6 @@ impl PathAssignments {
             && self.assignment_holds(ante2.when_true())
             && self.assignment_holds(ante3.when_true())
         {
-            // The sequent map says (ante1 ∧ ante2 ∧ ante3) is an impossible combination, and the
-            // current path asserts that all three are true.
             tracing::trace!(
                 target: "ty_python_semantic::types::constraints::PathAssignment",
                 ante1 = %ante1.into_inner().display(db, env, storage),
@@ -1335,8 +1269,6 @@ mod tests {
         let t_int = create_constraint(db, &builder, t, KnownClass::Int);
         let u_str = create_constraint(db, &builder, u, KnownClass::Str);
 
-        // Construct the set in the opposite order from constraint creation. This ensures the
-        // initializer follows the sidecar rather than either TDD traversal or constraint IDs.
         let set = u_str.and(db, &builder, || t_int);
         let mut storage = builder.storage.borrow_mut();
         let path = set
@@ -1378,8 +1310,6 @@ mod tests {
             UnspecializedTypeVarPolicy::Ignore,
         );
 
-        // Both limits interrupt an edge with path-local assignments: the visit limit stops
-        // below the root, and the path limit stops after collecting the first alternative.
         for (remaining_paths, remaining_visits, error) in [
             (usize::MAX, 1, ProjectionError::TraversalBudgetExceeded),
             (1, usize::MAX, ProjectionError::PathBudgetExceeded),

@@ -46,8 +46,6 @@ pub fn system_module_search_paths<'db>(
     resolver_environment: ResolverEnvironment<'db>,
 ) -> SystemModuleSearchPathsIter<'db> {
     SystemModuleSearchPathsIter {
-        // Always run in `Typing` mode because we want to include as much as possible
-        // and we don't care about the "real" stdlib
         inner: search_paths(db, resolver_environment, ModuleResolveMode::Typing),
     }
 }

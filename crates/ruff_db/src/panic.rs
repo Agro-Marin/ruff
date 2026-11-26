@@ -149,14 +149,6 @@ where
     install_hook();
     let prev_should_capture = CAPTURE_PANIC_INFO.replace(true);
     let result = std::panic::catch_unwind(f).map_err(|payload| {
-        // Try to get the backtrace and location from our custom panic hook.
-        // The custom panic hook only runs once when `panic!` is called (or similar). It doesn't
-        // run when the panic is propagated with `std::panic::resume_unwind`. The panic hook
-        // is also not called when the panic is raised with `std::panic::resume_unwind` as is the
-        // case for salsa unwinds (see the ignored test below).
-        // Because of that, always take the payload from `catch_unwind` because it may have been transformed
-        // by an inner `std::panic::catch_unwind` handlers and only use the information
-        // from the custom handler to enrich the error with the backtrace and location.
         let CapturedPanicInfo {
             location,
             backtrace,
@@ -190,7 +182,6 @@ mod tests {
         #[salsa::tracked(returns(copy))]
         fn test_query(db: &dyn Database, input: Input) -> u32 {
             loop {
-                // This should throw a cancelled error
                 let _ = input.value(db);
             }
         }
@@ -203,7 +194,6 @@ mod tests {
             {
                 let mut db = db.clone();
                 scope.spawn(move || {
-                    // This will cancel the other thread by throwing a `salsa::Cancelled` error.
                     db.synthetic_write(Durability::MEDIUM);
                 });
             }
@@ -222,7 +212,6 @@ mod tests {
         match result {
             Ok(_) => panic!("Expected query to panic"),
             Err(err) => {
-                // Panics triggered with `resume_unwind` have no backtrace.
                 assert!(err.backtrace.is_none());
             }
         }

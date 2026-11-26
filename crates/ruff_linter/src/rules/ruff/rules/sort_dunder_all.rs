@@ -237,19 +237,6 @@ fn create_fix(
     let locator = checker.locator();
     let is_multiline = locator.contains_line_break(range);
 
-    // The machinery in the `MultilineDunderAllValue` is actually
-    // sophisticated enough that it would work just as well for
-    // single-line `__all__` definitions, and we could reduce
-    // the number of lines of code in this file by doing that.
-    // Unfortunately, however, `MultilineDunderAllValue::from_source_range()`
-    // must process every token in an `__all__` definition as
-    // part of its analysis, and this is quite slow. For
-    // single-line `__all__` definitions, it's also unnecessary,
-    // as it's impossible to have comments in between the
-    // `__all__` elements if the `__all__` definition is all on
-    // a single line. Therefore, as an optimisation, we do the
-    // bare minimum of token-processing for single-line `__all__`
-    // definitions:
     let (sorted_source_code, applicability) = if is_multiline {
         let value = MultilineStringSequenceValue::from_source_range(
             range,

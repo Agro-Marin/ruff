@@ -41,7 +41,6 @@ pub fn check_project(db: &ProjectDatabase, project_name: &str) {
 /// Configuration for a real-world project to benchmark
 #[derive(Debug, Clone)]
 pub struct RealWorldProject<'a> {
-    // The name of the project.
     pub name: &'a str,
     /// The project's GIT repository. Must be publicly accessible.
     pub repository: &'a str,
@@ -70,7 +69,6 @@ impl<'a> RealWorldProject<'a> {
             project: self,
         };
 
-        // Install dependencies if specified
         tracing::debug!(
             "Installing {} dependencies for project '{}'...",
             checkout.project().dependencies.len(),
@@ -144,7 +142,6 @@ pub fn install_dependencies_to_cache(
     python_version: SupportedPythonVersion,
     max_dep_date: &str,
 ) -> Result<()> {
-    // Check if uv is available
     let uv_check = Command::new("uv")
         .arg("--version")
         .output()
@@ -175,7 +172,6 @@ pub fn install_dependencies_to_cache(
         return Ok(());
     }
 
-    // Install dependencies with date constraint in the isolated environment
     let mut cmd = Command::new("uv");
     cmd.args([
         "pip",
@@ -221,7 +217,6 @@ pub fn copy_directory_recursive(
 ) -> Result<()> {
     if source_path.is_file() {
         if source_path.file_name().and_then(OsStr::to_str) == Some("pyvenv.cfg") {
-            // Skip pyvenv.cfg files because the Python path will be invalid.
             return Ok(());
         }
 
@@ -234,7 +229,6 @@ pub fn copy_directory_recursive(
             }
             Err(error) => {
                 if error.kind() == std::io::ErrorKind::InvalidData {
-                    // Skip binary files.
                     return Ok(());
                 }
                 return Err(error)
@@ -242,13 +236,11 @@ pub fn copy_directory_recursive(
             }
         }
     } else if source_path.is_dir() {
-        // Create directory in memory fs
         fs.create_directory_all(dest_path.to_path_buf())
             .with_context(|| {
                 format!("Failed to create directory in memory filesystem: {dest_path}")
             })?;
 
-        // Read directory contents
         let entries = std::fs::read_dir(source_path)
             .with_context(|| format!("Failed to read directory: {}", source_path.display()))?;
 
@@ -262,7 +254,6 @@ pub fn copy_directory_recursive(
             let source_child = source_path.join(file_name);
             let dest_child = dest_path.join(file_name);
 
-            // Skip hidden files and common non-Python directories
             if file_name != ".venv" && (file_name.starts_with('.') || matches!(file_name, ".git")) {
                 continue;
             }

@@ -33,12 +33,6 @@ mod tests {
             let members = importer.members_in_scope_at(node, self.cursor.offset);
             let resp = importer.import(request, &members);
 
-            // We attempt to emulate what an LSP client would
-            // do here and "insert" the import into the original
-            // source document. I'm not 100% sure this models
-            // reality correctly, but in particular, we are
-            // careful to insert the symbol name first since
-            // it *should* come after the import.
             let mut source = self.cursor.source.to_string();
             source.insert_str(self.cursor.offset.to_usize(), resp.symbol_text());
             if let Some(edit) = resp.import() {
@@ -368,12 +362,6 @@ from collections import ()
 <CURSOR>
         ",
         );
-        // In this case, because of the `()` being an
-        // invalid AST, our importer gives up and just
-        // adds a new line. We could add more heuristics
-        // to make this case work, but I think there will
-        // always be some cases like this that won't make
-        // sense.
         assert_snapshot!(
             test.import("collections", "defaultdict"), @"
         from collections import ()
@@ -479,9 +467,6 @@ import collections
 from collections import defaultdict
         ",
         );
-        // Since the import came after the cursor,
-        // we add another import at the top-level
-        // of the module.
         assert_snapshot!(
             test.import("collections", "defaultdict"), @"
         import collections
@@ -505,9 +490,6 @@ def foo():
 from collections import defaultdict
         ",
         );
-        // Since the import came after the cursor,
-        // we add another import at the top-level
-        // of the module.
         assert_snapshot!(
             test.import("collections", "defaultdict"), @"
         import collections
@@ -577,7 +559,6 @@ from __future__ import annotations
 
     #[test]
     fn lazy_future_import_is_not_special() {
-        // Lazy `__future__` imports must not act like real future-import anchors for insertion.
         let test = cursor_test(
             "\
 lazy from __future__ import annotations
@@ -1056,10 +1037,6 @@ else:
         "#);
     }
 
-    // FIXME: This test (and the one below it) aren't
-    // quite right. Namely, because we aren't handling
-    // multiple binding sites correctly, we don't see the
-    // existing `MAGIC` symbol.
     #[test]
     fn conditional_imports_existing_import1() {
         let test = CursorTest::builder()
@@ -1142,14 +1119,6 @@ else:
         "#);
     }
 
-    // FIXME: This test (and the one below it) aren't quite right. We
-    // don't recognize the multiple declaration sites for `fubar`.
-    //
-    // In this case, it's not totally clear what we should do. Since we
-    // are trying to import `MAGIC` from `foo`, we could add a `from
-    // foo import MAGIC` within the first `if` block. Or we could try
-    // and "infer" something about the code assuming that we know
-    // `MAGIC` is in both `foo` and `bar`.
     #[test]
     fn conditional_imports_existing_module1() {
         let test = CursorTest::builder()
@@ -1273,10 +1242,6 @@ except ImportError:
         ");
     }
 
-    // FIXME: This test (and the one below it) aren't
-    // quite right. Namely, because we aren't handling
-    // multiple binding sites correctly, we don't see the
-    // existing `MAGIC` symbol.
     #[test]
     fn try_imports_existing_import1() {
         let test = CursorTest::builder()
@@ -1404,14 +1369,6 @@ from collections import defaultdict
         ");
     }
 
-    // This test is working as intended. That is,
-    // `abc` is already in scope, so requesting an
-    // import for `collections.abc` could feasibly
-    // reuse the import and rewrite the symbol text
-    // to just `abc`. But for now it seems better
-    // to respect what has been written and add the
-    // `import collections.abc`. This behavior could
-    // plausibly be changed.
     #[test]
     fn import_module_from_via_member_exists() {
         let test = cursor_test(

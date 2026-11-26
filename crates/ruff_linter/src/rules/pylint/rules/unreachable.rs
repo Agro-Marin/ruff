@@ -54,11 +54,9 @@ pub(crate) fn in_function(checker: &Checker, name: &Identifier, body: &[Stmt]) {
         .sorted_by_key(|block| cfg.range(*block).start())
         .peekable();
 
-    // Advance past leading reachable blocks
     while blocks.next_if(|block| reachable.contains(block)).is_some() {}
 
     while let Some(start_block) = blocks.next() {
-        // Advance to next reachable block
         let mut end_block = start_block;
         while let Some(next_block) = blocks.next_if(|block| !reachable.contains(block)) {
             end_block = next_block;
@@ -86,7 +84,6 @@ fn reachable(cfg: &ControlFlowGraph) -> HashSet<BlockId> {
         if reachable.insert(block) {
             stack.extend(
                 cfg.outgoing(block)
-                    // Traverse edges that are statically known to be possible to cross.
                     .filter_targets_by_conditions(|cond| matches!(taken(cond), Some(true) | None)),
             );
         }

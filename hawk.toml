@@ -1,4 +1,3 @@
-# Keep intentional uniform field visibility audited instead of excluding whole files.
 
 preserve-uniform-field-visibility = true
 
@@ -32,7 +31,6 @@ package = "ty_completion_eval"
 bin = "ty_completion_eval"
 reason = "workspace completion evaluation binary"
 
-# Keep this list in sync with workspace packages that define doctests.
 
 [[doctest]]
 package = "ruff_annotate_snippets"
@@ -82,7 +80,6 @@ package = "ty_module_resolver"
 [[doctest]]
 package = "ty_python_semantic"
 
-# Keep APIs used by targets outside Hawk's workspace analysis.
 
 [[override]]
 lint = "hawk::unnecessary_public"
@@ -100,7 +97,6 @@ kind = "constant"
 level = "expect"
 reason = "public cursor documentation links to this end-of-file sentinel"
 
-# Keep APIs referenced by public documentation or paired with sibling APIs.
 
 [[override]]
 lint = "hawk::unnecessary_public"
@@ -174,7 +170,6 @@ kind = "inherent_method"
 level = "expect"
 reason = "public union construction documentation recommends this optimized constructor"
 
-# Keep the public code-component accessor API symmetric.
 
 [[override]]
 lint = "hawk::dead_public"
@@ -192,7 +187,6 @@ kind = "inherent_method"
 level = "expect"
 reason = "preserves the intentional symmetric prefix and suffix accessor API"
 
-# Keep the public edit-operation predicate API symmetric.
 
 [[override]]
 lint = "hawk::dead_public"
@@ -226,7 +220,6 @@ kind = "inherent_method"
 level = "expect"
 reason = "preserves the intentional symmetric indent-style predicate API"
 
-# Keep the public printer-options builder API uniform.
 
 [[override]]
 lint = "hawk::unnecessary_public"
@@ -252,7 +245,6 @@ kind = "inherent_method"
 level = "expect"
 reason = "preserves the intentional uniform printer-options builder API"
 
-# Keep public APIs retained during cleanup review.
 
 [[override]]
 lint = "hawk::dead_public"
@@ -958,8 +950,6 @@ kind = "inherent_method"
 level = "expect"
 reason = "semantic ingredients expose consistent file, scope, and program accessors"
 
-# Keep public APIs whose narrower visibility would break a uniform interface or
-# activate compiler lints that Rust intentionally suppresses for public APIs.
 
 [[override]]
 lint = "hawk::unnecessary_public"
@@ -1186,7 +1176,6 @@ level = "expect"
 reason = "the public auto-import API re-exports its query function"
 
 # Keep the generated AST and its hand-written companion APIs consistent across
-# node types, visitors, and string literal kinds.
 
 [[exclude]]
 crate = "ruff_python_ast"
@@ -1238,8 +1227,6 @@ crate = "ruff_python_literal"
 file = "crates/ruff_python_literal/src/cformat.rs"
 reason = "C-style string and bytes format APIs intentionally provide a consistent interface"
 
-# Preserve complete wrapper and DSL interfaces whose methods intentionally
-# mirror their underlying abstractions.
 
 [[exclude]]
 crate = "ruff_db"
@@ -1301,7 +1288,6 @@ crate = "ruff_linter"
 file = "crates/ruff_linter/src/test.rs"
 reason = "public test helpers are consumed by downstream crates with the testing feature"
 
-# Preserve interfaces that are consumed outside the native Rust workspace.
 
 [[exclude]]
 crate = "ruff_wasm"

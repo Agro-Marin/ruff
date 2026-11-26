@@ -63,7 +63,6 @@ impl Violation for AsyncBusyWait {
 
 /// ASYNC110
 pub(crate) fn async_busy_wait(checker: &Checker, while_stmt: &ast::StmtWhile) {
-    // The body should be a single `await` call.
     let [stmt] = while_stmt.body.as_slice() else {
         return;
     };

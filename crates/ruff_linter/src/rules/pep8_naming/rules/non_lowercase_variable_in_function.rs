@@ -57,7 +57,6 @@ pub(crate) fn non_lowercase_variable_in_function(checker: &Checker, range: TextR
         return;
     }
 
-    // Ignore globals.
     if checker
         .semantic()
         .lookup_symbol(name)
@@ -77,7 +76,6 @@ pub(crate) fn non_lowercase_variable_in_function(checker: &Checker, range: TextR
         return;
     }
 
-    // Ignore explicitly-allowed names.
     if checker.settings().pep8_naming.ignore_names.matches(name) {
         return;
     }

@@ -115,7 +115,6 @@ pub fn indent_first_line<'a>(text: &'a str, prefix: &str) -> Cow<'a, str> {
 
     let mut result = String::with_capacity(text.len() + prefix.len());
 
-    // Indent only the first line
     if first_line.trim_whitespace().is_empty() {
         result.push_str(prefix.trim_whitespace_end());
     } else {
@@ -123,7 +122,6 @@ pub fn indent_first_line<'a>(text: &'a str, prefix: &str) -> Cow<'a, str> {
     }
     result.push_str(first_line.as_full_str());
 
-    // Add remaining lines without indentation
     for line in lines {
         result.push_str(line.as_full_str());
     }
@@ -152,25 +150,21 @@ pub fn indent_first_line<'a>(text: &'a str, prefix: &str) -> Cow<'a, str> {
 /// ");
 /// ```
 pub fn dedent(text: &str) -> Cow<'_, str> {
-    // Find the minimum amount of leading whitespace on each line.
     let prefix_len = text
         .universal_newlines()
         .fold(usize::MAX, |prefix_len, line| {
             let leading_whitespace_len = line.len() - line.trim_whitespace_start().len();
             if leading_whitespace_len == line.len() {
-                // Skip empty lines.
                 prefix_len
             } else {
                 cmp::min(prefix_len, leading_whitespace_len)
             }
         });
 
-    // If there is no common prefix, no need to dedent.
     if prefix_len == usize::MAX {
         return Cow::Borrowed(text);
     }
 
-    // Remove the common prefix from each line.
     let mut result = String::with_capacity(text.len());
     for line in text.universal_newlines() {
         if line.trim_whitespace().is_empty() {
@@ -203,22 +197,14 @@ pub fn dedent(text: &str) -> Cow<'_, str> {
 /// # Panics
 /// If the first line is indented by less than the provided indent.
 pub fn dedent_to(text: &str, indent: &str) -> Option<String> {
-    // The caller may provide an `indent` from source code by taking
-    // a range of text beginning with the start of a line. In Python,
-    // while a line may begin with form feeds, these do not contribute
-    // to the indentation. So we strip those here.
     let indent = indent.trim_start_matches('\x0C');
-    // Look at the indentation of the first non-empty line, to determine the "baseline" indentation.
     let mut first_comment_indent = None;
     let existing_indent_len = text
         .universal_newlines()
         .find_map(|line| {
-            // Following Python's lexer, treat form feed character's at the start of a line
-            // the same as a line break (reset the indentation)
             let trimmed_start_of_line_formfeed = line.trim_start_matches('\x0C');
             let trimmed = trimmed_start_of_line_formfeed.trim_whitespace_start();
 
-            // A whitespace only line
             if trimmed.is_empty() {
                 return None;
             }
@@ -240,7 +226,6 @@ pub fn dedent_to(text: &str, indent: &str) -> Option<String> {
         return None;
     }
 
-    // Determine the amount of indentation to remove.
     let dedent_len = existing_indent_len - indent.len();
 
     let mut result = String::with_capacity(text.len() + indent.len());
@@ -262,11 +247,9 @@ pub fn dedent_to(text: &str, indent: &str) -> Option<String> {
             continue;
         }
 
-        // Determine the current indentation level.
         let current_indent_len = line_content.len() - line_without_indent.len();
 
         if current_indent_len < existing_indent_len {
-            // If the current indentation level is less than the baseline, keep it as is.
             result.push_str(line.as_full_str());
             continue;
         }

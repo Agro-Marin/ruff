@@ -54,7 +54,5 @@ impl<'b> Visitor<'b> for LoggerCandidateVisitor<'_, 'b> {
     }
 
     fn visit_except_handler(&mut self, _except_handler: &'b ExceptHandler) {
-        // Don't recurse into exception handlers, since we'll re-run the visitor on any such
-        // handlers.
     }
 }

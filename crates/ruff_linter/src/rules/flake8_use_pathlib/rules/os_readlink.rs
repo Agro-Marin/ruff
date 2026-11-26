@@ -69,16 +69,9 @@ impl Violation for OsReadlink {
 
 /// PTH115
 pub(crate) fn os_readlink(checker: &Checker, call: &ExprCall, segments: &[&str]) {
-    // Python 3.9+
     if checker.target_version() < PythonVersion::PY39 {
         return;
     }
-    // `dir_fd` is not supported by pathlib, so check if it's set to non-default values.
-    // Signature as of Python 3.13 (https://docs.python.org/3/library/os.html#os.readlink)
-    // ```text
-    //               0         1
-    // os.readlink(path, *, dir_fd=None)
-    // ```
     if is_keyword_only_argument_non_default(&call.arguments, "dir_fd") {
         return;
     }
@@ -88,7 +81,6 @@ pub(crate) fn os_readlink(checker: &Checker, call: &ExprCall, segments: &[&str])
     }
 
     let applicability = if !is_top_level_expression_in_statement(checker) {
-        // Unsafe because the return type changes (str/bytes -> Path)
         Applicability::Unsafe
     } else {
         Applicability::Safe

@@ -105,8 +105,6 @@ fn run_corpus_tests(pattern: &str) -> anyhow::Result<()> {
             db.memory_file_system().write_file_all(path, &code).unwrap();
             File::sync_path(&mut db, path);
 
-            // this test is only asserting that we can pull every expression type without a panic
-            // (and some non-expressions that clearly define a single type)
             let file = system_path_to_file(&db, path).unwrap();
 
             if let Err(err) = std::panic::catch_unwind(|| {

@@ -175,7 +175,6 @@ mod tests {
         assert!(!linked_directory_exists(&db, directory_file));
 
         std::fs::create_dir(target.as_std_path())?;
-        // The link's target changed, but the directory containing the link did not.
         File::sync_path(&mut db, &link);
 
         assert!(linked_directory_exists(&db, directory_file));

@@ -2,9 +2,6 @@ use anyhow::anyhow;
 use camino::Utf8Path;
 
 thread_local! {
-    // Restrict each fixture's Rayon work to one thread so concurrent tests do not compete for the
-    // same resources. When fixtures share a process, the harness reuses worker threads, so cache
-    // one pool per worker.
     static RAYON_POOL: rayon::ThreadPool = rayon::ThreadPoolBuilder::new()
         .num_threads(1)
         .build()

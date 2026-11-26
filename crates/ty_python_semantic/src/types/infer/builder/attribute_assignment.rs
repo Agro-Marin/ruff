@@ -796,8 +796,6 @@ impl<'db> AssignmentAttributeWriteEvaluator<'_, 'db, '_, '_> {
             let is_callable = ty.as_union().map_or(ty.is_callable_type(), |union| {
                 union.elements(db).iter().all(Type::is_callable_type)
             });
-            // When shadowing e.g. `def method(self, x: int): ...` with
-            // `self.method = lambda x: str(x)`, infer `x` as `int` on the first pass.
             return if is_callable {
                 TypeContext::from_origin(*ty, *origin)
             } else {
@@ -900,8 +898,6 @@ impl<'db> AssignmentAttributeWriteEvaluator<'_, 'db, '_, '_> {
             TypeContext::default(),
             MemberLookupPolicy::REQUIRE_CONCRETE,
         );
-        // `Never` supports arbitrary operations only because there can be no runtime value to
-        // mutate; it is not a concrete descriptor with a terminal setter.
         let setter_returns_never = !descriptor_ty.is_never()
             && match &setter_result {
                 Ok(bindings) => bindings.return_type(db, env).is_never(),

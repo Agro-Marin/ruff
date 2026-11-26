@@ -58,7 +58,6 @@ pub struct Definition<'db> {
     pub kind: DefinitionKind<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for Definition<'_> {}
 
 impl<'db> Definition<'db> {
@@ -228,13 +227,11 @@ impl DefinitionPlace {
 /// Extract a docstring from a function, module, or class body.
 pub fn docstring_from_body(body: &[ast::Stmt]) -> Option<&ast::ExprStringLiteral> {
     let stmt = body.first()?;
-    // Require the docstring to be a standalone expression.
     let ast::StmtExpr {
         value,
         range: _,
         node_index: _,
     } = stmt.as_expr_stmt()?;
-    // Only match string literals.
     value.as_string_literal_expr()
 }
 
@@ -251,18 +248,14 @@ fn attribute_docstring<'a>(
     module: &'a ParsedModuleRef,
     assign_lvalue: &Expr,
 ) -> Option<&'a ast::ExprStringLiteral> {
-    // Find all the ancestors of the assign lvalue
     let covering_node = covering_node(module.syntax().into(), assign_lvalue.range());
-    // The assignment is the closest parent statement
     let assign = covering_node.find_first(AnyNodeRef::is_statement).ok()?;
     let parent = assign.parent()?;
     let assign_node = assign.node();
 
-    // The docs must be the next statement
     let parent_body = suite(assign_node, parent)?;
     let next_stmt = parent_body.next_sibling()?;
 
-    // Require the docstring to be a standalone expression.
     let ast::Stmt::Expr(ast::StmtExpr {
         value,
         range: _,
@@ -272,7 +265,6 @@ fn attribute_docstring<'a>(
         return None;
     };
 
-    // Only match string literals.
     value.as_string_literal_expr()
 }
 
@@ -830,8 +822,6 @@ impl<'db> DefinitionNodeRef<'_, 'db> {
             Self::ImportFromSubmodule(ImportFromSubmoduleDefinitionNodeRef { node, .. }) => {
                 node.into()
             }
-            // INVARIANT: for an invalid-syntax statement such as `from foo import *, bar, *`,
-            // we only create a `StarImportDefinitionKind` for the *first* `*` alias in the names list.
             Self::ImportStar(StarImportDefinitionNodeRef { node, symbol_id: _ }) => node
                 .names
                 .iter()
@@ -955,7 +945,6 @@ pub enum DefinitionKind<'db> {
     ParamSpec(AstNodeRef<ast::TypeParamParamSpec>),
     TypeVarTuple(AstNodeRef<ast::TypeParamTypeVarTuple>),
     LoopHeader(LoopHeaderDefinitionKind),
-    // Boxing here helps avoid growing the memory footprint of this enum.
     NestedBindings(Box<NestedBindingsDefinitionKind>),
 }
 
@@ -1070,9 +1059,6 @@ impl<'db> DefinitionKind<'db> {
             }
             DefinitionKind::LoopHeader(loop_header) => loop_header.range(module),
             DefinitionKind::NestedBindings(nested_bindings) => {
-                // TODO: We only return the `TextRange` of one of the `nonlocal` or `global`
-                // declarations that affect this variable, even if there's more than one. We could
-                // find a way to return all of them, or split up the synthetic definition somehow.
                 nested_bindings.nested_declarations[0].range
             }
         }
@@ -1125,9 +1111,6 @@ impl<'db> DefinitionKind<'db> {
             DefinitionKind::TypeVarTuple(type_var_tuple) => type_var_tuple.node(module).range(),
             DefinitionKind::LoopHeader(loop_header) => loop_header.range(module),
             DefinitionKind::NestedBindings(nested_bindings) => {
-                // TODO: We only return the `TextRange` of one of the `nonlocal` or `global`
-                // declarations that affect this variable, even if there's more than one. We could
-                // find a way to return all of them, or split up the synthetic definition somehow.
                 nested_bindings.nested_declarations[0].range
             }
         }
@@ -1135,7 +1118,6 @@ impl<'db> DefinitionKind<'db> {
 
     pub fn category(&self, in_stub: bool, module: &ParsedModuleRef) -> DefinitionCategory {
         match self {
-            // Functions and classes always bind, and we consider them declarations.
             DefinitionKind::Function(_)
             | DefinitionKind::Class(_)
             | DefinitionKind::TypeAlias(_)
@@ -1147,8 +1129,6 @@ impl<'db> DefinitionKind<'db> {
                 parameter,
                 ..
             }) => parameter.category(module),
-            // Annotated assignment is always a declaration. It is also a binding if there is a RHS
-            // or if we are in a stub file. Unfortunately, it is common for stubs to omit even an `...` value placeholder.
             DefinitionKind::AnnotatedAssignment(ann_assign) => {
                 if in_stub || ann_assign.has_value() {
                     DefinitionCategory::DeclarationAndBinding
@@ -1156,7 +1136,6 @@ impl<'db> DefinitionKind<'db> {
                     DefinitionCategory::Declaration
                 }
             }
-            // all of these bind values without declaring a type
             DefinitionKind::DictKeyAssignment(_)
             | DefinitionKind::NamedExpression(_)
             | DefinitionKind::Assignment(_)
@@ -1237,8 +1216,6 @@ impl StarImportDefinitionKind {
     }
 
     pub fn alias<'ast>(&self, module: &'ast ParsedModuleRef) -> &'ast ast::Alias {
-        // INVARIANT: for an invalid-syntax statement such as `from foo import *, bar, *`,
-        // we only create a `StarImportDefinitionKind` for the *first* `*` alias in the names list.
         self.node
             .node(module)
             .names
@@ -1335,7 +1312,6 @@ impl ParameterDefinitionNodeKind {
 
     fn category(&self, module: &ParsedModuleRef) -> DefinitionCategory {
         match self {
-            // a parameter always binds a value, but is only a declaration if annotated
             Self::VariadicPositionalParameter(parameter)
             | Self::VariadicKeywordParameter(parameter) => {
                 if parameter.node(module).annotation.is_some() {
@@ -1344,7 +1320,6 @@ impl ParameterDefinitionNodeKind {
                     DefinitionCategory::Binding
                 }
             }
-            // presence of a default is irrelevant, same logic as for a no-default parameter
             Self::Parameter(parameter_with_default) => {
                 if parameter_with_default
                     .node(module)
@@ -1445,16 +1420,13 @@ impl ImportFromSubmoduleDefinitionKind {
         let module_ident = self.module(module);
         let module_str = module_ident.as_str();
 
-        // Find the dot that terminates the target component.
         let Some((end_offset, _)) = module_str
             .match_indices('.')
             .nth(self.module_index as usize)
         else {
-            // This shouldn't happen but just in case, provide a safe default
             return module_ident.range();
         };
 
-        // Find the start of the target component (after the previous dot, or string start).
         let start_offset = module_str[..end_offset].rfind('.').map_or(0, |pos| pos + 1);
 
         let Ok(start) = TextSize::try_from(start_offset) else {
@@ -1668,9 +1640,6 @@ impl LoopHeaderDefinitionKind {
 pub struct NestedBindingsDefinitionKind {
     pub name: Name,
     pub execution: NestedBindingExecution,
-    // Note that in general this can include both `global` and `nonlocal` declarations from
-    // different nested scopes, because we don't necessarily know at synthesis time which of those
-    // kind will be visible in the current scope.
     pub nested_declarations: SmallVec<[crate::builder::NestedDeclaration; 1]>,
 }
 

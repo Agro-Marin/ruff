@@ -83,7 +83,6 @@ impl<'a> Importer<'a> {
             import.to_string()
         };
         if let Some(stmt) = self.preceding_import(at) {
-            // Insert after the last top-level import.
             Insertion::end_of_statement(stmt, self.source, self.stylist).into_edit(&required_import)
         } else {
             self.add_at_start(&required_import)
@@ -116,7 +115,6 @@ impl<'a> Importer<'a> {
         import: &ImportedMembers,
         at: TextSize,
     ) -> Result<RuntimeImportEdit> {
-        // Generate the modified import statement.
         let content = fix::codemods::retain_imports(
             &import.names,
             import.statement,
@@ -124,12 +122,9 @@ impl<'a> Importer<'a> {
             self.stylist,
         )?;
 
-        // Add the import to the top-level.
         let insertion = if let Some(stmt) = self.preceding_import(at) {
-            // Insert after the last top-level import.
             Insertion::end_of_statement(stmt, self.source, self.stylist)
         } else {
-            // Insert at the start of the file.
             Insertion::start_of_file(self.python_ast, self.source, self.stylist, None)
         };
         let add_import_edit = insertion.into_edit(&content);
@@ -148,7 +143,6 @@ impl<'a> Importer<'a> {
         at: TextSize,
         semantic: &SemanticModel<'a>,
     ) -> Result<TypingImportEdit> {
-        // Generate the modified import statement.
         let content = fix::codemods::retain_imports(
             &import.names,
             import.statement,
@@ -156,23 +150,10 @@ impl<'a> Importer<'a> {
             self.stylist,
         )?;
 
-        // Add the import to an existing `TYPE_CHECKING` block.
         if let Some(block) = self.preceding_type_checking_block(at) {
-            // Add the import to the existing `TYPE_CHECKING` block.
             let type_checking_edit =
                 if let Some(statement) = Self::type_checking_binding_statement(semantic, block) {
                     if statement == import.statement {
-                        // Special-case: if the `TYPE_CHECKING` symbol is imported as part of the same
-                        // statement that we're modifying, avoid adding a no-op edit. For example, here,
-                        // the `TYPE_CHECKING` no-op edit would overlap with the edit to remove `Final`
-                        // from the import:
-                        // ```python
-                        // from __future__ import annotations
-                        //
-                        // from typing import Final, TYPE_CHECKING
-                        //
-                        // Const: Final[dict] = {}
-                        // ```
                         None
                     } else {
                         Some(Edit::range_replacement(
@@ -189,20 +170,8 @@ impl<'a> Importer<'a> {
             });
         }
 
-        // Import the `TYPE_CHECKING` symbol from the typing module.
         let (type_checking_edit, type_checking) =
             if let Some(type_checking) = Self::find_type_checking(at, semantic)? {
-                // Special-case: if the `TYPE_CHECKING` symbol is imported as part of the same
-                // statement that we're modifying, avoid adding a no-op edit. For example, here,
-                // the `TYPE_CHECKING` no-op edit would overlap with the edit to remove `Final`
-                // from the import:
-                // ```python
-                // from __future__ import annotations
-                //
-                // from typing import Final, TYPE_CHECKING
-                //
-                // Const: Final[dict] = {}
-                // ```
                 let edit = if type_checking.statement(semantic) == import.statement {
                     None
                 } else {
@@ -213,17 +182,6 @@ impl<'a> Importer<'a> {
                 };
                 (edit, type_checking.into_name())
             } else {
-                // Special-case: if the `TYPE_CHECKING` symbol would be added to the same import
-                // we're modifying, import it as a separate import statement. For example, here,
-                // we're concurrently removing `Final` and adding `TYPE_CHECKING`, so it's easier to
-                // use a separate import statement:
-                // ```python
-                // from __future__ import annotations
-                //
-                // from typing import Final
-                //
-                // Const: Final[dict] = {}
-                // ```
                 let (edit, name) = self.import_symbol(
                     &ImportRequest::import_from("typing", "TYPE_CHECKING"),
                     at,
@@ -233,7 +191,6 @@ impl<'a> Importer<'a> {
                 (Some(edit), name)
             };
 
-        // Add the import to a new `TYPE_CHECKING` block.
         Ok(TypingImportEdit {
             type_checking_edit,
             add_import_edit: self.add_type_checking_block(
@@ -327,26 +284,16 @@ impl<'a> Importer<'a> {
         at: TextSize,
         semantic: &SemanticModel,
     ) -> Result<Option<ImportedName>, ResolutionError> {
-        // If the symbol is already available in the current scope, use it.
         let Some(imported_name) =
             semantic.resolve_qualified_import_name(symbol.module, symbol.member)
         else {
             return Ok(None);
         };
 
-        // If the symbol source (i.e., the import statement) comes after the current location,
-        // abort. For example, we could be generating an edit within a function, and the import
-        // could be defined in the module scope, but after the function definition. In this case,
-        // it's unclear whether we can use the symbol (the function could be called between the
-        // import and the current location, and thus the symbol would not be available). It's also
-        // unclear whether should add an import statement at the start of the file, since it could
-        // be shadowed between the import and the current location.
         if imported_name.start() > at {
             return Err(ResolutionError::ImportAfterUsage);
         }
 
-        // If the symbol source (i.e., the import statement) is in a typing-only context, but we're
-        // in a runtime context, abort.
         if imported_name.context().is_typing() && semantic.execution_context().is_runtime() {
             return Err(ResolutionError::IncompatibleContext);
         }
@@ -361,27 +308,10 @@ impl<'a> Importer<'a> {
         at: TextSize,
         semantic: &SemanticModel,
     ) -> Result<Option<(Edit, String)>, ResolutionError> {
-        // Find the symbol in the current scope.
         let Some(imported_name) = Self::find_symbol(symbol, at, semantic)? else {
             return Ok(None);
         };
 
-        // We also add a no-op edit to force conflicts with any other fixes that might try to
-        // remove the import. Consider:
-        //
-        // ```python
-        // import sys
-        //
-        // quit()
-        // ```
-        //
-        // Assume you omit this no-op edit. If you run Ruff with `unused-imports` and
-        // `sys-exit-alias` over this snippet, it will generate two fixes: (1) remove the unused
-        // `sys` import; and (2) replace `quit()` with `sys.exit()`, under the assumption that `sys`
-        // is already imported and available.
-        //
-        // By adding this no-op edit, we force the `unused-imports` fix to conflict with the
-        // `sys-exit-alias` fix, and thus will avoid applying both fixes in the same pass.
         let import_edit = Edit::range_replacement(
             self.source[imported_name.range()].to_string(),
             imported_name.range(),
@@ -406,9 +336,6 @@ impl<'a> Importer<'a> {
             .find_import_from(symbol.module, at)
             .filter(|stmt| except != Some(stmt))
         {
-            // Case 1: `from functools import lru_cache` is in scope, and we're trying to reference
-            // `functools.cache`; thus, we add `cache` to the import, and return `"cache"` as the
-            // bound name.
             if semantic.is_available(symbol.member) {
                 let Ok(import_edit) = self.add_member(stmt, symbol.member) else {
                     return Err(ResolutionError::InvalidEdit);
@@ -420,8 +347,6 @@ impl<'a> Importer<'a> {
         } else {
             match symbol.style {
                 ImportStyle::Import => {
-                    // Case 2a: No `functools` import is in scope; thus, we add `import functools`,
-                    // and return `"functools.cache"` as the bound name.
                     if semantic.is_available(symbol.module) {
                         let import_edit = self.add_import(
                             &NameImport::Import(ModuleNameImport::module(
@@ -443,8 +368,6 @@ impl<'a> Importer<'a> {
                     }
                 }
                 ImportStyle::ImportFrom => {
-                    // Case 2b: No `functools` import is in scope; thus, we add
-                    // `from functools import cache`, and return `"cache"` as the bound name.
                     if semantic.is_available(symbol.member) {
                         let import_edit = self.add_import(
                             &NameImport::ImportFrom(MemberNameImport::member(
@@ -514,10 +437,8 @@ impl<'a> Importer<'a> {
     /// Add a `TYPE_CHECKING` block to the given module.
     fn add_type_checking_block(&self, content: &str, at: TextSize) -> Result<Edit> {
         let insertion = if let Some(stmt) = self.preceding_import(at) {
-            // Insert after the last top-level import.
             Insertion::end_of_statement(stmt, self.source, self.stylist)
         } else {
-            // Insert at the start of the file.
             Insertion::start_of_file(self.python_ast, self.source, self.stylist, None)
         };
         if insertion.is_inline() {
@@ -571,8 +492,6 @@ impl<'a> Importer<'a> {
             "__future__".to_string(),
             "annotations".to_string(),
         ));
-        // Note that `TextSize::default` should ensure that the import is added at the very
-        // beginning of the file via `Insertion::start_of_file`.
         self.add_import(import, TextSize::default(), false)
     }
 }

@@ -113,14 +113,12 @@ pub(crate) fn blind_except(
         return;
     };
 
-    // If the exception is re-raised, don't flag an error.
     let mut visitor = ReraiseVisitor::new(name);
     visitor.visit_body(body);
     if visitor.seen() {
         return;
     }
 
-    // If the exception is logged, don't flag an error.
     let mut visitor = LogExceptionVisitor::new(semantic, &checker.settings().logger_objects);
     visitor.visit_body(body);
     if visitor.seen() {
@@ -160,16 +158,11 @@ impl<'a> StatementVisitor<'a> for ReraiseVisitor<'a> {
         }
         match stmt {
             Stmt::Raise(ast::StmtRaise { exc, cause, .. }) => {
-                // except Exception [as <name>]:
-                //     raise [<exc> [from <cause>]]
                 let reraised = match (self.name, exc.as_deref(), cause.as_deref()) {
-                    // `raise`
                     (_, None, None) => true,
-                    // `raise SomeExc from <name>`
                     (Some(name), _, Some(Expr::Name(ast::ExprName { id, .. }))) if name == id => {
                         true
                     }
-                    // `raise <name>` and `raise <name> from SomeCause`
                     (Some(name), Some(Expr::Name(ast::ExprName { id, .. })), _) if name == id => {
                         true
                     }

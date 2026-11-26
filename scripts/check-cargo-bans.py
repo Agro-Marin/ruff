@@ -39,7 +39,6 @@ def inspect(
     def is_external(path: str | None) -> bool:
         return path is None or (root / path).resolve() not in member_paths
 
-    # Metadata omits unused workspace dependency definitions.
     for name, specification in workspace_dependencies.items():
         dependency = {} if isinstance(specification, str) else specification
         if is_external(dependency.get("path")) and (
@@ -57,7 +56,6 @@ def inspect(
         )
         external_aliases = set()
 
-        # Cargo has already applied workspace inheritance and target-specific rules.
         for dependency in package["dependencies"]:
             if not is_external(dependency.get("path")):
                 continue

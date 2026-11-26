@@ -71,14 +71,12 @@ pub(crate) fn single_item_membership_test(checker: &Checker, compare: &ast::Expr
         return;
     };
 
-    // Ensure that the comparison is a membership test.
     let membership_test = match op {
         CmpOp::In => MembershipTest::In,
         CmpOp::NotIn => MembershipTest::NotIn,
         _ => return,
     };
 
-    // Check if the right-hand side is a single-item object
     let Some(item) = single_item(right, checker.semantic()) else {
         return;
     };
@@ -99,7 +97,6 @@ pub(crate) fn single_item_membership_test(checker: &Checker, compare: &ast::Expr
         compare.range(),
     );
 
-    // All supported cases can change runtime behavior; mark as unsafe.
     let fix = Fix::unsafe_edit(edit);
 
     checker

@@ -57,19 +57,16 @@ pub(crate) fn empty_comments(
     let block_comments = comment_ranges.block_comments(locator.contents());
 
     for range in comment_ranges {
-        // Ignore comments that are part of multi-line "comment blocks".
         if block_comments.binary_search(&range.start()).is_ok() {
             continue;
         }
 
-        // If the line contains an empty comment, add a diagnostic.
         empty_comment(context, range, locator, indexer);
     }
 }
 
 /// Return a [`Diagnostic`] if the comment at the given [`TextRange`] is empty.
 fn empty_comment(context: &LintContext, range: TextRange, locator: &Locator, indexer: &Indexer) {
-    // Check: is the comment empty?
     if !locator
         .slice(range)
         .chars()
@@ -79,13 +76,10 @@ fn empty_comment(context: &LintContext, range: TextRange, locator: &Locator, ind
         return;
     }
 
-    // Find the location of the `#`.
     let first_hash_col = range.start();
 
-    // Find the start of the line.
     let line = locator.line_range(first_hash_col);
 
-    // Find the last character in the line that precedes the comment, if any.
     let deletion_start_col = locator
         .slice(TextRange::new(line.start(), first_hash_col))
         .char_indices()
@@ -99,8 +93,6 @@ fn empty_comment(context: &LintContext, range: TextRange, locator: &Locator, ind
             }
         });
 
-    // If there is no character preceding the comment, this comment must be on its own physical line.
-    // If there is a line preceding the empty comment's line, check if it ends in a line continuation character. (`\`)
     let is_on_same_logical_line = indexer
         .preceded_by_continuations(first_hash_col, locator.contents())
         .is_some();

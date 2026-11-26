@@ -58,7 +58,6 @@ impl AlwaysFixableViolation for ZipWithoutExplicitStrict {
 pub(crate) fn zip_without_explicit_strict(checker: &Checker, call: &ast::ExprCall) {
     let semantic = checker.semantic();
 
-    // any call to `zip()` with at least 2 iterables, or a starred argument.
     if semantic.match_builtin_expr(&call.func, "zip")
         && call.arguments.find_keyword("strict").is_none()
         && (call.arguments.args.len() >= 2

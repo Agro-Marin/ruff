@@ -307,7 +307,6 @@ impl HasNavigationTargets for Type<'_> {
                         .collect();
                 }
 
-                // Only consider the positive elements because the negative elements are mainly from narrowing constraints.
                 let mut targets = intersection.iter_positive(db).filter(|ty| !ty.is_unknown());
 
                 let Some(first) = targets.next() else {
@@ -316,8 +315,6 @@ impl HasNavigationTargets for Type<'_> {
 
                 match targets.next() {
                     Some(_) => {
-                        // If there are multiple types in the intersection, we can't navigate to a single one
-                        // because the type is the intersection of all those types.
                         NavigationTargets::empty()
                     }
                     None => first.navigation_targets(db, env),
@@ -354,7 +351,6 @@ impl HasNavigationTargets for TypeDefinition<'_> {
 
 /// Get the cache-relative path where vendored paths should be written to.
 fn relative_cached_vendored_root() -> SystemPathBuf {
-    // The vendored files are uniquely identified by the source commit.
     SystemPathBuf::from(format!("vendored/typeshed/{}", ty_vendored::SOURCE_COMMIT))
 }
 
@@ -367,7 +363,6 @@ pub fn cached_vendored_path(
     let mut relative_path = relative_cached_vendored_root();
     relative_path.push(path.as_str());
 
-    // Extract the vendored file onto the system.
     writable
         .get_or_cache(&relative_path, &|| db.vendored().read_to_string(path))
         .ok()
@@ -536,7 +531,6 @@ mod tests {
                 db.write_file(path, contents)
                     .expect("write to memory file system to be successful");
 
-                // Add a root for the top-most component.
                 let top = path.components().find_map(|c| match c {
                     Utf8Component::Normal(c) => Some(c),
                     _ => None,
@@ -551,16 +545,11 @@ mod tests {
                 let file = system_path_to_file(&db, path).expect("newly written file to existing");
 
                 if let Some(offset) = cursor_offset {
-                    // This assert should generally never trip, since
-                    // we have an assert on `CursorTestBuilder::source`
-                    // to ensure we never have more than one marker.
                     assert!(
                         cursor.is_none(),
                         "found more than one source that contains `<CURSOR>`"
                     );
 
-                    // The cursor file is open in the editor; expected types for
-                    // string-literal completions are only collected for open files.
                     db.project().open_file(&mut db, file);
 
                     let source = source_text(&db, file);
@@ -577,7 +566,6 @@ mod tests {
 
             let mut insta_settings = insta::Settings::clone_current();
             insta_settings.add_filter(r#"\\(\w\w|\.|")"#, "/$1");
-            // Filter out TODO types because they are different between debug and release builds.
             insta_settings.add_filter(r"@Todo\(.+\)", "@Todo");
             for (pattern, replacement) in &self.snapshot_filters {
                 insta_settings.add_filter(pattern, replacement);
@@ -649,7 +637,6 @@ mod tests {
             let mut db =
                 ty_project::TestDb::new(ProjectMetadata::new("test", project_root.clone()));
 
-            // Write site-packages files first.
             for Source {
                 path,
                 contents,
@@ -661,7 +648,6 @@ mod tests {
                     .expect("write to memory file system to be successful");
             }
 
-            // Configure search paths with site-packages
             let search_paths = SearchPathSettings {
                 src_roots: vec![project_root.clone()],
                 site_packages_paths: vec![site_packages_path.clone()],
@@ -700,8 +686,6 @@ mod tests {
                         "found more than one source that contains `<CURSOR>`"
                     );
 
-                    // The cursor file is open in the editor; expected types for
-                    // string-literal completions are only collected for open files.
                     db.project().open_file(&mut db, file);
 
                     let source = source_text(&db, file);

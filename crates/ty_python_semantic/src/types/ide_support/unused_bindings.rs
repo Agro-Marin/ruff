@@ -108,7 +108,6 @@ pub fn unused_bindings(db: &dyn Db, file: ProgramFile<'_>) -> Box<[UnusedBinding
     let is_stub_file = source_file.is_stub(db);
     let index = semantic_index(db, file);
     let mut unused = Vec::new();
-    // A used synthetic definition counts as a use of the user-visible definitions it represents.
     let used_definitions = index.scope_ids().flat_map(|scope_id| {
         index
             .use_def_map(scope_id.file_scope_id(db))
@@ -138,8 +137,6 @@ pub fn unused_bindings(db: &dyn Db, file: ProgramFile<'_>) -> Box<[UnusedBinding
             function_scope_is_overload_declaration(db, index, file_scope_id);
         let place_table = index.place_table(file_scope_id);
         let use_def_map = index.use_def_map(file_scope_id);
-        // Loop headers are synthesized before the loop body definitions they point to;
-        // track used IDs as we go.
         let mut loop_header_used_definition_ids = FxHashSet::default();
 
         for (definition_id, definition, is_used) in use_def_map.definitions_with_usage() {
@@ -184,7 +181,6 @@ pub fn unused_bindings(db: &dyn Db, file: ProgramFile<'_>) -> Box<[UnusedBinding
             let symbol = place_table.symbol(symbol_id);
             let name = symbol.name().as_str();
 
-            // Skip conventional method receiver parameters.
             if is_parameter && is_method_scope && matches!(name, "self" | "cls") {
                 continue;
             }
@@ -194,7 +190,6 @@ pub fn unused_bindings(db: &dyn Db, file: ProgramFile<'_>) -> Box<[UnusedBinding
             }
 
             // Global and nonlocal assignments target bindings from outer scopes.
-            // Treat them as externally managed to avoid false positives here.
             let is_local_comprehension_named_expression = scope_kind == ScopeKind::Comprehension
                 && matches!(kind, DefinitionKind::NamedExpression(_))
                 && comprehension_named_expression_is_local(index, file_scope_id, name);
@@ -1101,9 +1096,6 @@ mod tests {
 
         let bindings = collect_unused_bindings(&source)?;
         let final_x_start = TextSize::try_from(source.rfind("x = 2").unwrap()).unwrap();
-        // TODO: The `x = 1` binding is also unused, but we currently mark it used because it
-        // reaches the synthetic loop header even though the next loop iteration is blocked by the
-        // loop condition.
         assert_eq!(
             bindings,
             vec![UnusedBinding {

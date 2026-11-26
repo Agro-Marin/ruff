@@ -66,14 +66,10 @@ pub(super) fn followed_by_astimezone(checker: &Checker) -> bool {
 
     for (index, expr) in semantic.current_expressions().enumerate() {
         if index == 0 {
-            // datetime.now(...).replace(...).astimezone
-            // ^^^^^^^^^^^^^^^^^
             continue;
         }
 
         if index % 2 == 1 {
-            // datetime.now(...).replace(...).astimezone
-            //                   ^^^^^^^      ^^^^^^^^^^
             let Expr::Attribute(ExprAttribute { attr, .. }) = expr else {
                 return false;
             };
@@ -84,20 +80,10 @@ pub(super) fn followed_by_astimezone(checker: &Checker) -> bool {
                 _ => return false,
             }
         } else {
-            // datetime.now(...).replace(...).astimezone
-            //                          ^^^^^
             let Expr::Call(ExprCall { func, .. }) = expr else {
                 return false;
             };
 
-            // Without this branch, we would fail to emit a diagnostic on code like this:
-            //
-            // ```py
-            // foo.replace(datetime.now().replace).astimezone()
-            //           # ^^^^^^^^^^^^^^  Diagnostic should be emitted here
-            //           #                 since the `datetime.now()` call is not followed
-            //           #                 by `.astimezone()`
-            // ```
             if !last.is_some_and(|it| it.ptr_eq(AnyNodeRef::from(&**func))) {
                 return false;
             }

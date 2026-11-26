@@ -193,10 +193,7 @@ struct ModuleNameChanges<'db> {
     /// File renames match only exact module names. When this is false, a lookup for `pkg.sub.module`
     /// can skip checking its package prefixes `pkg.sub` and `pkg` for renames.
     has_package_renames: bool,
-    // The old name components that change across the batch. For example, renaming `app/tools/old.py`
-    // to `app/tools/new.py` and `app/legacy/util/` to `app/legacy/shared/` records `old` and `util`.
     renamed_module_name_components: FxHashSet<&'db str>,
-    // Text matchers used to skip source files that cannot contain these components.
     renamed_component_matchers: Vec<NameMatcher<'db>>,
 }
 
@@ -246,8 +243,6 @@ impl<'db> ModuleNameChanges<'db> {
             return None;
         }
 
-        // Walk from the full name toward its parents. Use the longest matching prefix whose
-        // renamed directory supplies the resolved module.
         for prefix in name.ancestors() {
             let Some(ModuleRename::Package(rename)) = self.module_renames.get(&prefix) else {
                 continue;
@@ -447,7 +442,6 @@ impl<'a, 'db> ImportStatementVisitor<'a, 'db> {
             }
         }
 
-        // An import-from statement may still have a module name edit when no imported names change.
         if let Some(import_from_module_edit) = import_from_module_edit {
             self.changes.edits.push(import_from_module_edit);
         }
@@ -459,8 +453,6 @@ impl<'a, 'db> ImportStatementVisitor<'a, 'db> {
         statement: &ast::StmtImportFrom,
         resolved_module: Module<'db>,
     ) -> Option<FileRenameEdit> {
-        // This module name is independent of the import level; the leading dots are stored
-        // separately in `statement.level`.
         let old_module_name = statement.module.as_ref()?;
 
         let absolute_new_module_name = self
@@ -474,8 +466,6 @@ impl<'a, 'db> ImportStatementVisitor<'a, 'db> {
             .count()
             .saturating_sub(written_component_count);
 
-        // A relative import needs no edit when it omits all renamed components (e.g.,
-        // `from .helpers import C` inside `pkg/old/` when that directory becomes `pkg/new/`).
         if absolute_new_module_name
             .components()
             .skip(omitted_component_count)
@@ -541,8 +531,6 @@ fn bound_name_replacement<'name>(
         return None;
     }
 
-    // `import pkg.old` binds `pkg`, while `from pkg import old` binds `old`.
-    // The first component of the imported name gives the bound name in both cases.
     let old_bound_name = first_component(alias.name.as_str());
     let new_bound_name = first_component(new_imported_name);
     (old_bound_name != new_bound_name).then_some(new_bound_name)
@@ -665,8 +653,6 @@ impl<'db> ImportAnalyzer<'db> {
             return None;
         }
 
-        // Without a package definition for `old`, `from pkg import old` imports `pkg.old`
-        // directly (for example, when `pkg/__init__.py` is empty).
         if model
             .definitions_for_module_global(resolved_module, alias.name.as_str())
             .is_none()
@@ -674,9 +660,6 @@ impl<'db> ImportAnalyzer<'db> {
             return Some(imported_module);
         }
 
-        // In `pkg/__init__.py`, `from . import old` imports `pkg.old` directly and defines
-        // the package's `old` bound name. Resolving that name as a re-export would analyze
-        // the same import again.
         if file_to_module(db, model.program_file().resolver_file(db))
             .is_some_and(|importing_module| importing_module.name(db) == module_name)
         {
@@ -717,7 +700,6 @@ impl<'db> ImportAnalyzer<'db> {
         resolved_module: Module<'db>,
         bound_name: &str,
     ) -> EditDecision {
-        // A cycle in one name must not affect the next name in the same import statement.
         if self.import_definitions_in_progress.is_empty() {
             self.import_cycle_detected = false;
         }
@@ -728,8 +710,6 @@ impl<'db> ImportAnalyzer<'db> {
             return decision;
         }
 
-        // A stub can expose a different bound name;
-        // propagate only those changes that both facets agree on.
         if let Some(runtime_module) =
             resolve_real_module_confident(db, resolver_environment(db), resolved_module.name(db))
             && runtime_module.file(db) != resolved_module.file(db)
@@ -764,7 +744,6 @@ impl<'db> ImportAnalyzer<'db> {
 
     fn should_edit_arbitrary_definition(&mut self, definition: Definition<'db>) -> EditDecision {
         let db = self.db;
-        // An import in a non-indexed file keeps its bound name.
         if !db.project().files(db).contains(definition.file(db)) {
             return EditDecision::No;
         }
@@ -843,7 +822,6 @@ impl<'db> ImportAnalyzer<'db> {
                     .map(|name| EditDecision::Yes(name.to_owned()))
                     .unwrap_or(EditDecision::No)
             }
-            // An omitted imported name edit leaves the binding unchanged.
             EditDecision::No | EditDecision::Omit => EditDecision::No,
         };
         self.bound_name_decisions_by_import
@@ -909,8 +887,6 @@ impl<'a, 'db> ModuleReferenceVisitor<'a, 'db> {
         };
 
         if resolution.crosses_scope_declaration() {
-            // Renaming a name declared `global` or `nonlocal` also requires updating its
-            // declaration and writes; this is not yet supported.
             return;
         }
 
@@ -921,8 +897,6 @@ impl<'a, 'db> ModuleReferenceVisitor<'a, 'db> {
                 break;
             }
             let decision = if matches!(definition.kind(self.db), DefinitionKind::StarImport(_)) {
-                // Module references introduced by star imports such as `from pkg import *`
-                // are unsupported.
                 EditDecision::Omit
             } else if let Some(replacement) = self.bound_name_changes.get(&definition) {
                 EditDecision::Yes(replacement.clone())
@@ -942,9 +916,6 @@ impl<'a, 'db> ModuleReferenceVisitor<'a, 'db> {
     /// whether their names change.
     fn edit_attribute_reference(&mut self, attribute: &ast::ExprAttribute) {
         if !attribute.ctx.is_load() {
-            // Do not rewrite an attribute name that is assigned to or deleted.
-            // The visitor still traverses the receiver, so renaming `pkg.old` to `pkg.new`
-            // can change `pkg.old.VALUE = 1` to `pkg.new.VALUE = 1`.
             return;
         }
 
@@ -965,24 +936,6 @@ impl<'a, 'db> ModuleReferenceVisitor<'a, 'db> {
 
         let attribute_name = attribute.attr.as_str();
 
-        // Computes a necessary condition for rewriting a direct submodule reference.
-        //
-        // Consider this example (when we're renaming `pkg/old.py` to `pkg/new.py`):
-        //
-        // ```python
-        // holder.old = pkg.old # A
-        // print(holder.old)    # B
-        // ```
-        //
-        // For A, we want to rewrite `pkg.old` to `pkg.new`. There, `pkg.old`
-        // (the old module name) relative to `pkg` (the receiver) is `old`
-        // (the attribute name), so the attribute does indeed match the
-        // old module name and we should rewrite it.
-        //
-        // For B, we do not want to rewrite `holder.old` to `holder.new`, even though
-        // `holder.old` refers to the `pkg.old` module. There, `pkg.old` relative to
-        // `holder` is `None`, so the attribute does
-        // not match the old module name and we do not rewrite it.
         let attribute_matches_old_module_name = old_module_name
             .relative_to(receiver_module.name(self.db))
             .is_some_and(|relative_name| relative_name.as_str() == attribute_name);
@@ -1014,8 +967,6 @@ impl<'a, 'db> ModuleReferenceVisitor<'a, 'db> {
     /// Ordinary strings in `__all__ = ["old"]` or `importlib.import_module("pkg.old")`
     /// are left unchanged.
     fn edit_string_annotation_references(&mut self, string: &ast::ExprStringLiteral) {
-        // Skip strings that cannot mention a renamed component of an old module name before
-        // `SemanticModel::enter_string_annotation` queries the inferred types for the enclosing scope.
         if !self
             .analyzer
             .module_name_changes
@@ -1174,9 +1125,6 @@ fn validate_renames<'db>(
         };
 
         if renames.len() > 1 {
-            // Check every name a destination can have under the configured search roots. For
-            // example, with `/src` and `/` as search roots, `/src/new.py` can collide as `src.new`
-            // even if its rename rewrites imports to use `new`.
             for name in module_names_for_path(db, &destination) {
                 destinations
                     .entry(name)
@@ -1186,7 +1134,6 @@ fn validate_renames<'db>(
         }
     }
 
-    // Drop every mapping whose destination import name is shared with another rename.
     module_renames.retain(|_, rename| {
         let new_name = match rename {
             ModuleRename::File(name) => name,
@@ -1219,8 +1166,6 @@ fn validate_file_rename<'db>(
     let old_module_name =
         file_to_module(db, ResolverFile::new(db, file, resolver_environment))?.name(db);
 
-    // A runtime module and its stub share a module name. Renaming only the stub
-    // must not redirect imports while the runtime module remains at its old path.
     let target = resolve_module_for_rename(db, resolver_environment, old_module_name)?;
     if target.module.file(db) != Some(file) {
         return None;
@@ -1239,7 +1184,6 @@ fn validate_file_rename<'db>(
         && directory_listing(db, &package_dir)
             .is_ok_and(|listing| listing.entry_is_file(db, &package_dir, "__init__.py"))
     {
-        // Skip edits when a sibling package would shadow the renamed module.
         return None;
     }
 
@@ -1270,15 +1214,12 @@ fn validate_package_rename<'db>(
     let target = resolve_module_for_rename(db, environment, &old_module_name)?;
     let directories = target.package_directories(db)?;
 
-    // Reject packages supplied by another directory or spread across search paths
-    // (because moving one portion of a namespace still leaves its old name importable).
     if !matches!(directories.as_slice(), [directory] if directory.as_path() == old_directory) {
         return None;
     }
 
     let new_module_name = package_name_for_directory(db, new_directory)?;
 
-    // Reject destination names already supplied by another module, even on a different search path.
     if resolve_module_confident(db, environment, &new_module_name).is_some()
         || resolve_real_module_confident(db, environment, &new_module_name).is_some()
     {
@@ -1302,7 +1243,6 @@ fn package_name_for_directory(db: &dyn Db, directory: &SystemPath) -> Option<Mod
     for search_path in search_paths(db, resolver_environment(db), ModuleResolveMode::Typing)
         .filter(|search_path| !search_path.is_standard_library())
     {
-        // A search root has no package name of its own; renaming it needs search-path updates.
         if search_path.as_system_path() == Some(directory) {
             return None;
         }
@@ -1311,8 +1251,6 @@ fn package_name_for_directory(db: &dyn Db, directory: &SystemPath) -> Option<Mod
             continue;
         };
 
-        // Reject directories normalized to a different import name (e.g.,
-        // `foo-stubs` to `foo`).
         if module_name.last_component() != basename {
             return None;
         }
@@ -1563,7 +1501,6 @@ mod tests {
             ),
         ]);
 
-        // Using `/project` keeps `src` in the import names; `/project/src` would drop it.
         set_search_paths(
             &mut db,
             &SearchPathSettings::new(vec!["/project".into(), "/project/src".into()]),
@@ -2311,7 +2248,6 @@ mod tests {
             &SearchPathSettings::new(vec!["/src".into(), "/other".into()]),
         );
 
-        // Both destinations are importable as `new`, even though their filesystem paths differ.
         let renames = file_renames(&[
             ("/src/old_pkg", "/src/new"),
             ("/other/old_file.py", "/other/new.py"),
@@ -2425,7 +2361,6 @@ mod tests {
         );
         let mut context = 0;
         for edit in edits {
-            // Keep unchanged lines visible so omissions can be reviewed alongside replacements.
             context = context.max(source_text(db, edit.range.file()).as_str().lines().count());
             diagnostic.annotate(Annotation::secondary(edit.range.into()).message(edit.value));
         }

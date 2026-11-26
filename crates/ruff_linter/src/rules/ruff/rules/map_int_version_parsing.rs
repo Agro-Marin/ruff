@@ -121,8 +121,6 @@ fn is_dunder_version_split_dot(expr: &ast::Expr) -> bool {
 }
 
 fn is_dunder_version_split(func: &ast::Expr) -> bool {
-    // foo.__version__.split(".")
-    // ---- value ---- ^^^^^ attr
     let ast::Expr::Attribute(ast::ExprAttribute { attr, value, .. }) = func else {
         return false;
     };
@@ -137,8 +135,6 @@ fn is_dunder_version(expr: &ast::Expr) -> bool {
         return id == "__version__";
     }
 
-    // foo.__version__.split(".")
-    //     ^^^^^^^^^^^ attr
     let ast::Expr::Attribute(ast::ExprAttribute { attr, .. }) = expr else {
         return false;
     };

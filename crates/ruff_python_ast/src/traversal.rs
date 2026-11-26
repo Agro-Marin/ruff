@@ -6,7 +6,6 @@ pub fn suite<'a>(
     stmt: impl Into<AnyNodeRef<'a>>,
     parent: impl Into<AnyNodeRef<'a>>,
 ) -> Option<EnclosingSuite<'a>> {
-    // TODO: refactor this to work without a parent, ie when `stmt` is at the top level
     let stmt = stmt.into();
     match parent.into() {
         AnyNodeRef::ModModule(ast::ModModule { body, .. }) => EnclosingSuite::new(body, stmt),

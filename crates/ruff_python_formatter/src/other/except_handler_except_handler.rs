@@ -69,35 +69,6 @@ impl FormatNodeRule<ExceptHandlerExceptHandler> for FormatExceptHandlerExceptHan
                     )?;
 
                     match type_.as_deref() {
-                        // For tuples of exception types without an `as` name and on 3.14+, the
-                        // parentheses are optional.
-                        //
-                        // ```py
-                        // try:
-                        //     ...
-                        // except BaseException, Exception:  # Ok
-                        //     ...
-                        // ```
-                        //
-                        // Unless any component of the tuple is starred. This case is actually valid
-                        // syntax on its own but is parsed as `except*`, not a tuple with a starred
-                        // element:
-                        //
-                        // ```py
-                        // try:
-                        //     ...
-                        // except *exceptions, BaseException:
-                        //     ...
-                        // ```
-                        //
-                        // And this case is an outright `SyntaxError`:
-                        //
-                        // ```py
-                        // try:
-                        //     ...
-                        // except BaseException, *exceptions:  # SyntaxError
-                        //     ...
-                        // ```
                         Some(Expr::Tuple(tuple))
                             if f.options().target_version() >= PythonVersion::PY314
                                 && name.is_none()

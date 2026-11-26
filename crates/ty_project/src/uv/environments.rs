@@ -214,18 +214,9 @@ impl UvEnvironments {
         make_progress: &ProgressFactory<'_>,
     ) {
         let Some(task) = script_sync_task(db, file) else {
-            // This file doesn't need syncing (anymore)?...
             if let Some(entry) = self.existing_entry(file)
                 && let ScriptEnvironmentState::Synchronizing { sync, .. } = &mut *entry.lock()
             {
-                // ... but there's a pending in-flight sync. This can happen
-                // when a user removes the script block after requesting a sync
-                // or disables the uv sync with `project-manager.script = "none"`.
-                //
-                // Set `latest_request` to `None`, so that `poll_sync` knows that it should
-                // discard the result of the in-flight uv sync call without scheduling a new sync.
-                // This is necessary because cancellation only skips queued requests,
-                // but not requests that are already in flight.
                 sync.latest_request = None;
                 sync.cancellation.cancel();
             }
@@ -251,7 +242,6 @@ impl UvEnvironments {
                 sync,
                 ..
             } => {
-                // A script first synchronized on save can be reopened before uv finishes.
                 if matches!(availability, ScriptEnvironmentAvailability::Pending) {
                     *current_availability = availability;
                 }
@@ -311,8 +301,6 @@ impl UvEnvironments {
     ///
     /// Reports project completions and changed scripts so callers can refresh diagnostics.
     pub fn poll_sync(&self, db: &mut dyn Db) -> UvSyncChanges {
-        // Updating a Salsa input waits for outstanding snapshots to be dropped. Cancel
-        // them before taking an entry lock, which their queries may need to finish.
         db.trigger_cancellation();
         let mut changes = UvSyncChanges::default();
 
@@ -355,8 +343,6 @@ impl UvEnvironments {
                         Uv::parse_metadata_output(db.system(), output),
                     );
                     if workspace.error.is_some() {
-                        // Keep the last working uv metadata so a failed refresh does not change
-                        // the environment used for checking. Report the new error instead.
                         workspace
                             .metadata
                             .clone_from(&project.metadata(db).uv_workspace().metadata);
@@ -401,25 +387,15 @@ impl UvEnvironments {
                     );
 
                     match (sync.latest_request.as_ref(), output) {
-                        // A saved edit or a configuration reload disabled uv sync for this script.
                         (None, _) => {
                             environment.set_synchronized_cache_key(db).to(None);
                         }
-                        // The completed `uv sync` result is for the current script metadata
                         (Some(latest), Some(output))
                             if latest.cache_key() == request.cache_key() =>
                         {
                             apply_sync_result(db, *environment, &request, output);
                         }
-                        // The script's metadata has changed...
                         (Some(next), _) => {
-                            // uv updates the same environment on disk for every version of this script. If the
-                            // metadata changes A -> B -> A, the B synchronization may already have modified the
-                            // environment. Run A again even though its cache key matches the last completed
-                            // synchronization.
-                            //
-                            // A cancelled request can become current again after another edit. Retry it
-                            // when there is no newer request; cancellation does not update the environment.
                             let next = next.clone();
                             sync.active_cache_key = next.cache_key();
                             sync.cancellation = CancellationTokenSource::new();
@@ -500,8 +476,6 @@ impl UvEnvironments {
     }
 
     fn entry(&self, file: File) -> Arc<ScriptEnvironmentEntry> {
-        // Return an owned entry so the map's shard lock is released before the caller locks the
-        // script's state. Otherwise, unrelated scripts in the same shard would also be blocked.
         Arc::clone(self.inner.scripts.entry(file).or_default().value())
     }
 }
@@ -783,15 +757,12 @@ fn script_sync_task(db: &dyn Db, file: File) -> Option<ScriptSyncTask> {
     let path = file.path(db).as_system_path()?;
     let tag = script_tag(db, file)?;
 
-    // Bail if syncing is disabled at the project or script level.
     if !use_uv_for_script(db, file) {
         return None;
     }
 
     let python = script_python(db);
 
-    // Hash the metadata text directly to avoid parsing it solely to compute the cache key.
-    // Formatting-only metadata changes may therefore trigger an unnecessary synchronization.
     let mut hasher = CacheKeyHasher::new();
     tag.metadata().cache_key(&mut hasher);
     python.cache_key(&mut hasher);
@@ -869,7 +840,6 @@ mod tests {
         let environments = db.uv_environments().clone();
         let availability = super::ScriptEnvironmentAvailability::Pending;
 
-        // The in-memory system returns a uv error. Leave it unpolled until the script opts out.
         environments.request_sync(&mut db, file, availability, &|_, _| None);
         assert!(environments.has_pending_synchronizations());
         let environment = script_environment(&db, file).context("expected a script environment")?;
@@ -987,8 +957,6 @@ mod tests {
         let file = system_path_to_file(&db, &path)?;
         let environments = db.uv_environments().clone();
 
-        // Semantic queries can reach a script before its environment has been synchronized. They
-        // create one stable Salsa input with no uv metadata or initialization error.
         let environment = script_environment(&db, file).context("expected a script environment")?;
         assert_eq!(script_environment(&db, file), Some(environment));
         assert_eq!(environment.synchronized_cache_key(&db), None);
@@ -1053,7 +1021,6 @@ mod tests {
                 .is_lint_named("missing-direct-dependency")
         );
 
-        // Before synchronization, dependency checks keep using the previous declarations.
         db.write_dedented(path.as_str(), &declared)?;
         assert_eq!(db.check_file(file).len(), 1);
 
@@ -1065,8 +1032,6 @@ mod tests {
         assert!(db.check_file(file).is_empty());
         let program = db.program_file(file).program(&db).as_id();
 
-        // Only the synchronization result changes after the preceding check. Its dependency
-        // declarations must invalidate the cached diagnostic even though `Program` is unchanged.
         apply_dependency_metadata(&mut db, file, &indirect_metadata)?;
         assert_eq!(db.program_file(file).program(&db).as_id(), program);
         let diagnostics = db.check_file(file);
@@ -1147,7 +1112,6 @@ mod tests {
             let environments = case.db.uv_environments().clone();
             environments.request_project_sync(&case.db, &root, &|_, _| None);
 
-            // Leave the first result unapplied, then add a dependency-free workspace member.
             environments
                 .sync_wakeups()
                 .recv_timeout(Duration::from_secs(30))?;
@@ -1249,8 +1213,6 @@ mod tests {
             )?;
             let environments = case.db.uv_environments().clone();
 
-            // Saving new script metadata keeps diagnostics visible. Reopening the saved
-            // script before uv finishes defers diagnostics until its dependencies are ready.
             environments.request_sync(
                 &mut case.db,
                 case.file,
@@ -1290,8 +1252,6 @@ mod tests {
             )?;
             let environments = case.db.uv_environments().clone();
 
-            // Semantic analysis can reach a script before the host requests synchronization.
-            // The missing-import diagnostic must clear when the environment becomes available.
             let _ = case.db.program_file(case.file);
             let diagnostics = case.db.check_file(case.file);
             assert_eq!(diagnostics.len(), 1);
@@ -1363,13 +1323,10 @@ mod tests {
                 &|_, _| None,
             );
 
-            // Wait until uv has changed the virtual environment, but leave its result unapplied.
             wakeups
                 .recv_timeout(Duration::from_secs(30))
                 .context("intermediate script synchronization did not finish")?;
 
-            // Restoring the original metadata must reinstall its dependencies, even though its
-            // cache key matches the last synchronization whose result was applied.
             case.db.write_dedented(case.path.as_str(), initial)?;
             environments.request_sync(
                 &mut case.db,
@@ -1423,8 +1380,6 @@ mod tests {
                     thread::sleep(Duration::from_millis(1));
                 }
 
-                // A cancelled query may need this lock before it can drop its snapshot. Use a
-                // timeout so a regression fails instead of deadlocking the test itself.
                 assert!(
                     entry.try_lock_for(Duration::from_secs(1)).is_some(),
                     "the entry lock was held while waiting for a cancelled snapshot"
@@ -1532,7 +1487,6 @@ mod tests {
                 let temp_dir = tempfile::tempdir()?;
                 let root = SystemPath::from_std_path(temp_dir.path())
                     .context("temporary directory is not a valid UTF-8 path")?;
-                // uv resolves symlinks, including macOS's symlinked temporary directory.
                 let root = OsSystem::default().canonicalize_path(root)?;
                 let metadata = ProjectMetadata::new("test", root.clone())
                     .with_uv_workspace_discovery(uv_workspace_discovery);

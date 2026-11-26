@@ -90,27 +90,12 @@ fn is_open_file_impl(db: &dyn Db, file: File) -> bool {
 #[salsa::db]
 #[derive(Clone)]
 pub struct ProjectDatabase {
-    // This handle must remain stable for the lifetime of the database.
-    //
-    // Many tracked queries branch on the untracked `db.project()` read before
-    // consulting tracked `Project` fields. Replacing the handle during reload
-    // therefore changes query behavior outside salsa's dependency graph and can
-    // trigger stale results.
-    //
-    // Structural reloads must update the existing `Project` in place via salsa
-    // setters instead of swapping in a freshly constructed handle.
     project: Option<Project>,
     files: Files,
     uv_environments: UvEnvironments,
 
-    // IMPORTANT: Never return clones of `system` outside `ProjectDatabase` (only return references)
-    // or the "trick" to get a mutable `Arc` in `Self::system_mut` is no longer guaranteed to work.
     system: Arc<dyn System + Send + Sync + RefUnwindSafe>,
 
-    // IMPORTANT: This field must be the last because we use `trigger_cancellation` (drops all other storage references)
-    // to drop all other references to the database, which gives us exclusive access to other `Arc`s stored on this db.
-    // However, for this to work it's important that the `storage` is dropped AFTER any `Arc` that
-    // we try to mutably borrow using `Arc::get_mut` (like `system`).
     storage: salsa::Storage<ProjectDatabase>,
 }
 
@@ -185,21 +170,12 @@ impl ProjectDatabase {
             system: Arc::new(system),
         };
 
-        // TODO: Use the `program_settings` to compute the key for the database's persistent
-        //   cache and load the cache if it exists.
-        //   we may want to have a dedicated method for this?
-        // Important: For persistent caching it's essential that we can compute the
-        // cache key before loading the DB. Because of that, access to the `db` (other than system and vendored) is
-        // strictly forbidden before resolving the `program_settings`.
 
         let merged_options = project_metadata.to_merged_options();
 
         let (program_settings, program_settings_diagnostics) = strategy
             .to_anyhow(merged_options.to_program_settings(db.system(), db.vendored(), strategy))?;
 
-        // This must be called before `from_metadata`, or the `SearchPath` root
-        // will take precedence over the `Project` root, resulting in
-        // all project files having HIGH durability.
         project_metadata.try_add_project_root(&db);
 
         let (settings, mut settings_diagnostics) = strategy
@@ -307,8 +283,6 @@ impl ProjectDatabase {
 
         ingredients.sort_by_key(|ingredient| {
             let heap_size = ingredient.heap_size_of_fields().unwrap_or_else(|| {
-                // Salsa currently does not expose a way to track the heap size of interned
-                // query arguments.
                 if !ingredient.debug_name().contains("interned_arguments") {
                     tracing::warn!(
                         "expected `heap_size` to be provided by Salsa struct `{}`",
@@ -661,7 +635,6 @@ impl SemanticDb for ProjectDatabase {
 #[salsa::db]
 impl ty_python_core::Db for ProjectDatabase {
     fn should_check_file(&self, file: File) -> bool {
-        // Avoid creating a dependency on the `should_check_file` query for vendored files.
         if file.path(self).is_vendored_path() {
             return false;
         }
@@ -994,8 +967,6 @@ mod tests {
         let db = ProjectDatabase::fallible(metadata, system)?;
         let file = system_path_to_file(&db, root.join("script.py"))?;
 
-        // This system cannot run commands. Analysis still reports the missing import using its
-        // available configuration; preparing the environment is the host's responsibility.
         let diagnostics = db.check();
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].id().as_str(), "import-not-found");
@@ -1067,8 +1038,6 @@ mod tests {
         Ok(())
     }
 
-    // Without uv metadata or an enabled dependency rule, checking settings and imports
-    // should not query dependency metadata.
     #[test]
     fn dependency_metadata_isnt_queried_unnecessarily() -> anyhow::Result<()> {
         let root = SystemPathBuf::from("/project");

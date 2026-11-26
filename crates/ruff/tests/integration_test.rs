@@ -912,7 +912,6 @@ fn stdin_multiple_parse_error() {
 
 #[test]
 fn parse_error_not_included() {
-    // Parse errors are always shown
     let mut cmd = RuffCheck::default().args(["--select=I"]).build();
     assert_cmd_snapshot!(cmd
         .pass_stdin("foo =\n"), @"
@@ -1258,7 +1257,6 @@ fn show_statistics_syntax_errors() {
         .args(["--statistics", "--target-version=py39", "--preview"])
         .build();
 
-    // ParseError
     assert_cmd_snapshot!(
         cmd.pass_stdin("x ="),
         @"
@@ -1271,7 +1269,6 @@ fn show_statistics_syntax_errors() {
     ----- stderr -----
     ");
 
-    // match before 3.10, UnsupportedSyntaxError
     assert_cmd_snapshot!(
         cmd.pass_stdin("match 2:\n  case 1: ..."),
         @"
@@ -1284,7 +1281,6 @@ fn show_statistics_syntax_errors() {
     ----- stderr -----
     ");
 
-    // rebound comprehension variable, SemanticSyntaxError
     assert_cmd_snapshot!(
         cmd.pass_stdin("[x := 1 for x in range(0)]"),
         @"
@@ -1300,7 +1296,6 @@ fn show_statistics_syntax_errors() {
 
 #[test]
 fn preview_enabled_prefix() {
-    // All the RUF9XX test rules should be triggered
     let mut cmd = RuffCheck::default()
         .args(["--select", "RUF9", "--output-format=concise", "--preview"])
         .build();
@@ -1349,7 +1344,6 @@ fn preview_enabled_all() {
 
 #[test]
 fn preview_enabled_direct() {
-    // Should be enabled without warning
     let mut cmd = RuffCheck::default()
         .args(["--select", "RUF911", "--output-format=concise", "--preview"])
         .build();
@@ -1366,7 +1360,6 @@ fn preview_enabled_direct() {
 
 #[test]
 fn preview_disabled_direct() {
-    // RUFF911 is preview so we should warn without selecting
     let mut cmd = RuffCheck::default()
         .args(["--select", "RUF911", "--output-format=concise"])
         .build();
@@ -1383,7 +1376,6 @@ fn preview_disabled_direct() {
 
 #[test]
 fn preview_disabled_prefix_empty() {
-    // Warns that the selection is empty since all of the RUF91 rules are in preview
     let mut cmd = RuffCheck::default()
         .args(["--select", "RUF91", "--output-format=concise"])
         .build();
@@ -1400,7 +1392,6 @@ fn preview_disabled_prefix_empty() {
 
 #[test]
 fn preview_disabled_does_not_warn_for_empty_ignore_selections() {
-    // Does not warn that the selection is empty since the user is not trying to enable the rule
     let mut cmd = RuffCheck::default()
         .args(["--ignore", "RUF9", "--output-format=concise"])
         .build();
@@ -1416,7 +1407,6 @@ fn preview_disabled_does_not_warn_for_empty_ignore_selections() {
 
 #[test]
 fn preview_disabled_does_not_warn_for_empty_fixable_selections() {
-    // Does not warn that the selection is empty since the user is not trying to enable the rule
     let mut cmd = RuffCheck::default()
         .args(["--fixable", "RUF9", "--output-format=concise"])
         .build();
@@ -1432,7 +1422,6 @@ fn preview_disabled_does_not_warn_for_empty_fixable_selections() {
 
 #[test]
 fn preview_group_selector() {
-    // `--select PREVIEW` should warn (selector was removed)
     let mut cmd = RuffCheck::default()
         .args([
             "--select",
@@ -1455,7 +1444,6 @@ fn preview_group_selector() {
 
 #[test]
 fn preview_enabled_group_ignore() {
-    // Should detect stable and unstable rules, RUF9 is more specific than RUF so ignore has no effect
     let mut cmd = RuffCheck::default()
         .args([
             "--select",
@@ -1485,7 +1473,6 @@ fn preview_enabled_group_ignore() {
 
 #[test]
 fn removed_direct() {
-    // Selection of a removed rule should fail
     let mut cmd = RuffCheck::default().args(["--select", "RUF931"]).build();
     assert_cmd_snapshot!(cmd, @"
     success: false
@@ -1500,8 +1487,6 @@ fn removed_direct() {
 
 #[test]
 fn removed_direct_multiple() {
-    // Selection of multiple removed rule should fail with a message
-    // including all the rules
     let mut cmd = RuffCheck::default()
         .args(["--select", "RUF930", "--select", "RUF931"])
         .build();
@@ -1520,8 +1505,6 @@ fn removed_direct_multiple() {
 
 #[test]
 fn removed_indirect() {
-    // Selection _including_ a removed rule without matching should not fail
-    // nor should the rule be used
     let mut cmd = RuffCheck::default().args(["--select", "RUF93"]).build();
     assert_cmd_snapshot!(cmd, @"
     success: true
@@ -1582,8 +1565,6 @@ fn removed_ignore_remapped_direct() {
 
 #[test]
 fn removed_ignore_indirect() {
-    // `PLR170` includes removed rules but should not select or warn
-    // since it is not a "direct" selection
     let mut cmd = RuffCheck::default().args(["--ignore", "PLR170"]).build();
     assert_cmd_snapshot!(cmd, @"
     success: true
@@ -1597,7 +1578,6 @@ fn removed_ignore_indirect() {
 
 #[test]
 fn redirect_direct() {
-    // Selection of a redirected rule directly should use the new rule and warn
     let mut cmd = RuffCheck::default().args(["--select", "RUF940"]).build();
     assert_cmd_snapshot!(cmd, @"
     success: false
@@ -1615,8 +1595,6 @@ fn redirect_direct() {
 
 #[test]
 fn redirect_indirect() {
-    // Selection _including_ a redirected rule without matching should not fail
-    // nor should the rule be used
     let mut cmd = RuffCheck::default().args(["--select", "RUF94"]).build();
     assert_cmd_snapshot!(cmd, @"
     success: true
@@ -1630,8 +1608,6 @@ fn redirect_indirect() {
 
 #[test]
 fn redirect_prefix() {
-    // Selection using a redirected prefix should switch to all rules in the
-    // new prefix
     let mut cmd = RuffCheck::default().args(["--select", "RUF96"]).build();
     assert_cmd_snapshot!(cmd, @"
     success: false
@@ -1649,8 +1625,6 @@ fn redirect_prefix() {
 
 #[test]
 fn deprecated_direct() {
-    // Selection of a deprecated rule without preview enabled should still work
-    // but a warning should be displayed
     let mut cmd = RuffCheck::default().args(["--select", "RUF920"]).build();
     assert_cmd_snapshot!(cmd, @"
     success: false
@@ -1668,8 +1642,6 @@ fn deprecated_direct() {
 
 #[test]
 fn deprecated_multiple_direct() {
-    // Multiple deprecated rules selected by exact code should be included
-    // but a warning should be displayed
     let mut cmd = RuffCheck::default()
         .args(["--select", "RUF920", "--select", "RUF921"])
         .build();
@@ -1693,8 +1665,6 @@ fn deprecated_multiple_direct() {
 
 #[test]
 fn deprecated_indirect() {
-    // `RUF92` includes deprecated rules but should not warn
-    // since it is not a "direct" selection
     let mut cmd = RuffCheck::default().args(["--select", "RUF92"]).build();
     assert_cmd_snapshot!(cmd, @"
     success: true
@@ -1708,7 +1678,6 @@ fn deprecated_indirect() {
 
 #[test]
 fn deprecated_direct_preview_enabled() {
-    // Direct selection of a deprecated rule in preview should fail
     let mut cmd = RuffCheck::default()
         .args(["--select", "RUF920", "--preview"])
         .build();
@@ -1725,7 +1694,6 @@ fn deprecated_direct_preview_enabled() {
 
 #[test]
 fn deprecated_indirect_preview_enabled() {
-    // `RUF920` is deprecated and should be off by default in preview.
     let mut cmd = RuffCheck::default()
         .args(["--select", "RUF92", "--preview"])
         .build();
@@ -1741,8 +1709,6 @@ fn deprecated_indirect_preview_enabled() {
 
 #[test]
 fn deprecated_multiple_direct_preview_enabled() {
-    // Direct selection of the deprecated rules in preview should fail with
-    // a message listing all of the rule codes
     let mut cmd = RuffCheck::default()
         .args(["--select", "RUF920", "--select", "RUF921", "--preview"])
         .build();
@@ -1766,7 +1732,6 @@ fn deprecated_multiple_direct_preview_enabled() {
 fn unreadable_pyproject_toml() -> Result<()> {
     let tempdir = TempDir::new()?;
     let pyproject_toml = tempdir.path().join("pyproject.toml");
-    // Create an empty file with 000 permissions
     fs::OpenOptions::new()
         .create(true)
         .truncate(true)
@@ -1774,7 +1739,6 @@ fn unreadable_pyproject_toml() -> Result<()> {
         .mode(0o000)
         .open(pyproject_toml)?;
 
-    // Don't `--isolated` since the configuration discovery is where the error happens
     let args = Args::parse_from(["", "check", "--no-cache", tempdir.path().to_str().unwrap()]);
     let err = run(args).err().context("Unexpected success")?;
 
@@ -1794,15 +1758,11 @@ fn unreadable_pyproject_toml() -> Result<()> {
 #[cfg(unix)]
 #[test]
 fn unreadable_dir() -> Result<()> {
-    // Create a directory with 000 (not iterable/readable) permissions
     let tempdir = TempDir::new()?;
     let unreadable_dir = tempdir.path().join("unreadable_dir");
     fs::create_dir(&unreadable_dir)?;
     fs::set_permissions(&unreadable_dir, Permissions::from_mode(0o000))?;
 
-    // We (currently?) have to use a subcommand to check exit status (currently wrong) and logging
-    // output
-    // TODO(konstin): This should be a failure, but we currently can't track that
     let mut cmd = RuffCheck::default()
         .filename(unreadable_dir.to_str().unwrap())
         .args([])
@@ -1825,20 +1785,17 @@ fn unreadable_dir() -> Result<()> {
 fn check_input_from_argfile() -> Result<()> {
     let tempdir = TempDir::new()?;
 
-    // Create python files
     let file_a_path = tempdir.path().join("a.py");
     let file_b_path = tempdir.path().join("b.py");
     fs::write(&file_a_path, b"import os")?;
     fs::write(&file_b_path, b"print('hello, world!')")?;
 
-    // Create the input file for argfile to expand
     let input_file_path = tempdir.path().join("file_paths.txt");
     fs::write(
         &input_file_path,
         format!("{}\n{}", file_a_path.display(), file_b_path.display()),
     )?;
 
-    // Generate the args with the argfile notation
     let argfile = format!("@{}", input_file_path.display());
     let mut cmd = RuffCheck::default().filename(argfile.as_ref()).build();
     insta::with_settings!({filters => vec![
@@ -1920,7 +1877,6 @@ fn check_existing_at_paths_are_literal() -> Result<()> {
 }
 
 #[test]
-// Regression test for https://github.com/astral-sh/ruff/issues/20655
 fn missing_argfile_reports_error() {
     let mut cmd = RuffCheck::default().filename("@!.txt").build();
     insta::with_settings!({filters => vec![
@@ -2393,7 +2349,6 @@ extend-safe-fixes = ["RUF902"]
 
 #[test]
 fn check_extend_unsafe_fixes_conflict_with_extend_safe_fixes() -> Result<()> {
-    // Adding a rule to both options should result in it being treated as unsafe
     let tempdir = TempDir::new()?;
     let ruff_toml = tempdir.path().join("ruff.toml");
     fs::write(
@@ -2438,7 +2393,6 @@ extend-safe-fixes = ["RUF902"]
 
 #[test]
 fn check_extend_unsafe_fixes_conflict_with_extend_safe_fixes_by_specificity() -> Result<()> {
-    // Adding a rule to one option with a more specific selector should override the other option
     let tempdir = TempDir::new()?;
     let ruff_toml = tempdir.path().join("ruff.toml");
     fs::write(
@@ -2501,7 +2455,6 @@ extend-safe-fixes = ["RUF9"]
 
 #[test]
 fn check_docstring_conventions_overrides() -> Result<()> {
-    // But if we explicitly select it, we override the convention
     let tempdir = TempDir::new()?;
     let ruff_toml = tempdir.path().join("ruff.toml");
     fs::write(
@@ -2524,7 +2477,6 @@ def log(x, base) -> float:
     return math.log(x)
 "#;
 
-    // If we only select the prefix, then everything passes
     let mut cmd = RuffCheck::default()
         .config(&ruff_toml)
         .args(["--select", "D41"])
@@ -2540,7 +2492,6 @@ def log(x, base) -> float:
     "
     );
 
-    // But if we select the exact code, we get an error
     let mut cmd = RuffCheck::default()
         .config(&ruff_toml)
         .args(["--select", "D417"])

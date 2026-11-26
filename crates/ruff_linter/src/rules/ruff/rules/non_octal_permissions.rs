@@ -130,13 +130,11 @@ fn check_mode(checker: &Checker, mode_arg: &Expr) {
         mode & 0o7777,
         get_permissions(mode)
     ));
-    // Don't suggest a fix for 0x or 0b literals.
     if mode_literal.starts_with("0x") || mode_literal.starts_with("0b") {
         return;
     }
 
     if mode_literal.chars().all(|c| c == '0') {
-        // Fix e.g. 000 as 0o000
         let edit = Edit::range_replacement(format!("0o{mode_literal}"), mode_arg.range());
         diagnostic.set_fix(Fix::safe_edit(edit));
         return;
@@ -214,22 +212,11 @@ fn resolve_method_call<'a>(
         return None;
     };
 
-    // First: is this an inlined call like `pathlib.Path.chmod`?
-    // ```python
-    // from pathlib import Path
-    // Path("foo").chmod(0o644)
-    // ```
     if let Expr::Call(call) = value.as_ref() {
         let qualified_name = semantic.resolve_qualified_name(&call.func)?;
         return Some((qualified_name, attr));
     }
 
-    // Second, is this a call like `pathlib.Path.chmod` via a variable?
-    // ```python
-    // from pathlib import Path
-    // path = Path("foo")
-    // path.chmod()
-    // ```
     let Expr::Name(name) = value.as_ref() else {
         return None;
     };
@@ -249,28 +236,24 @@ fn resolve_method_call<'a>(
 
 /// Try to determine whether the integer literal
 fn suggest_fix(mode: u16) -> Option<u16> {
-    // These suggestions are in the form of
-    // <missing `0o` prefix> | <mode as decimal> => <octal>
-    // If <as decimal> could theoretically be a valid octal literal, the
-    // comment explains why it's deemed unlikely to be intentional.
     match mode {
-        400 | 256 => Some(0o400), // -w-r-xrw-, group/other > user unlikely
+        400 | 256 => Some(0o400),
         440 | 288 => Some(0o440),
         444 | 292 => Some(0o444),
         600 | 384 => Some(0o600),
-        640 | 416 => Some(0o640), // r----xrw-, other > user unlikely
-        644 | 420 => Some(0o644), // r---w----, group write but not read unlikely
-        660 | 432 => Some(0o660), // r---wx-w-, write but not read unlikely
-        664 | 436 => Some(0o664), // r---wxrw-, other > user unlikely
+        640 | 416 => Some(0o640),
+        644 | 420 => Some(0o644),
+        660 | 432 => Some(0o660),
+        664 | 436 => Some(0o664),
         666 | 438 => Some(0o666),
         700 | 448 => Some(0o700),
         744 | 484 => Some(0o744),
         750 | 488 => Some(0o750),
         755 | 493 => Some(0o755),
-        770 | 504 => Some(0o770), // r-x---r--, other > group unlikely
+        770 | 504 => Some(0o770),
         775 | 509 => Some(0o775),
-        776 | 510 => Some(0o776), // r-x--x---, seems unlikely
-        777 | 511 => Some(0o777), // r-x--x--x, seems unlikely
+        776 | 510 => Some(0o776),
+        777 | 511 => Some(0o777),
         _ => None,
     }
 }

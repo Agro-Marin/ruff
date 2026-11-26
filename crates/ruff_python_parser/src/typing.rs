@@ -57,17 +57,12 @@ pub fn parse_type_annotation(
     source: &str,
 ) -> AnnotationParseResult {
     if let Some(string_literal) = string_expr.as_single_part_string() {
-        // Compare the raw contents (without quotes) of the expression with the parsed contents
-        // contained in the string literal.
         if &source[string_literal.content_range()] == string_literal.as_str() {
             parse_simple_type_annotation(string_literal, source)
         } else {
-            // The raw contents of the string doesn't match the parsed content. This could be the
-            // case for annotations that contain escaped quotes.
             parse_complex_type_annotation(string_expr)
         }
     } else {
-        // String is implicitly concatenated.
         parse_complex_type_annotation(string_expr)
     }
 }

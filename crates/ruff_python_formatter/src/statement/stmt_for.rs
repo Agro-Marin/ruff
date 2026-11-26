@@ -71,8 +71,6 @@ impl FormatNodeRule<StmtFor> for FormatStmtFor {
         if orelse.is_empty() {
             debug_assert!(or_else_comments.is_empty());
         } else {
-            // Split between leading comments before the `else` keyword and end of line comments at the end of
-            // the `else:` line.
             let trailing_start =
                 or_else_comments.partition_point(|comment| comment.line_position().is_own_line());
             let (leading, trailing) = or_else_comments.split_at(trailing_start);

@@ -93,25 +93,9 @@ impl<'db> Mro<'db> {
         let class = class_literal.apply_optional_specialization(db, specialization);
 
         match original_bases {
-            // `builtins.object` is the special case:
-            // the only class in Python that has an MRO with length <2
             [] if class.is_object(db) => Ok(Box::new([])),
 
-            // All other classes in Python have an MRO with length >=2.
-            // Even if a class has no explicit base classes,
-            // it will implicitly inherit from `object` at runtime;
-            // `object` will appear in the class's `__bases__` list and `__mro__`:
-            //
-            // ```pycon
-            // >>> class Foo: ...
-            // ...
-            // >>> Foo.__bases__
-            // (<class 'object'>,)
-            // >>> Foo.__mro__
-            // (<class '__main__.Foo'>, <class 'object'>)
-            // ```
             [] => {
-                // e.g. `class Foo[T]: ...` implicitly has `Generic` inserted into its bases
                 if class.has_pep_695_type_params(db) {
                     Ok(Box::new([ClassBase::Generic, ClassBase::object(db, env)]))
                 } else {
@@ -119,11 +103,6 @@ impl<'db> Mro<'db> {
                 }
             }
 
-            // Fast path for a class that has only a single explicit base.
-            //
-            // This *could* theoretically be handled by the final branch below,
-            // but it's a common case (i.e., worth optimizing for),
-            // and the `c3_merge` function requires lots of allocations.
             [single_base]
                 if !class.has_pep_695_type_params(db)
                     && !matches!(
@@ -159,20 +138,11 @@ impl<'db> Mro<'db> {
                 .map_err(|err| err.into_mro_error(db, env, class))
             }
 
-            // The class has multiple explicit bases.
-            //
-            // We'll fallback to a full implementation of the C3-merge algorithm to determine
-            // what MRO Python will give this class at runtime
-            // (if an MRO is indeed resolvable at all!)
             _ => {
                 let mut resolved_bases = vec![];
                 let mut invalid_bases = vec![];
 
                 for (i, base) in original_bases.iter().enumerate() {
-                    // Note that we emit a diagnostic for inheriting from bare (unsubscripted) `Generic` elsewhere
-                    // (see `infer::TypeInferenceBuilder::check_class_definitions`),
-                    // which is why we only care about `KnownInstanceType::Generic(Some(_))`,
-                    // not `KnownInstanceType::Generic(None)`.
                     if let Type::KnownInstance(KnownInstanceType::SubscriptedGeneric(_)) = base {
                         maybe_add_generic(
                             &mut resolved_bases,
@@ -199,8 +169,6 @@ impl<'db> Mro<'db> {
                     );
                 }
 
-                // `Generic` is implicitly added to the bases list of a class that has PEP-695 type parameters
-                // (documented at https://docs.python.org/3/reference/compound_stmts.html#generic-classes)
                 if class.has_pep_695_type_params(db) {
                     maybe_add_generic(&mut resolved_bases, original_bases, &[]);
                 }
@@ -214,8 +182,6 @@ impl<'db> Mro<'db> {
                     }
                     seqs.push(base.mro(db, env, specialization).collect());
                 }
-                // A single parent's MRO can also supply the implicit Generic and object
-                // at its end. In either case all C3 constraints already hold in that MRO.
                 let one_parent_order = match resolved_bases.as_slice() {
                     [_] => true,
                     [base, ClassBase::Generic] if *base != ClassBase::Generic => {
@@ -233,17 +199,12 @@ impl<'db> Mro<'db> {
                         return Ok(std::mem::take(&mut seqs[1]).into_boxed_slice());
                     }
                 }
-                // The direct bases constrain their order. The preceding MROs already
-                // supply each base with the specialization used for member lookup.
                 seqs.push(resolved_bases.clone());
 
                 if let Some(mro) = c3_merge(db, seqs) {
                     return Ok(mro.0.into_vec().into_iter().skip(1).collect());
                 }
 
-                // We now know that the MRO is unresolvable through the C3-merge algorithm.
-                // The rest of this function is dedicated to figuring out the best error message
-                // to report to the user.
 
                 if class.has_pep_695_type_params(db)
                     && original_bases.iter().any(|base| {
@@ -264,15 +225,6 @@ impl<'db> Mro<'db> {
                     let mut base_to_indices =
                         FxIndexMap::<Type<'db>, (ClassBase<'db>, Vec<usize>)>::default();
 
-                    // We need to iterate over `original_bases` here rather than `resolved_bases`
-                    // so that we get the correct index of the duplicate bases if there were any
-                    // (`resolved_bases` may be a longer list than `original_bases`!). However, we
-                    // need to use the base's MRO identity rather than its inferred type as the key
-                    // for the `base_to_indices` map so that a class such as
-                    // `class Foo(Protocol[T], Protocol): ...` correctly causes us to emit a
-                    // `duplicate-base` diagnostic (matching the runtime behaviour) rather than an
-                    // `inconsistent-mro` diagnostic (which would be accurate -- but not nearly as
-                    // precise!).
                     for (index, base) in original_bases.iter().enumerate() {
                         let Some(base) = ClassBase::try_from_explicit_base(
                             db,
@@ -364,7 +316,6 @@ impl<'db> Mro<'db> {
         let env = &ProgramEnvironment::from_scope(dynamic.scope(db));
         let original_bases = dynamic.explicit_bases(db);
 
-        // Convert Types to ClassBases, tracking any that fail conversion.
         let mut resolved_bases = Vec::with_capacity(original_bases.len());
         let mut invalid_bases = Vec::new();
 
@@ -375,7 +326,6 @@ impl<'db> Mro<'db> {
             }
         }
 
-        // If there are any invalid bases, return an error.
         if !invalid_bases.is_empty() {
             return Err(
                 DynamicMroErrorKind::InvalidBases(invalid_bases.into_boxed_slice())
@@ -383,19 +333,16 @@ impl<'db> Mro<'db> {
             );
         }
 
-        // Check if any bases are dynamic, like `Unknown` or `Any`.
         let has_dynamic_bases = resolved_bases
             .iter()
             .any(|base| matches!(base, ClassBase::Any | ClassBase::Dynamic(_)));
 
         let self_base = ClassBase::Class(ClassType::NonGeneric(dynamic.into()));
 
-        // Handle empty bases case: MRO is just [self, object].
         if resolved_bases.is_empty() {
             return Ok(Self::from([self_base, ClassBase::object(db, env)]));
         }
 
-        // Build MRO sequences and check for inheritance cycles.
         let mut seqs = vec![vec![self_base]];
         for base in &resolved_bases {
             if base.has_cyclic_mro(db) {
@@ -405,14 +352,11 @@ impl<'db> Mro<'db> {
         }
         seqs.push(resolved_bases.clone());
 
-        // Try C3 merge.
         if let Some(mro) = c3_merge(db, seqs) {
             return Ok(mro);
         }
 
-        // C3 merge failed. Figure out why and report the most specific error.
 
-        // Check for duplicate bases (skip dynamic bases like `Unknown` or `Any`).
         let mut seen = FxHashSet::default();
         let mut duplicates = Vec::new();
         let mut has_duplicate_dynamic_bases = false;
@@ -433,7 +377,6 @@ impl<'db> Mro<'db> {
             );
         }
 
-        // No duplicate concrete bases. If there are dynamic bases, use fallback MRO.
         if has_dynamic_bases || has_duplicate_dynamic_bases {
             Ok(Self::dynamic_fallback(db, env, dynamic))
         } else {
@@ -454,9 +397,6 @@ impl<'db> Mro<'db> {
         let env = &ProgramEnvironment::from_scope(dynamic_enum.scope(db));
         let self_base = ClassBase::Class(ClassType::NonGeneric(dynamic_enum.into()));
 
-        // Convert the functional enum bases (`type=` mixin first, enum base second)
-        // into `ClassBase`s, skipping any invalid mixin that we already diagnosed
-        // during call inference.
         let original_bases = dynamic_enum.explicit_bases(db);
         let mut resolved_bases: Vec<ClassBase<'db>> = Vec::with_capacity(original_bases.len());
         for base_type in original_bases.iter().copied() {
@@ -465,18 +405,6 @@ impl<'db> Mro<'db> {
             }
         }
 
-        // When C3 linearization fails (e.g. a bad `type=` mixin), we still need a
-        // usable MRO for downstream type inference. Rather than falling back to the
-        // generic `[self, Unknown, object]`, we chain the bases' MROs with
-        // deduplication. This preserves type information from the known bases so that
-        // member lookups can still find attributes from the mixin and enum base class.
-        //
-        // For example, if `Enum("Foo", ..., type=BadMixin)` fails C3, the fallback
-        // produces `[Foo, BadMixin, ..., Enum, object]` (deduped), so lookups for
-        // `Foo.some_method` can still resolve methods from `BadMixin` or `Enum`.
-        // With `[Foo, Unknown, object]`, those lookups would silently return Unknown.
-        //
-        // This matches the `dynamic_fallback` approach used by `of_dynamic_class`.
         let fallback_mro = || {
             Self::fallback_from_bases(
                 db,
@@ -486,9 +414,6 @@ impl<'db> Mro<'db> {
             )
         };
 
-        // Standard C3 linearization: build sequences from each base's MRO, plus the
-        // bases list itself, then merge. See `of_static_class` and `of_dynamic_class`
-        // for the same pattern.
         let mut seqs = vec![vec![self_base]];
         for base in &resolved_bases {
             if base.has_cyclic_mro(db) {
@@ -747,8 +672,6 @@ impl<'db> ClassType<'db> {
             }
             ClassType::Generic(alias) => {
                 let specialization = alias.specialization(db);
-                // Only an unpacked TypeVarTuple needs a different specialization for its
-                // bases. Otherwise the alias itself already keys the required MRO.
                 let runtime = specialization.tuple_runtime_element_specialization(db);
                 let ancestors = if runtime == specialization {
                     alias
@@ -869,9 +792,6 @@ pub(super) struct DuplicateBaseError<'db> {
 /// [C3-merge algorithm]: https://docs.python.org/3/howto/mro.html#python-2-3-mro
 /// [method resolution order]: https://docs.python.org/3/glossary.html#term-method-resolution-order
 fn c3_merge<'db>(db: &'db dyn Db, sequences: Vec<Vec<ClassBase<'db>>>) -> Option<Mro<'db>> {
-    // A class can be emitted once it is at the head of every sequence that contains it.
-    // Count the occurrences that are still behind a head, using the runtime identity so
-    // that different specializations of the same class share a count.
     struct Candidate<'db> {
         base: ClassBase<'db>,
         in_tails: usize,
@@ -899,8 +819,6 @@ fn c3_merge<'db>(db: &'db dyn Db, sequences: Vec<Vec<ClassBase<'db>>>) -> Option
                 .into_iter()
         })
         .collect();
-    // If the order of first occurrence already respects every parent, each of its
-    // entries is C3's leftmost eligible head when its turn comes.
     if in_order {
         return Some(entries.into_values().map(|entry| entry.base).collect());
     }
@@ -910,7 +828,6 @@ fn c3_merge<'db>(db: &'db dyn Db, sequences: Vec<Vec<ClassBase<'db>>>) -> Option
             let &head = sequence.as_slice().first()?;
             (entries[head].in_tails == 0).then_some(head)
         })?;
-        // If two parents contribute the same class, the leftmost parent's specialization wins.
         mro.push(entries[index].base);
         for sequence in &mut sequences {
             if sequence.as_slice().first() == Some(&index) {
@@ -935,7 +852,6 @@ fn check_generic_reorder_fixes_mro<'db>(
     resolved_bases: &[ClassBase<'db>],
     original_bases: &[Type<'db>],
 ) -> Option<usize> {
-    // Only attempt an autofix if `Generic[]` appears exactly once in the original bases list.
     let single_index = original_bases
         .iter()
         .enumerate()
@@ -949,8 +865,6 @@ fn check_generic_reorder_fixes_mro<'db>(
         .exactly_one()
         .ok()?;
 
-    // This should always be true if the original bases list contains exactly one
-    // subscripted `Generic`, but return `None` here just to be safe.
     if resolved_bases.get(single_index) != Some(&ClassBase::Generic) {
         return None;
     }

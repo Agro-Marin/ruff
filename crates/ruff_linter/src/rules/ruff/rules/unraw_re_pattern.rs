@@ -205,7 +205,6 @@ fn check_string(checker: &Checker, literal: &StringLiteral, module: RegexModule,
 ///  * `Some(a)` if it can be added with applicability `a`.
 fn raw_string_applicability(checker: &Checker, literal: &StringLiteral) -> Option<Applicability> {
     if literal.flags.prefix().is_unicode() {
-        // The (no-op) `u` prefix is a syntax error when combined with `r`
         return None;
     }
 
@@ -225,7 +224,6 @@ fn raw_string_applicability(checker: &Checker, literal: &StringLiteral) -> Optio
         })
     }
 
-    // re.compile("\a\f\n\N{Partial Differential}\r\t\u27F2\U0001F0A1\v\x41")  # with unsafe fix
 }
 
 fn check_bytes(checker: &Checker, literal: &BytesLiteral, module: RegexModule, func: &str) {
@@ -269,12 +267,7 @@ fn raw_applicability(
     while let Some(char) = chars.next() {
         if char == '\\' {
             found_slash = true;
-            // Turning `"\uXXXX"` into `r"\uXXXX"` is behaviorally equivalent when passed
-            // to `re`, however, it's not exactly the same runtime value.
-            // Similarly, for the other escape sequences.
             if !match_allowed_escape_sequence(chars.peek().copied()) {
-                // If the next character is not one of the whitelisted ones, we likely cannot safely turn
-                // this into a raw string.
                 return None;
             }
         }

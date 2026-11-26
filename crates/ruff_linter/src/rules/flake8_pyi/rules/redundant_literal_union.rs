@@ -70,8 +70,6 @@ pub(crate) fn redundant_literal_union<'a>(checker: &Checker, union: &'a Expr) {
     let mut typing_literal_exprs = Vec::new();
     let mut builtin_types_in_union = FxHashSet::default();
 
-    // Adds a member to `literal_exprs` for each value in a `Literal`, and any builtin types
-    // to `builtin_types_in_union`.
     let mut func = |expr: &'a Expr, _parent: &'a Expr| {
         if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr {
             if checker.semantic().match_typing_expr(value, "Literal") {

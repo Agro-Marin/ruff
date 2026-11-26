@@ -1,7 +1,4 @@
-#:schema ../ty.schema.json
-# Configuration overrides for ty ecosystem analysis
 
-# Enable off-by-default rules.
 [rules]
 blanket-ignore-comment = "warn"
 disjoint-cast = "warn"

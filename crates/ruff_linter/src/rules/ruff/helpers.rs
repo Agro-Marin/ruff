@@ -28,7 +28,6 @@ fn is_attrs_field(func: &Expr, semantic: &SemanticModel) -> bool {
     semantic
         .resolve_qualified_name(func)
         .is_some_and(|qualified_name| {
-            // See https://github.com/python-attrs/attrs/blob/main/src/attr/__init__.py#L33
             matches!(
                 qualified_name.segments(),
                 ["attrs", "field" | "Factory"]
@@ -60,8 +59,6 @@ pub(super) fn is_class_var_annotation(annotation: &Expr, semantic: &SemanticMode
         return false;
     }
 
-    // ClassVar can be used either with a subscript `ClassVar[...]` or without (the type is
-    // inferred).
     semantic.match_typing_expr(map_subscript(annotation), "ClassVar")
 }
 
@@ -71,8 +68,6 @@ pub(super) fn is_final_annotation(annotation: &Expr, semantic: &SemanticModel) -
         return false;
     }
 
-    // Final can be used either with a subscript `Final[...]` or without (the type is
-    // inferred).
     semantic.match_typing_expr(map_subscript(annotation), "Final")
 }
 
@@ -119,13 +114,9 @@ pub(super) fn dataclass_kind<'a>(
         };
 
         match qualified_name.segments() {
-            // See https://github.com/python-attrs/attrs/blob/main/src/attr/__init__.py#L32
             ["attrs" | "attr", func @ ("define" | "frozen" | "mutable")]
             | ["attr", func @ ("s" | "attributes" | "attrs")] => {
-                // `.define`, `.frozen` and `.mutable` all default `auto_attribs` to `None`,
                 // whereas `@attr.s` implicitly sets `auto_attribs=False`.
-                // https://www.attrs.org/en/stable/api.html#attrs.define
-                // https://www.attrs.org/en/stable/api-attr.html#attr.s
                 let Expr::Call(ExprCall { arguments, .. }) = &decorator.expression else {
                     let auto_attribs = if *func == "s" {
                         AttrsAutoAttribs::False
@@ -143,15 +134,11 @@ pub(super) fn dataclass_kind<'a>(
                 let auto_attribs = match Truthiness::from_expr(&auto_attribs.value, |id| {
                     semantic.has_builtin_binding(id)
                 }) {
-                    // `auto_attribs` requires an exact `True` to be true
                     Truthiness::True => AttrsAutoAttribs::True,
-                    // Or an exact `None` to auto-detect.
                     Truthiness::None => AttrsAutoAttribs::None,
-                    // Otherwise, anything else (even a truthy value, like `1`) is considered `False`.
                     Truthiness::Truthy | Truthiness::False | Truthiness::Falsey => {
                         AttrsAutoAttribs::False
                     }
-                    // Unless, of course, we can't determine the value.
                     Truthiness::Unknown => AttrsAutoAttribs::Unknown,
                 };
 
@@ -232,7 +219,6 @@ pub(super) fn is_descriptor_class(func: &Expr, semantic: &SemanticModel) -> bool
             return false;
         };
 
-        // Look for `__get__`, `__set__`, and `__delete__` methods.
         ["__get__", "__set__", "__delete__"].iter().any(|method| {
             semantic.scopes[scope_id]
                 .get(method)

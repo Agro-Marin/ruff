@@ -85,9 +85,6 @@ impl<'db> AliasCycleSummary<'db> {
                 })
             }
             Type::TypeAlias(alias) => {
-                // Inspect the definition independently of its arguments. Nested applications like
-                // `Recursive[Recursive[int]]` can be finite even when `Recursive` has growing
-                // recursive references beneath a container.
                 let summary = alias.cycle_summary(db);
                 if summary.cycle.is_some() {
                     return summary.cycle;
@@ -207,7 +204,6 @@ pub struct PEP695TypeAliasType<'db> {
     pub(super) materialization_kind: Option<MaterializationKind>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for PEP695TypeAliasType<'_> {}
 
 fn walk_pep_695_type_alias<'db, V: visitor::TypeVisitor<'db> + ?Sized>(
@@ -271,11 +267,6 @@ impl<'db> PEP695TypeAliasType<'db> {
             None => self,
 
             Some(generic_context) => {
-                // Note that at runtime, a specialized type alias is an instance of `typing.GenericAlias`.
-                // However, the `GenericAlias` type in ty is heavily special cased to refer to specialized
-                // class literals, so we instead represent specialized type aliases as instances of
-                // `typing.TypeAliasType` internally, and pass the specialization through to the value type,
-                // except when resolving to an instance of the type alias, or its display representation.
                 let specialization = f(generic_context);
                 PEP695TypeAliasType::new(
                     db,
@@ -339,7 +330,6 @@ pub struct ManualPEP695TypeAliasType<'db> {
     pub(super) materialization_kind: Option<MaterializationKind>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for ManualPEP695TypeAliasType<'_> {}
 
 fn walk_manual_pep_695_type_alias<'db, V: visitor::TypeVisitor<'db> + ?Sized>(
@@ -798,9 +788,6 @@ impl<'db> TypeAliasType<'db> {
             })),
             TypeMapping::FreshenBoundTypeVars { .. } => {
                 visitor.visit(db, ty, type_mapping, || {
-                    // Stored arguments account for the alias's own parameters, but its
-                    // definition can also capture outer typevars. Expand only when those
-                    // captures change; changing arguments alone must retain the alias.
                     let raw = self.raw_value_type(db);
                     let mapped = raw.apply_type_mapping_impl(db, type_mapping, tcx, visitor);
                     if mapped == raw || mapped == ty {
@@ -815,12 +802,7 @@ impl<'db> TypeAliasType<'db> {
             TypeMapping::EagerExpansion if self.materialization_kind(db).is_some() => self
                 .value_type_with_recursion(db, visitor.recursion_context)
                 .expand_eagerly(db, visitor.env),
-            // For EagerExpansion, expand the raw value type. This path relies on Salsa's cycle
-            // detection rather than the visitor's cycle detection, because the visitor tracks
-            // Type values and `RecursiveList` is different from `RecursiveList[T]`.
             TypeMapping::EagerExpansion => self.raw_value_type(db).expand_eagerly(db, visitor.env),
-            // When specializing a generic type alias, instead of specializing the expanded type, the type alias itself is specialized.
-            // Without this special handling, recursive type aliases would result in cycles, returning an unspecialized fallback type.
             TypeMapping::ApplySpecialization(specialization)
             | TypeMapping::ApplySpecializationWithMaterialization { specialization, .. }
                 if let Some(mut current_specialization) = specialization.as_specialization(db) =>
@@ -845,17 +827,11 @@ impl<'db> TypeAliasType<'db> {
                 }))
             }
             _ => {
-                // IMPORTANT: All processing must happen inside a single visitor.visit() call so that if we encounter
-                // this same TypeAlias again (e.g., in `type RecursiveT = int | tuple[RecursiveT, ...]`), the visitor
-                // will detect the cycle and return the fallback value.
                 visitor.visit(db, ty, type_mapping, || {
                     let mapped = self
                         .value_type_with_recursion(db, visitor.recursion_context)
                         .apply_type_mapping_impl(db, type_mapping, tcx, visitor);
 
-                    // If the type mapping does not result in any change to this type alias, keep the
-                    // alias node instead of eagerly expanding it. A recursive backedge also returns
-                    // the alias itself, and fully static aliases must retain their original identity.
                     if mapped == ty
                         || self.value_type_with_recursion(db, visitor.recursion_context) == mapped
                     {
@@ -959,7 +935,6 @@ impl<'db> TypeAliasType<'db> {
             return self.value_type(db).variance_of(db, &env, typevar);
         };
 
-        // Applying specialization here can re-enter variance inference for the same alias.
         if generic_context
             .variables(db)
             .any(|alias_typevar| alias_typevar.identity(db) == typevar)
@@ -972,8 +947,6 @@ impl<'db> TypeAliasType<'db> {
             .specialization(db)
             .unwrap_or_else(|| generic_context.default_specialization(db, None));
 
-        // For external typevars, variance flows through the specialization arguments. Expanding
-        // the specialized alias body here can create ever-larger recursive alias applications.
         let variances = generic_context
             .variables(db)
             .zip(specialization.types(db))
@@ -986,10 +959,6 @@ impl<'db> TypeAliasType<'db> {
     }
 }
 
-// N.B. It would be incorrect to derive `Eq`, `PartialEq`, or `Hash` for this struct,
-// because two `QualifiedTypeAliasName` instances might refer to different type aliases but
-// have the same components. You'd expect them to compare equal, but they'd compare
-// unequal if `PartialEq`/`Eq` were naively derived.
 #[derive(Clone, Copy)]
 pub(crate) struct QualifiedTypeAliasName<'db> {
     db: &'db dyn Db,
@@ -1016,8 +985,6 @@ impl<'db> QualifiedTypeAliasName<'db> {
         let file = definition.program_file(self.db);
         let file_scope_id = definition.file_scope(self.db);
 
-        // Type aliases are defined directly in their enclosing scope (no body scope like classes),
-        // so we don't skip any ancestor scopes.
         qualified_name_components_from_scope(self.db, file, file_scope_id, 0)
     }
 }

@@ -15,7 +15,6 @@ mod tests {
     use crate::newtype_index;
     use static_assertions::{assert_eq_size, assert_impl_all};
 
-    // Allows the macro invocation below to work
     use crate as ruff_index;
 
     #[newtype_index]

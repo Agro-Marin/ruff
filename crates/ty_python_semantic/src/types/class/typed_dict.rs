@@ -147,8 +147,6 @@ fn synthesize_typed_dict_init<'db>(
     fields: TypedDictFields<'db>,
 ) -> Type<'db> {
     let instance_ty = Type::TypedDict(typed_dict);
-    // Only a bare generic class exposes a generic method. Explicit aliases already substitute
-    // their arguments into both the receiver and the fields.
     let generic_context = typed_dict.defining_class().and_then(|class| {
         let alias = class.into_generic_alias()?;
         let specialization = alias.specialization(db);
@@ -450,10 +448,6 @@ fn synthesize_typed_dict_get<'db>(
                 },
             );
 
-            // For non-required fields, add a non-generic overload that accepts the
-            // field type as the default. This is ordered before the generic TypeVar
-            // overload so that `td.get("key", {})` can use the field type as
-            // bidirectional inference context for the default argument.
             if field.is_required() {
                 Either::Left([get_sig, get_with_default_sig].into_iter())
             } else {
@@ -473,9 +467,6 @@ fn synthesize_typed_dict_get<'db>(
                 )
             }
         })
-        // For keys absent from a closed TypedDict, `get` returns only `None` or
-        // the supplied default. Put these overloads before the general string
-        // fallback so it doesn't add declared field types to the result.
         .chain(fallback_types.flat_map(|(key_type, value_type)| {
             let get_sig = Signature::new(
                 Parameters::standard([
@@ -601,8 +592,6 @@ fn synthesize_typed_dict_pop<'db>(
         ];
         let pop_sig = Signature::new(Parameters::standard(pop_parameters), value_ty);
 
-        // Non-generic overload that accepts the value type as the default,
-        // providing bidirectional inference context for the default argument.
         let pop_with_typed_default_parameters = [
             Parameter::positional_only(Some(Name::new_static("self")))
                 .with_annotated_type(instance_ty),
@@ -1024,14 +1013,11 @@ impl<'db> DynamicTypedDictLiteral<'db> {
         name: &str,
         policy: MemberLookupPolicy,
     ) -> PlaceAndQualifiers<'db> {
-        // First check synthesized members (like __getitem__, __init__, get, etc.).
         let member = self.own_class_member(db, name);
         if !member.is_undefined() {
             return member.inner;
         }
 
-        // Fall back to TypedDictFallback for methods like __contains__, items, keys, etc.
-        // This mirrors the behavior of StaticClassLiteral::typed_dict_member.
         typed_dict_class_member(
             db,
             env,

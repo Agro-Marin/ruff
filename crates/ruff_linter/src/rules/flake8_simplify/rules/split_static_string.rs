@@ -102,7 +102,6 @@ pub(crate) fn split_static_string(
         return;
     };
 
-    // `split` vs `rsplit`.
     let method = if attr == "split" {
         Method::Split
     } else {
@@ -117,7 +116,6 @@ pub(crate) fn split_static_string(
                 let sep_value_str = sep_value.value.to_str();
                 Some(split_sep(str_value, sep_value_str, maxsplit_value, method))
             }
-            // Ignore names until type inference is available.
             _ => {
                 return;
             }
@@ -130,7 +128,6 @@ pub(crate) fn split_static_string(
     if let Some(ref replacement_expr) = split_replacement {
         diagnostic.set_fix(Fix::applicable_edit(
             Edit::range_replacement(checker.generator().expr(replacement_expr), call.range()),
-            // The fix does not preserve comments within implicit string concatenations.
             if checker.comment_ranges().intersects(call.range()) {
                 Applicability::Unsafe
             } else {
@@ -141,33 +138,14 @@ pub(crate) fn split_static_string(
 }
 
 fn replace_flags(elt: &str, flags: StringLiteralFlags) -> StringLiteralFlags {
-    // In the ideal case we can wrap the element in _single_ quotes of the same
-    // style. For example, both of these are okay:
-    //
-    // ```python
-    // """itemA
-    // itemB
-    // itemC""".split() # -> ["itemA", "itemB", "itemC"]
-    // ```
-    //
-    // ```python
-    // r"""itemA
-    // 'single'quoted
-    // """.split() # -> [r"itemA",r"'single'quoted'"]
-    // ```
     if !flags.prefix().is_raw() || !elt.contains(flags.quote_style().as_char()) {
         flags.with_triple_quotes(TripleQuotes::No)
     }
-    // If we have a raw string containing a quotation mark of the same style,
-    // then we have to swap the style of quotation marks used
     else if !elt.contains(flags.quote_style().opposite().as_char()) {
         flags
             .with_quote_style(flags.quote_style().opposite())
             .with_triple_quotes(TripleQuotes::No)
     } else
-    // If both types of quotes are used in the raw, triple-quoted string, then
-    // we are forced to either add escapes or keep the triple quotes. We opt for
-    // the latter.
     {
         flags
     }
@@ -253,7 +231,6 @@ fn split_sep(
 fn get_maxsplit_value(arg: Option<&Expr>) -> Option<i32> {
     if let Some(maxsplit) = arg {
         match maxsplit {
-            // Negative number.
             Expr::UnaryOp(ExprUnaryOp {
                 op: UnaryOp::USub,
                 operand,
@@ -265,20 +242,16 @@ fn get_maxsplit_value(arg: Option<&Expr>) -> Option<i32> {
                         .as_int()
                         .and_then(ruff_python_ast::Int::as_i32)
                         .map(|f| -f),
-                    // Ignore when `maxsplit` is not a numeric value.
                     _ => None,
                 }
             }
-            // Positive number
             Expr::NumberLiteral(maxsplit_val) => maxsplit_val
                 .value
                 .as_int()
                 .and_then(ruff_python_ast::Int::as_i32),
-            // Ignore when `maxsplit` is not a numeric value.
             _ => None,
         }
     } else {
-        // Default value is -1 (no splits).
         Some(-1)
     }
 }
@@ -371,13 +344,6 @@ impl<'a> Iterator for WhitespaceMaxSplitIterator<'a> {
     }
 }
 
-// From the Python documentation:
-// > If sep is not specified or is None, a different splitting algorithm is applied: runs of
-// > consecutive whitespace are regarded as a single separator, and the result will contain
-// > no empty strings at the start or end if the string has leading or trailing whitespace.
-// > Consequently, splitting an empty string or a string consisting of just whitespace with
-// > a None separator returns [].
-// https://docs.python.org/3/library/stdtypes.html#str.split
 fn split_whitespace_with_maxsplit(s: &str, max_split: usize, method: Method) -> Vec<&str> {
     let mut result: Vec<_> = WhitespaceMaxSplitIterator::new(s, max_split, method).collect();
     if method.is_rsplit() {

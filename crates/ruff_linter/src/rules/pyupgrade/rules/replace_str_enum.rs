@@ -104,11 +104,9 @@ impl Violation for ReplaceStrEnum {
 /// UP042
 pub(crate) fn replace_str_enum(checker: &Checker, class_def: &ast::StmtClassDef) {
     let Some(arguments) = class_def.arguments.as_deref() else {
-        // class does not inherit anything, exit early
         return;
     };
 
-    // Determine whether the class inherits from both `str` and `enum.Enum`.
     let mut inherits_str = false;
     let mut inherits_enum = false;
     for base in &*arguments.args {
@@ -120,13 +118,11 @@ pub(crate) fn replace_str_enum(checker: &Checker, class_def: &ast::StmtClassDef)
             }
         }
 
-        // Short-circuit if both `str` and `enum.Enum` are found.
         if inherits_str && inherits_enum {
             break;
         }
     }
 
-    // If the class does not inherit both `str` and `enum.Enum`, exit early.
     if !inherits_str || !inherits_enum {
         return;
     }
@@ -138,10 +134,6 @@ pub(crate) fn replace_str_enum(checker: &Checker, class_def: &ast::StmtClassDef)
         class_def.identifier(),
     );
 
-    // If the base classes are _exactly_ `str` and `enum.Enum`, apply a fix.
-    // TODO(charlie): As an alternative, we could remove both arguments, and replace one of the two
-    // with `StrEnum`. However, `remove_argument` can't be applied multiple times within a single
-    // fix; doing so leads to a syntax error.
     if arguments.len() == 2 {
         diagnostic.try_set_fix(|| {
             let (import_edit, binding) = checker.importer().get_or_import_symbol(

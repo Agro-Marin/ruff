@@ -345,8 +345,6 @@ fn description_block_start(description: &str) -> Option<usize> {
     let mut offset = 0;
     let mut saw_blank_line = false;
 
-    // By this point, line endings in `description` have already been normalized
-    // so it is safe to split only on "\n".
     for line in description.split_inclusive('\n') {
         let line_without_newline = line.strip_suffix('\n').unwrap_or(line);
         let trimmed = line_without_newline.trim_start_matches(' ');
@@ -359,7 +357,6 @@ fn description_block_start(description: &str) -> Option<usize> {
             saw_blank_line = true;
         }
 
-        // Later list markers keep their original paragraph-interruption semantics.
         if (offset == 0 && leading_spaces >= 4)
             || (leading_spaces <= 3 && line_starts_markdown_block_content(trimmed, offset == 0))
         {
@@ -375,8 +372,6 @@ fn description_block_start(description: &str) -> Option<usize> {
 fn render_type_code_span_into(output: &mut String, ty: &str) {
     let normalized = normalize_type_for_code_span(ty);
 
-    // Preserve existing code spans, except for abbreviated Sphinx references
-    // such as "`~pkg.Model`" (whose display should be normalized to "Model").
     if is_wrapped_in_markdown_code_span(&normalized) && !normalized.starts_with("`~") {
         output.push_str(&normalized);
         return;
@@ -403,8 +398,6 @@ fn normalize_embedded_type_markup(ty: &str) -> Cow<'_, str> {
             InlineMarkupToken::Code(span) => {
                 let markup = span.content();
 
-                // "`~pkg.Widget`" becomes "Widget"
-                // "``literal`tick``" becomes "literal`tick".
                 let display_text = if span.is_single() {
                     interpreted_text_label(markup, false)
                 } else {
@@ -416,8 +409,6 @@ fn normalize_embedded_type_markup(ty: &str) -> Cow<'_, str> {
             InlineMarkupToken::RestPrefixRole(role) => {
                 let markup = role.content();
 
-                // ":class:`Model <pkg.Model>`" becomes "Model"
-                // ":obj:`.lines.line`" becomes "lines.line".
                 let display_text = role.explicit_title().unwrap_or_else(|| {
                     interpreted_text_label(markup, role.is_python_domain_cross_reference())
                 });
@@ -517,11 +508,6 @@ fn render_bold_text_into(output: &mut String, text: &str) {
 
 /// Wraps `text` in a Markdown code span and appends it to output.
 fn render_code_span_into(output: &mut String, text: &str) {
-    // This chooses the number of backticks that we use to delimit the start and
-    // end of the inline Markdown code span.
-    //
-    // The number we pick is one greater than the longest run of consecutive
-    // backticks in `text`, which guarantees that we can wrap `text` unambiguously.
     let delimiter_len = text
         .split(|char| char != '`')
         .map(str::len)
@@ -531,10 +517,6 @@ fn render_code_span_into(output: &mut String, text: &str) {
 
     output.extend(std::iter::repeat_n('`', delimiter_len));
     if text.starts_with('`') || text.ends_with('`') {
-        // Per the CommonMark spec, wrap the contents of the code span in
-        // whitespace if those contents start or end with backticks.
-        //
-        // <https://spec.commonmark.org/0.31.2/#code-spans>
         output.push(' ');
         output.push_str(text);
         output.push(' ');

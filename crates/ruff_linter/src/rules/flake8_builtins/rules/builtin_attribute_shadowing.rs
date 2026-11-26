@@ -89,7 +89,6 @@ pub(crate) fn builtin_attribute_shadowing(
     for (name, binding_id) in scope.all_bindings() {
         let binding = checker.semantic().binding(binding_id);
 
-        // We only care about methods and attributes.
         let kind = match binding.kind {
             BindingKind::Assignment | BindingKind::Annotation => Kind::Attribute,
             BindingKind::FunctionDefinition(_) => Kind::Method,
@@ -102,7 +101,6 @@ pub(crate) fn builtin_attribute_shadowing(
             &checker.settings().flake8_builtins.ignorelist,
             checker.target_version(),
         ) {
-            // Ignore explicit overrides.
             if class_def.decorator_list.iter().any(|decorator| {
                 checker
                     .semantic()
@@ -111,20 +109,8 @@ pub(crate) fn builtin_attribute_shadowing(
                 return;
             }
 
-            // Class scopes are special, in that you can only reference a binding defined in a
-            // class scope from within the class scope itself. As such, we can safely ignore
-            // methods that weren't referenced from within the class scope. In other words, we're
-            // only trying to identify shadowing as in:
-            // ```python
-            // class Class:
             //     @staticmethod
-            //     def list() -> None:
-            //         pass
-            //
             //     @staticmethod
-            //     def repeat(value: int, times: int) -> list[int]:
-            //         return [value] * times
-            // ```
             let consider_reference = |reference_scope_id: ScopeId| {
                 reference_scope_id == scope_id
                     || checker

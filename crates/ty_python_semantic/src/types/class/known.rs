@@ -32,10 +32,7 @@ use ty_python_core::{SemanticIndex, Truthiness, scope::NodeWithScopeKind};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, get_size2::GetSize)]
 #[cfg_attr(test, derive(strum_macros::EnumIter))]
 pub enum KnownClass {
-    // To figure out where an stdlib symbol is defined, you can go into `crates/ty_vendored`
-    // and grep for the symbol name in any `.pyi` file.
 
-    // Builtins
     Bool,
     Object,
     Bytes,
@@ -63,7 +60,6 @@ pub enum KnownClass {
     Classmethod,
     Super,
     NotImplementedError,
-    // enum
     Enum,
     EnumProperty,
     EnumType,
@@ -74,9 +70,7 @@ pub enum KnownClass {
     IntEnum,
     Flag,
     IntFlag,
-    // abc
     ABCMeta,
-    // Types
     GenericAlias,
     ModuleType,
     FunctionType,
@@ -91,13 +85,9 @@ pub enum KnownClass {
     CoroutineType,
     NotImplementedType,
     BuiltinFunctionType,
-    // Exposed as `types.EllipsisType` on Python >=3.10;
-    // backported as `builtins.ellipsis` by typeshed on Python <=3.9
     EllipsisType,
-    // Typeshed
-    NoneType, // Part of `types` for Python >= 3.10
+    NoneType,
     SupportsKeysAndGetItem,
-    // Typing
     Awaitable,
     Generator,
     AsyncGenerator,
@@ -106,15 +96,14 @@ pub enum KnownClass {
     SpecialForm,
     TypeVar,
     ParamSpec,
-    // typing_extensions.ParamSpec
-    ExtensionsParamSpec, // must be distinct from typing.ParamSpec, backports new features
+    ExtensionsParamSpec,
     ParamSpecArgs,
     ParamSpecKwargs,
     ProtocolMeta,
     TypeVarTuple,
-    ExtensionsTypeVarTuple, // must be distinct from typing.TypeVarTuple, backports new features
+    ExtensionsTypeVarTuple,
     TypeAliasType,
-    ExtensionsTypeAliasType, // may be distinct from typing.TypeAliasType
+    ExtensionsTypeAliasType,
     NoDefaultType,
     NewType,
     Hashable,
@@ -125,35 +114,25 @@ pub enum KnownClass {
     Sequence,
     Mapping,
     MutableMapping,
-    // typing_extensions
-    ExtensionsTypeVar, // must be distinct from typing.TypeVar, backports new features
+    ExtensionsTypeVar,
     ExtensionTypedDictFallback,
     Sentinel,
-    // Collections
     ChainMap,
     Counter,
     DefaultDict,
     Deque,
     OrderedDict,
-    // sys
     VersionInfo,
-    // dataclasses
     Field,
     KwOnly,
-    // _typeshed._type_checker_internals
     NamedTupleFallback,
     NamedTupleLike,
     TypedDictFallback,
-    // string.templatelib
     Template,
-    // pathlib
     Path,
-    // functools
     FunctoolsPartial,
-    // unittest
     /// The standard-library `unittest.case.TestCase` class.
     UnittestTestCase,
-    // ty_extensions
     ConstraintSet,
     ConstraintSetSolution,
     GenericContext,
@@ -162,19 +141,16 @@ pub enum KnownClass {
     TyExtensionsAsyncIterator,
     TyExtensionsIterable,
     TyExtensionsIterator,
-    // Django
     DjangoModel,
     DjangoField,
     DjangoDateField,
     DjangoForeignKey,
-    // Pydantic
     PydanticBaseModel,
     PydanticBaseSettings,
     PydanticConfigDict,
     PydanticSettingsConfigDict,
     PydanticRootModel,
     PydanticStrict,
-    // Pytest
     PytestParametrizeMarkDecorator,
 }
 
@@ -323,10 +299,7 @@ impl KnownClass {
     /// depends on its spec.
     pub(crate) const fn bool(self) -> Option<Truthiness> {
         match self {
-            // N.B. It's only generally safe to infer `Truthiness::AlwaysTrue` for a `KnownClass`
-            // variant if the class's `__bool__` method always returns the same thing *and* the
             // class is `@final`.
-            //
             // E.g. `ModuleType.__bool__` always returns `True`, but `ModuleType` is not `@final`.
             // Equally, `range` is `@final`, but its `__bool__` method can return `False`.
             Self::EllipsisType
@@ -448,9 +421,6 @@ impl KnownClass {
             | Self::PydanticStrict
             | Self::PytestParametrizeMarkDecorator => Some(Truthiness::Ambiguous),
 
-            // Evaluating `NotImplementedType` in a boolean context was deprecated in Python 3.9
-            // and raises a `TypeError` in Python >=3.14
-            // (see https://docs.python.org/3/library/constants.html#NotImplemented)
             Self::NotImplementedType => Some(Truthiness::Ambiguous),
 
             Self::Tuple => None,
@@ -1188,13 +1158,7 @@ impl KnownClass {
             Self::Sequence => "Sequence",
             Self::Mapping => "Mapping",
             Self::MutableMapping => "MutableMapping",
-            // For example, `typing.List` is defined as `List = _Alias()` in typeshed
             Self::StdlibAlias => "_Alias",
-            // This is the name the type of `sys.version_info` has in typeshed,
-            // which is different to what `type(sys.version_info).__name__` is at runtime.
-            // (At runtime, `type(sys.version_info).__name__ == "version_info"`,
-            // which is impossible to replicate in the stubs since the sole instance of the class
-            // also has that name in the `sys` module.)
             Self::VersionInfo => "_version_info",
             Self::EllipsisType => "EllipsisType",
             Self::NotImplementedType => "NotImplementedType",
@@ -1318,8 +1282,6 @@ impl KnownClass {
             generic_context: GenericContext<'db>,
         ) -> ClassType<'db> {
             if specialization.len() != generic_context.len(db) {
-                // a cache of the `KnownClass`es that we have already seen mismatched-arity
-                // specializations for (and therefore that we've already logged a warning for)
                 static MESSAGES: LazyLock<Mutex<FxHashSet<KnownClass>>> =
                     LazyLock::new(Mutex::default);
                 if MESSAGES.lock().unwrap().insert(class) {
@@ -1626,9 +1588,6 @@ impl KnownClass {
                 }
             }
             Self::NoDefaultType => {
-                // typing_extensions has a 3.13+ re-export for the `typing.NoDefault`
-                // singleton, but not for `typing._NoDefaultType`. So we need to switch
-                // to `typing._NoDefaultType` for newer versions:
                 if python_version >= PythonVersion::PY313 {
                     KnownModule::Typing
                 } else {
@@ -1801,8 +1760,6 @@ impl KnownClass {
         file: ImportingFile<'_>,
         class_name: &str,
     ) -> Option<Self> {
-        // We assert that this match is exhaustive over the right-hand side in the unit test
-        // `known_class_roundtrip_from_str()`
         let candidates: &[Self] = match class_name {
             "bool" => &[Self::Bool],
             "object" => &[Self::Object],
@@ -1862,8 +1819,6 @@ impl KnownClass {
             "ParamSpec" => &[Self::ParamSpec, Self::ExtensionsParamSpec],
             "ParamSpecArgs" => &[Self::ParamSpecArgs],
             "ParamSpecKwargs" => &[Self::ParamSpecKwargs],
-            // On Python 3.10, both candidates resolve to `typing_extensions`. Prefer the
-            // backport-aware variant so that we recognize features such as `default`.
             "TypeVarTuple" => &[Self::ExtensionsTypeVarTuple, Self::TypeVarTuple],
             "sentinel" => &[Self::Sentinel],
             "ChainMap" => &[Self::ChainMap],
@@ -2034,7 +1989,6 @@ impl KnownClass {
                 module == self.canonical_module(python_version)
             }
 
-            // no equivalent class exists in typing_extensions, nor ever will
             Self::StdlibAlias => module == self.canonical_module(python_version),
 
             Self::NoneType => matches!(module, KnownModule::Typeshed | KnownModule::Types),
@@ -2078,10 +2032,6 @@ impl KnownClass {
 
         match self {
             KnownClass::Super => {
-                // Handle the case where `super()` is called with no arguments.
-                // In this case, we need to infer the two arguments:
-                //   1. The nearest enclosing class
-                //   2. The first parameter of the current function (typically `self` or `cls`)
                 match overload.parameter_types() {
                     [] => {
                         let Some(enclosing_class) =
@@ -2093,7 +2043,6 @@ impl KnownClass {
                             return;
                         };
 
-                        // Check if the enclosing class is a `NamedTuple`, which forbids the use of `super()`.
                         if CodeGeneratorKind::NamedTuple
                             .matches(context.db(), enclosing_class.into())
                         {
@@ -2109,8 +2058,6 @@ impl KnownClass {
                             return;
                         }
 
-                        // The type of the first parameter if the given scope is function-like (i.e. function or lambda).
-                        // `None` if the scope is not function-like, or has no parameters.
                         let first_param = match scope.node(db) {
                             NodeWithScopeKind::Function(f) => {
                                 f.node(module).parameters.iter().next()
@@ -2149,7 +2096,6 @@ impl KnownClass {
                         overload.set_return_type(bound_super);
                     }
                     [Some(pivot_class_type), Some(owner_type)] => {
-                        // Check if the enclosing class is a `NamedTuple`, which forbids the use of `super()`.
                         if let Some(enclosing_class) =
                             nearest_enclosing_class(context.db(), index, scope)
                         {
@@ -2186,22 +2132,8 @@ impl KnownClass {
             }
 
             KnownClass::Deprecated => {
-                // Parsing something of the form:
-                //
                 // @deprecated("message")
                 // @deprecated("message", category = DeprecationWarning, stacklevel = 1)
-                //
-                // "Static type checker behavior is not affected by the category and stacklevel arguments"
-                // so we only need the message and can ignore everything else. The message is mandatory,
-                // must be a LiteralString, and always comes first.
-                //
-                // We aren't guaranteed to know the static value of a LiteralString, so we need to
-                // accept that sometimes we will fail to include the message.
-                //
-                // We don't do any serious validation/diagnostics here, as the signature for this
-                // is included in `Type::bindings`.
-                //
-                // See: <https://typing.python.org/en/latest/spec/directives.html#deprecated>
                 let [Some(message), ..] = overload.parameter_types() else {
                     // Checking in Type::bindings will complain about this for us
                     return;
@@ -2349,12 +2281,8 @@ mod tests {
             if class.canonical_module(python_version).is_third_party() {
                 continue;
             }
-            // Check the class can be looked up successfully
             class.try_to_class_literal(&db, &env).unwrap();
 
-            // We can't call `KnownClass::Tuple.to_instance()`;
-            // there are assertions to ensure that we always call `Type::homogeneous_tuple()`
-            // or `Type::heterogeneous_tuple()` instead.`
             if class != KnownClass::Tuple {
                 assert_ne!(
                     class.to_instance(&db, &env),
@@ -2369,10 +2297,6 @@ mod tests {
     fn known_class_doesnt_fallback_to_unknown_unexpectedly_on_low_python_version() {
         let db = setup_db();
 
-        // First, collect the `KnownClass` variants
-        // and sort them according to the version they were added in.
-        // This makes the test far faster as it minimizes the number of times
-        // we need to change the Python version in the loop.
         let python_version = db.python_version();
         let mut classes: Vec<(KnownClass, PythonVersion)> = KnownClass::iter()
             .filter(|class| !class.canonical_module(python_version).is_third_party())
@@ -2406,13 +2330,9 @@ mod tests {
                 program = Program::from_settings(&db, &settings);
             }
 
-            // Check the class can be looked up successfully
             let env = ProgramEnvironment::from_program(program);
             class.try_to_class_literal(&db, &env).unwrap();
 
-            // We can't call `KnownClass::Tuple.to_instance()`;
-            // there are assertions to ensure that we always call `Type::homogeneous_tuple()`
-            // or `Type::heterogeneous_tuple()` instead.`
             if class != KnownClass::Tuple {
                 assert_ne!(
                     class.to_instance(&db, &env),

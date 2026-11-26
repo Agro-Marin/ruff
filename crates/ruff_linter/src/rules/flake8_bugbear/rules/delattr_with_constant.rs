@@ -80,8 +80,6 @@ pub(crate) fn delattr_with_constant(checker: &Checker, expr: &Expr, func: &Expr,
 
     let attr_name = name.to_str();
 
-    // Ignore if the attribute name is `__debug__` (syntax error), not a valid
-    // identifier (eg, keywords), or otherwise a name that would be mangled.
     if !is_identifier(attr_name) || attr_name == "__debug__" || is_mangled_private(attr_name) {
         return;
     }
@@ -93,9 +91,6 @@ pub(crate) fn delattr_with_constant(checker: &Checker, expr: &Expr, func: &Expr,
         Applicability::Safe
     };
 
-    // We can only replace a `delattr` call (which is an `Expr`) with a `del`
-    // statement (which is a `Stmt`) if the `Expr` is already being used as a
-    // `Stmt` (i.e., it's directly within an `Stmt::Expr`).
     if let Stmt::Expr(ast::StmtExpr {
         value: child,
         range: _,

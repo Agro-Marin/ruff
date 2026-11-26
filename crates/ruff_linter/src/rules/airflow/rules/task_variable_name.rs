@@ -52,7 +52,6 @@ pub(crate) fn variable_name_task_id(checker: &Checker, targets: &[Expr], value: 
         return;
     }
 
-    // If we have more than one target, we can't do anything.
     let [target] = targets else {
         return;
     };
@@ -60,7 +59,6 @@ pub(crate) fn variable_name_task_id(checker: &Checker, targets: &[Expr], value: 
         return;
     };
 
-    // If the value is not a call, we can't do anything.
     let Expr::Call(ast::ExprCall {
         func, arguments, ..
     }) = value
@@ -68,21 +66,16 @@ pub(crate) fn variable_name_task_id(checker: &Checker, targets: &[Expr], value: 
         return;
     };
 
-    // If the function doesn't come from Airflow's operators module (builtin or providers), we
-    // can't do anything.
     if !checker
         .semantic()
         .resolve_qualified_name(func)
         .is_some_and(|qualified_name| {
             match qualified_name.segments() {
-                // Match `airflow.operators.*`
                 ["airflow", "operators", ..] => true,
 
-                // Match `airflow.providers.**.operators.*`
                 ["airflow", "providers", rest @ ..] => {
-                    // Ensure 'operators' exists somewhere in the middle
                     if let Some(pos) = rest.iter().position(|&s| s == "operators") {
-                        pos + 1 < rest.len() // Check that 'operators' is not the last element
+                        pos + 1 < rest.len()
                     } else {
                         false
                     }
@@ -95,19 +88,16 @@ pub(crate) fn variable_name_task_id(checker: &Checker, targets: &[Expr], value: 
         return;
     }
 
-    // If the call doesn't have a `task_id` keyword argument, we can't do anything.
     let Some(keyword) = arguments.find_keyword("task_id") else {
         return;
     };
 
-    // If the keyword argument is not a string, we can't do anything.
     let Some(ast::ExprStringLiteral { value: task_id, .. }) =
         keyword.value.as_string_literal_expr()
     else {
         return;
     };
 
-    // If the target name is the same as the task_id, no violation.
     if task_id == id.as_str() {
         return;
     }

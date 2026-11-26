@@ -107,7 +107,6 @@ pub(crate) fn convert_typed_dict_functional_to_class(
         },
         stmt.range(),
     );
-    // TODO(charlie): Preserve indentation, to remove the first-column requirement.
     if checker.locator().is_at_start_of_line(stmt.start()) {
         diagnostic.set_fix(convert_to_class(
             stmt,
@@ -206,9 +205,6 @@ fn fields_from_dict_literal(items: &[ast::DictItem]) -> Option<Suite> {
                     if !is_identifier(field.to_str()) {
                         return None;
                     }
-                    // Converting TypedDict to class-based syntax is not safe if fields contain
-                    // private or dunder names, because private names will be mangled and dunder
-                    // names can confuse type checkers.
                     if field.to_str().starts_with("__") {
                         return None;
                     }
@@ -237,7 +233,6 @@ fn fields_from_dict_call(func: &Expr, keywords: &[Keyword]) -> Option<Suite> {
     }
 }
 
-// Deprecated in Python 3.11, removed in Python 3.13.
 fn fields_from_keywords(keywords: &[Keyword]) -> Option<Suite> {
     if keywords.is_empty() {
         let node = Stmt::Pass(ast::StmtPass {
@@ -261,7 +256,6 @@ fn fields_from_keywords(keywords: &[Keyword]) -> Option<Suite> {
 /// Match the fields and class keywords from a `TypedDict` call.
 fn match_fields_and_keywords(arguments: &Arguments) -> Option<(Suite, &[Keyword])> {
     match (&*arguments.args, &*arguments.keywords) {
-        // Ex) `TypedDict("MyType", {"a": int, "b": str})`
         ([_typename, fields], keywords) => match fields {
             Expr::Dict(ast::ExprDict {
                 items,
@@ -278,7 +272,6 @@ fn match_fields_and_keywords(arguments: &Arguments) -> Option<(Suite, &[Keyword]
             }) => Some((fields_from_dict_call(func, fields)?, keywords)),
             _ => None,
         },
-        // Ex) `TypedDict("MyType")`
         ([_typename], []) => {
             let node = Stmt::Pass(ast::StmtPass {
                 range: TextRange::default(),
@@ -286,9 +279,7 @@ fn match_fields_and_keywords(arguments: &Arguments) -> Option<(Suite, &[Keyword]
             });
             Some((Suite::from([node]), &[]))
         }
-        // Ex) `TypedDict("MyType", a=int, b=str)`
         ([_typename], fields) => Some((fields_from_keywords(fields)?, &[])),
-        // Ex) `TypedDict()`
         _ => None,
     }
 }

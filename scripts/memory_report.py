@@ -162,7 +162,6 @@ def diff_items(
     return diffs
 
 
-# Maximum number of changed items to show per category in the detailed breakdown
 MAX_CHANGED_ITEMS: Final = 15
 
 
@@ -173,7 +172,6 @@ def render_summary(projects: list[ProjectComparison]) -> str:
 
     projects.sort(key=lambda p: p.total_diff_bytes, reverse=True)
 
-    # Suppress the memory report if no project had any top-line changes >10KB
     any_increased = any(p.total_diff_bytes > 10_000 for p in projects)
     any_decreased = any(p.total_diff_bytes < -10_000 for p in projects)
     any_changed = any_increased or any_decreased
@@ -301,7 +299,7 @@ def run_ty_memory_check(
     """Run ty on a project and capture memory report to a file."""
     env = os.environ.copy()
     env["TY_MEMORY_REPORT"] = "json"
-    env["TY_MAX_PARALLELISM"] = "1"  # For deterministic memory numbers
+    env["TY_MAX_PARALLELISM"] = "1"
 
     print(f"Running {ty_path} on {project_path.name}...", file=sys.stderr)
     command = [
@@ -316,7 +314,6 @@ def run_ty_memory_check(
         text=True,
         env=env,
     )
-    # Write stdout (JSON memory report) to file
     output_path.write_text(result.stdout, encoding="utf-8")
 
 
@@ -335,7 +332,6 @@ def run_memory_tests(
     for project_name in KNOWN_PROJECTS:
         project_path, ty_command = setup_project(name=project_name, dest=projects_dir)
 
-        # Run old ty
         old_report_path = old_reports_dir / f"{project_name}.json"
         run_ty_memory_check(
             ty_path=old_ty,
@@ -344,7 +340,6 @@ def run_memory_tests(
             output_path=old_report_path,
         )
 
-        # Run new ty
         new_report_path = new_reports_dir / f"{project_name}.json"
         run_ty_memory_check(
             ty_path=new_ty,
@@ -359,7 +354,6 @@ def cmd_compare(args: argparse.Namespace) -> None:
     comparisons = []
 
     if args.old and args.new:
-        # Single file comparison
         old_report = MemoryReport.from_json(args.old)
         new_report = MemoryReport.from_json(args.new)
         project_name = args.new.stem
@@ -367,11 +361,9 @@ def cmd_compare(args: argparse.Namespace) -> None:
             ProjectComparison(name=project_name, old=old_report, new=new_report)
         )
     elif args.old_dir and args.new_dir:
-        # Directory comparison
         old_reports = load_reports_from_directory(args.old_dir)
         new_reports = load_reports_from_directory(args.new_dir)
 
-        # Find common projects
         common_projects = set(old_reports.keys()) & set(new_reports.keys())
         if not common_projects:
             print(
@@ -408,7 +400,6 @@ def cmd_compare(args: argparse.Namespace) -> None:
 def cmd_run(args: argparse.Namespace) -> None:
     """Handle the 'run' subcommand."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Set up directories
         projects_dir = args.projects_dir or Path(tmpdir) / "ty_memory_projects"
         old_reports_dir = args.old_reports_dir or Path(tmpdir) / "ty_memory_old"
         new_reports_dir = args.new_reports_dir or Path(tmpdir) / "ty_memory_new"
@@ -417,7 +408,6 @@ def cmd_run(args: argparse.Namespace) -> None:
         print(f"Old reports directory: {old_reports_dir}", file=sys.stderr)
         print(f"New reports directory: {new_reports_dir}", file=sys.stderr)
 
-        # Run memory tests
         run_memory_tests(
             old_ty=args.old_ty,
             new_ty=args.new_ty,
@@ -426,7 +416,6 @@ def cmd_run(args: argparse.Namespace) -> None:
             new_reports_dir=new_reports_dir,
         )
 
-        # Load and compare reports
         old_reports = load_reports_from_directory(old_reports_dir)
         new_reports = load_reports_from_directory(new_reports_dir)
 
@@ -458,7 +447,6 @@ def parse_args() -> argparse.Namespace:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Compare subcommand
     compare_parser = subparsers.add_parser(
         "compare",
         help="Compare pre-generated memory reports",
@@ -489,7 +477,6 @@ def parse_args() -> argparse.Namespace:
         help="Write output to file instead of stdout",
     )
 
-    # Run subcommand
     run_parser = subparsers.add_parser(
         "run",
         help="Set up projects, run ty, and compare memory usage",

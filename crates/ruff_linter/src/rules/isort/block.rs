@@ -62,28 +62,18 @@ impl<'a> BlockBuilder<'a> {
     }
 
     fn trailer_for(&self, stmt: &'a Stmt) -> Option<Trailer> {
-        // No need to compute trailers if we won't be finalizing anything.
         let index = self.blocks.len() - 1;
         if self.blocks[index].imports.is_empty() {
             return None;
         }
 
-        // Similar to isort, avoid enforcing any newline behaviors in nested blocks.
         if self.nested {
             return None;
         }
 
         Some(if self.is_stub {
-            // Black treats interface files differently, limiting to one newline
-            // (`Trailing::Sibling`).
             Trailer::Sibling
         } else {
-            // If the import block is followed by a class or function, we want to enforce
-            // two blank lines. The exception: if, between the import and the class or
-            // function, we have at least one commented line, followed by at
-            // least one blank line. In that case, we treat it as a regular
-            // sibling (i.e., as if the comment is the next statement, as
-            // opposed to the class or function).
             match stmt {
                 Stmt::FunctionDef(_) => {
                     if helpers::has_comment_break(stmt, self.locator) {
@@ -128,12 +118,8 @@ impl<'a> StatementVisitor<'a> for BlockBuilder<'a> {
             .next_if(|split| stmt.start() >= **split)
             .is_some()
         {
-            // Skip any other splits that occur before the current statement, to support, e.g.:
-            // ```python
             // # isort: split
             // # isort: split
-            // import foo
-            // ```
             while self
                 .splits
                 .peek()
@@ -145,17 +131,11 @@ impl<'a> StatementVisitor<'a> for BlockBuilder<'a> {
             self.finalize(self.trailer_for(stmt));
         }
 
-        // Track Jupyter notebook cell offsets as splits. This will make sure
-        // that each cell is considered as an individual block to organize the
-        // imports in. Thus, not creating an edit which spans across multiple
-        // cells.
         if let Some(cell_offsets) = self.cell_offsets.as_mut() {
             if cell_offsets
                 .next_if(|cell_offset| stmt.start() >= **cell_offset)
                 .is_some()
             {
-                // Skip any other cell offsets that occur before the current statement (e.g., in
-                // the case of multiple empty cells).
                 while cell_offsets
                     .peek()
                     .is_some_and(|split| stmt.start() >= **split)
@@ -167,7 +147,6 @@ impl<'a> StatementVisitor<'a> for BlockBuilder<'a> {
             }
         }
 
-        // Track imports.
         if matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_))
             && !self
                 .exclusions
@@ -179,7 +158,6 @@ impl<'a> StatementVisitor<'a> for BlockBuilder<'a> {
             self.finalize(self.trailer_for(stmt));
         }
 
-        // Track scope.
         let prev_nested = self.nested;
         self.nested = true;
         match stmt {

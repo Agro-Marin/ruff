@@ -988,24 +988,10 @@ pub(crate) fn suspicious_function_reference(checker: &Checker, func: &Expr) {
     }
 
     match checker.semantic().current_expression_parent() {
-        // Avoid duplicate diagnostics. For example:
-        //
-        // ```python
-        // # vvvvvvvvvvvvvvvvvvvvvvvvv Already reported as a call expression
-        //   shelve.open(lorem, ipsum)
-        // # ^^^^^^ Should not be reported as a reference
-        // ```
         Some(Expr::Call(parent)) if parent.func.range().contains_range(func.range()) => {
             return;
         }
         Some(Expr::Attribute(_)) => {
-            // Avoid duplicate diagnostics. For example:
-            //
-            // ```python
-            // # vvvvvvvvvvv Already reported as an attribute expression
-            //   shelve.open
-            // # ^^^^^^ Should not be reported as a reference
-            // ```
             return;
         }
         _ => {}
@@ -1058,11 +1044,9 @@ fn suspicious_function(
     /// string concatenation.
     fn leading_chars(expr: &Expr) -> Option<impl Iterator<Item = char> + Clone + '_> {
         match expr {
-            // Ex) `"foo"`
             Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => {
                 Some(Either::Left(value.chars()))
             }
-            // Ex) f"foo"
             Expr::FString(ast::ExprFString { value, .. }) => {
                 value.elements().next().and_then(|element| {
                     if let ast::InterpolatedStringElement::Literal(
@@ -1075,7 +1059,6 @@ fn suspicious_function(
                     }
                 })
             }
-            // Ex) "foo" + "bar"
             Expr::BinOp(ast::ExprBinOp {
                 op: Operator::Add,
                 left,
@@ -1094,7 +1077,6 @@ fn suspicious_function(
     };
 
     match qualified_name.segments() {
-        // Pickle
         ["pickle" | "dill", "load" | "loads" | "Unpickler"]
         | ["shelve", "open" | "DbfilenameShelf"]
         | ["jsonpickle", "decode"]
@@ -1103,12 +1085,10 @@ fn suspicious_function(
             checker.report_diagnostic_if_enabled(SuspiciousPickleUsage, range)
         }
 
-        // Marshal
         ["marshal", "load" | "loads"] => {
             checker.report_diagnostic_if_enabled(SuspiciousMarshalUsage, range)
         }
 
-        // InsecureHash
         [
             "Crypto" | "Cryptodome",
             "Hash",
@@ -1123,7 +1103,6 @@ fn suspicious_function(
             "SHA1" | "MD5",
         ] => checker.report_diagnostic_if_enabled(SuspiciousInsecureHashUsage, range),
 
-        // InsecureCipher
         [
             "Crypto" | "Cryptodome",
             "Cipher",
@@ -1139,7 +1118,6 @@ fn suspicious_function(
             "ARC4" | "Blowfish" | "IDEA",
         ] => checker.report_diagnostic_if_enabled(SuspiciousInsecureCipherUsage, range),
 
-        // InsecureCipherMode
         [
             "cryptography",
             "hazmat",
@@ -1149,7 +1127,6 @@ fn suspicious_function(
             "ECB",
         ] => checker.report_diagnostic_if_enabled(SuspiciousInsecureCipherModeUsage, range),
 
-        // Mktemp
         ["tempfile", "mktemp"] => checker
             .report_diagnostic_if_enabled(SuspiciousMktempUsage, range)
             .map(|mut diagnostic| {
@@ -1157,12 +1134,10 @@ fn suspicious_function(
                 diagnostic
             }),
 
-        // Eval
         ["" | "builtins", "eval"] => {
             checker.report_diagnostic_if_enabled(SuspiciousEvalUsage, range)
         }
 
-        // MarkSafe
         ["django", "utils", "safestring" | "html", "mark_safe"] => {
             if let Some(arguments) = arguments {
                 if let [single] = &*arguments.args {
@@ -1174,10 +1149,8 @@ fn suspicious_function(
             checker.report_diagnostic_if_enabled(SuspiciousMarkSafeUsage, range)
         }
 
-        // URLOpen (`Request`)
         ["urllib", "request", "Request"] | ["six", "moves", "urllib", "request", "Request"] => {
             if let Some(arguments) = arguments {
-                // If the `url` argument is a string literal (including resolved bindings), allow `http` and `https` schemes.
                 if arguments.args.iter().all(|arg| !arg.is_starred_expr())
                     && arguments
                         .keywords
@@ -1194,7 +1167,6 @@ fn suspicious_function(
             checker.report_diagnostic_if_enabled(SuspiciousURLOpenUsage, range)
         }
 
-        // URLOpen (`urlopen`, `urlretrieve`)
         ["urllib", "request", "urlopen" | "urlretrieve"]
         | [
             "six",
@@ -1211,7 +1183,6 @@ fn suspicious_function(
                         .all(|keyword| keyword.arg.is_some())
                 {
                     match arguments.find_argument_value("url", 0) {
-                        // If the `url` argument is a `urllib.request.Request` object, allow `http` and `https` schemes.
                         Some(Expr::Call(ExprCall {
                             func, arguments, ..
                         })) if checker.semantic().matches_qualified_name(
@@ -1226,7 +1197,6 @@ fn suspicious_function(
                             }
                         }
 
-                        // If the `url` argument is a string literal (including resolved bindings), allow `http` and `https` schemes.
                         Some(expr)
                             if expression_starts_with_http_prefix(expr, checker.semantic()) =>
                         {
@@ -1240,7 +1210,6 @@ fn suspicious_function(
             checker.report_diagnostic_if_enabled(SuspiciousURLOpenUsage, range)
         }
 
-        // URLOpen (`URLopener`, `FancyURLopener`)
         ["urllib", "request", "URLopener" | "FancyURLopener"]
         | [
             "six",
@@ -1250,19 +1219,16 @@ fn suspicious_function(
             "URLopener" | "FancyURLopener",
         ] => checker.report_diagnostic_if_enabled(SuspiciousURLOpenUsage, range),
 
-        // NonCryptographicRandom
         [
             "random",
             "Random" | "random" | "randrange" | "randint" | "choice" | "choices" | "uniform"
             | "triangular" | "randbytes",
         ] => checker.report_diagnostic_if_enabled(SuspiciousNonCryptographicRandomUsage, range),
 
-        // UnverifiedContext
         ["ssl", "_create_unverified_context"] => {
             checker.report_diagnostic_if_enabled(SuspiciousUnverifiedContextUsage, range)
         }
 
-        // XMLCElementTree
         [
             "xml",
             "etree",
@@ -1270,7 +1236,6 @@ fn suspicious_function(
             "parse" | "iterparse" | "fromstring" | "XMLParser",
         ] => checker.report_diagnostic_if_enabled(SuspiciousXMLCElementTreeUsage, range),
 
-        // XMLElementTree
         [
             "xml",
             "etree",
@@ -1278,32 +1243,26 @@ fn suspicious_function(
             "parse" | "iterparse" | "fromstring" | "XMLParser",
         ] => checker.report_diagnostic_if_enabled(SuspiciousXMLElementTreeUsage, range),
 
-        // XMLExpatReader
         ["xml", "sax", "expatreader", "create_parser"] => {
             checker.report_diagnostic_if_enabled(SuspiciousXMLExpatReaderUsage, range)
         }
 
-        // XMLExpatBuilder
         ["xml", "dom", "expatbuilder", "parse" | "parseString"] => {
             checker.report_diagnostic_if_enabled(SuspiciousXMLExpatBuilderUsage, range)
         }
 
-        // XMLSax
         ["xml", "sax", "parse" | "parseString" | "make_parser"] => {
             checker.report_diagnostic_if_enabled(SuspiciousXMLSaxUsage, range)
         }
 
-        // XMLMiniDOM
         ["xml", "dom", "minidom", "parse" | "parseString"] => {
             checker.report_diagnostic_if_enabled(SuspiciousXMLMiniDOMUsage, range)
         }
 
-        // XMLPullDOM
         ["xml", "dom", "pulldom", "parse" | "parseString"] => {
             checker.report_diagnostic_if_enabled(SuspiciousXMLPullDOMUsage, range)
         }
 
-        // XMLETree
         [
             "lxml",
             "etree",
@@ -1311,10 +1270,8 @@ fn suspicious_function(
             | "check_docinfo",
         ] => checker.report_diagnostic_if_enabled(SuspiciousXMLETreeUsage, range),
 
-        // Telnet
         ["telnetlib", ..] => checker.report_diagnostic_if_enabled(SuspiciousTelnetUsage, range),
 
-        // FTPLib
         ["ftplib", ..] => checker.report_diagnostic_if_enabled(SuspiciousFTPLibUsage, range),
 
         _ => return,
@@ -1323,7 +1280,6 @@ fn suspicious_function(
 
 /// S308
 pub(crate) fn suspicious_function_decorator(checker: &Checker, decorator: &Decorator) {
-    // In preview mode, references are handled collectively by `suspicious_function_reference`
     if !is_suspicious_function_reference_enabled(checker.settings()) {
         suspicious_function(checker, &decorator.expression, None, decorator.range);
     }

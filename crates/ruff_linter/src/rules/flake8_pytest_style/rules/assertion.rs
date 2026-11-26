@@ -286,7 +286,6 @@ impl<'a> Visitor<'a> for ExceptionHandlerVisitor<'a, '_> {
 }
 
 fn check_assert_in_except(checker: &Checker, name: &str, body: &[Stmt]) {
-    // Walk body to find assert statements that reference the exception name
     let mut visitor = ExceptionHandlerVisitor::new(checker, name);
     for stmt in body {
         visitor.visit_stmt(stmt);
@@ -316,8 +315,6 @@ pub(crate) fn unittest_assertion(
         func.range(),
     );
 
-    // We're converting an expression to a statement, so avoid applying the fix if
-    // the assertion is part of a larger expression.
     if checker.semantic().current_statement().is_expr_stmt()
         && checker.semantic().current_expression_parent().is_none()
         && !checker.comment_ranges().intersects(expr.range())
@@ -393,7 +390,6 @@ impl Violation for PytestUnittestRaisesAssertion {
 
 /// PT027
 pub(crate) fn unittest_raises_assertion_call(checker: &Checker, call: &ast::ExprCall) {
-    // Bindings in `with` statements are handled by `unittest_raises_assertion_bindings`.
     if let Stmt::With(ast::StmtWith { items, .. }) = checker.semantic().current_statement() {
         let call_ref = AnyNodeRef::from(call);
 
@@ -425,18 +421,6 @@ pub(crate) fn unittest_raises_assertion_binding(checker: &Checker, binding: &Bin
 
     let mut edits = vec![];
 
-    // Rewrite all references to `.exception` to `.value`:
-    // ```py
-    // # Before
-    // with self.assertRaises(Exception) as e:
-    //     ...
-    // print(e.exception)
-    //
-    // # After
-    // with pytest.raises(Exception) as e:
-    //     ...
-    // print(e.value)
-    // ```
     for reference_id in binding.references() {
         let reference = semantic.reference(reference_id);
         let Some(node_id) = reference.expression_id() else {
@@ -525,9 +509,7 @@ fn to_pytest_raises_args<'a>(
     let args = match attr {
         "assertRaises" | "failUnlessRaises" => {
             match (&*arguments.args, &*arguments.keywords) {
-                // Ex) `assertRaises(Exception)`
                 ([arg], []) => Cow::Borrowed(checker.locator().slice(arg)),
-                // Ex) `assertRaises(expected_exception=Exception)`
                 ([], [kwarg])
                     if kwarg
                         .arg
@@ -541,13 +523,11 @@ fn to_pytest_raises_args<'a>(
         }
         "assertRaisesRegex" | "assertRaisesRegexp" => {
             match (&*arguments.args, &*arguments.keywords) {
-                // Ex) `assertRaisesRegex(Exception, regex)`
                 ([arg1, arg2], []) => Cow::Owned(format!(
                     "{}, match={}",
                     checker.locator().slice(arg1),
                     checker.locator().slice(arg2)
                 )),
-                // Ex) `assertRaisesRegex(Exception, expected_regex=regex)`
                 ([arg], [kwarg])
                     if kwarg
                         .arg
@@ -560,7 +540,6 @@ fn to_pytest_raises_args<'a>(
                         checker.locator().slice(kwarg.value.range())
                     ))
                 }
-                // Ex) `assertRaisesRegex(expected_exception=Exception, expected_regex=regex)`
                 ([], [kwarg1, kwarg2])
                     if kwarg1
                         .arg
@@ -577,7 +556,6 @@ fn to_pytest_raises_args<'a>(
                         checker.locator().slice(kwarg2.value.range())
                     ))
                 }
-                // Ex) `assertRaisesRegex(expected_regex=regex, expected_exception=Exception)`
                 ([], [kwarg1, kwarg2])
                     if kwarg1
                         .arg
@@ -623,11 +601,8 @@ pub(crate) fn assert_in_exception_handler(checker: &Checker, handlers: &[ExceptH
 
 #[derive(Copy, Clone)]
 enum CompositionKind {
-    // E.g., `a or b or c`.
     None,
-    // E.g., `a and b` or `not (a or b)`.
     Simple,
-    // E.g., `not (a and b or c)`.
     Mixed,
 }
 
@@ -656,7 +631,6 @@ fn is_composite_condition(test: &Expr) -> CompositionKind {
                 node_index: _,
             }) = operand.as_ref()
             {
-                // Only split cases without mixed `and` and `or`.
                 return if values.iter().all(|expr| {
                     !matches!(
                         expr,
@@ -728,16 +702,11 @@ fn parenthesize<'a>(expression: &Expression<'a>, parent: &Expression<'a>) -> Exp
 /// Replace composite condition `assert a == "hello" and b == "world"` with two statements
 /// `assert a == "hello"` and `assert b == "world"`.
 fn fix_composite_condition(stmt: &Stmt, locator: &Locator, stylist: &Stylist) -> Result<Edit> {
-    // Infer the indentation of the outer block.
     let outer_indent = whitespace::indentation(locator.contents(), stmt)
         .context("Unable to fix multiline statement")?;
 
-    // Extract the module text.
     let contents = locator.lines_str(stmt.range());
 
-    // If the block is indented, "embed" it in a function definition, to preserve
-    // indentation while retaining valid source code. (We'll strip the prefix later
-    // on.)
     let module_text = if outer_indent.is_empty() {
         Cow::Borrowed(contents)
     } else {
@@ -747,10 +716,8 @@ fn fix_composite_condition(stmt: &Stmt, locator: &Locator, stylist: &Stylist) ->
         ))
     };
 
-    // Parse the CST.
     let mut tree = match_module(&module_text)?;
 
-    // Extract the assert statement.
     let statements = if outer_indent.is_empty() {
         &mut tree.body
     } else {
@@ -773,7 +740,6 @@ fn fix_composite_condition(stmt: &Stmt, locator: &Locator, stylist: &Stylist) ->
         bail!("Expected simple statement to be an assert")
     };
 
-    // Extract the individual conditions.
     let mut conditions: Vec<Expression> = Vec::with_capacity(2);
     match &assert_statement.test {
         Expression::UnaryOperation(op) => {
@@ -807,7 +773,6 @@ fn fix_composite_condition(stmt: &Stmt, locator: &Locator, stylist: &Stylist) ->
         _ => bail!("Expected assert statement to be a composite condition"),
     }
 
-    // For each condition, create an `assert condition` statement.
     statements.clear();
     for condition in conditions {
         statements.push(Statement::Simple(SimpleStatementLine {
@@ -823,7 +788,6 @@ fn fix_composite_condition(stmt: &Stmt, locator: &Locator, stylist: &Stylist) ->
         }));
     }
 
-    // Reconstruct and reformat the code.
     let module_text = tree.codegen_stylist(stylist);
     let contents = if outer_indent.is_empty() {
         module_text

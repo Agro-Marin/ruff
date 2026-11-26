@@ -14,7 +14,6 @@ pub(crate) fn normalize_imports<'a>(
                 atop,
                 inline,
             } => {
-                // Associate the comments with the first alias (best effort).
                 if let Some(name) = names.first() {
                     let comment_set = block
                         .import
@@ -33,7 +32,6 @@ pub(crate) fn normalize_imports<'a>(
                     }
                 }
 
-                // Create an entry for every alias.
                 for name in &names {
                     block
                         .import
@@ -57,13 +55,11 @@ pub(crate) fn normalize_imports<'a>(
                 trailing,
                 trailing_comma,
             } => {
-                // Whether to track each member of the import as a separate entry.
                 let isolate_aliases = settings.force_single_line
                     && module
                         .is_none_or(|module| !settings.single_line_exclusions.contains(module))
                     && names.first().is_none_or(|alias| alias.name != "*");
 
-                // Insert comments on the statement itself.
                 if isolate_aliases {
                     let mut first = true;
                     for alias in &names {
@@ -84,15 +80,12 @@ pub(crate) fn normalize_imports<'a>(
                             .or_default();
                         import_from.first_index.get_or_insert(index);
 
-                        // Associate the comments above the import statement with the first alias
-                        // (best effort).
                         if std::mem::take(&mut first) {
                             for comment in &atop {
                                 import_from.comments.atop.push(comment.value.clone());
                             }
                         }
 
-                        // Replicate the inline (and after) comments onto every member.
                         for comment in &inline {
                             import_from.comments.inline.push(comment.value.clone());
                         }
@@ -151,7 +144,6 @@ pub(crate) fn normalize_imports<'a>(
                     }
                 }
 
-                // Create an entry for every alias (member) within the statement.
                 for alias in names {
                     let import_from = if alias.name == "*" {
                         block
@@ -211,7 +203,6 @@ pub(crate) fn normalize_imports<'a>(
                         comment_set.trailing.push(comment.value);
                     }
 
-                    // Propagate trailing commas.
                     if !isolate_aliases && matches!(trailing_comma, TrailingComma::Present) {
                         import_from.trailing_comma = TrailingComma::Present;
                     }

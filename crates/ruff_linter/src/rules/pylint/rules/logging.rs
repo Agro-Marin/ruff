@@ -97,12 +97,10 @@ impl Violation for LoggingTooManyArgs {
 /// PLE1205
 /// PLE1206
 pub(crate) fn logging_call(checker: &Checker, call: &ast::ExprCall) {
-    // If there are any starred arguments, abort.
     if call.arguments.args.iter().any(Expr::is_starred_expr) {
         return;
     }
 
-    // If there are any starred keyword arguments, abort.
     if call
         .arguments
         .keywords

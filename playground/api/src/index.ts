@@ -1,15 +1,9 @@
-/**
- * A Workers KV-based database for storing shareable code snippets in the Playground.
- */
 
 export interface Env {
-  // The Workers KV namespace to use for storing code snippets.
   PLAYGROUND: KVNamespace;
-  // Whether or not we're in a development environment.
   DEV?: boolean;
 }
 
-// See: https://developers.cloudflare.com/workers/examples/security-headers/
 const DEFAULT_HEADERS = {
   "Permissions-Policy": "interest-cohort=()",
   "X-XSS-Protection": "0",
@@ -56,8 +50,6 @@ export default {
 
     switch (request.method) {
       case "GET": {
-        // Ex) `https://api.astral-1ad.workers.dev/<key>`
-        // Given an ID, return the corresponding playground.
         const { pathname } = new URL(request.url);
         const key = pathname.slice(1);
         if (!key) {
@@ -81,8 +73,6 @@ export default {
         });
       }
 
-      // Ex) `https://api.astral-1ad.workers.dev`
-      // Given a playground, save it and return its ID.
       case "POST": {
         const id = crypto.randomUUID();
         const playground = await request.text();

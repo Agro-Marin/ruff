@@ -74,14 +74,6 @@ pub(crate) fn redundant_tuple_in_exception_handler(checker: &Checker, handlers: 
         let [elt] = elts.as_slice() else {
             continue;
         };
-        // It is not safe to replace a single-element
-        // tuple consisting of a starred expression
-        // by the unstarred expression because the unstarred
-        // expression can be any iterable whereas `except` must
-        // be followed by a literal or a tuple. For example:
-        // ```python
-        // except (*[ValueError,FileNotFoundError],)
-        // ```
         if elt.is_starred_expr() {
             continue;
         }
@@ -98,13 +90,6 @@ pub(crate) fn redundant_tuple_in_exception_handler(checker: &Checker, handlers: 
             Applicability::Safe
         };
 
-        // If there's no space between the `except` and the tuple, we need to insert a space,
-        // as in:
-        // ```python
-        // except(ValueError,):
-        // ```
-        // Otherwise, the output will be invalid syntax, since we're removing a set of
-        // parentheses.
         diagnostic.set_fix(Fix::applicable_edit(
             Edit::range_replacement(
                 pad(

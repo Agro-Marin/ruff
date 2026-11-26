@@ -135,7 +135,6 @@ impl Stdout {
     pub(crate) fn lock(mut self) -> Self {
         match self.status {
             StreamStatus::Enabled => {
-                // Drop the previous lock first, to avoid deadlocking
                 self.lock.take();
                 self.lock = Some(std::io::stdout().lock());
             }

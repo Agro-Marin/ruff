@@ -60,8 +60,6 @@ impl Violation for CompareToEmptyString {
 
 /// PLC1901
 pub(crate) fn compare_to_empty_string(checker: &Checker, compare: &ExprCompare) {
-    // Omit string comparison rules within subscripts. This is mostly commonly used within
-    // DataFrame and np.ndarray indexing.
     if checker
         .semantic()
         .current_expressions()
@@ -74,7 +72,6 @@ pub(crate) fn compare_to_empty_string(checker: &Checker, compare: &ExprCompare) 
     for (lhs, op, rhs) in compare.iter() {
         if let Ok(op) = EmptyStringCmpOp::try_from(op) {
             if std::mem::take(&mut first) {
-                // Check the left-most expression.
                 if let Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) = &lhs {
                     if value.is_empty() {
                         let literal = checker.generator().expr(lhs);
@@ -92,7 +89,6 @@ pub(crate) fn compare_to_empty_string(checker: &Checker, compare: &ExprCompare) 
                 }
             }
 
-            // Check all right-hand expressions.
             if let Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) = &rhs {
                 if value.is_empty() {
                     let expr = checker.generator().expr(lhs);

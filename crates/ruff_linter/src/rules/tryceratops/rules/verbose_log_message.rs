@@ -54,7 +54,6 @@ pub(crate) fn verbose_log_message(checker: &Checker, handlers: &[ExceptHandler])
     for handler in handlers {
         let ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { body, .. }) = handler;
 
-        // Find all calls to `logging.exception`.
         let calls = {
             let mut visitor =
                 LoggerCandidateVisitor::new(checker.semantic(), &checker.settings().logger_objects);
@@ -64,7 +63,6 @@ pub(crate) fn verbose_log_message(checker: &Checker, handlers: &[ExceptHandler])
 
         for (expr, logging_level) in calls {
             if matches!(logging_level, LoggingLevel::Exception) {
-                // Collect all referenced names in the `logging.exception` call.
                 let names: Vec<&ast::ExprName> = {
                     expr.arguments
                         .args
@@ -77,7 +75,6 @@ pub(crate) fn verbose_log_message(checker: &Checker, handlers: &[ExceptHandler])
                         .collect()
                 };
 
-                // Find any bound exceptions in the call.
                 for expr in names {
                     let Some(id) = checker.semantic().resolve_name(expr) else {
                         continue;

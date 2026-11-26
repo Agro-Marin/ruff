@@ -74,9 +74,6 @@ const PROHIBITED_NAMEDTUPLE_ATTRS: &[&str] = &[
     "_source",
 ];
 
-// TODO: Support dynamic class literals. If we allow dynamic classes to define attributes in their
-// namespace dictionary, we should also check whether those attributes are valid overrides of
-// attributes in their superclasses.
 pub(super) fn check_class<'db>(
     context: &InferContext<'db, '_>,
     class: StaticClassLiteral<'db>,
@@ -108,8 +105,6 @@ pub(super) fn check_class<'db>(
             .map(|base| (base.origin(db), base))
             .collect();
         if !generic_bases.is_empty() {
-            // Overrides must respect every inherited specialization. Keep the MRO's bases first
-            // so the selected inherited method is unchanged.
             let env = &context.program_environment();
             bases.extend(
                 class_specialized
@@ -132,8 +127,6 @@ pub(super) fn check_class<'db>(
     if own_class_members.is_empty() {
         return;
     }
-    // Most classes have no NamedTuple bases. Classify the bases once instead of traversing
-    // the entire MRO again for every member of the class.
     let named_tuple_bases = if configuration.check_invalid_named_tuple_field_overrides() {
         class
             .iter_mro(db, None)
@@ -195,8 +188,6 @@ fn check_inherited_conflicts<'db>(
             })
             .cloned(),
     );
-    // Only MRO entries select the member. Other paths to a generic base can supply additional
-    // contracts, so keep their specializations after the MRO in the order they were declared.
     let mro_len = mro.len();
     let contracts = if configuration.check_attribute_type_violations() {
         mro.into_iter()
@@ -215,23 +206,8 @@ fn check_inherited_conflicts<'db>(
         let Some((literal, _)) = candidate_owner.static_class_literal(db) else {
             continue;
         };
-        // TODO: Include synthesized methods when checking inherited conflicts. For example,
-        // `Ordered.__gt__` is synthesized here and is incompatible with `AcceptsObject.__gt__`:
-        //
-        // ```python
-        // from functools import total_ordering
-        //
         // @total_ordering
-        // class Ordered:
-        //     def __lt__(self, other: Ordered) -> bool: ...
-        //
-        // class AcceptsObject:
-        //     def __gt__(self, other: object) -> bool: ...
-        //
-        // class Conflict(Ordered, AcceptsObject): ...
-        // ```
         let candidates = inherited_member_candidates(db, literal);
-        // An empty base, or one whose names were all overridden, needs no pairwise lookups.
         let mut owners_by_name = LazyCell::new(|| {
             let mut owners: FxHashMap<&Name, smallvec::SmallVec<[usize; 4]>> = FxHashMap::default();
             for (other_index, &other) in contracts.iter().enumerate() {
@@ -239,8 +215,6 @@ fn check_inherited_conflicts<'db>(
                     continue;
                 }
                 let mut add = |name| owners.entry(name).or_default().push(other_index);
-                // Bound the number of cached pairs per base by the number of names it contributes.
-                // Otherwise a wide hierarchy of single-member mixins can cache mostly empty lists.
                 if candidates.len() >= contracts.len() - 1 {
                     shared_inherited_names(db, env.program(db), literal, other)
                         .iter()
@@ -256,7 +230,6 @@ fn check_inherited_conflicts<'db>(
                 continue;
             }
             let Some(owners) = owners_by_name.get_mut(name) else {
-                // A conflict requires two bases to supply this name.
                 continue;
             };
             if class
@@ -265,15 +238,12 @@ fn check_inherited_conflicts<'db>(
             {
                 continue;
             }
-            // Names listed on an earlier base are already in `seen`. Any earlier owner in this
-            // list was found by member lookup, including synthesized members without a declaration.
             let position = owners.partition_point(|&other| other < index);
             owners.insert(position, index);
             let (&owner_index, later_owners) =
                 owners.split_first().expect("the candidate was inserted");
             let owner = contracts[owner_index];
 
-            // Only a source definition on the selected owner goes to the method checker.
             // A generated member on an earlier base must not expose an older method.
             if configuration.check_method_liskov_violations()
                 && owner_index == index
@@ -385,32 +355,10 @@ fn check_inherited_method_conflict<'db>(
             continue;
         }
 
-        // `EnumType` can replace mixin dunders while constructing the enum, so the
-        // inherited definitions do not necessarily describe the resulting method. For
-        // example, the inherited check would otherwise compare the incompatible
-        // `int.__format__` and `Enum.__format__` definitions here:
-        //
-        // ```python
-        // from enum import Enum
-        //
-        // # int.__format__(self, format_spec: str, /) -> str
-        // # Enum.__format__(self, format_spec: str) -> str
-        // class Status(int, Enum):
-        //     READY = 1
-        // ```
-        //
-        // Keep this check specific to the enum definition so conflicts between two
-        // ordinary mixins are still reported.
         if enum_class_creation_manages_conflict(db, class, name, owner, contract_owner) {
             continue;
         }
 
-        // Do not re-emit an incompatibility that already exists in the parent's own MRO.
-        // This matters for intentionally suppressed typeshed overrides such as
-        // `str.__contains__` versus `Sequence.__contains__`, while still allowing a
-        // receiver-sensitive incompatibility that appears only when rebound to `class`.
-        // Resolve the ancestor in the parent's own MRO so that its generic specialization
-        // matches the one used by the normal Liskov check on the parent.
         if let Some(parent_contract_owner) = owner
             .iter_mro(db)
             .skip(1)
@@ -594,8 +542,6 @@ fn visit_shared_inherited_names<'db>(
     visit: impl FnMut(&'db Name),
 ) {
     let Some((literal, specialization)) = other.static_class_literal(db) else {
-        // All the MRO entries are static. Extra specializations only supply attribute contracts,
-        // which require a static class literal.
         return;
     };
     let listed = inherited_member_candidates(db, literal);
@@ -608,8 +554,6 @@ fn visit_shared_inherited_names<'db>(
             if listed.contains_key(*name) {
                 return true;
             }
-            // The inventory includes every slot and receiver attribute. If the class body
-            // has no symbol either, a non-dunder can only come from member synthesis.
             if !is_dunder(name) && table.symbol_id(name).is_none() {
                 return literal
                     .own_synthesized_member(db, env, specialization, None, name)
@@ -744,13 +688,9 @@ fn check_class_declaration<'db>(
         first_reachable_definition,
     } = member;
 
-    // Most declarations introduce a new member. Binding it to the subclass is only needed
-    // when an override or one of the class-specific rules below can use it.
     let subclass_instance_member =
         LazyCell::new(|| lookup_override_member(db, env, class, &member.name));
 
-    // A write such as `self.values += (item,)` also reads the member. Start inference from
-    // the member lookup, as before, so the write sees the same type during cycle recovery.
     if override_class
         .receiver_written_names
         .binary_search(&member.name)
@@ -760,8 +700,6 @@ fn check_class_declaration<'db>(
         return;
     }
 
-    // Hashability may change in either direction across subclasses. Only the hash protocol's
-    // signature constrains each definition; finality and override decorators are checked below.
     if member.name == "__hash__"
         && context.is_lint_enabled(&INCOMPATIBLE_METHOD_OVERRIDE)
         && let Some(type_on_subclass_instance) =
@@ -799,11 +737,6 @@ fn check_class_declaration<'db>(
         }
     }
 
-    // Check for prohibited `NamedTuple` attribute overrides.
-    //
-    // `NamedTuple` classes have certain synthesized attributes (like `_asdict`, `_make`, etc.)
-    // that cannot be overwritten. Attempting to assign to these attributes (without type
-    // annotations) or define methods with these names will raise an `AttributeError` at runtime.
     match class_kind {
         Some(CodeGeneratorKind::NamedTuple) => {
             if configuration.check_invalid_named_tuple_definitions()
@@ -871,7 +804,6 @@ fn check_class_declaration<'db>(
         }
     }
 
-    // Check for invalid Enum member values.
     if let Some(enum_info) = override_class.enum_info {
         if member.name != "_value_"
             && matches!(
@@ -879,24 +811,15 @@ fn check_class_declaration<'db>(
                 DefinitionKind::Assignment(_) | DefinitionKind::AnnotatedAssignment(_)
             )
         {
-            // Use the value type from `EnumMetadata` rather than `member.ty`, because
-            // for annotated assignments like `X: Final = "value"`, the member may come
-            // from the declaration chain (where `ty` is the declared type, e.g. `Unknown`)
-            // rather than the binding chain (where `ty` is the actual value type).
             let Some(&member_value_type) = enum_info.members.get(&member.name) else {
                 return;
             };
 
-            // TODO ideally this would be a syntactic check that only matches on literal `...`
-            // in the source, rather than matching on the type. But this would require storing
-            // additional information in `EnumMetadata`.
             let is_ellipsis = matches!(
                 member_value_type,
                 Type::NominalInstance(nominal_instance)
                     if nominal_instance.has_known_class(db, KnownClass::EllipsisType)
             );
-            // `auto()` values are computed at runtime by the enum metaclass,
-            // so we can't validate them against _value_ or __init__ at the type level.
             let is_auto = enum_info.auto_members.contains(&member.name);
             let skip_type_check = (context.in_stub() && is_ellipsis)
                 || is_auto
@@ -962,8 +885,6 @@ fn check_class_declaration<'db>(
     let is_private_member = is_mangled_private(member.name.as_str());
     let mut subclass_variable_kind: Option<Option<VariableKind>> = None;
 
-    // Track the first superclass that defines this member so we can distinguish inherited
-    // conflicts from violations introduced by the child.
     let mut inherited_member_owner = None;
     let mut immediate_parent_variable_kind: Option<(ClassType<'db>, VariableKind)> = None;
 
@@ -986,8 +907,6 @@ fn check_class_declaration<'db>(
                 ClassBase::Class(class) => class,
             };
 
-            // If the member is not defined on the class itself, skip it. Functional named tuples
-            // have synthesized members but no class body in which to look up their definitions.
             let (superclass_symbol, method_kind) =
                 if let Some((superclass_literal, superclass_specialization)) =
                     superclass.static_class_literal(db)
@@ -1001,19 +920,6 @@ fn check_class_declaration<'db>(
                         }
                         (Some((superclass_scope, id)), MethodKind::default())
                     } else {
-                        // A method can declare an instance attribute without adding its name
-                        // to the class-body symbol table:
-                        //
-                        // ```python
-                        // class Base:
-                        //     def __init__(self):
-                        //         self.value: int = 0
-                        //
-                        // class Child(Base):
-                        //     value: str  # Incompatible with Base.value.
-                        // ```
-                        //
-                        // Keep this base as an override target even without a class-body symbol.
                         if superclass_literal
                             .own_synthesized_member(
                                 db,
@@ -1062,15 +968,11 @@ fn check_class_declaration<'db>(
                 ..
             }) = superclass_instance_member.place
             else {
-                // If not defined on any superclass, no point in continuing to walk up the MRO
                 break;
             };
 
             subclass_overrides_superclass_declaration = true;
 
-            // Record the first overridden superclass member that is subject to the missing override
-            // decorator check so that we can later confirm that the overriding definition is indeed
-            // marked with the decorator.
             if configuration.check_missing_overrides()
                 && missing_override_target.is_none()
                 && !is_constructor_like_method(&member.name)
@@ -1085,8 +987,6 @@ fn check_class_declaration<'db>(
             let own_class_member =
                 LazyCell::new(|| superclass.own_class_member(db, env, None, &member.name));
 
-            // An inferred receiver assignment is an override target but does not take
-            // ownership of a conflict inherited from an earlier declaration.
             if inherited_member_owner.is_none()
                 && !liskov_check_complete
                 && configuration.check_liskov_violations()
@@ -1113,8 +1013,6 @@ fn check_class_declaration<'db>(
             {
                 // TODO: `@final` should be more like a type qualifier:
                 // we should also recognise `@final`-decorated methods that don't end up
-                // as being function- or property-types (because they're wrapped by other
-                // decorators that transform the type into something else).
                 let underlying_functions = extract_underlying_functions(db, ty);
                 if underlying_functions
                     .iter()
@@ -1131,7 +1029,6 @@ fn check_class_declaration<'db>(
                     .qualifiers()
                     .contains(TypeQualifiers::FINAL)
             {
-                // Find the declaration definition in the superclass for the secondary annotation.
                 let superclass_definition = superclass_symbol.and_then(|(scope, id)| {
                     use_def_map(db, scope)
                         .end_of_scope_symbol_declarations(id)
@@ -1140,13 +1037,7 @@ fn check_class_declaration<'db>(
                 overridden_final_variable = Some((superclass, superclass_definition));
             }
 
-            // **********************************************************
-            // Everything below this point in the loop
-            // is about Liskov Substitution Principle checks
-            // **********************************************************
 
-            // A suppressed diagnostic still completes the Liskov check. Defer keyword-only
-            // conflicts so a later base can reveal a general incompatibility.
             if liskov_check_complete {
                 continue;
             }
@@ -1176,10 +1067,6 @@ fn check_class_declaration<'db>(
                     if let Some(subclass_kind) = subclass_kind
                         && subclass_kind != superclass_variable_kind
                     {
-                        // An unannotated class-body assignment can inherit an overridden `ClassVar`
-                        // declaration instead of introducing a conflicting instance variable. This
-                        // also applies to augmented assignments after the initial class-body
-                        // assignment, e.g. `epilog = "..."; epilog += "..."`.
                         if subclass_kind == VariableKind::Instance
                             && superclass_variable_kind == VariableKind::Class
                             && matches!(
@@ -1217,7 +1104,6 @@ fn check_class_declaration<'db>(
                 }
             }
 
-            // Constructors may change their signature. Leave their special receiver
             // binding and `@override` checks to the method checker below.
             if !is_constructor_like_method(&member.name) {
                 match attributes::check_override(
@@ -1262,7 +1148,6 @@ fn check_class_declaration<'db>(
                 continue;
             }
 
-            // Synthesized `__replace__` methods on dataclasses are not checked
             if &member.name == "__replace__"
                 && class_kind.is_some_and(CodeGeneratorKind::is_dataclass_like)
             {
@@ -1282,8 +1167,6 @@ fn check_class_declaration<'db>(
                 continue;
             }
 
-            // Do not repeat a violation that already exists in the parent's hierarchy.
-            // See: https://github.com/astral-sh/ty/issues/2000
             if let Some(method_owner) = inherited_member_owner
                 && method_owner != superclass
                 && is_inherited_method_violation(
@@ -1349,12 +1232,10 @@ fn check_class_declaration<'db>(
 
     if !subclass_overrides_superclass_declaration
         && !has_dynamic_superclass
-        // This definition is in the file currently being checked.
         && first_reachable_definition.kind(db).is_function_def()
         && let Some(definition) = invalid_explicit_override_definition(context, member, class_scope)
         && !subclass_instance_member.place.is_undefined()
     {
-        // These synthesized bases can satisfy an explicit override without a source declaration.
         let fallback = if has_typeddict_in_mro {
             Some(KnownClass::TypedDictFallback)
         } else if class_kind == Some(CodeGeneratorKind::NamedTuple) {
@@ -1442,8 +1323,6 @@ fn bind_new_for_override<'db>(
     else {
         return ty;
     };
-    // Overloads specialized for other subclasses do not constrain this override.
-    // Compare call signatures independently of descriptor behavior.
     callables
         .map(|callable| callable.bind_self(db, env, receiver, instance_of_class))
         .to_type(db, env)
@@ -1462,8 +1341,6 @@ fn is_inherited_method_violation<'db>(
     superclass_type: Type<'db>,
     name: &Name,
 ) -> bool {
-    // An earlier MRO entry can select a different method in its own hierarchy. Check each
-    // ancestor that inherits the method actually selected by the child's MRO.
     bases
         .iter()
         .filter_map(|base| base.into_class())
@@ -1479,16 +1356,12 @@ fn is_inherited_method_violation<'db>(
             else {
                 return false;
             };
-            // An inherited violation belongs to the parent's own receiver domain.
             let parent_type = bind_new_for_override(db, env, parent, name, parent_type);
             let superclass_type = bind_new_for_override(db, env, parent, name, superclass_type);
             if is_assignable_method_override(db, env, parent_type, superclass_type) {
                 return false;
             }
 
-            // Check the parent's own specializations: a valid override of `Base[Any]` can become
-            // invalid when the child also inherits `Base[int]`. Include implicit ancestors such
-            // as `object` and explicit inheritance paths for specializations omitted from the MRO.
             parent
                 .iter_mro(db)
                 .skip(1)
@@ -1621,9 +1494,6 @@ fn method_override_types<'db>(
                     .get(0)
                     .filter(|parameter| parameter.is_positional() && !parameter.inferred_annotation)
                     .map(Parameter::annotated_type),
-                // TODO: Compare overloaded mixin methods within each overload's explicit receiver
-                // domain. Binding them directly to the concrete subclass can filter out applicable
-                // overloads when the subclass does not itself satisfy the receiver protocol.
                 _ => None,
             };
 
@@ -1638,8 +1508,6 @@ fn method_override_types<'db>(
                     )
                 });
 
-            // Both signatures describe calls on the subclass. In particular, inherited `Self`
-            // annotations refer to the subclass even when the receiver is implicitly annotated.
             (
                 subclass_method
                     .callables_with_receiver(db, env, receiver, typing_self_type)?
@@ -1727,20 +1595,13 @@ pub(super) fn effective_superclass_variable_kind<'db>(
     };
 
     if has_own_member {
-        // Method definitions and properties are not instance-variable declarations. Check the symbol
-        // definition before class/instance member lookup can erase that distinction. For example,
         // resolving an abstract `@property def f(self) -> int` through instance-member lookup would
-        // make it look like an instance variable of type `int`, causing this rule to report
-        // `f: ClassVar[int]` as an invalid attribute override even though the superclass member is not
-        // an instance-attribute declaration.
         if superclass_symbol_id.is_some_and(|id| is_function_definition(db, superclass_scope, id)) {
             return inherited_variable_kind();
         }
 
         let class_member = superclass.own_class_member(db, env, None, &name).inner;
 
-        // Final attributes have their own override rule and diagnostic. Treating them as class
-        // variables here would report both diagnostics for the same override.
         if class_member.qualifiers.contains(TypeQualifiers::FINAL) {
             return inherited_variable_kind();
         }
@@ -1820,24 +1681,10 @@ fn variable_kind<'db>(
         return Some(VariableKind::Class);
     }
 
-    // A `Final` attribute behaves like a class variable, but final overrides are diagnosed by
-    // `override-of-final-variable` instead of this rule.
     if class_member.qualifiers.contains(TypeQualifiers::FINAL) {
         return None;
     }
 
-    // A method definition is a descriptor in the class body, not an instance variable declaration,
-    // even though instance lookup binds it as a method. It should therefore not participate in the
-    // class-variable vs. instance-variable declaration check. For example, `Sub.f` here is a
-    // descriptor stored on the class, not an instance attribute:
-    //
-    // ```python
-    // class Base:
-    //     f: ClassVar[int]
-    //
-    // class Sub(Base):
-    //     def f(self) -> int: ...
-    // ```
     if let Place::Defined(DefinedPlace { ty, .. }) = class_member.place {
         let alternatives = ty
             .as_union()
@@ -1850,12 +1697,6 @@ fn variable_kind<'db>(
         }
     }
 
-    // Descriptor values are not normal instance variables: lookup calls `__get__`, so the value
-    // exposed through an instance can differ from the value stored on the class. For example,
-    // `attr = property(lambda self: 1)` installs a descriptor value, so `C().attr` exposes the
-    // getter return type instead of the `property` object. By contrast, `attr: Descriptor` only
-    // annotates an instance attribute; the annotated type having `__get__` does not make `C.attr`
-    // a descriptor value.
     if let Place::Defined(DefinedPlace {
         ty: class_member_ty,
         origin: TypeOrigin::Inferred,
@@ -2347,16 +2188,12 @@ fn check_enum_member_against_constructor_method<'db>(
     let db = context.db();
     let env = &context.program_environment();
 
-    // The enum metaclass unpacks tuple values as positional args:
-    //   MEMBER = (a, b, c)  →  __new__(cls, a, b, c) / __init__(self, a, b, c)
-    //   MEMBER = x          →  __new__(cls, x) / __init__(self, x)
     let args: Vec<Type<'db>> = if let Type::NominalInstance(instance) = member_value_type
         && let Some(spec) = instance.tuple_spec(db, env)
     {
         if let Tuple::Fixed(fixed) = &*spec {
             fixed.all_elements().to_vec()
         } else {
-            // Variable-length tuples: can't determine exact args, skip validation.
             return;
         }
     } else {

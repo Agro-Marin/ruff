@@ -76,8 +76,6 @@ pub(crate) fn one_liner(checker: &Checker, docstring: &Docstring) {
         let mut diagnostic =
             checker.report_diagnostic(UnnecessaryMultilineDocstring, docstring.range());
 
-        // If removing whitespace would lead to an invalid string of quote
-        // characters, avoid applying the fix.
         let body = docstring.body();
         let trimmed = body.trim();
         let quote_char = docstring.quote_style().as_char();

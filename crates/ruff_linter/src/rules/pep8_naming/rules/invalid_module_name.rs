@@ -74,9 +74,6 @@ pub(crate) fn invalid_module_name(
             path.file_stem().unwrap().to_string_lossy()
         };
 
-        // As a special case, we allow files in `versions` and `migrations` directories to start
-        // with a digit (e.g., `0001_initial.py`), to support common conventions used by Django
-        // and other frameworks.
         let is_valid_module_name = if is_migration_file(path) {
             is_migration_name(&module_name)
         } else {
@@ -84,7 +81,6 @@ pub(crate) fn invalid_module_name(
         };
 
         if !is_valid_module_name {
-            // Ignore any explicitly-allowed names.
             if ignore_names.matches(&module_name) {
                 return;
             }

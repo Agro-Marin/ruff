@@ -87,7 +87,6 @@ fn match_list_full_slice<'a>(
     subscript: &'a ast::ExprSubscript,
     semantic: &SemanticModel,
 ) -> Option<&'a Name> {
-    // Check that it is `obj[:]`.
     if !matches!(
         subscript.slice.as_ref(),
         Expr::Slice(ast::ExprSlice {
@@ -103,7 +102,6 @@ fn match_list_full_slice<'a>(
 
     let ast::ExprName { id, .. } = subscript.value.as_name_expr()?;
 
-    // Check that `obj` is a list.
     let scope = semantic.current_scope();
     let bindings: Vec<&Binding> = scope
         .get_all(id)

@@ -72,7 +72,6 @@ fn is_static_length(elts: &[Expr]) -> bool {
 
 /// Build an f-string consisting of `joinees` joined by `joiner` with `flags`.
 fn build_fstring(joiner: &str, joinees: &[Expr], flags: FStringFlags) -> Option<Expr> {
-    // If all elements are string constants, join them into a single string.
     if joinees.iter().all(Expr::is_string_literal_expr) {
         let mut flags: Option<ast::StringLiteralFlags> = None;
         let content = joinees
@@ -80,7 +79,6 @@ fn build_fstring(joiner: &str, joinees: &[Expr], flags: FStringFlags) -> Option<
             .filter_map(|expr| {
                 if let Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) = expr {
                     if flags.is_none() {
-                        // Take the flags from the first Expr
                         flags = Some(value.first_literal_flags());
                     }
                     Some(value.to_str())
@@ -92,16 +90,12 @@ fn build_fstring(joiner: &str, joinees: &[Expr], flags: FStringFlags) -> Option<
 
         let mut flags = flags?;
 
-        // If the result is a raw string and contains a newline, use triple quotes.
         if flags.prefix().is_raw() && content.contains(['\n', '\r']) {
             flags = flags.with_triple_quotes(ruff_python_ast::str::TripleQuotes::Yes);
 
-            // Prefer a delimiter that doesn't occur in the content; if both occur, bail.
             if content.contains(flags.quote_str()) {
                 flags = flags.with_quote_style(flags.quote_style().opposite());
                 if content.contains(flags.quote_str()) {
-                    // Both "'''" and "\"\"\"" are present in content; avoid emitting
-                    // an invalid raw triple-quoted literal (or escaping). Bail on the fix.
                     return None;
                 }
             }
@@ -123,8 +117,6 @@ fn build_fstring(joiner: &str, joinees: &[Expr], flags: FStringFlags) -> Option<
 
     for expr in joinees {
         if expr.is_f_string_expr() {
-            // Oops, already an f-string. We don't know how to handle those
-            // gracefully right now.
             return None;
         }
         if !std::mem::take(&mut first) {
@@ -169,8 +161,6 @@ pub(crate) fn static_join_to_fstring(checker: &Checker, expr: &Expr, joiner: &st
         return;
     };
 
-    // If there are kwargs or more than one argument, this is some non-standard
-    // string join call.
     if !keywords.is_empty() {
         return;
     }
@@ -178,15 +168,12 @@ pub(crate) fn static_join_to_fstring(checker: &Checker, expr: &Expr, joiner: &st
         return;
     };
 
-    // Get the elements to join; skip (e.g.) generators, sets, etc.
     let joinees = match &arg {
         Expr::List(ast::ExprList { elts, .. }) if is_static_length(elts) => elts,
         Expr::Tuple(ast::ExprTuple { elts, .. }) if is_static_length(elts) => elts,
         _ => return,
     };
 
-    // Try to build the fstring (internally checks whether e.g. the elements are
-    // convertible to f-string elements).
     let Some(new_expr) = build_fstring(joiner, joinees, checker.default_fstring_flags()) else {
         return;
     };

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 REPOSITORY = "astral-sh/ruff"
 REPOSITORY_ID = 523043277
 API_ROOT = f"https://api.github.com/repos/{REPOSITORY}"
-BOT_ID = 305554984  # astral-automations-bot
+BOT_ID = 305554984
 
 MAX_ARCHIVE_BYTES = 16 * 1024 * 1024
 MAX_REPORT_BYTES = 4 * 1024 * 1024
@@ -109,7 +109,6 @@ def read_comment_id(path: str) -> int | None:
         value = Path(path).read_text(encoding="utf-8")
     except FileNotFoundError:
         return None
-    # Stored values are untrusted, including values from other jobs on the same PR.
     if not re.fullmatch(r"[1-9][0-9]{0,19}", value):
         raise ValueError("The stored comment ID must be a positive decimal integer.")
     return int(value)
@@ -145,7 +144,6 @@ def find_artifact(run_id: int, name: str) -> dict[str, Any] | None:
         if len(artifacts) < 100:
             break
         page += 1
-    # A rerun can leave artifacts from multiple attempts under the same name.
     return max(matches, key=lambda artifact: artifact["id"]) if matches else None
 
 
@@ -172,8 +170,6 @@ def download_artifact(
 def read_report(
     archive_bytes: bytes, filename: str, *, max_bytes: int = MAX_REPORT_BYTES
 ) -> str:
-    # Read one fixed member in memory. Archive paths are never extracted, and
-    # artifacts cannot replace the publisher or supply executable configuration.
     with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
         members = [info for info in archive.infolist() if info.filename == filename]
         if len(members) != 1 or members[0].is_dir():
@@ -358,7 +354,6 @@ def publish(
                 base_url=html_base_url,
             )
         except Exception:
-            # An upload failure must not suppress the summary or artifact link.
             logger.exception("Failed to upload the HTML report.")
     body = render_report(
         report,
@@ -374,7 +369,6 @@ def publish(
         print(body, end="")
         return
 
-    # Recheck after downloading: the PR may have advanced or the run may have been retried.
     if current_run(run_id, run_attempt, workflow_ref, pull_request) is None:
         return
     existing = find_report(pull_request, report, stored_comment_id)

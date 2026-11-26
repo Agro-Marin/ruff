@@ -211,10 +211,8 @@ impl FilePattern {
                 builder.add(Glob::new(&pattern)?);
             }
             FilePattern::User(pattern, absolute) => {
-                // Add the absolute path.
                 builder.add(Glob::new(&absolute.to_string_lossy())?);
 
-                // Add basename path.
                 if !pattern.contains(std::path::MAIN_SEPARATOR) {
                     builder.add(Glob::new(&pattern)?);
                 }
@@ -252,8 +250,6 @@ impl FromStr for FilePattern {
 pub struct FilePatternSet {
     set: GlobSet,
     cache_key: u64,
-    // This field is only for displaying the internals
-    // of `set`.
     #[expect(clippy::used_underscore_binding)]
     _set_internals: Vec<FilePattern>,
 }
@@ -332,7 +328,6 @@ struct PerFilePattern {
     absolute: GlobPath,
     /// Whether the glob pattern should be negated (e.g. `!*.ipynb`)
     negated: bool,
-    // Compile only when settings are resolved, after configuration overrides have been applied.
     absolute_matcher: OnceLock<Result<GlobMatcher, globset::Error>>,
     basename_matcher: OnceLock<Result<GlobMatcher, globset::Error>>,
 }
@@ -616,7 +611,6 @@ impl FromStr for RequiredVersion {
     type Err = pep440_rs::VersionSpecifiersParseError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        // Treat `0.3.1` as `==0.3.1`, for backwards compatibility.
         if let Ok(version) = pep440_rs::Version::from_str(value) {
             Ok(Self(VersionSpecifiers::from(
                 VersionSpecifier::equals_version(version),
@@ -673,7 +667,6 @@ pub enum IdentifierPattern {
 
 impl IdentifierPattern {
     pub fn new(pattern: &str) -> Result<Self, glob::PatternError> {
-        // `]` is only special inside `[...]`, which necessarily includes `[`.
         if pattern.contains(['?', '*', '[']) {
             Ok(Self::Glob(Box::new(glob::Pattern::new(pattern)?)))
         } else {
@@ -789,9 +782,6 @@ impl<T> CompiledPerFileList<T> {
             .into_iter()
             .map(|per_file_ignore| {
                 let pattern = &per_file_ignore.pattern;
-                // Cloning matchers shares the compiled regex but gives each settings object
-                // its own scratch space for matching.
-                // Construct absolute path matcher.
                 let absolute_matcher = pattern
                     .absolute_matcher
                     .get_or_init(|| {
@@ -801,7 +791,6 @@ impl<T> CompiledPerFileList<T> {
                     .clone()
                     .with_context(|| format!("invalid glob {:?}", pattern.absolute))?;
 
-                // Construct basename matcher.
                 let basename_matcher = pattern
                     .basename_matcher
                     .get_or_init(|| Glob::new(&pattern.basename).map(|glob| glob.compile_matcher()))
@@ -915,9 +904,6 @@ impl CompiledPerFileIgnoreList {
                 pattern,
                 data: selectors,
             } = ignore.0;
-            // Rules in preview are included here via `all_rules` even if preview mode is disabled.
-            // This is okay because it's fine to per-file-ignore additional preview rules that are
-            // already ignored by virtue of being in preview when preview is disabled.
             let data: RuleSet = selectors
                 .iter()
                 .filter_map(|selector| match selector.resolve(preview) {

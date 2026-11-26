@@ -72,17 +72,13 @@ pub(crate) fn legacy_random(checker: &Checker, expr: &Expr, qualified_name: &Qua
     };
 
     match *method_name {
-        // seeds
         "seed" | "get_state" | "set_state" => {}
 
-        // simple random data
         "rand" | "ranf" | "sample" | "randn" | "randint" | "random" | "random_integers"
         | "random_sample" | "choice" | "bytes" => {}
 
-        // permutations
         "shuffle" | "permutation" => {}
 
-        // distributions
         "beta"
         | "binomial"
         | "chisquare"

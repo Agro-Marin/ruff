@@ -89,9 +89,6 @@ pub(crate) fn getattr_with_constant(checker: &Checker, expr: &Expr, func: &Expr,
         return;
     }
 
-    // Mark fixes as unsafe for non-NFKC attribute names. Python normalizes identifiers using NFKC, so using
-    // attribute syntax (e.g., `obj.attr`) would normalize the name and potentially change
-    // program behavior.
     let attr_name = value.to_str();
     let has_comments = checker.comment_ranges().intersects(expr.range());
     let is_unsafe = attr_name.nfkc().collect::<String>() != attr_name || has_comments;
@@ -106,9 +103,6 @@ pub(crate) fn getattr_with_constant(checker: &Checker, expr: &Expr, func: &Expr,
             {
                 format!("{}.{}", checker.locator().slice(obj), value)
             } else {
-                // Defensively parenthesize any other expressions. For example, attribute accesses
-                // on `int` literals must be parenthesized, e.g., `getattr(1, "real")` becomes
-                // `(1).real`. The same is true for named expressions and others.
                 format!("({}).{}", checker.locator().slice(obj), value)
             },
             expr.range(),

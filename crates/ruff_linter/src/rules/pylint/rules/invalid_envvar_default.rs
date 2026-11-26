@@ -59,7 +59,6 @@ pub(crate) fn invalid_envvar_default(
         qualified_name.segments(),
         ["os", "getenv"] | ["os", "environ", "get"]
     ) {
-        // Find the `default` argument, if it exists.
         let Some(expr) = call.arguments.find_argument_value("default", 1) else {
             return;
         };

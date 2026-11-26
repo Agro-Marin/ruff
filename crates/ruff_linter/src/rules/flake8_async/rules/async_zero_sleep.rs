@@ -91,7 +91,6 @@ pub(crate) fn async_zero_sleep(checker: &Checker, call: &ExprCall) {
         return;
     };
 
-    // Determine the correct argument name
     let arg_name = match module {
         AsyncModule::Trio => "seconds",
         AsyncModule::AnyIo => "delay",
@@ -129,8 +128,6 @@ pub(crate) fn async_zero_sleep(checker: &Checker, call: &ExprCall) {
 
         let mut diagnostic = checker.report_diagnostic(AsyncZeroSleep { module }, call.range());
         diagnostic.try_set_fix(|| {
-            // `anyio.lowlevel` is a submodule, so we need `import anyio.lowlevel`
-            // rather than `from anyio import lowlevel`.
             let full_module_name = format!("{module}.lowlevel");
 
             let (import_edit, binding) = checker.importer().get_or_import_symbol(

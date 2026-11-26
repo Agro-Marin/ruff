@@ -51,8 +51,6 @@ static LEXICON_ORDERED_LENGTH_INDICES: [u16; LEXICON_ORDERED_LENGTHS_LEN] = {
     while i < LEXICON_ORDERED_LENGTHS.len() {
         let (end_idx, length) = LEXICON_ORDERED_LENGTHS[i];
 
-        // make sure this is contiguous - that there are no gaps where e.g. there
-        // are words of length 15 and of length 17 but none of length 16.
         if let Some(prev_len) = prev_len {
             assert!(length == prev_len + 1);
         }
@@ -71,40 +69,25 @@ impl Iterator for IterStr {
     fn next(&mut self) -> Option<&'static str> {
         let mut tmp = self.phrasebook.clone();
         let raw_b = tmp.next()?;
-        // the first byte includes if it is the last in this name
-        // in the high bit.
         let (is_end, b) = (raw_b & 0b1000_0000 != 0, raw_b & 0b0111_1111);
 
         let ret = if b == HYPHEN {
-            // have to handle this before the case below, because a -
-            // replaces the space entirely.
             self.last_was_word = false;
             "-"
         } else if self.last_was_word {
             self.last_was_word = false;
-            // early return, we don't want to update the
-            // phrasebook (i.e. we're pretending we didn't touch
-            // this byte).
             return Some(" ");
         } else {
             self.last_was_word = true;
 
             let (length, idx) = if b < PHRASEBOOK_SHORT {
                 let idx = b as usize;
-                // these lengths are hard-coded
                 (LEXICON_SHORT_LENGTHS[idx] as usize, idx)
             } else {
                 let idx = u16::from_be_bytes([b - PHRASEBOOK_SHORT, tmp.next().unwrap()]);
 
-                // The value at each index `i` in the array `LEXICON_ORDERED_LENGTH_INDICES`
-                // (herein referred to as `arr`) is the largest lexicon index with length `i`.
                 let length = match LEXICON_ORDERED_LENGTH_INDICES.binary_search(&idx) {
-                    // In this case, `idx` is equal to the index at `arr[i]`,
-                    // so `i` is the correct length.
                     Ok(i) => i,
-                    // `binary_search(idx)` returning `Err(i)` means that `arr[i-1] < idx < arr[i]`.
-                    // Therefore, `idx` is larger than the largest index with length `i - 1`, but
-                    // smaller than the largest index with length `i`, meaning its length is `i`.
                     Err(i) => i,
                 };
 

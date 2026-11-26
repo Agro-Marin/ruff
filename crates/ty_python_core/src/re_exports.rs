@@ -49,8 +49,6 @@ pub(super) fn exported_names(db: &dyn Db, file: ProgramFile<'_>) -> Box<[Name]> 
 
     let mut exports = finder.resolve_exports();
 
-    // Sort the exports to ensure convergence regardless of hash map
-    // or insertion order. See <https://github.com/astral-sh/ty/issues/444>
     exports.sort_unstable();
     exports.into()
 }
@@ -114,8 +112,6 @@ impl<'db> Visitor<'db> for ExportFinder<'db> {
         let name = &name.id;
         let asname = asname.as_ref().map(|asname| &asname.id);
 
-        // If the source is a stub, names defined by imports are only exported
-        // if they use the explicit `foo as foo` syntax:
         let kind = if self.visiting_stub_file && asname.is_none_or(|asname| asname != name) {
             PossibleExportKind::StubImportWithoutRedundantAlias
         } else {
@@ -137,10 +133,6 @@ impl<'db> Visitor<'db> for ExportFinder<'db> {
                     self.visit_pattern(pattern);
                 }
                 if let Some(name) = name {
-                    // Wildcard patterns (`case _:`) do not bind names.
-                    // Currently `self.possibly_add_export()` just ignores
-                    // all names with leading underscores, but this will not always be the case
-                    // (in the future we will want to support modules with `__all__ = ['_']`).
                     if name != "_" {
                         self.possibly_add_export(&name.id, PossibleExportKind::Normal);
                     }
@@ -184,8 +176,8 @@ impl<'db> Visitor<'db> for ExportFinder<'db> {
                 name,
                 decorator_list,
                 arguments,
-                type_params: _, // We don't want to visit the type params of the class
-                body: _,        // We don't want to visit the body of the class
+                type_params: _,
+                body: _,
                 range: _,
                 node_index: _,
             }) => {
@@ -203,8 +195,8 @@ impl<'db> Visitor<'db> for ExportFinder<'db> {
                 decorator_list,
                 parameters,
                 returns,
-                type_params: _, // We don't want to visit the type params of the function
-                body: _,        // We don't want to visit the body of the function
+                type_params: _,
+                body: _,
                 range: _,
                 node_index: _,
                 is_async: _,
@@ -244,8 +236,6 @@ impl<'db> Visitor<'db> for ExportFinder<'db> {
                 node_index: _,
             }) => {
                 self.visit_expr(name);
-                // Neither walrus expressions nor statements cannot appear in type aliases;
-                // no need to recursively visit the `value` or `type_params`
             }
 
             ast::Stmt::ImportFrom(node) => {
@@ -326,8 +316,6 @@ impl<'db> Visitor<'db> for ExportFinder<'db> {
             | ast::Expr::EllipsisLiteral(_)
             | ast::Expr::StringLiteral(_) => {}
 
-            // Walrus definitions "leak" from comprehension scopes into the comprehension's
-            // enclosing scope; they thus need special handling
             ast::Expr::SetComp(_)
             | ast::Expr::ListComp(_)
             | ast::Expr::Generator(_)
@@ -370,8 +358,6 @@ struct WalrusFinder<'a, 'db> {
 impl<'db> Visitor<'db> for WalrusFinder<'_, 'db> {
     fn visit_expr(&mut self, expr: &'db ast::Expr) {
         match expr {
-            // It's important for us to short-circuit here for lambdas specifically,
-            // as walruses cannot leak out of the body of a lambda function.
             ast::Expr::Lambda(_)
             | ast::Expr::BooleanLiteral(_)
             | ast::Expr::NoneLiteral(_)
@@ -399,7 +385,6 @@ impl<'db> Visitor<'db> for WalrusFinder<'_, 'db> {
                 }
             }
 
-            // We must recurse inside nested comprehensions,
             // as even a walrus inside a comprehension inside a comprehension in the global scope
             // will leak out into the global scope
             ast::Expr::DictComp(_)

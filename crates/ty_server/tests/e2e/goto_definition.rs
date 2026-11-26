@@ -272,8 +272,6 @@ from idna import encode
 
         server.write_file(script, updated)?;
 
-        // A watcher notification can arrive after the file is written but before `didSave`.
-        // Synchronization must still wait for the save notification.
         server.did_change_watched_files(vec![FileEvent {
             uri: server.file_uri(script),
             kind: FileChangeType::Changed,
@@ -333,7 +331,6 @@ from attrs import define
             .build()
             .wait_until_workspaces_are_initialized();
 
-        // Opening synchronizes the backing file, not the unsaved metadata.
         server.open_text_document(script, updated, 1);
         server.await_diagnostic_refresh();
         let (_, site_packages) = watched_site_packages(&mut server)?;
@@ -392,7 +389,6 @@ print(define)
 
         server.open_text_document(script, source, 1);
 
-        // A workspace check must not initialize uv from metadata that exists only in the editor.
         let diagnostics = server.workspace_diagnostic_request(None, None);
         let [WorkspaceDocumentDiagnosticReport::WorkspaceFullDocumentDiagnosticReport(report)] =
             diagnostics.items.as_slice()
@@ -502,14 +498,12 @@ from attrs import define
             server.save_text_document(script);
             server.await_diagnostic_refresh();
 
-            // Invalid metadata removes the environment watch; correcting it restores the watch.
             let (request_id, next_id, _) = server.watcher_registration_request()?;
             server.acknowledge_request(request_id);
             ensure!(server.acknowledge_unregistration()? == registration_id);
             registration_id = next_id;
         }
 
-        // Restoring the environment rescans its previously unwatched dependencies.
         server.await_diagnostic_refresh();
 
         installed_package_event(&mut server, &site_packages, "attrs")?;
@@ -571,7 +565,6 @@ from idna import encode
             kind: FileChangeType::Created,
         }]);
 
-        // Watched-file changes refresh diagnostics immediately and again after uv finishes.
         server.await_diagnostic_refresh();
         server.await_diagnostic_refresh();
 
@@ -588,7 +581,6 @@ from idna import encode
 
     fn watched_site_packages(server: &mut TestServer) -> Result<(String, Uri)> {
         let mut previous_id = None;
-        // uv may finish after the initial project-only watch was requested.
         for _ in 0..2 {
             let (request_id, id, watchers) = server.watcher_registration_request()?;
             let site_packages = watchers.iter().find_map(|watcher| {

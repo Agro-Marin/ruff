@@ -47,7 +47,6 @@ pub(crate) fn extend_lsp_edits<T: Into<String>>(
 }
 
 /// A convenient enumeration for supported text encodings. Can be converted to [`lsp_types::PositionEncodingKind`].
-// Please maintain the order from least to greatest priority for the derived `Ord` impl.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PositionEncoding {
     /// UTF 16 is the encoding supported by all LSP clients.

@@ -60,7 +60,6 @@
   position-anchor: var(--rule-filter-anchor);
 }
 
-/* Browsers without anchor positioning keep the popover centered. */
 @supports (top: anchor(bottom)) {
   .rule-filters__options {
     inset: auto;

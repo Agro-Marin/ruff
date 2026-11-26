@@ -43,8 +43,6 @@ impl SyncNotificationHandler for DidChangeWatchedFiles {
                     path: system_path,
                 },
                 FileChangeType::Changed => {
-                    // We're only interested in file content or metadata changes.
-                    // Renames are modelled as create/delete events.
                     if ExistingPathKind::from_system(system, &system_path).is_file() {
                         ChangeEvent::Changed {
                             path: system_path,
@@ -58,7 +56,6 @@ impl SyncNotificationHandler for DidChangeWatchedFiles {
                     path: system_path,
                     kind: DeletedKind::Any,
                 },
-                // Custom file change types are not supported and should be ignored.
                 FileChangeType::Custom(_) => continue,
             };
 

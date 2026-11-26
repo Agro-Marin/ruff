@@ -67,28 +67,9 @@ impl Violation for BuiltinOpen {
     }
 }
 
-// PTH123
 pub(crate) fn builtin_open(checker: &Checker, call: &ExprCall, segments: &[&str]) {
-    // `closefd` and `opener` are not supported by pathlib, so check if they
-    // are set to non-default values.
-    // https://github.com/astral-sh/ruff/issues/7620
-    // Signature as of Python 3.11 (https://docs.python.org/3/library/functions.html#open):
-    // ```text
-    // builtins.open(
-    //   file,          0
-    //   mode='r',      1
-    //   buffering=-1,  2
     //   encoding=None, 3
-    //   errors=None,   4
-    //   newline=None,  5
-    //   closefd=True,  6 <= not supported
-    //   opener=None    7 <= not supported
-    // )
-    // ```
-    // For `pathlib` (https://docs.python.org/3/library/pathlib.html#pathlib.Path.open):
-    // ```text
     // Path.open(mode='r', buffering=-1, encoding=None, errors=None, newline=None)
-    // ```
     let file_arg = call.arguments.find_argument_value("file", 0);
 
     if call

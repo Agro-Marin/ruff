@@ -84,8 +84,6 @@ fn add_workspace_folder_after_init() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Take an initial snapshot of diagnostics to confirm that we
-    // don't see `root2/main.py`.
     let workspace_diagnostics = server.workspace_diagnostic_request(None, None);
     assert_snapshot!(
         condensed_workspace_diagnostic_snapshot(workspace_diagnostics), @"
@@ -163,8 +161,6 @@ fn add_multiple_workspace_folders() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Take an initial snapshot of diagnostics to confirm that we
-    // don't see `root2/main.py` or `root3/main.py`.
     let workspace_diagnostics = server.workspace_diagnostic_request(None, None);
     assert_snapshot!(
         condensed_workspace_diagnostic_snapshot(workspace_diagnostics), @"
@@ -210,8 +206,6 @@ fn remove_workspace_folder_after_init() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Assert that we get diagnostics across both workspaces
-    // initially.
     let workspace_diagnostics = server.workspace_diagnostic_request(None, None);
     assert_snapshot!(
         condensed_workspace_diagnostic_snapshot(workspace_diagnostics), @"
@@ -222,13 +216,7 @@ fn remove_workspace_folder_after_init() -> Result<()> {
     "
     );
 
-    // Now remove one of the workspaces and assert that the
-    // diagnostics are now limited only to `root1`.
     server.change_workspace_folders([], [root2]);
-    // We don't need to wait for workspace initialization
-    // since we are only removing a workspace. That is, the
-    // server is not expected to send a `workspace/configuration`
-    // request.
 
     let workspace_diagnostics = server.workspace_diagnostic_request(None, None);
     assert_snapshot!(
@@ -260,8 +248,6 @@ fn remove_multiple_workspace_folders() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Assert that we get diagnostics across all workspaces
-    // initially.
     let workspace_diagnostics = server.workspace_diagnostic_request(None, None);
     assert_snapshot!(
         condensed_workspace_diagnostic_snapshot(workspace_diagnostics), @"
@@ -274,13 +260,7 @@ fn remove_multiple_workspace_folders() -> Result<()> {
     "
     );
 
-    // Now remove two of the workspaces and assert that the
-    // diagnostics are now limited only to `root1`.
     server.change_workspace_folders([], [root2, root3]);
-    // We don't need to wait for workspace initialization
-    // since we are only removing a workspace. That is, the
-    // server is not expected to send a `workspace/configuration`
-    // request.
 
     let workspace_diagnostics = server.workspace_diagnostic_request(None, None);
     assert_snapshot!(
@@ -362,8 +342,6 @@ fn add_and_remove_workspace_folders() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Take an initial snapshot of diagnostics to confirm that we
-    // don't see `root3/main.py`.
     let workspace_diagnostics = server.workspace_diagnostic_request(None, None);
     assert_snapshot!(
         condensed_workspace_diagnostic_snapshot(workspace_diagnostics), @"
@@ -376,8 +354,6 @@ fn add_and_remove_workspace_folders() -> Result<()> {
 
     server.add_workspace_folder(root3, None)?;
     server.change_workspace_folders([root3], [root2]);
-    // root3 needs to be initialized, so we expect the server
-    // to send a `workspace/configuration` request.
     server = server.wait_until_workspaces_are_initialized();
 
     let workspace_diagnostics = server.workspace_diagnostic_request(None, None);
@@ -425,7 +401,6 @@ fn replace_only_workspace_refreshes_diagnostics() -> Result<()> {
     );
     server.assert_no_pending_messages();
 
-    // Removing the parent temporarily leaves no projects, but this is not initial configuration.
     server.add_workspace_folder(&nested, None)?;
     server.change_workspace_folders([nested.as_path()], [root]);
     server = server.wait_until_workspaces_are_initialized();
@@ -454,14 +429,6 @@ fn add_existing_workspace_folder_is_no_op() -> Result<()> {
         .wait_until_workspaces_are_initialized();
 
     server.change_workspace_folders([root1], []);
-    // Since `root1` is already a workspace folder, the
-    // server won't attempt to re-request configuration.
-    // Thus, we don't need to wait for that request here.
-    // Arguably, this is debatable. Re-adding a workspace
-    // folder that already exists is perhaps a signal that
-    // we *should* re-request configuration. But this test
-    // is merely asserting current behavior and that we are
-    // thoughtful about changing it.
 
     let workspace_diagnostics = server.workspace_diagnostic_request(None, None);
     assert_snapshot!(
@@ -514,9 +481,6 @@ fn different_settings() -> Result<()> {
         .with_file(&main1, main_content)?
         .with_file(&main2, main_content)?
         .with_workspace(root1, None)?
-        // We disable language services in the second workspace
-        // folder. Below, we assert that completions work in `root1`
-        // but not `root2`.
         .with_workspace(
             root2,
             Some(ClientOptions {
@@ -677,7 +641,6 @@ extra-paths = ["../shared"]
     server.open_text_document(path, source, 1);
     assert_hover(&mut server, path, Position::new(1, 0), "Literal[\"web\"]");
 
-    // Adding api's search path moves the shared file from web's database to api's.
     let config = SystemPath::new("api/ty.toml");
     server.write_file(config, r#"environment.extra-paths = ["../shared"]"#)?;
     server.did_change_watched_files(vec![lsp_types::FileEvent {
@@ -708,7 +671,6 @@ value
         "Literal[\"edited\"]",
     );
 
-    // The old database must also see the edit when importing the shared file.
     server.open_text_document(importer, importer_source, 1);
     assert_hover(
         &mut server,
@@ -778,7 +740,6 @@ extra-paths = ["imports"]
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // The file is in library's workspace folder and on app's import search path.
     server.open_text_document(path, source, 1);
     assert_hover(
         &mut server,
@@ -797,8 +758,6 @@ fn shared_search_paths_select_project_by_root_order() -> Result<()> {
 from project_value import value
 value
 ";
-    // api sorts first but cannot import the file. Of the matching projects, web is registered
-    // first, but tools sorts first and should be selected.
     let mut server = TestServerBuilder::new()?
         .with_workspace(SystemPath::new("web"), None)?
         .with_workspace(SystemPath::new("tools"), None)?
@@ -850,8 +809,6 @@ fn global_settings_precedence() -> Result<()> {
     let main2 = root2.join("main.py");
     let main_content = "(";
 
-    // This puts the setting change (no syntax errors) on root2,
-    // which causes it to take precedence and apply even to root1.
 
     let mut server = TestServerBuilder::new()?
         .with_initialization_options(&ClientOptions::default())
@@ -885,9 +842,6 @@ fn global_settings_precedence() -> Result<()> {
         @"",
     );
 
-    // Now we do it again, but apply the settings to root1 which
-    // comes before root2. The default settings on root2 end up
-    // winning out, and we get syntax error diagnostics.
 
     let mut server = TestServerBuilder::new()?
         .with_initialization_options(&ClientOptions::default())
@@ -935,8 +889,6 @@ fn global_settings_change() -> Result<()> {
     let main2 = root2.join("main.py");
     let main_content = "(";
 
-    // We initialize with default settings, which means
-    // we get syntax error diagnostics.
 
     let mut server = TestServerBuilder::new()?
         .with_initialization_options(&ClientOptions::default())
@@ -963,9 +915,6 @@ fn global_settings_change() -> Result<()> {
         @"0:1..0:1[ERROR]: unexpected EOF while parsing",
     );
 
-    // Now we'll add a new workspace folder with syntax error
-    // diagnostics disabled. This will apply not just to the
-    // new folder, but to the existing folders.
     server.add_workspace_folder(
         root2,
         Some(ClientOptions {

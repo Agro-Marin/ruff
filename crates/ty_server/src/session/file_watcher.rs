@@ -88,8 +88,6 @@ impl LspFileWatcher {
         &mut self,
         projects: impl ExactSizeIterator<Item = &'db ProjectDatabase> + Clone,
     ) -> Option<FileWatcherUpdate> {
-        // The pending response will reconcile current paths, so this update
-        // stays within the same reconciliation limit.
         if self.pending_registration.is_none() {
             self.reconciliation_passes = 0;
         }
@@ -103,16 +101,11 @@ impl LspFileWatcher {
         &mut self,
         projects: impl ExactSizeIterator<Item = &'db ProjectDatabase> + Clone,
     ) -> Option<FileWatcherUpdate> {
-        // Wait for the client's response before preparing another registration;
-        // its handler will reconcile the latest project paths.
         if self.pending_registration.is_some() || self.registration_mode == RegistrationMode::Failed
         {
             return None;
         }
 
-        // Compute a single cache key across all projects
-        // We can remove this once ty supports multiple project and
-        // workspace-folders is migrated to that feature.
         let mut hasher = DefaultHasher::new();
         projects.len().hash(&mut hasher);
         for db in projects.clone() {
@@ -140,7 +133,6 @@ impl LspFileWatcher {
                 .iter()
                 .flat_map(|(db, _, paths)| {
                     paths.paths().iter().map(move |path| {
-                        // Watch a file by name from its parent so the glob matches the file itself.
                         let watcher = if db.system().is_file(path)
                             && let (Some(parent), Some(name)) = (path.parent(), path.file_name())
                         {
@@ -164,7 +156,6 @@ impl LspFileWatcher {
                 );
             }
             if self.registered_id.is_some() {
-                // Changing an external search path cannot change the workspace-wide watch.
                 self.cache_key = Some(cache_key);
                 return None;
             }
@@ -217,10 +208,6 @@ impl LspFileWatcher {
         paths: Vec<SystemPathBuf>,
         cache_key: u64,
     ) -> FileWatcherUpdate {
-        // Refresh files in paths that weren't watched before. This is to handle
-        // the case where a path was watched, then unwatched, and now gets watched again.
-        // Files in that path might have changed while it was unwatched.
-        // We don't need to do this if this is the initial registration.
         let newly_covered_paths = if self.registered_id.is_some() {
             paths
                 .iter()
@@ -332,8 +319,6 @@ impl FileWatcherUpdate {
                         return;
                     };
                     completion.apply(session, client);
-                    // Refreshing a newly covered `site-packages` can reveal an edited
-                    // `.pth` file with another search path that needs a watch.
                     if let Some(update) = session.file_watcher.as_mut().and_then(|watcher| {
                         watcher.reconcile(session.projects.values().map(|state| &state.db))
                     }) {
@@ -356,18 +341,11 @@ struct FileWatcherCompletion {
 
 impl FileWatcherCompletion {
     fn apply(self, session: &mut Session, client: &Client) {
-        // Existing paths were watched by the old registration throughout this
-        // request. Refresh newly covered paths after the client's response so
-        // edits missed before registration invalidate cached files, including `.pth` files.
-        // A client could respond before its watches are active, leaving a small
-        // gap that the protocol does not let us close completely.
         if !self.newly_covered_paths.is_empty() {
             for state in session.projects.values_mut() {
                 Files::sync_all_recursive(&mut state.db, &self.newly_covered_paths);
             }
 
-            // A previous refresh may have run before these unwatched paths were scanned.
-            // Notify the client about files that changed while the watch was absent.
             session.bump_revision();
             session.resume_suspended_workspace_diagnostic_request(client);
             let capabilities = session.client_capabilities();

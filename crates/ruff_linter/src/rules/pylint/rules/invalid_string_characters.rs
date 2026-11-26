@@ -194,8 +194,6 @@ impl Violation for InvalidCharacterZeroWidthSpace {
 /// unless the source contains a character one of these rules could report.
 pub(crate) fn contains_invalid_string_character(source: &str) -> bool {
     let bytes = source.as_bytes();
-    // Search for NUL (0), backspace (0x08), substitute (0x1a), escape (0x1b),
-    // and the UTF-8 encoding of zero-width space (U+200B).
     memchr::memchr3(0, 0x08, 0x1a, bytes).is_some()
         || memchr::memchr(0x1b, bytes).is_some()
         || memchr::memmem::find(bytes, "\u{200b}".as_bytes()).is_some()
@@ -210,8 +208,6 @@ pub(crate) fn invalid_string_characters(
     inside_interpolation: bool,
 ) {
     let text = match token.kind() {
-        // We can't use the `value` field since it's decoded and e.g. for f-strings removed a curly
-        // brace that escaped another curly brace, which would gives us wrong column information.
         TokenKind::String | TokenKind::FStringMiddle | TokenKind::TStringMiddle => {
             locator.slice(token)
         }

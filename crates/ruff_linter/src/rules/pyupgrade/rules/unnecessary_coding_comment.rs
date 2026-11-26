@@ -92,21 +92,14 @@ pub(crate) fn unnecessary_coding_comment(
 
     let line_index = locator.count_lines(TextRange::up_to(range.comment.start()));
 
-    // Comment must be on the first or second line
     if line_index > 1 {
         return;
     }
 
-    // ```python
     // # -*- coding: utf-8 -*-
     // # -*- coding: latin-1 -*-
-    // ```
-    // or
-    // ```python
     // # -*- coding: utf-8 -*-
-    // # comment
     // # -*- coding: latin-1 -*-
-    // ```
     if matches!(
         (iter.next(), iter.next()),
         (Some(CodingComment::OtherEncoding), _)
@@ -151,15 +144,8 @@ impl Iterator for CodingCommentIterator<'_> {
         let comment = self.comments.next()?;
         let line_range = self.locator.full_line_range(comment.start());
 
-        // If leading content is not whitespace then it's not a valid coding comment e.g.
-        // ```py
         // print(x) # coding=utf8
-        // ```
-        // or
-        // ```python
-        // print(test)
         // # -*- coding: utf-8 -*-
-        // ```
         let last_trivia_end = self.last_trivia_end.take()?;
         let before_hash_sign = self
             .locator

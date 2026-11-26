@@ -67,8 +67,6 @@ impl UvMetadata {
         };
 
         let mut module_owners = metadata.module_owners;
-        // If uv emits both fields, `modules` takes precedence per module, including empty owner
-        // lists that prevent dependency checks from falling back to a parent module's owners.
         module_owners.extend(
             metadata
                 .modules
@@ -169,13 +167,10 @@ impl UvMetadataError {
                     Some(code) => format!("`uv workspace metadata` exited with status {code}"),
                     None => format!("`uv workspace metadata` failed with {status}"),
                 };
-                // Concise output uses uv's first error line as a summary. Keep the original
-                // stderr in full output so multiline explanations and code frames stay intact.
                 let stderr = stderr.trim_end();
                 let summary = uv_error_summary(stderr).unwrap_or(&failure);
                 diagnostic.set_concise_message(format_args!("{headline}: {summary}"));
                 if !stderr.is_empty() {
-                    // The subdiagnostic supplies uv's leading `error: ` label.
                     let message = stderr.strip_prefix("error: ").unwrap_or(stderr);
                     diagnostic.sub(SubDiagnostic::new(SubDiagnosticSeverity::Error, message));
                 }
@@ -293,8 +288,6 @@ struct ResolutionNode {
     #[serde(default, deserialize_with = "string_interner::deserialize_optional")]
     name: Option<CharStr>,
     source: Option<Source>,
-    // uv always emits this field, even for leaves. Missing edges are incomplete metadata, not
-    // evidence that a project has no direct dependencies.
     dependencies: Box<[NodeReference]>,
     #[serde(default)]
     optional_dependencies: Box<[NodeReference]>,

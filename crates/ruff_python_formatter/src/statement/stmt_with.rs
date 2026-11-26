@@ -19,19 +19,6 @@ pub struct FormatStmtWith;
 
 impl FormatNodeRule<StmtWith> for FormatStmtWith {
     fn fmt_fields(&self, with_stmt: &StmtWith, f: &mut PyFormatter) -> FormatResult<()> {
-        // The `with` statement can have one dangling comment on the open parenthesis, like:
-        // ```python
-        // with (  # comment
-        //     CtxManager() as example
-        // ):
-        //     ...
-        // ```
-        //
-        // Any other dangling comments are trailing comments on the colon, like:
-        // ```python
-        // with CtxManager() as example:  # comment
-        //     ...
-        // ```
         let comments = f.context().comments().clone();
         let dangling_comments = comments.dangling(with_stmt);
         let partition_point = dangling_comments.partition_point(|comment| {
@@ -254,42 +241,19 @@ impl<'a> WithItemsLayout<'a> {
         context: &PyFormatContext,
         parenthesized_comments: &[SourceComment],
     ) -> FormatResult<Self> {
-        // The with statement already has parentheses around the entire with items. Guaranteed to be Python 3.9 or newer
-        // ```
-        // with (  # comment
-        //     CtxManager() as example
-        // ):
-        //     pass
-        // ```
         if !parenthesized_comments.is_empty() {
             return Ok(Self::Parenthesized);
         }
 
-        // A trailing comma at the end guarantees that the context managers are parenthesized and that it is Python 3.9 or newer syntax.
-        // ```python
-        // with (  # comment
-        //     CtxManager() as example,
-        // ):
-        //     pass
-        // ```
         if has_magic_trailing_comma(with, context) {
             return Ok(Self::ParenthesizeIfExpands);
         }
 
         if let [single] = with.items.as_slice() {
-            // If the with item itself has comments (not the context expression), then keep the parentheses
-            // ```python
-            // with (
-            //     # leading
-            //     a
-            // ): pass
-            // ```
             if context.comments().has_leading(single) || context.comments().has_trailing(single) {
                 return Ok(Self::Parenthesized);
             }
 
-            // Preserve the parentheses around the context expression instead of parenthesizing the entire
-            // with items.
             if context.is_expression_parenthesized((&single.context_expr).into()) {
                 return Ok(Self::SingleParenthesizedContextManager(single));
             }
@@ -298,8 +262,6 @@ impl<'a> WithItemsLayout<'a> {
         let can_parenthesize = context.options().target_version() >= PythonVersion::PY39
             || are_with_items_parenthesized(with, context)?;
 
-        // If the target version doesn't support parenthesized context managers and they aren't
-        // parenthesized by the user, bail out.
         if !can_parenthesize {
             return Ok(Self::Python38OrOlder);
         }
@@ -314,7 +276,6 @@ impl<'a> WithItemsLayout<'a> {
                     Self::ParenthesizeIfExpands
                 }
             }
-            // Always parenthesize multiple items
             [..] => Self::ParenthesizeIfExpands,
         })
     }

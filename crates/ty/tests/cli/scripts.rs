@@ -370,7 +370,6 @@ fn environment_options() -> anyhow::Result<()> {
 
 #[test]
 fn inline_overrides_are_ignored() -> anyhow::Result<()> {
-    // TODO: Emit a diagnostic for options that are not allowed within scripts.
     let case = CliTest::with_file(
         "script.py",
         r#"
@@ -409,7 +408,6 @@ fn inline_overrides_are_ignored() -> anyhow::Result<()> {
 
 #[test]
 fn inline_terminal_settings_do_not_apply() -> anyhow::Result<()> {
-    // TODO: Either support (when calling `ty check <script>`), or raise a diagnostic that this option is not supported
     let case = CliTest::with_file(
         "script.py",
         r#"
@@ -1309,7 +1307,6 @@ fn invalid_python_requirement_reports_configuration_error() -> anyhow::Result<()
     Ok(())
 }
 
-// TODO: Consider warning that the entire `.src` table is unused.
 #[test]
 fn invalid_inline_src_glob_does_not_prevent_checking_script() -> anyhow::Result<()> {
     let case = CliTest::with_files([
@@ -1960,8 +1957,6 @@ mod uv_metadata {
             ),
         ])?;
 
-        // Same as for regular projects. An explicit `python-version` takes precedence
-        // over a `requires-python` constraint.
         assert_cmd_snapshot!(
             command_with_script_uv(&case)
                 .args(["a.py", "b.py"])
@@ -1998,8 +1993,6 @@ mod uv_metadata {
             ),
         ])?;
 
-        // Starting with the script must not run its importer on the same Rayon worker while
-        // initialization is waiting for uv. The importer would wait for that initialization.
         assert_cmd_snapshot!(
             command_with_script_uv(&case)
                 .args(["b.py", "a.py"])
@@ -2075,11 +2068,6 @@ mod uv_metadata {
             "#,
         )?;
 
-        // The CLI environment selects uv's interpreter, but the script's dependencies must still
-        // come from the separate environment that uv creates for the script.
-        // As for projects, `requires-python` takes precedence over the virtual environment because
-        // it defines the minimum Python version the script must support. This allows ty to detect
-        // accidental use of newer language features.
         let environment = case.root().join(".venv");
         let output = Command::new("uv")
             .env_clear()

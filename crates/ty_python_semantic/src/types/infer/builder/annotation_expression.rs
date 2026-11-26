@@ -69,9 +69,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         deferred_state: DeferredExpressionState,
         pep_613_policy: PEP613Policy,
     ) -> DeclaredType<'db> {
-        // `DeferredExpressionState::InStringAnnotation` takes precedence over other deferred states.
-        // However, if it's not a stringified annotation, we must still ensure that annotation expressions
-        // are always deferred in stub files.
         let state = if deferred_state.in_string_annotation() {
             deferred_state
         } else if self.in_stub() {
@@ -141,8 +138,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     }
                     _ => None,
                 },
-                // Conditional import of `typing.TypeAlias` or `typing_extensions.TypeAlias` on a
-                // Python version where the former doesn't exist.
                 Type::Union(union)
                     if pep_613_policy == PEP613Policy::Allowed
                         && union.elements(builder.db()).iter().all(|ty| {
@@ -177,9 +172,7 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let db = self.db();
 
         let env = self.program_environment();
-        // https://typing.python.org/en/latest/spec/annotations.html#grammar-token-expression-grammar-annotation_expression
         let inferred = match annotation {
-            // String annotations: https://typing.python.org/en/latest/spec/annotations.html#string-annotations
             ast::Expr::StringLiteral(string) => {
                 AnnotationExpressionInference::new(self.infer_string_annotation_expression(string))
             }
@@ -257,10 +250,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                                     PEP613Policy::Disallowed,
                                 );
 
-                                // Emit a diagnostic if ClassVar and Final are combined in a class where
-                                // Final already implies the semantics of ClassVar. Dataclasses and
-                                // protocols treat an unqualified Final declaration as an instance
-                                // attribute, so the combination is meaningful in those classes.
                                 let classvar_and_final = match qualifier {
                                     TypeQualifier::Final => type_and_qualifiers
                                         .qualifiers
@@ -297,8 +286,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                                     );
                                 }
 
-                                // Reject nested `Required`/`NotRequired`, e.g.
-                                // `Required[Required[int]]` or `Required[NotRequired[int]]`.
                                 if matches!(
                                     qualifier,
                                     TypeQualifier::Required | TypeQualifier::NotRequired
@@ -354,7 +341,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 AnnotationExpressionInference::new(annotation_ty)
             }
 
-            // Fallback to `infer_type_expression_no_store` for everything else
             type_expr => AnnotationExpressionInference::new(DeclaredType::from_type(
                 self.infer_type_expression_no_store(type_expr),
             )),
@@ -379,7 +365,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             Some(parsed) => {
                 self.string_annotations
                     .insert(ruff_python_ast::ExprRef::StringLiteral(string).into());
-                // String annotations are always evaluated in the deferred context.
                 self.infer_annotation_expression(
                     parsed.expr(),
                     DeferredExpressionState::InStringAnnotation(

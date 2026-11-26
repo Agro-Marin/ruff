@@ -32,31 +32,8 @@ impl FormatNodeRule<ExprUnaryOp> for FormatExprUnaryOp {
         let comments = f.context().comments().clone();
         let dangling = comments.dangling(item);
 
-        // Split off the comments that follow after the operator and format them as trailing comments.
-        // ```python
-        // (not # comment
-        //      a)
-        // ```
         trailing_comments(dangling).fmt(f)?;
 
-        // Insert a line break if the operand has comments but itself is not parenthesized or if the
-        // operand is parenthesized but has a leading comment before the parentheses.
-        // ```python
-        // if (
-        //  not
-        //  # comment
-        //  a):
-        //      pass
-        //
-        // if 1 and (
-        //     not
-        //     # comment
-        //     (
-        //         a
-        //     )
-        // ):
-        //     pass
-        // ```
         if needs_line_break(item, f.context()) {
             hard_line_break().fmt(f)?;
         } else if op.is_not() {

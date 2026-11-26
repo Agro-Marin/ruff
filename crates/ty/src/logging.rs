@@ -44,7 +44,6 @@ impl Verbosity {
     ///
     /// Returns `None` if the user did not specify any verbosity flags.
     pub(crate) fn level(&self) -> VerbosityLevel {
-        // `--quiet` and `--verbose` are mutually exclusive in Clap, so we can just check one first.
         match self.quiet {
             0 => {}
             1 => return VerbosityLevel::Quiet,
@@ -113,7 +112,6 @@ pub(crate) fn setup_tracing(
 ) -> anyhow::Result<TracingGuard> {
     use tracing_subscriber::prelude::*;
 
-    // The `TY_LOG` environment variable overrides the default log level.
     let filter = if let Ok(log_env_variable) = std::env::var(EnvVars::TY_LOG) {
         EnvFilter::builder()
             .parse(log_env_variable)
@@ -121,7 +119,6 @@ pub(crate) fn setup_tracing(
     } else {
         match level {
             VerbosityLevel::Default => {
-                // Show warning traces for ty and ruff but not for other crates
                 EnvFilter::default()
                     .add_directive("ty=warn".parse().unwrap())
                     .add_directive("ruff=warn".parse().unwrap())
@@ -129,7 +126,6 @@ pub(crate) fn setup_tracing(
             level => {
                 let level_filter = level.level_filter();
 
-                // Show info|debug|trace events, but allow `TY_LOG` to override
                 let filter = EnvFilter::default().add_directive(
                     format!("ty={level_filter}")
                         .parse()
@@ -244,7 +240,6 @@ where
 
         if self.display_level {
             let level = meta.level();
-            // Same colors as tracing
             if ansi {
                 let formatted_level = level.to_string();
                 match *level {

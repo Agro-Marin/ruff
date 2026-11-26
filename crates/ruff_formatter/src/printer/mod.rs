@@ -76,7 +76,6 @@ impl<'a> Printer<'a> {
             }
         }
 
-        // Push any pending marker
         self.push_marker();
 
         Ok(Printed::new(
@@ -88,8 +87,6 @@ impl<'a> Printer<'a> {
     }
 
     /// Prints a single element and push the following elements to queue
-    // LLVM considers this function too large to inline on its own, but it is called for every
-    // element visited by the printing loop.
     #[inline(always)]
     fn print_element(
         &mut self,
@@ -126,13 +123,11 @@ impl<'a> Printer<'a> {
                 } else if self.state.line_suffixes.has_pending() {
                     self.flush_line_suffixes(queue, stack, Some(element));
                 } else {
-                    // Only print a newline if the current line isn't already empty
                     if !self.state.buffer[self.state.line_start..].is_empty() {
                         self.push_marker();
                         self.print_char('\n');
                     }
 
-                    // Print a second line break if this is an empty line
                     if line_mode == &LineMode::Empty {
                         self.push_marker();
                         self.print_char('\n');
@@ -143,14 +138,9 @@ impl<'a> Printer<'a> {
             }
 
             FormatElement::ExpandParent => {
-                // Handled in `Document::propagate_expands()
             }
 
             FormatElement::SourcePosition(position) => {
-                // The printer defers printing indents until the next text
-                // is printed. Pushing the marker now would mean that the
-                // mapped range includes the indent range, which we don't want.
-                // Queue the source map position and emit it when printing the next character
                 self.state.pending_source_position = Some(*position);
             }
 
@@ -198,8 +188,6 @@ impl<'a> Printer<'a> {
                 let print_mode = if fits_flat {
                     PrintMode::Flat
                 } else {
-                    // Test if the content fits in expanded mode. If not, prefer avoiding the parentheses
-                    // over parenthesizing the expression.
                     if let Some(id) = id {
                         self.state
                             .group_modes
@@ -228,7 +216,6 @@ impl<'a> Printer<'a> {
                 }
 
                 if print_mode.is_expanded() {
-                    // Parenthesize the content. The `EndIndent` is handled inside of the `EndBestFitParenthesize`
                     queue.extend_back(&[OPEN_PAREN, INDENT, HARD_LINE_BREAK]);
                 }
 
@@ -243,7 +230,6 @@ impl<'a> Printer<'a> {
                     const HARD_LINE_BREAK: FormatElement = FormatElement::Line(LineMode::Hard);
                     const CLOSE_PAREN: FormatElement = FormatElement::Token { text: ")" };
 
-                    // Finish the indent and print the hardline break and closing parentheses.
                     stack.pop(TagKind::Indent)?;
                     queue.extend_back(&[HARD_LINE_BREAK, CLOSE_PAREN]);
                 }
@@ -272,7 +258,6 @@ impl<'a> Printer<'a> {
 
                     stack.push(TagKind::ConditionalGroup, args.with_print_mode(print_mode));
                 } else {
-                    // Condition isn't met, render as normal content
                     stack.push(TagKind::ConditionalGroup, args);
                 }
             }
@@ -358,7 +343,6 @@ impl<'a> Printer<'a> {
                 };
 
                 if condition_met {
-                    // We measured the inner groups all in expanded. It now is necessary to measure if the inner groups fit as well.
                     self.state.measured_group_fits = false;
                 }
 
@@ -409,12 +393,8 @@ impl<'a> Printer<'a> {
     ) -> PrintResult<PrintMode> {
         let print_mode = match args.mode() {
             PrintMode::Flat if self.state.measured_group_fits => {
-                // A parent group has already verified that this group fits on a single line
-                // Thus, just continue in flat mode
                 PrintMode::Flat
             }
-            // The printer is either in expanded mode or it's necessary to re-measure if the group fits
-            // because the printer printed a line break
             _ => {
                 self.state.measured_group_fits = true;
 
@@ -424,8 +404,6 @@ impl<'a> Printer<'a> {
                         .insert_print_mode(id, PrintMode::Flat);
                 }
 
-                // Measure to see if the group fits up on a single line. If that's the case,
-                // print the group in "flat" mode, otherwise continue in expanded mode
                 stack.push(kind, args.with_print_mode(PrintMode::Flat));
                 let fits = self.fits(queue, stack)?;
                 stack.pop(kind)?;
@@ -441,8 +419,6 @@ impl<'a> Printer<'a> {
         Ok(print_mode)
     }
 
-    // LLVM considers this function too large to inline on its own, but it is called for every
-    // text element visited by the printing loop.
     #[expect(clippy::inline_always)]
     #[inline(always)]
     fn print_text(&mut self, text: Text) {
@@ -519,7 +495,6 @@ impl<'a> Printer<'a> {
         let suffixes = self.state.line_suffixes.take_pending();
 
         if suffixes.len() > 0 {
-            // Print this line break element again once all the line suffixes have been flushed
             if let Some(line_break) = line_break {
                 queue.push(line_break);
             }
@@ -564,10 +539,7 @@ impl<'a> Printer<'a> {
             let mut current = variants_iter.next().unwrap();
 
             for next in variants_iter {
-                // Test if this variant fits and if so, use it. Otherwise try the next
-                // variant.
 
-                // Try to fit only the first variant on a single line
                 if !matches!(
                     current.first(),
                     Some(&FormatElement::Tag(Tag::StartBestFittingEntry))
@@ -575,8 +547,6 @@ impl<'a> Printer<'a> {
                     return invalid_start_tag(TagKind::BestFittingEntry, current.first());
                 }
 
-                // Skip the first element because we want to override the args for the entry and the
-                // args must be popped from the stack as soon as it sees the matching end entry.
                 let content = &current[1..];
 
                 let entry_args = args
@@ -588,7 +558,6 @@ impl<'a> Printer<'a> {
                 let variant_fits = self.fits(queue, stack)?;
                 stack.pop(TagKind::BestFittingEntry)?;
 
-                // Remove the content slice because printing needs the variant WITH the start entry
                 let popped_slice = queue.pop_slice();
                 debug_assert_eq!(popped_slice, Some(content));
 
@@ -605,9 +574,7 @@ impl<'a> Printer<'a> {
                 current = next;
             }
 
-            // At this stage current is the most expanded.
 
-            // No variant fits, take the last (most expanded) as fallback
             queue.extend_back(current);
             self.print_entry(
                 queue,
@@ -644,7 +611,6 @@ impl<'a> Printer<'a> {
     ) -> PrintResult<()> {
         let args = stack.top();
 
-        // It's already known that the content fit, print all items in flat mode.
         if self.state.measured_group_fits && args.mode().is_flat() {
             stack.push(TagKind::Fill, args.with_print_mode(PrintMode::Flat));
             return Ok(());
@@ -655,17 +621,11 @@ impl<'a> Printer<'a> {
         while matches!(queue.top(), Some(FormatElement::Tag(Tag::StartEntry))) {
             let mut measurer = FitsMeasurer::new_flat(queue, stack, self);
 
-            // The number of item/separator pairs that fit on the same line.
             let mut flat_pairs = 0usize;
             let mut item_fits = measurer.fill_item_fits()?;
 
             let last_pair_layout = if item_fits {
-                // Measure the remaining pairs until the first item or separator that does not fit (or the end of the fill element).
-                // Optimisation to avoid re-measuring the next-item twice:
-                // * Once when measuring if the *item*, *separator*, *next-item* fit
-                // * A second time when measuring if *next-item*, *separator*, *next-next-item* fit.
                 loop {
-                    // Item that fits without a following separator.
                     if !matches!(
                         measurer.queue.top(),
                         Some(FormatElement::Tag(Tag::StartEntry))
@@ -675,12 +635,10 @@ impl<'a> Printer<'a> {
 
                     let separator_fits = measurer.fill_separator_fits(PrintMode::Flat)?;
 
-                    // Item fits but the flat separator does not.
                     if !separator_fits {
                         break FillPairLayout::ItemMaybeFlat;
                     }
 
-                    // Last item/separator pair that both fit
                     if !matches!(
                         measurer.queue.top(),
                         Some(FormatElement::Tag(Tag::StartEntry))
@@ -693,14 +651,10 @@ impl<'a> Printer<'a> {
                     if item_fits {
                         flat_pairs += 1;
                     } else {
-                        // Item and separator both fit, but the next element doesn't.
-                        // Print the separator in expanded mode and then re-measure if the item now
-                        // fits in the next iteration of the outer loop.
                         break FillPairLayout::ItemFlatSeparatorExpanded;
                     }
                 }
             } else {
-                // Neither item nor separator fit, print both in expanded mode.
                 FillPairLayout::Expanded
             };
 
@@ -708,7 +662,6 @@ impl<'a> Printer<'a> {
 
             self.state.measured_group_fits = true;
 
-            // Print all pairs that fit in flat mode.
             for _ in 0..flat_pairs {
                 self.print_fill_item(queue, stack, args.with_print_mode(PrintMode::Flat))?;
                 self.print_fill_separator(queue, stack, args.with_print_mode(PrintMode::Flat))?;
@@ -720,7 +673,6 @@ impl<'a> Printer<'a> {
                 FillPairLayout::ItemMaybeFlat => {
                     let mut measurer = FitsMeasurer::new_flat(queue, stack, self);
                     // SAFETY: That the item fits is guaranteed by `ItemMaybeFlat`.
-                    // Re-measuring is required to get the measurer in the correct state for measuring the separator.
                     assert!(measurer.fill_item_fits()?);
                     let separator_fits = measurer.fill_separator_fits(PrintMode::Expanded)?;
                     measurer.finish();
@@ -743,8 +695,6 @@ impl<'a> Printer<'a> {
                     | FillPairLayout::ItemMaybeFlat => PrintMode::Expanded,
                 };
 
-                // Push a new stack frame with print mode `Flat` for the case where the separator gets printed in expanded mode
-                // but does contain a group to ensure that the group will measure "fits" with the "flat" versions of the next item/separator.
                 stack.push(TagKind::Fill, args.with_print_mode(PrintMode::Flat));
                 self.print_fill_separator(queue, stack, args.with_print_mode(separator_mode))?;
                 stack.pop(TagKind::Fill)?;
@@ -809,7 +759,6 @@ impl<'a> Printer<'a> {
                 }
                 FormatElement::Tag(end_tag @ (Tag::EndEntry | Tag::EndBestFittingEntry)) => {
                     depth -= 1;
-                    // Reached the end entry, pop the entry from the stack and return.
                     if depth == 0 {
                         stack.pop(end_tag.kind())?;
                         return Ok(());
@@ -835,8 +784,6 @@ impl<'a> Printer<'a> {
             self.state.line_width = 0;
             self.state.line_start = self.state.buffer.len();
 
-            // Fit's only tests if groups up to the first line break fit.
-            // The next group must re-measure if it still fits.
             self.state.measured_group_fits = false;
         } else {
             self.state.buffer.push(char);
@@ -902,8 +849,6 @@ struct PrinterState<'a> {
     line_suffixes: LineSuffixes<'a>,
     verbatim_markers: Vec<TextRange>,
     group_modes: GroupModes,
-    // Reused queue to measure if a group fits. Optimisation to avoid re-allocating a new
-    // vec every time a group gets measured
     fits_stack: Vec<StackFrame>,
     fits_queue: Vec<std::slice::Iter<'a, FormatElement>>,
 }
@@ -989,7 +934,6 @@ impl Indentation {
     fn increment_level(self, indent_style: IndentStyle) -> Self {
         match self {
             Indentation::Level(count) => Indentation::Level(count + 1),
-            // Increase the indent AND convert the align to an indent
             Indentation::Align { level, .. } if indent_style.is_tab() => {
                 Indentation::Level(level + 2)
             }
@@ -1025,7 +969,6 @@ impl Indentation {
                 align: count,
             },
 
-            // Convert the existing align to an indent
             Indentation::Align { level: indent, .. } => Indentation::Align {
                 level: indent + 1,
                 align: count,
@@ -1160,8 +1103,6 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
     }
 
     /// Tests if the passed element fits on the current line or not.
-    // LLVM considers this function too large to inline on its own, but it is called for every
-    // element visited by the fitting loop.
     #[inline(always)]
     fn fits_element(&mut self, element: &'a FormatElement) -> PrintResult<Fits> {
         #[allow(clippy::enum_glob_use)]
@@ -1188,14 +1129,9 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
                     PrintMode::Expanded => {
                         match args.measure_mode() {
                             MeasureMode::FirstLine => {
-                                // Reachable if the restQueue contains an element with mode expanded because Expanded
-                                // is what the mode's initialized to by default
-                                // This means, the printer is outside of the current element at this point and any
-                                // line break should be printed as regular line break
                                 return Ok(Fits::Yes);
                             }
                             MeasureMode::AllLines | MeasureMode::AllLinesAllowTextOverflow => {
-                                // Continue measuring on the next line
                                 self.state.line_width = 0;
                                 self.state.pending_indent = args.indentation();
                             }
@@ -1292,21 +1228,14 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
                         .insert_print_mode(*id, args.mode());
                 }
 
-                // Don't use the parenthesized with indent layout even when measuring expanded mode similar to `BestFitting`.
-                // This is to expand the left and not right after the `(` parentheses (it is okay to expand after the content that it wraps).
                 self.stack.push(TagKind::BestFitParenthesize, args);
             }
 
             FormatElement::Tag(EndBestFitParenthesize) => {
-                // If this is the end tag of the outer most parentheses for which we measure if it fits,
-                // pop the indent.
                 if args.mode().is_expanded() && self.stack.top_kind() == Some(TagKind::Indent) {
                     self.stack.pop(TagKind::Indent).unwrap();
                     let unindented = self.stack.pop(TagKind::BestFitParenthesize)?;
 
-                    // There's a hard line break after the indent but don't return `Fits::Yes` here
-                    // to ensure any trailing comments (that, unfortunately, are attached to the statement and not the expression)
-                    // fit too.
                     self.state.line_width = 0;
                     self.state.pending_indent = unindented.indentation();
 
@@ -1385,7 +1314,6 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
             })) => {
                 match args.mode() {
                     PrintMode::Expanded => {
-                        // As usual, nothing to measure
                         self.stack.push(TagKind::FitsExpanded, args);
                     }
                     PrintMode::Flat => {
@@ -1404,7 +1332,6 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
                         };
 
                         if condition_met {
-                            // Measure in fully expanded mode and allow overflows
                             self.stack.push(
                                 TagKind::FitsExpanded,
                                 args.with_measure_mode(MeasureMode::AllLinesAllowTextOverflow)
@@ -1415,7 +1342,6 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
                                 return Ok(Fits::No);
                             }
 
-                            // As usual
                             self.stack.push(TagKind::FitsExpanded, args);
                         }
                     }
@@ -1465,8 +1391,6 @@ impl<'a, 'print> FitsMeasurer<'a, 'print> {
             return Fits::No;
         }
 
-        // Continue printing groups in expanded mode if measuring a `best_fitting` element where
-        // a group expands.
         let print_mode = if group_mode.is_flat() {
             args.mode()
         } else {
@@ -1600,11 +1524,8 @@ fn invalid_start_tag<R>(expected: TagKind, actual: Option<&FormatElement>) -> Pr
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Fits {
-    // Element fits
     Yes,
-    // Element doesn't fit
     No,
-    // Element may fit, depends on the elements following it
     Maybe,
 }
 
@@ -1886,7 +1807,6 @@ two lines`,
 
         formatter
             .fill()
-            // These all fit on the same line together
             .entry(
                 &soft_line_break_or_space(),
                 &format_args!(token("1"), token(",")),
@@ -1899,12 +1819,10 @@ two lines`,
                 &soft_line_break_or_space(),
                 &format_args!(token("3"), token(",")),
             )
-            // This one fits on a line by itself,
             .entry(
                 &soft_line_break_or_space(),
                 &format_args!(token("723493294"), token(",")),
             )
-            // fits without breaking
             .entry(
                 &soft_line_break_or_space(),
                 &group(&format_args!(
@@ -1913,7 +1831,6 @@ two lines`,
                     token("],")
                 )),
             )
-            // this one must be printed in expanded mode to fit
             .entry(
                 &soft_line_break_or_space(),
                 &group(&format_args!(

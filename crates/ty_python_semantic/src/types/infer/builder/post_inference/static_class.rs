@@ -150,7 +150,6 @@ pub(crate) fn check_static_class_definitions<'db>(
 ) {
     let db = context.db();
 
-    // Check that the class does not have a cyclic definition
     if let Some(inheritance_cycle) = class.inheritance_cycle(context.db()) {
         if inheritance_cycle.is_participant()
             && let Some(builder) = context.report_lint(&CYCLIC_CLASS_DEFINITION, class_node)
@@ -161,8 +160,6 @@ pub(crate) fn check_static_class_definitions<'db>(
             ));
         }
 
-        // If a class is cyclically defined, that's a sufficient error to report; the
-        // following checks (which are all inheritance-based) aren't even relevant.
         return;
     }
 
@@ -170,7 +167,6 @@ pub(crate) fn check_static_class_definitions<'db>(
 
     check_class_slots(context, class, index);
 
-    // Check that the class is not an enum and generic
     if is_enum_class_by_inheritance(db, env, class) && class.generic_context(db).is_some() {
         if let Some(builder) = context.report_lint(&INVALID_GENERIC_ENUM, class_node) {
             builder.into_diagnostic(format_args!(
@@ -182,15 +178,7 @@ pub(crate) fn check_static_class_definitions<'db>(
 
     let class_kind = CodeGeneratorKind::from_class(db, class.into());
 
-    // If it's a `NamedTuple` class, check that no field without a default value
-    // appears after a field with a default value.
     if class_kind == Some(CodeGeneratorKind::NamedTuple) {
-        // `ClassVar` and `Final` fields have to be checked against the class body's annotations
-        // rather than against `own_fields`, since `own_fields` drops `ClassVar` declarations and
-        // does not retain the `Final` qualifier for the fields that it does keep.
-        //
-        // A field carrying both qualifiers is reported once per qualifier, since each qualifier
-        // independently violates the restriction on `NamedTuple` fields.
         for (field_name, qualifiers, declaration) in class.own_annotated_qualifiers(db) {
             let invalid_qualifiers = [TypeQualifier::ClassVar, TypeQualifier::Final]
                 .into_iter()
@@ -308,11 +296,7 @@ pub(crate) fn check_static_class_definitions<'db>(
 
     let class_definition = index.expect_single_definition(class_node);
 
-    // Iterate through the class's explicit bases to check for various possible errors:
-    //     - Check for inheritance from plain `Generic`,
     //     - Check for inheritance from a `@final` classes
-    //     - If the class is a protocol class: check for inheritance from a non-protocol class
-    //     - If the class is a NamedTuple class: check for multiple inheritance that isn't `Generic[]`
     let expanded_base_entries =
         expanded_class_base_entries(db, class.known(db), class_node, class_definition);
     let check_explicit_base_variance = context.is_lint_enabled(&INVALID_GENERIC_CLASS);
@@ -338,8 +322,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         let base_class = match base_class {
             Type::SpecialForm(SpecialFormType::Generic) => {
                 if let Some(builder) = context.report_lint(&INVALID_BASE, source_node) {
-                    // Unsubscripted `Generic` can appear in the MRO of many classes,
-                    // but it is never valid as an explicit base class in user code.
                     builder.into_diagnostic("Cannot inherit from plain `Generic`");
                 }
                 continue;
@@ -368,9 +350,6 @@ pub(crate) fn check_static_class_definitions<'db>(
                 }
                 continue;
             }
-            // Note that unlike several of the other errors caught in this function,
-            // this does not lead to the class creation failing at runtime,
-            // but it is semantically invalid.
             Type::KnownInstance(KnownInstanceType::SubscriptedProtocol(generic_context)) => {
                 if let Some(type_params) = class_node.type_params.as_deref() {
                     let node = source_node;
@@ -383,7 +362,6 @@ pub(crate) fn check_static_class_definitions<'db>(
                     );
                     if let ast::Expr::Subscript(node) = node {
                         let source = source_text(db, context.file());
-                        // The parser can recover a type parameter list without a closing bracket.
                         if let Some(type_params) =
                             source[type_params.range()].strip_circumfix('[', ']')
                             && type_params == &source[node.slice.range()]
@@ -504,8 +482,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
 
         if let Some(ordered_base_class) = ordered_dataclass_base_class(db, base_class) {
-            // Suppress the diagnostic if the child class manually overrides all comparison
-            // methods, since the user has explicitly fixed the LSP violation.
             if !class.has_own_comparison_methods(db)
                 && let Some(builder) =
                     context.report_lint(&SUBCLASS_OF_DATACLASS_WITH_ORDER, source_node)
@@ -523,7 +499,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
     }
 
-    // Check for starred variable-length tuples that cannot be unpacked
     for base in class_node.bases() {
         if let ast::Expr::Starred(starred) = base
             && let starred_ty = definition_expression_type(db, class_definition, &starred.value)
@@ -534,7 +509,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
     }
 
-    // Check that the class's MRO is resolvable
     let mut inconsistent_generic_bases = false;
     match class.try_mro_ancestors(db, None) {
         Err(mro_error) => match mro_error.reason() {
@@ -646,7 +620,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
     }
 
-    // Check that the class's metaclass can be determined without error.
     if let Err(metaclass_error) = class.try_metaclass(db) {
         let invalid_metaclass_range = class_node
             .arguments
@@ -740,8 +713,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
     }
 
-    // Check that the class arguments matches the arguments of the
-    // base class `__init_subclass__` method.
     if let Some(args) = class_node.arguments.as_deref() {
         if class_kind == Some(CodeGeneratorKind::TypedDict) {
             let supports_pep_728 = context.in_stub()
@@ -776,7 +747,6 @@ pub(crate) fn check_static_class_definitions<'db>(
                         }
                     }
                     Some("extra_items") => {
-                        // TODO: validate that passed arguments here are annotation expressions
                     }
                     Some("metaclass") => {
                         if let Some(builder) =
@@ -812,7 +782,6 @@ pub(crate) fn check_static_class_definitions<'db>(
                 .keywords
                 .iter()
                 .filter_map(|keyword| match keyword.arg.as_ref() {
-                    // We mimic the runtime behaviour and discard the metaclass argument
                     Some(name) if name.id.as_str() == "metaclass" => None,
                     Some(name) => {
                         let ty = file_expression_type(&keyword.value);
@@ -831,7 +800,6 @@ pub(crate) fn check_static_class_definitions<'db>(
                     env,
                     "__init_subclass__",
                     MemberLookupPolicy::MRO_NO_OBJECT_FALLBACK,
-                    // skip(1) to skip the current class and only consider base classes.
                     class.iter_mro(db, None).skip(1),
                 )
                 .ignore_possibly_undefined();
@@ -848,8 +816,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
     }
 
-    // If the class is generic, verify that its generic context does not violate any of
-    // the typevar scoping rules.
     if class.has_pep_695_type_params(db)
         && let Some(generic_context) = class.inherited_legacy_generic_context(db)
         && let Some(typevar) = generic_context
@@ -876,9 +842,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         );
     }
 
-    // Check that no type parameter with a default follows a TypeVarTuple.
-    // This is prohibited by the typing spec because a TypeVarTuple consumes
-    // all remaining positional type arguments.
     if let Some(type_params) = class_node.type_params.as_deref() {
         super::type_param_validation::check_single_typevar_tuple_pep695(
             context,
@@ -931,16 +894,12 @@ pub(crate) fn check_static_class_definitions<'db>(
             }
         }
 
-        // Check that type variable defaults only reference type variables
-        // that precede them in the type parameter list.
         if let Some(generic_context) = class
             .pep695_generic_context(db)
             .or_else(|| class.legacy_generic_context(db))
         {
             let typevars = generic_context.variables(db).map(|btv| btv.typevar(db));
 
-            // `variables` should be fairly cheap to clone; it's just several cheap wrappers around
-            // a `std::slice::Iter` under the hood.
             for (i, typevar) in typevars.clone().enumerate() {
                 let Some(default_ty) = typevar.default_type(db, env) else {
                     continue;
@@ -973,8 +932,6 @@ pub(crate) fn check_static_class_definitions<'db>(
 
         let scope = class.body_scope(db).scope(db);
         if let Some(parent) = scope.parent() {
-            // Check that the class's own type parameters don't shadow
-            // type variables from enclosing scopes (by name).
             if let Some(generic_context) = class.generic_context(db) {
                 for self_typevar in generic_context.variables(db) {
                     let name = self_typevar.typevar(db).name(db);
@@ -994,8 +951,6 @@ pub(crate) fn check_static_class_definitions<'db>(
                 }
             }
 
-            // Check that the class's base classes don't reference type
-            // variables from enclosing scopes (by identity).
             for base_typevar in class.typevars_referenced_in_bases(db) {
                 let typevar = base_typevar.typevar(db);
                 for enclosing in enclosing_generic_contexts(db, index, parent) {
@@ -1015,8 +970,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
     }
 
-    // Check that a dataclass does not have more than one `KW_ONLY`
-    // and that required fields are defined before default fields.
     if let Some(field_policy @ CodeGeneratorKind::DataclassLike(_)) =
         CodeGeneratorKind::from_class(db, class.into())
     {
@@ -1032,7 +985,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         let mut previous_default_field = None;
 
         for (name, field) in class.fields(db, specialization, field_policy) {
-            // Extract dataclass field properties
             let FieldKind::Dataclass {
                 default_ty,
                 init,
@@ -1043,7 +995,6 @@ pub(crate) fn check_static_class_definitions<'db>(
                 continue;
             };
 
-            // Classes or fields with init=False and kw_only fields don't participate in ordering.
             if !class_init || !init || *kw_only == Some(true) {
                 continue;
             }
@@ -1056,7 +1007,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
 
         if kw_only_sentinel_fields.len() > 1 {
-            // TODO: The fields should be displayed in a subdiagnostic.
             if let Some(builder) = context.report_lint(&DUPLICATE_KW_ONLY, &class_node.name) {
                 let mut diagnostic = builder.into_diagnostic(format_args!(
                     "Dataclass has more than one field annotated with `KW_ONLY`"
@@ -1124,20 +1074,14 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
     }
 
-    // (13) Check for violations of the Liskov Substitution Principle,
-    // and for violations of other rules relating to invalid overrides of some sort.
     overrides::check_class(context, class, inconsistent_generic_bases);
 
-    // (14) Check compatibility between class namespace values and metaclass-populated attributes.
     check_class_namespace_against_metaclass_members(context, class, index);
 
-    // (15) Check for unimplemented abstract methods on final classes.
     check_final_class_abstract_methods(context, class, class_node);
 
-    // (16) Check for Final-qualified declarations without a value.
     check_class_final_without_value(context, class, index);
 
-    // (17) Check inferred ClassVar types against the class's type parameters.
     check_inferred_classvars(context, class, index);
 
     if let Some(protocol) = class.into_protocol_class(db) {
@@ -1204,8 +1148,6 @@ fn check_inferred_classvars<'db>(
             {
                 continue;
             }
-            // Another branch can supply an explicit ClassVar type, which is checked at its
-            // annotation. Report only assignments that contribute an inferred type here.
             let is_inferred = if let Some(own) = inferred_declaration(db, definition).declared() {
                 own.inner_type().is_none()
             } else {
@@ -1314,9 +1256,6 @@ fn metaclass_namespace_members<'db>(
         for function_scope in attribute_scopes(db, body_scope) {
             for member in metaclass_index.place_table(function_scope).members() {
                 if let Some(name) = member.as_instance_attribute() {
-                    // A method-scope member may only be declared, as in `cls.attr: int`.
-                    // Only an assignment such as `cls.attr: int = 1` writes a value onto the
-                    // newly created class object, potentially overwriting a class-body value.
                     let is_assigned =
                         attribute_assignments(db, body_scope, name).any(|(bindings, _)| {
                             bindings
@@ -1411,8 +1350,6 @@ fn check_class_namespace_against_metaclass_members<'db>(
             }
         }
 
-        // A declaration on the metaclass constrains class-object access, but does not itself
-        // populate a replacement value into the constructed class's namespace.
         if !is_assigned {
             continue;
         }
@@ -1430,8 +1367,6 @@ fn check_class_namespace_against_metaclass_members<'db>(
             continue;
         };
         let definition_kind = definition.kind(db);
-        // A metaclass may intentionally replace an ordinary class namespace value during class
-        // creation. Only an explicit attribute annotation constrains the replacement value.
         if !matches!(definition_kind, DefinitionKind::AnnotatedAssignment(_)) {
             continue;
         }
@@ -1479,15 +1414,11 @@ fn check_final_class_abstract_methods<'db>(
     class_node: &ast::StmtClassDef,
 ) {
     let db = context.db();
-    // Only check if the class is final.
     if !class.is_final(db) {
         return;
     }
 
-    // Exclude `Protocol` classes. It is possible to subtype a `Protocol` class
     // without subclassing it, so an `@final` `Protocol` class with unimplemented abstract
-    // methods is not inherently broken in the same way as a non-`Protocol` final class
-    // with unimplemented abstract methods.
     if class.is_protocol(db) {
         return;
     }
@@ -1497,7 +1428,6 @@ fn check_final_class_abstract_methods<'db>(
     let class_type = class.identity_specialization(db);
     let abstract_methods = AbstractMethods::of_class(db, class_type);
 
-    // If there are no abstract methods, we're done.
     let Some(first_method_name) = abstract_methods.first_name() else {
         return;
     };
@@ -1558,7 +1488,6 @@ fn check_class_final_without_value<'db>(
     class: StaticClassLiteral<'db>,
     index: &SemanticIndex<'db>,
 ) {
-    // In stub files, bare declarations without values are normal.
     if context.in_stub() {
         return;
     }
@@ -1571,9 +1500,6 @@ fn check_class_final_without_value<'db>(
     let place_table = index.place_table(body_scope_id);
 
     // In dataclasses (and similar code-generated classes), Final fields without
-    // defaults are initialized by the synthesized __init__. In protocols, the
-    // declaration describes a required instance attribute rather than storage
-    // that must be initialized by the protocol class itself.
     if CodeGeneratorKind::from_class(db, class.into()).is_some() || class.is_protocol(db) {
         return;
     }
@@ -1587,7 +1513,6 @@ fn check_class_final_without_value<'db>(
             continue;
         }
 
-        // Check if the symbol has any bindings at class level.
         let bindings = use_def.end_of_scope_symbol_bindings(symbol_id);
         let binding_place = place_from_bindings(db, env, bindings);
 
@@ -1595,8 +1520,6 @@ fn check_class_final_without_value<'db>(
             continue;
         }
 
-        // Per the typing spec, a `Final` attribute declared in a class body without a
-        // value must be initialized in `__init__`. Assignments in other methods don't count.
         let symbol = place_table.symbol(symbol_id);
         if has_binding_in_init(context, body_scope, index, symbol.name().as_str()) {
             continue;

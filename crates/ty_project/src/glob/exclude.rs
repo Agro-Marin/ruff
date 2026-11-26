@@ -40,19 +40,15 @@ impl ExcludeFilter {
     }
 
     fn matches(&self, path: &SystemPath, mode: GlobFilterCheckMode, directory: bool) -> bool {
-        // If the path is excluded, return `ignore`
         if self.ignore.matched(path, directory).is_ignore() {
             return true;
         }
 
         match mode {
             GlobFilterCheckMode::TopDown => {
-                // No hit or an allow hit means the file or directory is not excluded.
                 false
             }
             GlobFilterCheckMode::Adhoc => {
-                // If the path is allowlisted or there's no hit, try the parent to ensure we don't return false
-                // for a folder where there's an exclude for a parent.
                 path.ancestors()
                     .skip(1)
                     .any(|ancestor| self.ignore.matched(ancestor, true).is_ignore())
@@ -254,8 +250,6 @@ impl GitignoreBuilder {
 
         let mut pattern = pattern.absolute();
 
-        // File names starting with `!` are escaped with a backslash. Strip the backslash.
-        // This is not a negated pattern!
         if pattern.starts_with("\\!") {
             pattern = &pattern[1..];
         } else if let Some(after) = pattern.strip_prefix("!") {
@@ -263,8 +257,6 @@ impl GitignoreBuilder {
             pattern = after;
         }
 
-        // If it ends with a slash, then this should only match directories,
-        // but the slash should otherwise not be used while globbing.
         if let Some(before) = pattern.strip_suffix('/') {
             glob.is_only_dir = true;
             pattern = before;
@@ -272,16 +264,12 @@ impl GitignoreBuilder {
 
         let mut actual = pattern.to_string();
 
-        // If the glob ends with `/**`, then we should only match everything
-        // inside a directory, but not the directory itself. Standard globs
-        // will match the directory. So we add `/*` to force the issue.
         if actual.ends_with("/**") {
             actual = format!("{actual}/*");
         }
 
         let parsed = GlobBuilder::new(&actual)
             .literal_separator(true)
-            // No need to support Windows-style paths, so the backslash can be used an escape.
             .backslash_escape(true)
             .build()?;
 

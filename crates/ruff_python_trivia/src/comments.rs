@@ -17,7 +17,6 @@ impl SuppressionKind {
     /// The comment string should be the full line with the comment on it.
     pub fn from_comment(comment: &str) -> Option<Self> {
         // Match against `# fmt: on`, `# fmt: off`, `# yapf: disable`, and `# yapf: enable`, which
-        // must be on their own lines.
         let trimmed = comment
             .strip_prefix('#')
             .unwrap_or(comment)

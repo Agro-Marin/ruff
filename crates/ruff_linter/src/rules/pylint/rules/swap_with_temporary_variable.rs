@@ -69,17 +69,10 @@ pub(crate) fn swap_with_temporary_variable(checker: &Checker, scope_id: ScopeId,
     });
 
     for (stmt_a, stmt_b, stmt_c) in consecutive_assignments {
-        // Detect patterns like:
-        // temp = x
-        // x = y
-        // y = temp
         if stmt_a.value == stmt_b.target
             && stmt_b.value == stmt_c.target
             && stmt_a.target == stmt_c.value
         {
-            // check whether there is any later read reference to the temporary variable -
-            // in this case the automatic hotfix would result in broken code, because
-            // this later read would attempt to read from a variable that no longer exists
             let is_variable_reused_later = is_variable_read_after(checker, &stmt_a);
             if is_variable_reused_later {
                 continue;
@@ -93,7 +86,6 @@ pub(crate) fn swap_with_temporary_variable(checker: &Checker, scope_id: ScopeId,
                 edit_range,
             );
 
-            // The quick fix would remove comments, hence it's unsafe if there are any comments in the relevant code part.
             let applicability = if checker.comment_ranges().intersects(edit.range()) {
                 Applicability::Unsafe
             } else {
@@ -121,7 +113,6 @@ fn match_consecutive_assignments<'a>(
 )> {
     let binding = semantic.binding(binding_id);
 
-    // Only consider simple assignments (no imports, function defs, etc.)
     if !binding.kind.is_assignment() {
         return None;
     }
@@ -131,7 +122,6 @@ fn match_consecutive_assignments<'a>(
     let stmt = binding.statement(semantic)?;
     let stmt_a = VarToVarAssignment::from_stmt(stmt)?;
 
-    // Find the enclosing suite so we can look at the next siblings.
     // For the global scope, use the module body; otherwise, find the parent statement.
     let suite = if scope_id.is_global() {
         traversal::EnclosingSuite::new(semantic.definitions.python_ast()?, stmt.into())
@@ -162,7 +152,6 @@ impl<'a> VarToVarAssignment<'a> {
     fn from_stmt(stmt: &'a Stmt) -> Option<VarToVarAssignment<'a>> {
         let (target, value) = match stmt {
             Stmt::Assign(stmt_assign) => {
-                // only one variable is expected for matching the pattern
                 let [target_variable] = stmt_assign.targets.as_slice() else {
                     return None;
                 };
@@ -170,19 +159,15 @@ impl<'a> VarToVarAssignment<'a> {
                 (target_variable, &stmt_assign.value)
             }
             Stmt::AnnAssign(stmt_ann_assign) => {
-                // only assignments that actually assign a value are relevant here
                 let Some(value) = &stmt_ann_assign.value else {
                     return None;
                 };
 
                 (&*stmt_ann_assign.target, value)
             }
-            // Stmt::AugAssign is not relevant because it modifies the content
-            // of a variable based on its existing value, so it can't swap variables
             _ => return None,
         };
 
-        // assignment value is more complex than just a simple variable, skip such cases.
         if let (Some(target_expr), Some(value_expr)) = (target.as_name_expr(), value.as_name_expr())
         {
             Some(Self {
@@ -200,8 +185,6 @@ impl<'a> VarToVarAssignment<'a> {
 ///
 /// Returns `true` if the variable assigned to in `variable_assignment` is read anywhere other than the swap statement.
 fn is_variable_read_after(checker: &Checker, variable_assignment: &VarToVarAssignment) -> bool {
-    // Get the variable binding for the variable assigned to in this statement,
-    // e.g., in the example `a = b` this would be the binding to the variable `a`.
     let Some(variable_binding) = checker
         .semantic()
         .bindings
@@ -211,15 +194,9 @@ fn is_variable_read_after(checker: &Checker, variable_assignment: &VarToVarAssig
         return true;
     };
 
-    // If the variable is global (e.g., `global VARNAME`) or nonlocal (e.g., `nonlocal VARNAME`),
-    // then it is intended to also be used elsewhere outside our scope and hence it's likely
-    // to be used in other contexts as well.
     if variable_binding.is_global() || variable_binding.is_nonlocal() {
         return true;
     }
 
-    // Check if there's any read reference to the variable other than the one from the swap statement
-    // We already confirmed that there is at least one reference (i.e. `y = temp`), so the variable is
-    // only re-used if there is any other reference than this one (i.e. reference count > 1).
     variable_binding.references().count() > 1
 }

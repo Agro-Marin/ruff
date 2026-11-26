@@ -44,7 +44,6 @@ impl SyncNotificationHandler for DidOpenNotebookHandler {
             session.open_text_document(client, cell_document);
         }
 
-        // Always publish diagnostics because notebooks only support publish diagnostics.
         publish_diagnostics(&document, session, client);
 
         Ok(())

@@ -58,7 +58,7 @@ jobs:
       cancel-in-progress: false
       queue: max
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
@@ -67,7 +67,7 @@ jobs:
       - uses: $/.github/actions/setup-ruff-workspace
       - name: Read the stored comment ID
         id: comment-id
-        uses: astral-sh/github-actions/key-value-store/get@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889 # 2026.11.16.0
+        uses: astral-sh/github-actions/key-value-store/get@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889
         with:
           service-url: ${{ secrets.KV_API_URL }}
           scope: pull-request
@@ -76,7 +76,7 @@ jobs:
       - name: Get a report publishing token
         if: ${{ !inputs.update-existing-only || steps.comment-id.outputs.found == 'true' }}
         id: token
-        uses: astral-sh/github-actions/simple-token-service@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889 # 2026.11.16.0
+        uses: astral-sh/github-actions/simple-token-service@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889
         with:
           exchange-url: ${{ secrets.STS_API_URL }}/exchange
           audience: ${{ secrets.STS_API_URL }}
@@ -88,7 +88,7 @@ jobs:
         if: inputs.upload-html && steps.token.outcome == 'success'
         id: aws
         continue-on-error: true
-        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
         with:
           aws-region: ${{ vars.REPORTS_REGION }}
           role-to-assume: ${{ vars.REPORTS_ROLE_ARN }}
@@ -126,7 +126,7 @@ jobs:
           ${{ inputs.update-existing-only && '--update-existing-only' || '' }}
       - name: Store the comment ID
         if: steps.publish.outputs.comment-id != ''
-        uses: astral-sh/github-actions/key-value-store/put@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889 # 2026.11.16.0
+        uses: astral-sh/github-actions/key-value-store/put@67dc9ee1ddc113eccd8116e7b949fb6cdcd89889
         with:
           service-url: ${{ secrets.KV_API_URL }}
           scope: pull-request

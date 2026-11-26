@@ -25,7 +25,6 @@ URL = "https://user-images.githubusercontent.com/1309177/{}.svg"
 URL_LIGHT = URL.format("232603516-4fb4892d-585c-4b20-b810-3db9161831e4")
 URL_DARK = URL.format("232603514-c95e9b0f-6b31-43de-9a80-9e844173fd6a")
 
-# https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#specifying-the-theme-an-image-is-shown-to
 GITHUB = f"""
 <p align="center">
   <picture align="center">
@@ -36,14 +35,12 @@ GITHUB = f"""
 </p>
 """
 
-# https://github.com/pypi/warehouse/issues/11251
 PYPI = f"""
 <p align="center">
   <img alt="Shows a bar chart with benchmark results." src="{URL_LIGHT}">
 </p>
 """
 
-# https://squidfunk.github.io/mkdocs-material/reference/images/#light-and-dark-mode
 MK_DOCS = f"""
 <p align="center">
   <img alt="Shows a bar chart with benchmark results." src="{URL_LIGHT}#only-light">

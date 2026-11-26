@@ -48,10 +48,6 @@ impl Violation for IfElseBlockInsteadOfDictLookup {
 }
 /// SIM116
 pub(crate) fn if_else_block_instead_of_dict_lookup(checker: &Checker, stmt_if: &ast::StmtIf) {
-    // Throughout this rule:
-    // * Each if or elif statement's test must consist of a constant equality check with the same variable.
-    // * Each if or elif statement's body must consist of a single `return`.
-    // * The else clause must be empty, or a single `return`.
     let ast::StmtIf {
         body,
         test,
@@ -86,17 +82,14 @@ pub(crate) fn if_else_block_instead_of_dict_lookup(checker: &Checker, stmt_if: &
         return;
     }
 
-    // Avoid suggesting ternary for `if sys.version_info >= ...`-style checks.
     if is_sys_version_block(stmt_if, checker.semantic()) {
         return;
     }
 
-    // Avoid suggesting ternary for `if TYPE_CHECKING:`-style checks.
     if is_type_checking_block(stmt_if, checker.semantic()) {
         return;
     }
 
-    // The `expr` was checked to be a literal above, so this is safe.
     let mut literals: FxHashSet<ComparableLiteral> = FxHashSet::default();
     literals.insert(literal_expr.into());
 
@@ -114,9 +107,7 @@ pub(crate) fn if_else_block_instead_of_dict_lookup(checker: &Checker, stmt_if: &
         };
 
         match test.as_ref() {
-            // `else`
             None => {
-                // The else must also be a single effect-free return statement
                 let [
                     Stmt::Return(ast::StmtReturn {
                         value,
@@ -133,7 +124,6 @@ pub(crate) fn if_else_block_instead_of_dict_lookup(checker: &Checker, stmt_if: &
                     return;
                 }
             }
-            // `elif`
             Some(Expr::Compare(compare)) => {
                 let Some((Expr::Name(ast::ExprName { id, .. }), CmpOp::Eq, expr)) =
                     compare.as_single()
@@ -153,10 +143,8 @@ pub(crate) fn if_else_block_instead_of_dict_lookup(checker: &Checker, stmt_if: &
                     return;
                 }
 
-                // The `expr` was checked to be a literal above, so this is safe.
                 literals.insert(literal_expr.into());
             }
-            // Different `elif`
             _ => {
                 return;
             }

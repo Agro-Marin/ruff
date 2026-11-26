@@ -211,7 +211,6 @@ fn script_syncs_on_open_without_workspace_diagnostics() -> Result<()> {
         .wait_until_workspaces_are_initialized();
 
     server.open_text_document(ordinary, "ordinary_missing", 1);
-    // The lookup indexes the closed script before the configuration reload.
     assert!(server.goto_definition_request(script, attrs).is_none());
     server.write_file(
         "src/ty.toml",
@@ -224,7 +223,6 @@ fn script_syncs_on_open_without_workspace_diagnostics() -> Result<()> {
     )?;
     server.did_change_watched_file("src/ty.toml", lsp_types::FileChangeType::Created);
     server.await_diagnostic_refresh();
-    // A round trip lets the main loop send any progress requests queued by the reload.
     server.document_diagnostic_request(ordinary, None);
     server.assert_no_pending_messages();
 
@@ -320,7 +318,6 @@ fn closed_scripts_sync_at_startup_with_workspace_diagnostics() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // Closed scripts are initialized without a document-open notification.
     server.await_diagnostic_refresh();
     let report = server.workspace_diagnostic_request(None, None);
     assert_snapshot!(condensed_workspace_diagnostic_snapshot(report), @"
@@ -375,7 +372,6 @@ fn changed_dependencies_wait_for_reopen_in_open_files_only() -> Result<()> {
     );
     server.write_file(script, &updated)?;
     server.did_change_watched_file(script, lsp_types::FileChangeType::Changed);
-    // Let the server handle the file event before checking that it hasn't requested uv progress.
     server.folding_range_request(&server.file_uri(script));
     server.assert_no_pending_messages();
 
@@ -419,7 +415,6 @@ fn created_closed_script_is_prepared_after_a_file_event() -> Result<()> {
     )?;
     server.did_change_watched_file(script, lsp_types::FileChangeType::Created);
 
-    // The file event and completed synchronization each refresh diagnostics.
     server.await_diagnostic_refresh();
     server.await_diagnostic_refresh();
     let report = server.workspace_diagnostic_request(None, None);
@@ -459,8 +454,6 @@ fn exclude_scripts_uses_saved_contents_after_close() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // `exclude-scripts` omits this file from workspace diagnostics because its unsaved
-    // contents contain a PEP 723 block.
     server.open_text_document(script, unsaved, 1);
 
     let report = server.workspace_diagnostic_request(None, None);
@@ -469,8 +462,6 @@ fn exclude_scripts_uses_saved_contents_after_close() -> Result<()> {
     	0:0..0:16[ERROR]: Name `ordinary_missing` used when not defined
     ");
 
-    // The saved file has no script metadata, so closing without saving includes it in
-    // workspace diagnostics again.
     server.close_text_document(script);
 
     let report = server.workspace_diagnostic_request(None, None);
@@ -494,7 +485,6 @@ fn non_python_overlay_does_not_block_workspace_diagnostics() -> Result<()> {
         .enable_workspace_diagnostic_refresh(true)
         .build()
         .wait_until_workspaces_are_initialized();
-    // This document has an editor overlay, but is not in the diagnostic open-file set.
     server.send_notification::<DidOpenTextDocumentNotification>(DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
             uri: server.file_uri(script),

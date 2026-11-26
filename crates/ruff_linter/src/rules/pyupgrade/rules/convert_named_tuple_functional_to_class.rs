@@ -88,12 +88,10 @@ pub(crate) fn convert_named_tuple_functional_to_class(
     };
 
     let fields = match (args, keywords) {
-        // Ex) `NamedTuple("MyType")`
         ([_typename], []) => Suite::from([Stmt::Pass(ast::StmtPass {
             range: TextRange::default(),
             node_index: ruff_python_ast::AtomicNodeIndex::NONE,
         })]),
-        // Ex) `NamedTuple("MyType", [("a", int), ("b", str)])`
         ([_typename, fields], []) => {
             if let Some(fields) = create_fields_from_fields_arg(fields) {
                 fields
@@ -102,7 +100,6 @@ pub(crate) fn convert_named_tuple_functional_to_class(
                 return;
             }
         }
-        // Ex) `NamedTuple("MyType", a=int, b=str)`
         ([_typename], keywords) => {
             if let Some(fields) = create_fields_from_keywords(keywords) {
                 fields
@@ -111,7 +108,6 @@ pub(crate) fn convert_named_tuple_functional_to_class(
                 return;
             }
         }
-        // Ex) `NamedTuple()`
         _ => {
             debug!("Skipping `NamedTuple` \"{typename}\": mixed fields and keywords");
             return;
@@ -124,7 +120,6 @@ pub(crate) fn convert_named_tuple_functional_to_class(
         },
         stmt.range(),
     );
-    // TODO(charlie): Preserve indentation, to remove the first-column requirement.
     if checker.locator().is_at_start_of_line(stmt.start()) {
         diagnostic.set_fix(convert_to_class(
             stmt,

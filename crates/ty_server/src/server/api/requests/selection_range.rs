@@ -53,7 +53,6 @@ impl BackgroundDocumentRequestHandler for SelectionRangeRequestHandler {
 
             let ranges = selection_range(db, python_file, offset);
             if !ranges.is_empty() {
-                // Convert ranges to nested LSP SelectionRange structure
                 let mut lsp_range = None;
                 for &range in &ranges {
                     let Some(range) = range

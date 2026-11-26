@@ -117,18 +117,15 @@ pub(crate) fn boolean_default_value_positional_argument(
     decorator_list: &[Decorator],
     parameters: &Parameters,
 ) {
-    // https://github.com/astral-sh/ruff/issues/14535
     if checker.source_type.is_stub() {
         return;
     }
-    // Allow Boolean defaults in explicitly-allowed functions.
     if is_allowed_func_def(name) {
         return;
     }
 
     for param in parameters.posonlyargs.iter().chain(&parameters.args) {
         if param.default().is_some_and(Expr::is_boolean_literal_expr) {
-            // Allow Boolean defaults in setters.
             if decorator_list.iter().any(|decorator| {
                 UnqualifiedName::from_expr(&decorator.expression)
                     .is_some_and(|unqualified_name| unqualified_name.segments() == [name, "setter"])
@@ -137,7 +134,6 @@ pub(crate) fn boolean_default_value_positional_argument(
             }
 
             // Allow Boolean defaults in `@override` methods, since they're required to adhere to
-            // the parent signature.
             if visibility::is_override(decorator_list, checker.semantic()) {
                 return;
             }

@@ -69,7 +69,6 @@ impl LowerHex for Hash128 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Self(hash) = self;
 
-        // Only write the first half for concision
         write!(f, "{:x}", hash[0])
     }
 }
@@ -394,8 +393,6 @@ pub struct EmbeddedFile<'s> {
 
 impl EmbeddedFile<'_> {
     fn append_code(&mut self, backtick_offsets: BacktickOffsets, new_code: &str) {
-        // Treat empty code blocks as non-existent, instead of creating
-        // an additional empty line:
         if new_code.is_empty() {
             return;
         }
@@ -418,8 +415,6 @@ impl EmbeddedFile<'_> {
 
     /// Returns the full path using unix file-path convention.
     pub fn full_path(&self, project_root: &SystemPath) -> SystemPathBuf {
-        // Don't use `SystemPath::absolute` here because it's platform dependent
-        // and we want to use unix file-path convention.
         let relative_path = self.relative_path();
         if relative_path.starts_with('/') {
             SystemPathBuf::from(relative_path)
@@ -498,10 +493,8 @@ struct Parser<'s, C, F> {
     /// The unparsed remainder of the Markdown source.
     cursor: Cursor<'s>,
 
-    // Number of consecutive empty lines.
     preceding_blank_lines: usize,
 
-    // Explicitly specified path for the upcoming code block.
     explicit_path: Option<&'s str>,
 
     source: &'s str,
@@ -657,13 +650,11 @@ where
                     self.explicit_path = None;
                     self.preceding_blank_lines = 0;
 
-                    // Determine header level (number of '#' characters)
                     let mut header_level = 1;
                     while self.cursor.eat_char('#') {
                         header_level += 1;
                     }
 
-                    // Parse header title
                     if let Some(title) = self.consume_until(|c| c == '\n') {
                         let title = title.trim();
 
@@ -674,7 +665,6 @@ where
                 }
                 '`' => {
                     if self.cursor.eat_char2('`', '`') {
-                        // We saw the triple-backtick beginning of a code block.
 
                         let backtick_offset_start = self.cursor.offset() - "```".text_len();
 
@@ -687,7 +677,6 @@ where
 
                         self.skip_non_newline_whitespace();
 
-                        // Parse the code block language specifier
                         let lang = self
                             .consume_until(|c| matches!(c, ' ' | '\n'))
                             .unwrap_or_default();
@@ -745,7 +734,6 @@ where
 
                         self.explicit_path = None;
                     } else if self.preceding_blank_lines > 0 {
-                        // This could be a line that specifies an explicit path for a Markdown code block (`module.py`:)
                         self.explicit_path = None;
 
                         if let Some(path) = self.consume_until(|c| matches!(c, '`' | '\n')) {
@@ -825,7 +813,6 @@ where
         ignore: bool,
         backtick_offsets: BacktickOffsets,
     ) -> anyhow::Result<()> {
-        // We never pop the implicit root section.
         let section = self.stack.top();
         let test_name = self.sections[section].title;
 
@@ -1052,8 +1039,6 @@ where
     fn pop_sections_to_level(&mut self, level: usize) {
         while level <= self.sections[self.stack.top()].level.into() {
             self.stack.pop();
-            // We would have errored before pushing a child section if there were files, so we know
-            // no parent section can have files.
             self.current_section_files.clear();
         }
     }
@@ -1511,7 +1496,6 @@ mod tests {
     #[test]
     fn disallow_merged_snippets_in_presence_of_explicit_paths() {
         for source in [
-            // Merged snippets first
             "
             # One
 
@@ -1529,7 +1513,6 @@ mod tests {
             print('hello')
             ```
             ",
-            // Explicit path first
             "
             # One
 
@@ -2230,7 +2213,6 @@ mod tests {
 
     #[test]
     fn no_newline_between_prose_and_code() {
-        // Regression test for https://github.com/astral-sh/ruff/issues/15923
         let source = dedent(
             "
             Some code:
@@ -2286,10 +2268,6 @@ mod tests {
 
     #[test]
     fn snapshot_diagnostic_directive_detection_ignores_whitespace() {
-        // A bit weird, but the fact that the parser rejects this indicates that
-        // we have correctly recognised both of these HTML comments as a directive to have
-        // snapshotting enabled for the file, which is what we want (even though they both
-        // contain different amounts of whitespace to the "standard" snapshot directive).
         let source = dedent(
             "
             # Some header

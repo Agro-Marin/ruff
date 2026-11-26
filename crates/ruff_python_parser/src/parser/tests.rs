@@ -55,7 +55,6 @@ fn test_expr_mode_valid_syntax() {
 
 #[test]
 fn test_unicode_aliases() {
-    // https://github.com/RustPython/RustPython/issues/4566
     let source = r#"x = "\N{BACKSPACE}another cool trick""#;
     let suite = parse_module(source).unwrap().into_suite();
 
@@ -349,7 +348,6 @@ fn normal_python_unaffected() {
 /// notebook's trailing newline (for example, past the end of an empty last cell) are inside it.
 #[test]
 fn cells_module_range_spans_source() {
-    // Two cells, `x = 1` and an empty one, each followed by a `\n` separator.
     let source = "x = 1\n\n";
     let ranges = [
         TextRange::new(TextSize::new(0), TextSize::new(5)),
@@ -375,7 +373,6 @@ mod stack_growth {
 
     use crate::{Mode, ParseOptions, parse_module};
 
-    // Keep recursive ASTs shallow enough for Windows's 1 MiB test-thread stacks.
     const RECURSIVE_AST_TEST_DEPTH: usize = 1_000;
 
     #[test]
@@ -400,7 +397,6 @@ mod stack_growth {
 
     #[test]
     fn nested_def_blocks_grow_stack() {
-        // Each nested function crosses the suite boundary where the parser rechecks the stack.
         let depth = RECURSIVE_AST_TEST_DEPTH;
         let mut src = String::new();
         for i in 0..depth {
@@ -432,8 +428,6 @@ mod stack_growth {
 
     #[test]
     fn nested_match_patterns_grow_stack() {
-        // Deeply parenthesised match patterns — exercises pattern-parsing
-        // instrumentation in addition to statement / expression paths.
         let mut src = String::from("match x:\n case ");
         for _ in 0..600 {
             src.push('(');
@@ -460,9 +454,6 @@ mod stack_growth {
 
     #[test]
     fn binary_paren_interplay_grows_stack() {
-        // `1+(1+(1+(1+...)))` — each level alternates a binary operator and a
-        // parenthesised sub-expression, exactly like the pattern described in
-        // the tracking issue.
         let depth = RECURSIVE_AST_TEST_DEPTH;
         let mut src = String::new();
         for _ in 0..depth {
@@ -477,12 +468,6 @@ mod stack_growth {
 
     #[test]
     fn right_assoc_pow_chain_grows_stack() {
-        // `1**1**1**...**1` — `**` is right-associative, so the right operand
-        // is parsed by a recursive `parse_binary_expression_or_higher` call
-        // *without* any intervening parentheses or atom nesting. This exercises
-        // the binary-expression recursion path directly, unlike the
-        // `1+(1+(...))` interplay test which recurses through parenthesised
-        // atoms.
         let depth = RECURSIVE_AST_TEST_DEPTH;
         let mut src = String::with_capacity(depth * 3 + 1);
         for _ in 0..depth {
@@ -494,9 +479,6 @@ mod stack_growth {
 
     #[test]
     fn ternary_else_chain_grows_stack() {
-        // `1 if 1 else 1 if 1 else ...` — the `else` operand recurses at the
-        // conditional layer (`parse_if_expression` -> `orelse`), which is not
-        // covered by the binary-expression guard.
         let depth = RECURSIVE_AST_TEST_DEPTH;
         let mut src = String::with_capacity(depth * 12 + 1);
         for _ in 0..depth {
@@ -508,9 +490,6 @@ mod stack_growth {
 
     #[test]
     fn nested_lambda_chain_grows_stack() {
-        // `lambda: lambda: lambda: ...` — the lambda body recurses at the
-        // conditional layer (`parse_lambda_expr` -> body), bypassing the
-        // binary-expression guard entirely.
         let depth = RECURSIVE_AST_TEST_DEPTH;
         let mut src = String::from("x = ");
         for _ in 0..depth {

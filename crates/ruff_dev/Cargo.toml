@@ -56,7 +56,6 @@ url = { workspace = true }
 indoc = { workspace = true }
 
 [features]
-# Turn off rayon for profiling
 singlethreaded = []
 
 [lints]

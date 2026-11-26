@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Prepare for a release
-#
-# All additional options are passed to `rooster release`
 set -eu
 
 export UV_DEFAULT_INDEX='https://pypi.org/simple'
@@ -14,7 +11,6 @@ cd "$project_root"
 uv run --locked --python 3.12 --only-group release \
     rooster release "$@"
 
-# Bump internal crate versions
 uv run --script "$project_root/scripts/bump-workspace-crate-versions.py"
 
 echo "Updating crate READMEs..."

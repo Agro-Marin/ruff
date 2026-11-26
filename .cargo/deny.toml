@@ -1,17 +1,9 @@
 [bans]
-# Duplicate versions are common in the current dependency graph. Revisit this
-# once enforcing a single version per crate is practical.
 multiple-versions = "allow"
 
-# cargo-deny cannot distinguish defaults requested by workspace manifests from
-# defaults enabled transitively. Check our declarations separately instead.
-# See scripts/check-cargo-bans.py.
 external-default-features = "allow"
 
 [bans.build]
-# Keep this list alphabetically sorted. New external build scripts require
-# explicit review, including dependencies used only on other targets.
-# scripts/check-cargo-bans.py rejects stale entries.
 allow-build-scripts = [
     "alloca",
     "anyhow",
@@ -84,9 +76,6 @@ unknown-git = "deny"
 
 [licenses]
 confidence-threshold = 0.95
-# NOTE: Licenses should only be added to our allow-list
-# after careful human review. All licenses are required
-# to be permissive with respect to redistribution and non-viral.
 allow = [
     "0BSD",
     "Apache-2.0",

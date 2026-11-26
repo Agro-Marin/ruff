@@ -8,7 +8,6 @@ pub(crate) fn expand<'a>(
     prefix_ident: &Ident,
     variants: impl Iterator<Item = (&'a str, &'a Vec<Attribute>)>,
 ) -> proc_macro2::TokenStream {
-    // Build up a map from prefix to matching RuleCodes.
     let mut prefix_to_codes: BTreeMap<String, BTreeSet<String>> = BTreeMap::default();
     let mut code_to_attributes: BTreeMap<String, &[Attribute]> = BTreeMap::default();
 
@@ -102,12 +101,10 @@ pub(crate) fn intersection_all<'a, T: PartialEq>(
     mut slices: impl Iterator<Item = &'a [T]>,
 ) -> Vec<&'a T> {
     if let Some(slice) = slices.next() {
-        // Collect all the items in the first slice
         let mut intersection = Vec::with_capacity(slice.len());
         for item in slice {
             intersection.push(item);
         }
-        // Then only keep items that are present in each of the remaining slices
         for slice in slices {
             intersection.retain(|item| slice.contains(item));
         }
@@ -120,7 +117,6 @@ pub(crate) fn intersection_all<'a, T: PartialEq>(
 /// Returns an identifier for the given prefix.
 pub(crate) fn get_prefix_ident(prefix: &str) -> Ident {
     let prefix = if prefix.as_bytes()[0].is_ascii_digit() {
-        // Identifiers in Rust may not start with a number.
         format!("_{prefix}")
     } else {
         prefix.to_string()

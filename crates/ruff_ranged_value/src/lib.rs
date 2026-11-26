@@ -230,7 +230,6 @@ where
     }
 }
 
-// The type already has an `iter` method thanks to `Deref`.
 #[expect(clippy::into_iter_without_iter)]
 impl<'a, T> IntoIterator for &'a RangedValue<T>
 where
@@ -243,7 +242,6 @@ where
     }
 }
 
-// The type already has a `into_iter_mut` method thanks to `DerefMut`.
 #[expect(clippy::into_iter_without_iter)]
 impl<'a, T> IntoIterator for &'a mut RangedValue<T>
 where

@@ -36,7 +36,6 @@ class Section(NamedTuple):
     title: str
     filename: str
     generated: bool
-    # If subsections is present, the `filename` and `generated` value is unused.
     subsections: Sequence[Section] | None = None
 
 
@@ -109,7 +108,6 @@ def clean_file_content(content: str, title: str) -> str:
         if not in_code_block and line.startswith("#"):
             lines[i] = line[1:]
 
-    # Remove trailing empty lines.
     for line in reversed(lines):
         if line == "":
             del lines[-1]
@@ -118,7 +116,6 @@ def clean_file_content(content: str, title: str) -> str:
 
     content = "\n".join(lines) + "\n"
 
-    # Add a missing title.
     return f"# {title}\n\n" + content
 
 
@@ -134,11 +131,9 @@ def generate_rule_metadata(rule_doc: Path) -> None:
     ---
     ```
     """
-    # Read the rule doc into lines.
     with rule_doc.open("r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    # Get the description and rule code from the rule doc lines.
     rule_code = None
     description = None
     title_found = False
@@ -147,10 +142,6 @@ def generate_rule_metadata(rule_doc: Path) -> None:
         if line == "\n":
             continue
 
-        # Assume that the only first-level heading is the rule title and optional code.
-        #
-        # For example: given `# abstract-base-class-without-abstract-method (B024)`,
-        # extract the rule code (`B024`).
         if line.startswith("# "):
             title_found = True
             _, separator, code = line.strip().rpartition(" (")
@@ -159,7 +150,7 @@ def generate_rule_metadata(rule_doc: Path) -> None:
 
         if line.startswith("## What it does"):
             what_it_does_found = True
-            continue  # Skip the '## What it does' line
+            continue
 
         if what_it_does_found and description is None:
             description = line.removesuffix("\n")
@@ -189,7 +180,6 @@ def main() -> None:
     with Path("README.md").open(encoding="utf8") as fp:
         content = fp.read()
 
-    # Rewrite links to the documentation.
     for src, dst in LINK_REWRITES.items():
         before = content
         after = content.replace(f"({src})", f"({dst})")
@@ -204,14 +194,12 @@ def main() -> None:
 
     Path("docs").mkdir(parents=True, exist_ok=True)
 
-    # Split the README.md into sections.
     for title, filename, generated, _ in SECTIONS:
         if not generated:
             continue
 
         with Path(f"docs/{filename}").open("w+", encoding="utf8") as f:
             if filename == "contributing.md":
-                # Copy the CONTRIBUTING.md.
                 shutil.copy("CONTRIBUTING.md", "docs/contributing.md")
                 continue
 
@@ -247,9 +235,6 @@ def main() -> None:
             f.write(clean_file_content(file_content, title))
 
     for rule_doc in Path("docs/rules").glob("*.md"):
-        # Format rules docs. This has to be completed before adding the meta description
-        # otherwise the meta description will be formatted in a way that mkdocs does not
-        # support.
         mdformat.file(rule_doc, extensions=["mkdocs"])
 
         generate_rule_metadata(rule_doc)
@@ -257,13 +242,11 @@ def main() -> None:
     with Path("mkdocs.template.yml").open(encoding="utf8") as fp:
         config = yaml.safe_load(fp)
 
-    # Add the redirect section to mkdocs.yml.
     redirect_maps = json.loads(
         subprocess.check_output(["cargo", "dev", "generate-rule-redirects"]),
     )
     config["plugins"].append({"redirects": {"redirect_maps": redirect_maps}})
 
-    # Add the nav section to mkdocs.yml.
     config["nav"] = []
     for section in SECTIONS:
         if section.subsections is None:

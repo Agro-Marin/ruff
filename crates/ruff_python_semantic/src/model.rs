@@ -244,8 +244,6 @@ impl<'a> SemanticModel<'a> {
         let builtin_count = python_builtins(target_version.minor, source_type.is_ipynb()).count()
             + python_magic_globals(target_version.minor).count()
             + custom_builtins.len();
-        // Match the capacity that repeated `push` calls would reach while avoiding the
-        // intermediate allocations.
         semantic
             .bindings
             .reserve_exact(builtin_count.next_power_of_two());
@@ -405,7 +403,6 @@ impl<'a> SemanticModel<'a> {
     where
         'expr: 'a,
     {
-        // Fast path: we only need to worry about name expressions
         if !self.seen_module(Modules::BUILTINS) {
             let name = &expr.as_name_expr()?.id;
             return if self.has_builtin_binding(name) {
@@ -415,7 +412,6 @@ impl<'a> SemanticModel<'a> {
             };
         }
 
-        // Slow path: we have to consider names and attributes
         let qualified_name = self.resolve_qualified_name(expr)?;
         match qualified_name.segments() {
             ["" | "builtins", name] => Some(*name),
@@ -428,7 +424,6 @@ impl<'a> SemanticModel<'a> {
     /// or `builtins.object` (where `builtins` is imported as a module at the top level)
     pub fn match_builtin_expr(&self, expr: &Expr, symbol: &str) -> bool {
         debug_assert!(!symbol.contains('.'));
-        // fast path with more short-circuiting
         if !self.seen_module(Modules::BUILTINS) {
             let Expr::Name(ast::ExprName { id, .. }) = expr else {
                 return false;
@@ -436,7 +431,6 @@ impl<'a> SemanticModel<'a> {
             return id == symbol && self.has_builtin_binding(symbol);
         }
 
-        // slow path: we need to consider attribute accesses and aliased imports
         let Some(qualified_name) = self.resolve_qualified_name(expr) else {
             return false;
         };
@@ -465,12 +459,10 @@ impl<'a> SemanticModel<'a> {
         let is_unbound = self.scopes[self.scope_id]
             .get(symbol)
             .is_none_or(|binding_id| {
-                // Treat the deletion of a name as a reference to that name.
                 self.add_local_reference(binding_id, ExprContext::Del, range);
                 self.bindings[binding_id].is_unbound()
             });
 
-        // If the binding is unbound, we need to add an unresolved reference.
         if is_unbound {
             self.unresolved_references.push(
                 range,
@@ -483,12 +475,9 @@ impl<'a> SemanticModel<'a> {
 
     /// Resolve a `load` reference to an [`ast::ExprName`].
     pub fn resolve_load(&mut self, name: &'a ast::ExprName) -> ReadResult {
-        // PEP 563 indicates that if a forward reference can be resolved in the module scope, we
-        // should prefer it over local resolutions.
         if self.in_forward_reference() {
             if let Some(binding_id) = self.scopes.global().get(name.id.as_str()) {
                 if !self.bindings[binding_id].is_unbound() {
-                    // Mark the binding as used.
                     let reference_id = self.resolved_references.push(
                         ScopeId::global(),
                         self.node_id,
@@ -498,7 +487,6 @@ impl<'a> SemanticModel<'a> {
                     );
                     self.bindings[binding_id].references.push(reference_id);
 
-                    // Mark any submodule aliases as used.
                     if let Some(binding_id) =
                         self.resolve_submodule(name.id.as_str(), ScopeId::global(), binding_id)
                     {
@@ -523,38 +511,17 @@ impl<'a> SemanticModel<'a> {
         for (index, scope_id) in self.scopes.ancestor_ids(self.scope_id).enumerate() {
             let scope = &self.scopes[scope_id];
             if scope.kind.is_class() {
-                // Do not allow usages of class symbols unless it is the immediate parent
-                // (excluding type scopes), e.g.:
-                //
-                // ```python
-                // class Foo:
-                //      a = 0
-                //
-                //      b = a  # allowed
-                //      def c(self, arg=a):  # allowed
-                //          print(arg)
-                //
-                //      def d(self):
-                //          print(a)  # not allowed
-                // ```
                 if !class_variables_visible {
                     continue;
                 }
             }
 
-            // Allow class variables to be visible for an additional scope level
-            // when a type scope is seen — this covers the type scope present between
-            // function and class definitions and their parent class scope.
-            //
-            // Also allow an additional level beyond that to cover the implicit
-            // `__class__` closure created around methods and enclosing the type scope.
             class_variables_visible = matches!(
                 (scope.kind, index),
                 (ScopeKind::Type, 0) | (ScopeKind::DunderClassCell, 1)
             );
 
             if let Some(binding_id) = scope.get(name.id.as_str()) {
-                // Mark the binding as used.
                 let reference_id = self.resolved_references.push(
                     self.scope_id,
                     self.node_id,
@@ -564,7 +531,6 @@ impl<'a> SemanticModel<'a> {
                 );
                 self.bindings[binding_id].references.push(reference_id);
 
-                // Mark any submodule aliases as used.
                 if let Some(binding_id) =
                     self.resolve_submodule(name.id.as_str(), scope_id, binding_id)
                 {
@@ -579,24 +545,6 @@ impl<'a> SemanticModel<'a> {
                 }
 
                 match self.bindings[binding_id].kind {
-                    // Type annotations are generally not treated as resolved. For example, given:
-                    //
-                    // ```python
-                    // name: str
-                    // print(name)
-                    // ```
-                    //
-                    // The `name` in `print(name)` should be treated as unresolved, but the `name` in
-                    // `name: str` should be treated as used.
-                    //
-                    // There are two exceptions to this rule:
-                    // 1. Stub files. In a stub file, it _is_ considered valid to resolve to a
-                    //    type annotation.
-                    // 2. Bare annotations inside functions. Per PEP 526, these create local
-                    //    variables, so we stop searching outer scopes and resolve them as unbound
-                    //    locals (or not found, if accessed from a nested scope). The binding ID
-                    //    is recorded in the unresolved reference so the linter can suppress the
-                    //    error if a nested scope initializes the variable via `nonlocal`.
                     BindingKind::Annotation if !self.in_stub_file() => {
                         if self.scopes[self.bindings[binding_id].scope]
                             .kind
@@ -616,43 +564,11 @@ impl<'a> SemanticModel<'a> {
                         continue;
                     }
 
-                    // If it's a deletion, don't treat it as resolved, since the name is now
-                    // unbound. For example, given:
-                    //
-                    // ```python
-                    // x = 1
-                    // del x
-                    // print(x)
-                    // ```
-                    //
-                    // The `x` in `print(x)` should be treated as unresolved.
-                    //
-                    // Similarly, given:
-                    //
-                    // ```python
-                    // try:
-                    //     pass
-                    // except ValueError as x:
-                    //     pass
-                    //
-                    // print(x)
-                    //
-                    // The `x` in `print(x)` should be treated as unresolved.
                     BindingKind::Deletion => {
-                        // In stub files, `del` is used to hide names from re-export
-                        // while the name is still valid for use in type annotations
-                        // within the same file. Since annotations are deferred in
-                        // stubs, the `Deletion` binding is seen at resolve time even
-                        // though the reference textually precedes the `del`. Resolve
-                        // to the shadowed (pre-`del`) binding when available.
                         if self.in_stub_file() {
                             if let Some(shadowed_id) =
                                 self.scopes[scope_id].shadowed_binding(binding_id)
                             {
-                                // Only suppress F821 when the reference textually precedes
-                                // the `del` statement. If `del` comes before the reference,
-                                // the name is genuinely undefined at that point and F821
-                                // should still fire.
                                 let deletion_range = self.bindings[binding_id].range;
                                 if !self.bindings[shadowed_id].is_unbound()
                                     && name.range.start() < deletion_range.start()
@@ -690,23 +606,7 @@ impl<'a> SemanticModel<'a> {
                         return ReadResult::UnboundLocal(binding_id);
                     }
 
-                    // If we hit an unbound exception that shadowed a bound name, resole to the
-                    // bound name. For example, given:
-                    //
-                    // ```python
-                    // x = 1
-                    //
-                    // try:
-                    //     pass
-                    // except ValueError as x:
-                    //     pass
-                    //
-                    // print(x)
-                    // ```
-                    //
-                    // The `x` in `print(x)` should resolve to the `x` in `x = 1`.
                     BindingKind::UnboundException(Some(binding_id)) => {
-                        // Mark the binding as used.
                         let reference_id = self.resolved_references.push(
                             self.scope_id,
                             self.node_id,
@@ -716,7 +616,6 @@ impl<'a> SemanticModel<'a> {
                         );
                         self.bindings[binding_id].references.push(reference_id);
 
-                        // Mark any submodule aliases as used.
                         if let Some(binding_id) =
                             self.resolve_submodule(name.id.as_str(), scope_id, binding_id)
                         {
@@ -736,7 +635,6 @@ impl<'a> SemanticModel<'a> {
 
                     BindingKind::Global(Some(binding_id))
                     | BindingKind::Nonlocal(binding_id, _) => {
-                        // Mark the shadowed binding as used.
                         let reference_id = self.resolved_references.push(
                             self.scope_id,
                             self.node_id,
@@ -746,34 +644,17 @@ impl<'a> SemanticModel<'a> {
                         );
                         self.bindings[binding_id].references.push(reference_id);
 
-                        // Treat it as resolved.
                         self.resolved_names.insert(name.into(), binding_id);
                         return ReadResult::Resolved(binding_id);
                     }
 
                     _ => {
-                        // Otherwise, treat it as resolved.
                         self.resolved_names.insert(name.into(), binding_id);
                         return ReadResult::Resolved(binding_id);
                     }
                 }
             }
 
-            // Allow usages of `__module__` and `__qualname__` within class scopes, e.g.:
-            //
-            // ```python
-            // class Foo:
-            //     print(__qualname__)
-            // ```
-            //
-            // Intentionally defer this check to _after_ the standard `scope.get` logic, so that
-            // we properly attribute reads to overridden class members, e.g.:
-            //
-            // ```python
-            // class Foo:
-            //     __qualname__ = "Bar"
-            //     print(__qualname__)
-            // ```
             if index == 0 && scope.kind.is_class() {
                 if matches!(name.id.as_str(), "__module__" | "__qualname__") {
                     return ReadResult::ImplicitGlobal;
@@ -985,18 +866,6 @@ impl<'a> SemanticModel<'a> {
         for (index, scope_id) in self.scopes.ancestor_ids(scope_id).enumerate() {
             let scope = &self.scopes[scope_id];
 
-            // Only once we leave a function scope and its enclosing type scope should
-            // we stop doing source-order lookups. We could e.g. have nested classes
-            // where we lookup symbols from the innermost class scope, which can only see
-            // things from the outer class(es) that have been defined before the inner
-            // class. Source-order lookups take advantage of the fact that most of the
-            // bindings are created sequentially in source order, so if we want to
-            // determine whether or not a given reference can refer to another binding
-            // we can look at their text ranges to check whether or not the binding
-            // could actually be referred to. This is not as robust as back-tracking
-            // the AST, since that can properly take care of the few out-of order
-            // corner-cases, but back-tracking the AST from the reference to the binding
-            // is a lot more expensive than comparing a pair of text ranges.
             if seen_function && !scope.kind.is_type() {
                 source_order_sensitive_lookup = false;
             }
@@ -1015,9 +884,6 @@ impl<'a> SemanticModel<'a> {
 
             if let Some(binding_id) = scope.get(symbol) {
                 if source_order_sensitive_lookup {
-                    // we need to look through all the shadowed bindings
-                    // since we may be shadowing a source-order accurate
-                    // runtime binding with a source-order inaccurate one
                     for shadowed_id in scope.shadowed_bindings(binding_id) {
                         let binding = &self.bindings[shadowed_id];
                         if typing_only_bindings_status.is_disallowed()
@@ -1032,10 +898,6 @@ impl<'a> SemanticModel<'a> {
                             continue;
                         }
 
-                        // This ensures we perform the correct source-order lookup,
-                        // since the ranges for these two types of bindings are trimmed
-                        // to just the target, but the name is not available until the
-                        // end of the entire statement
                         let binding_range = match binding.statement(self) {
                             Some(Stmt::Assign(stmt)) => stmt.range(),
                             Some(Stmt::AnnAssign(stmt)) => stmt.range(),
@@ -1088,16 +950,13 @@ impl<'a> SemanticModel<'a> {
     pub fn lookup_attribute_in_scope(&self, value: &Expr, scope_id: ScopeId) -> Option<BindingId> {
         let unqualified_name = UnqualifiedName::from_expr(value)?;
 
-        // Find the symbol in the current scope.
         let (symbol, attribute) = unqualified_name.segments().split_first()?;
         let mut binding_id = self
             .lookup_symbol_in_scope(symbol, scope_id, self.in_forward_reference())
             .binding_id()?;
 
-        // Recursively resolve class attributes, e.g., `foo.bar.baz` in.
         let mut tail = attribute;
         while let Some((symbol, rest)) = tail.split_first() {
-            // Find the next symbol in the class scope.
             let BindingKind::ClassDefinition(scope_id) = self.binding(binding_id).kind else {
                 return None;
             };
@@ -1115,36 +974,23 @@ impl<'a> SemanticModel<'a> {
         scope_id: ScopeId,
         binding_id: BindingId,
     ) -> Option<BindingId> {
-        // If the name of a submodule import is the same as an alias of another import, and the
-        // alias is used, then the submodule import should be marked as used too.
-        //
-        // For example, mark `pyarrow.csv` as used in:
-        //
-        // ```python
-        // import pyarrow as pa
-        // import pyarrow.csv
-        // print(pa.csv.read_csv("test.csv"))
-        // ```
         let import = self.bindings[binding_id].as_any_import()?;
         if !import.is_import() {
             return None;
         }
 
-        // Grab, e.g., `pyarrow` from `import pyarrow as pa`.
         let call_path = import.qualified_name();
         let segment = call_path.segments().last()?;
         if *segment == symbol {
             return None;
         }
 
-        // Locate the submodule import (e.g., `pyarrow.csv`) that `pa` aliases.
         let binding_id = self.scopes[scope_id].get(segment)?;
         let submodule = &self.bindings[binding_id].as_any_import()?;
         if !submodule.is_submodule_import() {
             return None;
         }
 
-        // Ensure that the submodule import and the aliased import are from the same module.
         if import.module_name() != submodule.module_name() {
             return None;
         }
@@ -1185,8 +1031,6 @@ impl<'a> SemanticModel<'a> {
     fn may_resolve_to_member(&self, expr: &Expr, member: &str) -> bool {
         match expr {
             Expr::Attribute(attribute) => attribute.attr.as_str() == member,
-            // `from typing import Literal as L` allows `L` to match `Literal`.
-            // A name without a recorded binding still needs a scope lookup.
             Expr::Name(name) => {
                 name.id.as_str() == member
                     || self
@@ -1225,7 +1069,6 @@ impl<'a> SemanticModel<'a> {
             }
         }
 
-        // If the name was already resolved, look it up; otherwise, search for the symbol.
         let head = match_head(value)?;
         let symbol = self
             .resolve_name(head)
@@ -1263,15 +1106,12 @@ impl<'a> SemanticModel<'a> {
             }
             BindingKind::Builtin => {
                 if value.is_name_expr() {
-                    // Ex) `dict`
                     Some(QualifiedName::builtin(head.id.as_str()))
                 } else {
-                    // Ex) `dict.__dict__`
                     QualifiedName::builtin(head.id.as_str()).qualify(value)
                 }
             }
             BindingKind::ClassDefinition(_) | BindingKind::FunctionDefinition(_) => {
-                // If we have a fully-qualified path for the module, use it.
                 if let Some(path) = self.module.qualified_name() {
                     Some(
                         path.iter()
@@ -1285,7 +1125,6 @@ impl<'a> SemanticModel<'a> {
                             .collect(),
                     )
                 } else {
-                    // Otherwise, if we're in (e.g.) a script, use the module name.
                     Some(
                         std::iter::once(self.module.name()?)
                             .chain(
@@ -1319,7 +1158,6 @@ impl<'a> SemanticModel<'a> {
         module: &str,
         member: &str,
     ) -> Option<ImportedName> {
-        // TODO(charlie): Pass in a slice.
         let module_path: Vec<&str> = module.split('.').collect();
         self.current_scopes()
             .enumerate()
@@ -1327,14 +1165,10 @@ impl<'a> SemanticModel<'a> {
                 let mut imported_names = scope.bindings().filter_map(|(name, binding_id)| {
                     let binding = &self.bindings[binding_id];
                     match &binding.kind {
-                        // Ex) Given `module="sys"` and `object="exit"`:
-                        // `import sys`         -> `sys.exit`
-                        // `import sys as sys2` -> `sys2.exit`
                         BindingKind::Import(Import { qualified_name })
                             if qualified_name.segments() == module_path.as_slice() =>
                         {
                             if let Some(source) = binding.source {
-                                // Verify that `sys` isn't bound in an inner scope.
                                 if self
                                     .current_scopes()
                                     .take(scope_index)
@@ -1349,9 +1183,6 @@ impl<'a> SemanticModel<'a> {
                                 }
                             }
                         }
-                        // Ex) Given `module="os.path"` and `object="join"`:
-                        // `from os.path import join`          -> `join`
-                        // `from os.path import join as join2` -> `join2`
                         BindingKind::FromImport(FromImport { qualified_name }) => {
                             if let Some((target_member, target_module)) =
                                 qualified_name.segments().split_last()
@@ -1360,7 +1191,6 @@ impl<'a> SemanticModel<'a> {
                                     && target_member == &member
                                 {
                                     if let Some(source) = binding.source {
-                                        // Verify that `join` isn't bound in an inner scope.
                                         if self
                                             .current_scopes()
                                             .take(scope_index)
@@ -1377,15 +1207,10 @@ impl<'a> SemanticModel<'a> {
                                 }
                             }
                         }
-                        // Ex) Given `module="os"` and `object="name"`:
-                        // `import os.path ` -> `os.name`
-                        // Ex) Given `module="os.path"` and `object="join"`:
-                        // `import os.path ` -> `os.path.join`
                         BindingKind::SubmoduleImport(SubmoduleImport { qualified_name })
                             if qualified_name.segments().starts_with(&module_path) =>
                         {
                             if let Some(source) = binding.source {
-                                // Verify that `os` isn't bound in an inner scope.
                                 if self
                                     .current_scopes()
                                     .take(scope_index)
@@ -1400,7 +1225,6 @@ impl<'a> SemanticModel<'a> {
                                 }
                             }
                         }
-                        // Non-imports.
                         _ => {}
                     }
                     None
@@ -1408,14 +1232,11 @@ impl<'a> SemanticModel<'a> {
 
                 let first = imported_names.next()?;
                 if let Some(second) = imported_names.next() {
-                    // Multiple candidates. We need to sort them because `scope.bindings()` is a HashMap
-                    // which doesn't have a stable iteration order.
 
                     let mut imports: Vec<_> =
                         [first, second].into_iter().chain(imported_names).collect();
                     imports.sort_unstable_by_key(|import| import.range.start());
 
-                    // Return the binding that was imported last.
                     imports.pop()
                 } else {
                     Some(first)
@@ -1752,32 +1573,11 @@ impl<'a> SemanticModel<'a> {
     pub fn set_globals(&mut self, globals: Globals<'a>) {
         // If any global bindings don't already exist in the global scope, add them, unless we are
         // also in the global scope, where we don't want these to count as definitions for rules
-        // like `undefined-name` (F821). For example, adding bindings in the top-level scope causes
-        // a false negative in cases like this:
-        //
-        // ```python
         // global x
-        //
-        // def f():
-        //     print(x)  # F821 false negative
-        // ```
-        //
-        // On the other hand, failing to add bindings in non-top-level scopes causes false
-        // positives:
-        //
-        // ```python
-        // def f():
         //     global foo
-        //     import foo
-        //
-        // def g():
-        //     foo.is_used()  # F821 false positive
-        // ```
         if !self.at_top_level() {
             for (name, range) in globals.iter() {
                 // Global pre-scanning synthesizes an assignment when no global binding exists.
-                // Materialize builtins first so `global range` doesn't replace the builtin with
-                // that synthetic assignment.
                 self.materialize_builtin_binding(name);
                 if self
                     .global_scope()
@@ -1860,22 +1660,12 @@ impl<'a> SemanticModel<'a> {
         let mut parent_expressions = self.current_expressions().skip(1);
 
         match parent_expressions.next() {
-            // The parent expression of the inner union is a single `typing.Union`.
-            // Ex) `Union[Union[a, b]]`
             Some(Expr::Subscript(parent)) => self.match_typing_expr(&parent.value, "Union"),
-            // The parent expression is of the inner union is a tuple with two or more
-            // comma-separated elements and the parent of that tuple is a `typing.Union`.
-            // Ex) `Union[Union[a, b], Union[c, d]]`
             Some(Expr::Tuple(_)) => parent_expressions
                 .next()
                 .and_then(Expr::as_subscript_expr)
                 .is_some_and(|grandparent| self.match_typing_expr(&grandparent.value, "Union")),
-            // The parent expression of the inner union is a PEP604-style union.
-            // Ex) `a | b | c` or `Union[a, b] | c`
-            // In contrast to `typing.Union`, PEP604-style unions are always binary operations, e.g.
-            // the expression `a | b | c` is represented by two binary unions: `(a | b) | c`.
             Some(Expr::BinOp(bin_op)) => bin_op.op.is_bit_or(),
-            // Not a nested union otherwise.
             _ => false,
         }
     }
@@ -1886,8 +1676,6 @@ impl<'a> SemanticModel<'a> {
         let mut parent_expressions = self.current_expressions().skip(1);
         matches!(
             parent_expressions.next(),
-            // The parent expression is a single `typing.Optional`.
-            // Ex) `Optional[EXPR]`
             Some(Expr::Subscript(parent)) if self.match_typing_expr(&parent.value, "Optional")
         )
     }
@@ -1898,17 +1686,11 @@ impl<'a> SemanticModel<'a> {
         let mut parent_expressions = self.current_expressions().skip(1);
 
         match parent_expressions.next() {
-            // The parent expression of the current `Literal` is a tuple, and the
-            // grandparent is a `Literal`.
-            // Ex) `Literal[Literal[str], Literal[int]]`
             Some(Expr::Tuple(_)) => parent_expressions
                 .next()
                 .and_then(Expr::as_subscript_expr)
                 .is_some_and(|grandparent| self.match_typing_expr(&grandparent.value, "Literal")),
-            // The parent expression of the current `Literal` is also a `Literal`.
-            // Ex) `Literal[Literal[str]]`
             Some(Expr::Subscript(parent)) => self.match_typing_expr(&parent.value, "Literal"),
-            // Not a nested literal otherwise
             _ => false,
         }
     }
@@ -1918,7 +1700,6 @@ impl<'a> SemanticModel<'a> {
     ///
     /// This implementation assumes that the statements are in the same scope.
     pub fn same_branch(&self, left: NodeId, right: NodeId) -> bool {
-        // Collect the branch path for the left statement.
         let left = self
             .nodes
             .branch_id(left)
@@ -1926,7 +1707,6 @@ impl<'a> SemanticModel<'a> {
             .flat_map(|branch_id| self.branches.ancestor_ids(*branch_id))
             .collect::<Vec<_>>();
 
-        // Collect the branch path for the right statement.
         let right = self
             .nodes
             .branch_id(right)
@@ -1958,7 +1738,6 @@ impl<'a> SemanticModel<'a> {
     ///
     /// This implementation assumes that the statements are in the same scope.
     pub fn dominates(&self, dominator: NodeId, node: NodeId) -> bool {
-        // Collect the branch path for the left statement.
         let dominator = self
             .nodes
             .branch_id(dominator)
@@ -1966,7 +1745,6 @@ impl<'a> SemanticModel<'a> {
             .flat_map(|branch_id| self.branches.ancestor_ids(*branch_id))
             .collect::<Vec<_>>();
 
-        // Collect the branch path for the right statement.
         let node = self
             .nodes
             .branch_id(node)
@@ -1974,8 +1752,6 @@ impl<'a> SemanticModel<'a> {
             .flat_map(|branch_id| self.branches.ancestor_ids(*branch_id))
             .collect::<Vec<_>>();
 
-        // Note that the paths are in "reverse" order -
-        // from most nested to least nested.
         node.ends_with(&dominator)
     }
 
@@ -1986,21 +1762,6 @@ impl<'a> SemanticModel<'a> {
         match expr {
             Expr::Tuple(tuple) => tuple.iter().all(|expr| self.is_unused(expr)),
             Expr::Name(ast::ExprName { id, .. }) => {
-                // Treat a variable as used if it has any usages, _or_ it's shadowed by another variable
-                // with usages.
-                //
-                // If we don't respect shadowing, we'll incorrectly flag `bar` as unused in:
-                // ```python
-                // from random import random
-                //
-                // for bar in range(10):
-                //     if random() > 0.5:
-                //         break
-                // else:
-                //     bar = 1
-                //
-                // print(bar)
-                // ```
                 self.current_scope()
                     .get_all(id)
                     .map(|binding_id| self.binding(binding_id))
@@ -2374,7 +2135,6 @@ impl<'a> SemanticModel<'a> {
         let mut first = true;
         let mut binding_id = binding_id;
         std::iter::from_fn(move || {
-            // First, check whether this binding is shadowing another binding in a different scope.
             if std::mem::take(&mut first) {
                 if let Some(shadowed_id) = self.shadowed_bindings.get(&binding_id).copied() {
                     return Some(ShadowedBinding {
@@ -2385,7 +2145,6 @@ impl<'a> SemanticModel<'a> {
                 }
             }
 
-            // Otherwise, check whether this binding is shadowing another binding in the same scope.
             if let Some(shadowed_id) = self.scopes[scope_id].shadowed_binding(binding_id) {
                 let next = ShadowedBinding {
                     binding_id,
@@ -2393,7 +2152,6 @@ impl<'a> SemanticModel<'a> {
                     same_scope: true,
                 };
 
-                // Advance to the next binding in the scope.
                 first = true;
                 binding_id = shadowed_id;
 
@@ -2495,14 +2253,12 @@ impl<'a> SemanticModel<'a> {
                 return;
             }
 
-            // The assignment may not execute. Only modules already known to be lazy remain so.
             for (module, laziness) in &mut modules {
                 if !self.module_laziness(module).is_lazy() {
                     *laziness = ImportLaziness::Unknown;
                 }
             }
 
-            // A removed entry may still be lazy on paths where the assignment does not execute.
             if let Some(LazyModules::Known(previous)) = &self.lazy_modules {
                 for module in previous.keys() {
                     modules.entry(module).or_insert(ImportLaziness::Unknown);

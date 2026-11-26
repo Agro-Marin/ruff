@@ -67,13 +67,11 @@ impl<'db> Type<'db> {
         class: ClassType<'db>,
     ) -> Self {
         match class.class_literal(db) {
-            // Dynamic classes created via `type()` don't have special instance types.
             ClassLiteral::Dynamic(_)
             | ClassLiteral::DynamicNamedTuple(_)
             | ClassLiteral::DynamicEnum(_) => {
                 Type::NominalInstance(NominalInstanceType::from_class(db, class))
             }
-            // Functional TypedDicts return a TypedDict instance type.
             ClassLiteral::DynamicTypedDict(_) => Type::typed_dict(class),
             ClassLiteral::Static(class_literal) => match class_literal.known(db) {
                 Some(KnownClass::Tuple) => {
@@ -128,9 +126,6 @@ impl<'db> Type<'db> {
     }
 
     pub(crate) const fn sys_version_info() -> Self {
-        // Keep construction query-free: resolving the backing typeshed class here is on the hot
-        // path for projects with many version guards. Resolve it lazily when class behavior is
-        // actually needed instead.
         Type::NominalInstance(NominalInstanceType(NominalInstanceInner::SysVersionInfo))
     }
 
@@ -201,8 +196,6 @@ impl<'db> Type<'db> {
 /// A type representing the set of runtime objects which are instances of a certain nominal class.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, get_size2::GetSize, salsa::SalsaValue)]
 pub struct NominalInstanceType<'db>(
-    // Keep this field private, so that the only way of constructing `NominalInstanceType` instances
-    // is through the `Type::instance` constructor function.
     NominalInstanceInner<'db>,
 );
 
@@ -273,9 +266,6 @@ impl<'db> NominalInstanceType<'db> {
             return false;
         }
 
-        // Specialization changes the arguments of a base, never its class identity.
-        // C3 already compares origins when merging the MRO. If the unspecialized
-        // MRO is invalid or incomplete, leave the decision to the full relation.
         let excludes = |source: super::StaticClassLiteral<'db>, target| {
             source.try_mro_ancestors(db, None).is_ok_and(|bases| {
                 bases.iter().all(|base| match base {
@@ -340,7 +330,6 @@ impl<'db> NominalInstanceType<'db> {
             NominalInstanceInner::Object => None,
             NominalInstanceInner::NonTuple(class) => {
                 let class = class.class(db);
-                // Avoid an expensive MRO traversal for common stdlib classes.
                 if class
                     .known(db)
                     .is_some_and(|known_class| !known_class.is_tuple_subclass())
@@ -459,11 +448,6 @@ impl<'db> NominalInstanceType<'db> {
 
     pub(super) fn is_singleton(self, db: &'db dyn Db) -> bool {
         match self.0 {
-            // The empty tuple is a singleton on CPython and PyPy, but not on other Python
-            // implementations such as GraalPy. Its *use* as a singleton is discouraged and
-            // should not be relied on for type narrowing, so we do not treat it as one.
-            // See:
-            // https://docs.python.org/3/reference/expressions.html#parenthesized-forms
             NominalInstanceInner::ExactTuple(_) | NominalInstanceInner::Object => false,
             NominalInstanceInner::SysVersionInfo => true,
             NominalInstanceInner::NonTuple(class) => class
@@ -538,8 +522,6 @@ fn builtin_tuple_spec<'db>(db: &'db dyn Db, class: ClassType<'db>) -> Cow<'db, T
         return Cow::Borrowed(tuple);
     }
 
-    // Generic call inference can specialize the class's element type without constructing
-    // an explicit tuple shape, for example when `tuple` is passed as a callback.
     Cow::Owned(match specialization.map(|spec| spec.types(db)) {
         Some([Type::Never]) => TupleSpec::heterogeneous([]),
         Some([element]) => TupleSpec::homogeneous(*element),
@@ -673,8 +655,6 @@ fn protocol_materialization_is_noop_with_type_parameters<'db>(
         }
 
         fn visit_bound_type_var_type(&self, db: &'db dyn Db, variable: BoundTypeVarInstance<'db>) {
-            // Signature generic contexts are visited even for unused parameters, so this also
-            // rejects method-scoped type variables absent from parameter and return types.
             if !variable.typevar(db).is_self(db)
                 && self
                     .class_context
@@ -714,8 +694,6 @@ fn protocol_materialization_is_noop_with_type_parameters<'db>(
                     if class.class_literal(db) != self.origin {
                         self.invalid.set(true);
                     } else if let Some((_, Some(specialization))) = class.static_class_literal(db) {
-                        // Type variables in a recursive specialization are expected, but an
-                        // embedded gradual or unresolved type can change under materialization.
                         self.invalid.set(
                             specialization.materialization_kind(db).is_some()
                                 || specialization.tuple(db).is_some()
@@ -784,8 +762,6 @@ fn protocol_materialization_is_noop_with_type_parameters<'db>(
                             !specialization_argument_is_static(db, env, bound, None)
                         }
                         TypeVarBoundOrConstraints::Constraints(constraints) => {
-                            // Check each constraint: their union could hide a gradual type,
-                            // as with `(object, Any)`.
                             constraints.elements(db).iter().any(|constraint| {
                                 !specialization_argument_is_static(db, env, *constraint, None)
                             })
@@ -870,14 +846,9 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         ty: Type<'db>,
         protocol: ProtocolInstanceType<'db>,
     ) -> ConstraintSet<'db, 'c> {
-        // Explicit protocol inheritance establishes subtyping even when a subclass overrides
-        // members incompatibly.
         let mut result = self.never();
         let source_protocol = ty.as_protocol_instance();
 
-        // Every gradual type lies between its bottom and top materializations, and is assignable
-        // to and from either one. Each materialization is a subtype of itself. For the same class
-        // specialization, we can check these relations without expanding recursive members.
         if let Some(source) = source_protocol
             && let (Some(source_origin), Some(target_origin)) =
                 (source.class_origin(db), protocol.class_origin(db))
@@ -893,11 +864,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 | (None, Some(MaterializationKind::Bottom))
                     if self.relation.is_assignability() =>
                 {
-                    // A specialization may already carry a separate materialization marker.
-                    // For example, materializing `Box[Any]`, where `Box[T]` has an invariant
-                    // `P[T]` member, can put `Top` on the `P[Any]` specialization. A separate
-                    // `Bottom` protocol wrapper then has that top-materialized specialization
-                    // as its origin, not the original gradual `P[Any]`.
                     source_origin
                         .static_class_literal(db)
                         .is_some_and(|(_, specialization)| {
@@ -912,8 +878,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return self.always();
         }
 
-        // If both instances share a protocol class, a proof that materialization is a no-op can
-        // simplify their comparison.
         if let Some(source) = source_protocol
             && (source.materialization_kind(db).is_some()
                 || protocol.materialization_kind(db).is_some())
@@ -921,7 +885,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 (source.class_origin(db), protocol.class_origin(db))
             && source_origin.class_literal(db) == target_origin.class_literal(db)
         {
-            // For the same specialization, unchanged requirements settle the relationship.
             if source != protocol
                 && source_origin == target_origin
                 && protocol_materialization_is_noop(db, self.env.program(db), source_origin)
@@ -929,9 +892,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 return self.always();
             }
 
-            // A no-op source materialization can be removed before comparing method-only
-            // interfaces. For recursive properties and attributes, keep the wrapper: removing
-            // it can make the cycle guard reject distinct specializations that stabilize.
             if source.materialization_kind(db).is_some()
                 && source.interface(db).has_only_methods(db)
                 && protocol_materialization_is_noop(db, self.env.program(db), source_origin)
@@ -947,10 +907,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         let source_protocol_as_nominal =
             source_protocol.and_then(|source| source.nominal_origin_instance(db));
         if let Some(nominal_instance) = protocol.nominal_origin_instance(db) {
-            // if `ty` and `protocol` are *both* protocols, we also need to treat `ty` as if it
-            // were a nominal type, or we won't consider a protocol `P` that explicitly inherits
-            // from a protocol `Q` to be a subtype of `Q` to be a subtype of `Q` if it overrides
-            // `Q`'s members in a Liskov-incompatible way.
             let type_to_test = source_protocol_as_nominal
                 .map(Type::NominalInstance)
                 .unwrap_or(ty);
@@ -958,12 +914,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             let nominally_satisfied =
                 self.check_type_pair(db, type_to_test, Type::NominalInstance(nominal_instance));
 
-            // `Generator` parameters must be compared nominally. The class specialization
-            // already materializes each parameter according to its variance, while structural
-            // inference through `close() -> ReturnT | None` can infer a spurious `None` on
-            // Python 3.13 and newer.
-            // TODO: Remove the Python 3.13+ extension once
-            // https://github.com/astral-sh/ty/issues/3596 is fixed.
             if nominal_instance.has_known_class(db, KnownClass::Generator)
                 && source_protocol_as_nominal
                     .is_some_and(|source| source.has_known_class(db, KnownClass::Generator))
@@ -972,14 +922,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             }
 
             let env = self.env;
-            // `result` combines nominal and structural ways to satisfy the protocol. Including the
-            // nominal constraints directly is safe when the target's requirements are unchanged or
-            // weakened by top materialization, and the source's requirements are unchanged. It is
-            // also safe when the nominal relation has no solutions to add to `result`.
-            //
-            // Check that inexpensive case first: comparing every requirement of an unrelated
-            // recursive protocol can expand its interface before structural member ordering gets
-            // a chance to reject an incompatible finite member.
             let can_use_nominal_result_directly =
                 nominally_satisfied.is_never_satisfied(db, env, self.inferable)
                     || ((protocol.materialization_kind(db) == Some(MaterializationKind::Top)
@@ -996,11 +938,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 return result;
             }
 
-            // For union simplification, failing the nominal relation between two
-            // specializations of the same protocol class is enough to keep both union elements.
-            // Falling back to the structural relation can recursively compare every protocol
-            // member even though a failed redundancy check only means that we preserve a
-            // potentially redundant union arm.
             let can_use_nominal_redundancy = can_use_nominal_result_directly
                 && matches!(self.relation, TypeRelation::Redundancy { pure: false })
                 && source_protocol_as_nominal.is_some_and(|source_instance| {
@@ -1008,13 +945,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         == nominal_instance.class(db, env).class_literal(db)
                 });
 
-            // Even when the nominal result cannot be accepted on its own, it can help prove
-            // that recursive requirements add no constraints. For materialized protocols, the
-            // helper first checks the actual non-recursive requirements, then checks that their
-            // constraints are enough to establish the nominal relation.
-            //
-            // Eager finite checks can only reject. Lazy comparisons can also contribute
-            // structural solutions, so try them before using the nominal fallback.
             if (self.typevar_evaluation == TypeVarEvaluation::Lazy || !can_use_nominal_redundancy)
                 && let Some(structurally_satisfied) = self.try_check_non_recursive_protocol_members(
                     db,
@@ -1033,9 +963,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             }
         }
 
-        // Fast path: skip expensive per-member type comparisons when members are plainly
-        // missing. When collecting error context, we continue and let the structural check
-        // below report per-member errors instead.
         let env = self.env;
         if !self.is_context_collection_enabled()
             && !has_all_protocol_members_defined(db, env, ty, protocol)
@@ -1055,8 +982,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         {
             structurally_satisfied
         } else {
-            // A finite mismatch can reject the implementation before recursive receivers expand
-            // the protocol again, just as in protocol-to-protocol comparisons.
             protocol
                 .interface(db)
                 .members(db)
@@ -1098,8 +1023,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return None;
         }
 
-        // Nominal arguments alone do not describe materialized requirements such as a fixed
-        // `Any` member. Only use the nominal proof when the pending wrappers are harmless.
         for protocol in [source, target] {
             if let Some(origin) = protocol.materialized_origin(db)
                 && !protocol_materialization_is_noop(db, self.env.program(db), origin)
@@ -1136,9 +1059,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         let source_alias = source_class.into_generic_alias()?;
 
         let source_arguments = source_alias.specialization(db).types(db);
-        // Nested variables, such as `T` in `Concrete[T | Iterable[T]]`, can also be
-        // constrained by the nominal relation. Only variables absent from that relation
-        // require structural inference that the nominal proof cannot account for.
         if source_arguments.iter().any(|argument| {
             any_over_type_expanding_aliases(db, env, *argument, |nested| {
                 matches!(nested, Type::TypeVar(typevar)
@@ -1150,10 +1070,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
 
         let interface = protocol.interface(db);
 
-        // A concrete source normally contributes useful structural inference beyond its nominal
-        // specialization; for example, `()` infers `Iterable[Never]`. Recursive receiver
-        // binding is the exception: same-origin protocol sources and protocols with explicitly
-        // constrained receivers can otherwise repeatedly expand the same interface.
         if !source_arguments
             .iter()
             .any(|argument| argument.is_type_var())
@@ -1263,22 +1179,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return None;
         }
 
-        // Assignability chooses `Bottom` for an unmaterialized source and `Top` for an
-        // unmaterialized target. An explicit `Top -> Bottom` comparison is different:
-        // materialization can make a recursive requirement incompatible even when the type
-        // arguments are compatible.
-        //
-        // For example, consider:
-        //
-        //   class P[T](Protocol):
-        //       def value(self) -> T: ...
-        //       def consume(self, other: P[Any]) -> Any: ...
-        //
-        // Comparing `Top[P[str]]` with `Bottom[P[object]]` accepts `value`, since `str` is a
-        // subtype of `object`. But `consume` returns `object` in the source and must return
-        // `Never` in the target. This fixed `Any` changes independently of `T`, so neither the
-        // finite member nor the nominal comparison detects the mismatch. Leave that direction
-        // to the full structural check.
         let is_materialized = match (
             source_protocol.materialization_kind(db),
             protocol.materialization_kind(db),
@@ -1316,12 +1216,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return None;
         }
 
-        // Remove recursive requirements only from the target, and keep the complete source as
-        // evidence that the remaining requirements are satisfied. For example, when comparing
-        // `Chain[Chain[int]]` with `Chain[object]`, the target's `value() -> object` is
-        // non-recursive, but the source's `value() -> Chain[int]` refers to `Chain`. Filtering both
-        // interfaces would remove the source member we need to establish that valid return-type
-        // comparison.
         let structurally_satisfied = self.check_protocol_interface_pair(
             db,
             ty,
@@ -1332,35 +1226,8 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             ),
         );
 
-        // A skipped member can be the only source of information about a type variable. In this
-        // example, `marker: Any` ensures materialization changes the interface for static arguments:
-        //
-        //   class Pair[First, Second](Protocol):
-        //       marker: Any
         //       @property
-        //       def first(self) -> First: ...
-        //       def recursive_second(self, child: Pair[Any, Any]) -> Second: ...
-        //
-        // For `Top[Pair[int, str]] -> Top[Pair[int, Second]]`, checking `first` tells us nothing
-        // about `Second`; only `recursive_second` supplies `str <: Second`. Check variables in both
-        // source and target arguments, since contravariant callable parameters can reverse the
-        // comparison. Also look through aliases: given `type Identity[T] = T`, the argument
-        // `Identity[Second]` still needs evidence for `Second`.
-        //
-        // Merely mentioning a variable is not enough: a skipped member may add its other bound.
-        // For example:
-        //
-        //   class Invariant[T](Protocol):
-        //       marker: Any
         //       @property
-        //       def value(self) -> T: ...
-        //       def consume(self, other: Invariant[T]) -> None: ...
-        //
-        // Comparing `Top[Invariant[str]]` with `Top[Invariant[T]]`, `value` supplies `str <: T`,
-        // but `consume` also requires `T <: str`. The nominal comparison requires both bounds
-        // because `T` is invariant. Requiring the finite constraints to imply that comparison
-        // catches the missing bound: allowing every supertype of `str` is not enough to prove
-        // `T` must equal `str`.
         if is_materialized
             && (target_alias
                 .specialization(db)
@@ -1380,9 +1247,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return None;
         }
 
-        // We run the eager comparison to reject incompatible finite requirements before
-        // expanding recursive members. If it cannot reject, the caller checks the full
-        // interface instead.
         (self.typevar_evaluation == TypeVarEvaluation::Lazy
             || structurally_satisfied.is_never_satisfied(db, env, self.inferable))
         .then_some(structurally_satisfied)
@@ -1611,7 +1475,6 @@ struct ExplicitAnyInstanceClass<'db> {
     class: ClassType<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for ExplicitAnyInstanceClass<'_> {}
 
 /// The class stored by a non-tuple nominal instance.
@@ -1637,7 +1500,6 @@ impl<'db> NominalInstanceClass<'db> {
         matches!(self, Self::InheritsFromExplicitAny(_))
     }
 
-    // Most protocol member annotations take the plain-class path when checking for `Self`.
     #[inline]
     fn class(self, db: &'db dyn Db) -> ClassType<'db> {
         match self {
@@ -1714,9 +1576,6 @@ impl<'db> VarianceInferable<'db> for NominalInstanceType<'db> {
 pub struct ProtocolInstanceType<'db> {
     pub(super) inner: Protocol<'db>,
 
-    // Keep the inner field here private,
-    // so that the only way of constructing `ProtocolInstanceType` instances
-    // is through the `Type::instance` constructor function.
     _phantom: PhantomData<()>,
 }
 
@@ -1756,8 +1615,6 @@ impl<'db> ProtocolInstanceType<'db> {
             .is_some_and(|class| class.is_known(db, KnownClass::Hashable))
     }
 
-    // Keep this method private, so that the only way of constructing `ProtocolInstanceType`
-    // instances is through the `Type::instance` constructor function.
     fn from_class(class: ProtocolClass<'db>) -> Self {
         Self {
             inner: Protocol::FromClass(class),
@@ -1765,8 +1622,6 @@ impl<'db> ProtocolInstanceType<'db> {
         }
     }
 
-    // Keep this method private, so that the only way of constructing `ProtocolInstanceType`
-    // instances is through the `Type::instance` constructor function.
     fn synthesized(synthesized: SynthesizedProtocolType<'db>) -> Self {
         Self {
             inner: Protocol::Synthesized(synthesized),
@@ -1894,19 +1749,8 @@ impl<'db> ProtocolInstanceType<'db> {
                 SubclassOfType::from_protocol(self)
             }
 
-            // TODO: we can and should do better here.
-            //
-            // This is supported by mypy, and should be supported by us as well.
-            // We'll need to come up with a better solution for the meta-type of
-            // synthesized protocols to solve this:
-            //
-            // ```py
-            // from typing import Callable
-            //
-            // def foo(x: Callable[[], int]) -> None:
             //     reveal_type(type(x))                 # mypy: "type[def (builtins.int) -> builtins.str]"
             //     reveal_type(type(x).__call__)        # mypy: "def (*args: Any, **kwds: Any) -> Any"
-            // ```
             Protocol::Synthesized(_) => KnownClass::Type.to_instance(db, env),
         }
     }
@@ -1938,9 +1782,6 @@ impl<'db> ProtocolInstanceType<'db> {
         ) -> bool {
             let interface = protocol.interface(db);
 
-            // Neither hashability nor instance-dictionary storage is guaranteed for every object.
-            // Subclasses can replace `object.__hash__` with `None`, while slotted instances can
-            // omit the `__dict__` that typeshed broadly declares on `object`.
             if interface.includes_member(db, "__hash__")
                 || interface.includes_member(db, "__dict__")
             {
@@ -1948,10 +1789,6 @@ impl<'db> ProtocolInstanceType<'db> {
             }
 
             let env = ProgramEnvironment::from_program(interface.base().program(db));
-            // A protocol equivalent to `object` must be satisfied by every possible receiver type.
-            // Use an unconstrained type variable so `Self` remains specific to the receiver:
-            // `object.__class__` accepts `type[Self]`, and a concrete return type cannot satisfy
-            // a promise to return `Self` for every receiver.
             let receiver = Type::TypeVar(BoundTypeVarInstance::synthetic(
                 db,
                 &env,
@@ -2141,7 +1978,6 @@ pub(super) struct MaterializedProtocolType<'db> {
     pub(super) materialization_kind: MaterializationKind,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for MaterializedProtocolType<'_> {}
 
 /// A class-backed, synthesized, or lazily materialized protocol.

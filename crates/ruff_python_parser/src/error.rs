@@ -394,8 +394,6 @@ impl std::fmt::Display for LexicalError {
 /// Represents the different types of errors that can occur during lexing.
 #[derive(Debug, Clone, PartialEq, Eq, get_size2::GetSize)]
 pub enum LexicalErrorType {
-    // TODO: Can probably be removed, the places it is used seem to be able
-    // to use the `UnicodeError` variant instead.
     #[doc(hidden)]
     StringError,
     /// A string literal without the closing quote.

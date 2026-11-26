@@ -28,7 +28,6 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 fn main() -> ExitCode {
-    // Enabled ANSI colors on Windows 10.
     #[cfg(windows)]
     assert!(colored::control::set_virtual_terminal(true).is_ok());
 
@@ -50,9 +49,6 @@ fn main() -> ExitCode {
 
 fn report_error(err: &anyhow::Error) -> ExitCode {
     {
-        // Exit "gracefully" on broken pipe errors.
-        //
-        // See: https://github.com/BurntSushi/ripgrep/blob/bf63fe8f258afc09bae6caa48f0ae35eaf115005/crates/core/main.rs#L47C1-L61C14
         for cause in err.chain() {
             if let Some(ioerr) = cause.downcast_ref::<std::io::Error>() {
                 if ioerr.kind() == std::io::ErrorKind::BrokenPipe {
@@ -61,15 +57,9 @@ fn report_error(err: &anyhow::Error) -> ExitCode {
             }
         }
 
-        // Use `writeln` instead of `eprintln` to avoid panicking when the stderr pipe is broken.
         let mut stderr = std::io::stderr().lock();
 
-        // This communicates that this isn't a linter error but ruff itself hard-errored for
-        // some reason (e.g. failed to resolve the configuration)
         writeln!(stderr, "{}", "ruff failed".red().bold()).ok();
-        // Currently we generally only see one error, but e.g. with io errors when resolving
-        // the configuration it is help to chain errors ("resolving configuration failed" ->
-        // "failed to read file: subdir/pyproject.toml")
         for cause in err.chain() {
             writeln!(stderr, "  {} {cause}", "Cause:".bold()).ok();
         }

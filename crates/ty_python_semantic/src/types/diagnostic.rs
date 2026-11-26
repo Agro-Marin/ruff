@@ -1,5 +1,3 @@
-// The doc-comments for structs in this file are user-facing rule documentation,
-// not intended for rustdoc to render.
 #![expect(clippy::doc_link_with_quotes, clippy::doc_overindented_list_items)]
 
 use super::call::CallErrorKind;
@@ -255,7 +253,6 @@ pub(crate) fn register_lints(registry: &mut LintRegistryBuilder) {
     registry.register_lint(&TRUTHINESS_TEST_OF_CALLABLE);
     registry.register_lint(&TRUTHINESS_TEST_OF_ITERABLE);
 
-    // String annotations
     registry.register_lint(&ESCAPE_CHARACTER_IN_FORWARD_ANNOTATION);
     registry.register_lint(&IMPLICIT_STRING_CONCATENATION_IN_ANNOTATION);
     registry.register_alias(
@@ -428,7 +425,6 @@ declare_lint! {
     }
 }
 
-// Added in #17750.
 declare_lint! {
     #[doc = include_str!("../../resources/lint_docs/ambiguous-protocol-member.md")]
     pub(crate) static AMBIGUOUS_PROTOCOL_MEMBER = {
@@ -958,7 +954,6 @@ pub(super) fn report_missing_type_arguments<'db>(
                 return;
             };
 
-            // Don't warn if all type parameters have defaults (PEP 696).
             if generic_context
                 .variables(db)
                 .all(|tv| tv.default_type(db).is_some())
@@ -1843,8 +1838,6 @@ pub(super) fn report_slice_step_size_zero(context: &InferContext, node: AnyNodeR
     builder.into_diagnostic("Slice step size cannot be zero");
 }
 
-// We avoid emitting invalid assignment diagnostic for literal assignments to a `TypedDict`, as
-// they can only occur if we already failed to validate the dict (and emitted some diagnostic).
 pub(crate) fn is_invalid_typed_dict_literal<'db>(
     db: &'db dyn Db,
     env: &ProgramEnvironment<'db>,
@@ -2179,13 +2172,8 @@ fn assignment_diagnostic_range(
 
     value_node
         .map(|value_node| {
-            // Expand the range to include parentheses around the value, if any. This allows
-            // assignment diagnostics to be suppressed on the opening or closing parenthesis:
-            // ```py
             // x: str = ( # ty: ignore <- here
-            //     1 + 2 + 3
             // )  # ty: ignore <- or here
-            // ```
             parentheses_iterator(value_node.into(), None, context.module().tokens())
                 .last()
                 .unwrap_or(value_node.range())
@@ -2415,12 +2403,10 @@ pub(super) fn report_invalid_assignment<'db>(
     }
 
     if has_primary_annotation {
-        // Overwrite the concise message to avoid showing the value type twice
         let message = diag.headline_message().to_string();
         diag.set_concise_message(message);
     }
 
-    // special case message
     note_numbers_module_not_supported(db, env, &mut diag, target_ty, value_ty);
     add_invariant_generic_hints(db, env, &mut diag, target_ty, value_ty);
 }
@@ -2522,10 +2508,6 @@ pub(super) fn report_invalid_attribute_assignment(
     attribute_name: &'_ str,
 ) {
     let db = context.db();
-    // TODO: Ideally we would not emit diagnostics for `TypedDict` literal arguments
-    // here (see `diagnostic::is_invalid_typed_dict_literal`). However, we may have
-    // silenced diagnostics during attribute resolution, and rely on the assignability
-    // diagnostic being emitted here.
 
     let Some(builder) = context.report_lint(&INVALID_ASSIGNMENT, range) else {
         return;
@@ -2825,9 +2807,6 @@ pub(super) fn report_dynamic_function_decorator_return<'db>(
 
     let mut secondary_annotation = context.secondary(&decorated_function.name);
 
-    // A function literal is already known to be callable. Resolving its signature here can
-    // create a cycle if an annotation refers back to the decorated name, as in
-    // `def f(x: lambda: f): ...`.
     secondary_annotation = if decorated_ty.is_function_literal()
         || decorated_ty.try_upcast_to_callable(db, env).is_some()
     {
@@ -2844,8 +2823,6 @@ pub(super) fn report_dynamic_function_decorator_return<'db>(
 
     diagnostic.annotate(secondary_annotation);
 
-    // Union and intersection bindings can refer to different callables, so there is no single
-    // decorator definition or set of overloads that can be safely highlighted.
     let Some(decorator_binding) = decorator_bindings.single_element() else {
         return;
     };
@@ -3007,9 +2984,6 @@ pub(super) fn report_unsound_return(
 
     let env = &context.program_environment();
 
-    // `TypeIs`-annotated functions are expected to return `bool`;
-    // this needs to be normalized before we figure out the error context
-    // and before we display the types.
     let expected_ty = match expected_ty.resolve_type_alias(db) {
         Type::TypeIs(_) | Type::TypeGuard(_) => KnownClass::Bool.to_instance(db, env),
         _ => expected_ty,
@@ -3226,8 +3200,6 @@ pub(super) fn report_implicit_return_type(
 ) {
     let db = context.db();
 
-    // Use INVALID_IMPLICIT_RETURN_IN_FUNCTION_WITH_STUB_BODY lint for functions with empty bodies,
-    // INVALID_IMPLICIT_RETURN for others.
     let lint_to_use = if has_empty_body {
         &INVALID_IMPLICIT_RETURN_IN_FUNCTION_WITH_STUB_BODY
     } else {
@@ -3239,7 +3211,6 @@ pub(super) fn report_implicit_return_type(
     };
     let env = &context.program_environment();
 
-    // If no return statement is defined in the function, then the function always returns `None`
     let mut diagnostic = if no_return {
         let mut diag = builder.into_diagnostic(format_args!(
             "Function always implicitly returns `None`, \
@@ -3365,8 +3336,6 @@ pub(super) fn typing_module_for_fix(
         return None;
     }
     if module == KnownModule::TypingExtensions {
-        // Bundled stubs can export a member that the installed backport does not provide.
-        // A dependency declaration alone is therefore insufficient for a runtime import.
         let runtime_module = resolve_real_shadowable_module(
             db,
             ImportingFile::File(
@@ -3428,8 +3397,6 @@ pub(super) fn report_undefined_reveal(context: &InferContext, name: &ast::ExprNa
         return;
     };
     let module = module.as_str();
-    // `reveal_type` is unbound. Force a `from` import to avoid introducing a module name
-    // that might be shadowed, without querying inferred types while emitting a diagnostic.
     let action = context.importer().import(
         ImportRequest::import_from(module, "reveal_type").force(),
         &MembersInScope::empty(name.start()),
@@ -3612,7 +3579,6 @@ pub(crate) fn report_instance_layout_conflict(
             originating_base,
         } = disjoint_base_info;
 
-        // Get the span for this base from the AST (if available)
         let Some(base_node) = base_nodes.and_then(|nodes| nodes.get(*node_index)) else {
             continue;
         };
@@ -3745,9 +3711,6 @@ impl<'db> IncompatibleBases<'db> {
                     .keys()
                     .filter(|other_base| other_base != disjoint_base)
                     .all(|other_base| {
-                        // CPython's layout check operates on runtime classes. Type arguments are
-                        // irrelevant here: a generic disjoint base and any specialization of that
-                        // base share the same layout.
                         !other_base
                             .class
                             .default_specialization(db)
@@ -3865,11 +3828,6 @@ pub(crate) fn report_bad_argument_to_get_protocol_members(
         "A class is only a protocol class if it directly inherits \
             from `typing.Protocol` or `typing_extensions.Protocol`",
     );
-    // TODO the typing spec isn't really designed as user-facing documentation,
-    // but there isn't really any user-facing documentation that covers this specific issue well
-    // (it's not described well in the CPython docs; and PEP-544 is a snapshot of a decision taken
-    // years ago rather than up-to-date documentation). We should either write our own docs
-    // describing this well or contribute to type-checker-agnostic docs somewhere and link to those.
     diagnostic.info("See https://typing.python.org/en/latest/spec/protocol.html#");
 }
 
@@ -3905,7 +3863,6 @@ pub(crate) fn report_bad_argument_to_protocol_interface(
         "A class is only a protocol class if it directly inherits \
             from `typing.Protocol` or `typing_extensions.Protocol`",
     );
-    // See TODO in `report_bad_argument_to_get_protocol_members` above
     diagnostic.info("See https://typing.python.org/en/latest/spec/protocol.html");
 }
 
@@ -4784,12 +4741,6 @@ pub(super) fn report_namedtuple_field_without_default_after_field_with_default<'
         return;
     };
 
-    // If the end-of-scope definition in the class scope of the field-with-a-default-value
-    // occurs after the range of the field-without-a-default-value,
-    // avoid adding a subdiagnostic that points to the definition of the
-    // field-with-a-default-value. It's confusing to talk about a field "before" the
-    // field without the default value but then point to a definition that actually
-    // occurs after the field without-a-default-value.
     if field_with_default_range.end() < diagnostic_range.start() {
         diagnostic.annotate(
             Annotation::secondary(context.span(field_with_default_range)).message(format_args!(
@@ -4940,7 +4891,6 @@ pub(crate) fn report_cannot_delete_typed_dict_key<'db>(
         )),
     };
 
-    // Only suggest making the field `NotRequired` when that would allow deletion.
     if matches!(error_kind, TypedDictDeleteErrorKind::RequiredKey)
         && let Some(field) = field
         && let Some(declaration) = field.first_declaration()
@@ -4973,7 +4923,6 @@ pub(crate) fn report_cannot_delete_typed_dict_key<'db>(
         diagnostic.sub(sub);
     }
 
-    // Add hint about how to allow deletion
     if matches!(error_kind, TypedDictDeleteErrorKind::RequiredKey) {
         diagnostic.info(
             "Only keys marked as `NotRequired` \
@@ -5150,10 +5099,6 @@ pub(crate) fn report_inconsistent_generic_bases<'db>(
 ) -> bool {
     let db = context.db();
     let env = &context.program_environment();
-    // Track the first non-dynamic argument at each position, along with the alias and explicit
-    // base that supplied it. Compatibility with a gradual argument is not transitive: both
-    // `Base[int, str]` and `Base[int, bytes]` are compatible with `Base[int, Any]`, but conflict
-    // with each other.
     let mut ancestor_constraints =
         FxHashMap::<GenericBaseParameter<'db>, GenericBaseConstraint<'db>>::default();
 
@@ -5311,8 +5256,6 @@ pub(crate) fn report_shadowed_type_variable<'db>(
     )));
 }
 
-// I tried refactoring this function to placate Clippy,
-// but it did not improve readability! -- AW.
 #[expect(clippy::too_many_arguments)]
 pub(super) fn report_incompatible_method_override<'db>(
     context: &InferContext<'db, '_>,
@@ -5334,8 +5277,6 @@ pub(super) fn report_incompatible_method_override<'db>(
     let subclass_definition_kind = subclass_definition.kind(db);
     let subclass_definition_signature_span = signature_span(subclass_function);
 
-    // If the function was originally defined elsewhere and simply assigned
-    // in the body of the class here, we cannot use the range associated with the `FunctionType`
     let diagnostic_range = if subclass_definition_kind.is_function_def() {
         subclass_definition_signature_span
             .range()
@@ -5496,7 +5437,6 @@ pub(super) fn report_incompatible_method_override<'db>(
     }
 
     if superclass.is_object(db) && matches!(member, "__eq__" | "__ne__") {
-        // Inspired by mypy's subdiagnostic at <https://github.com/python/mypy/blob/1b6ebb17b7fe64488a7b3c3b4b0187bb14fe331b/mypy/messages.py#L1307-L1318>
         let eq_subdiagnostics = [
             format_args!(
                 "It is recommended for `{member}` to work with arbitrary objects, for example:",
@@ -5581,14 +5521,12 @@ pub(super) fn report_overridden_final_method<'db>(
     context: &InferContext<'db, '_>,
     member: &str,
     subclass_definition: Definition<'db>,
-    // N.B. the type of the *definition*, not the type on an instance of the subclass
     subclass_type: Type<'db>,
     superclass: ClassType<'db>,
     subclass: ClassType<'db>,
     superclass_method_defs: &[FunctionType<'db>],
 ) {
     let db = context.db();
-    // Some hijinks so that we emit a diagnostic on the property getter rather than the property setter
     let property_getter_definition = if subclass_definition.kind(db).is_function_def()
         && let Type::PropertyInstance(property) = subclass_type
         && let Some(Type::FunctionLiteral(getter)) = property.getter(db)
@@ -5665,12 +5603,7 @@ pub(super) fn report_overridden_final_method<'db>(
 
     diagnostic.sub(sub);
 
-    // It's tempting to autofix properties as well,
     // but you'd want to delete the `@my_property.deleter` as well as the getter and the setter,
-    // and we don't yet track those definitions precisely enough to offer a safe fix.
-    //
-    // Only delete the function defined by the override. An assignment or a decorator can bind
-    // the name to a different function, possibly from another file.
     if let Type::FunctionLiteral(function) = subclass_type
         && function.contains_definition(db, subclass_definition)
     {
@@ -5746,8 +5679,6 @@ pub(super) fn report_overridden_final_method<'db>(
                 }));
             }
             ([], None) => {
-                // Should be impossible to get here: how would we even infer a function as a function
-                // if it has 0 overloads and no implementation?
                 unreachable!(
                     "A function should always have an implementation and/or >=1 overloads"
                 );
@@ -5867,14 +5798,6 @@ pub(super) fn report_unsupported_comparison<'db>(
         ));
     }
 
-    // For non-atomic types like unions and tuples, we now provide context
-    // on the underlying elements that caused the error.
-    // If we're emitting a diagnostic for something like `(1, "foo") < (2, 3)`:
-    //
-    // - `left_ty` is `tuple[Literal[1], Literal["foo"]]`
-    // - `right_ty` is `tuple[Literal[2], Literal[3]]
-    // - `error.left_ty` is `Literal["foo"]`
-    // - `error.right_ty` is `Literal[3]`
     if (error.left_ty, error.right_ty) != (left_ty, right_ty) {
         if let Some(TupleSpec::Fixed(lhs_spec)) = left_ty.tuple_instance_spec(db, env).as_deref()
             && let Some(TupleSpec::Fixed(rhs_spec)) =
@@ -6233,9 +6156,6 @@ pub(super) fn hint_if_stdlib_attribute_exists_on_other_versions(
     attr: &str,
     action: &str,
 ) {
-    // Currently we limit this analysis to attributes of stdlib modules,
-    // as this covers the most important cases while not being too noisy
-    // about basic typos or special types like `super(C, self)`
     let Type::ModuleLiteral(module_ty) = value_type else {
         return;
     };
@@ -6250,9 +6170,6 @@ pub(super) fn hint_if_stdlib_attribute_exists_on_other_versions(
         return;
     }
 
-    // We populate place_table entries for stdlib items across all known versions and platforms,
-    // so if this lookup succeeds then we know that this lookup *could* succeed with possible
-    // configuration changes.
     let program_file = ProgramFile::new(db, module_file, source_file.program(db));
     let symbol_table = place_table(db, global_scope(db, program_file));
     let Some(symbol) = symbol_table.symbol_by_name(attr) else {
@@ -6265,10 +6182,6 @@ pub(super) fn hint_if_stdlib_attribute_exists_on_other_versions(
 
     diagnostic.info("The member may be available on other Python versions or platforms");
 
-    // For now, we just mention the current version they're on, and hope that's enough of a nudge.
-    // TODO: determine what version they need to be on
-    // TODO: also mention the platform we're assuming
-    // TODO: determine what platform they need to be on
     add_inferred_python_version_hint_to_diagnostic(
         db,
         source_file.file(db),

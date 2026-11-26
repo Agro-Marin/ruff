@@ -94,13 +94,11 @@ fn generate_set(output: &mut String, set: Set, parents: &mut Vec<Set>) {
 
     parents.push(set);
 
-    // Generate the fields.
     for (name, field) in &fields {
         emit_field(output, name, field, parents.as_slice());
         output.push_str("---\n\n");
     }
 
-    // Generate all the sub-sets.
     for (set_name, sub_set) in &sets {
         generate_set(
             output,
@@ -210,7 +208,6 @@ fn format_snippet<'a>(
         .chain(scope)
         .join(".");
 
-    // Rewrite examples starting with `[tool.ty]` or `[[tool.ty]]` to their `ty.toml` equivalent.
     if matches!(configuration, ConfigurationFile::TyToml) {
         example = example.replace("[tool.ty.", "[").into();
     }
@@ -227,8 +224,6 @@ fn format_snippet<'a>(
             .chain(parents[..=index].iter().filter_map(|parent| parent.name()))
             .join(".");
 
-        // Explicit examples can supply the array entry and its nested tables themselves.
-        // Ex) `[[tool.ty.overrides]]` in the `overrides.rules` example.
         if example.starts_with(&format!("[[{array}]]")) {
             return (headers.join("\n\n"), example);
         }
@@ -236,20 +231,15 @@ fn format_snippet<'a>(
         if (index + 1 == parents.len() && scope.is_none()) || fields.is_empty() {
             headers.push(format!("[[{array}]]"));
         } else {
-            // Ex) `[[tool.ty.overrides]]` with `include = ["src"]` before
-            // `[tool.ty.overrides.analysis]`.
             headers.push(format!("[[{array}]]\n{fields}"));
         }
     }
 
-    // Ex) `overrides.include` belongs directly to `[[tool.ty.overrides]]`,
-    // so it must not also get a `[tool.ty.overrides]` header.
     let is_array_entry = scope.is_none()
         && parents
             .last()
             .is_some_and(|parent| matches!(parent.metadata().kind(), OptionSetKind::Array { .. }));
 
-    // Ex) `[tool.ty.rules]` is already part of the field example.
     if !header.is_empty()
         && !is_array_entry
         && !example.starts_with(&format!("[{header}"))

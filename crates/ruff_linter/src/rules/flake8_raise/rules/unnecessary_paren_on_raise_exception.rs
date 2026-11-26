@@ -71,7 +71,6 @@ pub(crate) fn unnecessary_paren_on_raise_exception(checker: &Checker, expr: &Exp
     };
 
     if arguments.is_empty() {
-        // `raise func()` still requires parentheses; only `raise Class()` does not.
         let exception_type = if let Some(id) = checker.semantic().lookup_attribute(func) {
             match checker.semantic().binding(id).kind {
                 BindingKind::FunctionDefinition(_) => return,
@@ -84,8 +83,6 @@ pub(crate) fn unnecessary_paren_on_raise_exception(checker: &Checker, expr: &Exp
         };
 
         if exception_type.is_none() {
-            // If the method name doesn't _look_ like a class (i.e., it's lowercase), it's
-            // probably a function call, not a class.
             let identifier = match func.as_ref() {
                 Expr::Name(ast::ExprName { id, .. }) => Some(id.as_str()),
                 Expr::Attribute(ast::ExprAttribute { attr, .. }) => Some(attr.as_str()),
@@ -102,8 +99,6 @@ pub(crate) fn unnecessary_paren_on_raise_exception(checker: &Checker, expr: &Exp
                 return;
             }
 
-            // `ctypes.WinError()` is a function, not a class. It's part of the standard library, so
-            // we might as well get it right.
             if checker
                 .semantic()
                 .matches_qualified_name(func, &["ctypes", "WinError"])
@@ -115,11 +110,6 @@ pub(crate) fn unnecessary_paren_on_raise_exception(checker: &Checker, expr: &Exp
         let mut diagnostic =
             checker.report_diagnostic(UnnecessaryParenOnRaiseException, arguments.range());
 
-        // If the arguments are immediately followed by a `from`, insert whitespace to avoid
-        // a syntax error, as in:
-        // ```python
-        // raise IndexError()from ZeroDivisionError
-        // ```
         if checker
             .locator()
             .after(arguments.end())

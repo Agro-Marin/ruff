@@ -59,11 +59,9 @@ impl Violation for HardcodedSQLExpression {
 /// S608
 pub(crate) fn hardcoded_sql_expression(checker: &Checker, expr: &Expr) {
     let content = match expr {
-        // "select * from table where val = " + "str" + ...
         Expr::BinOp(ast::ExprBinOp {
             op: Operator::Add, ..
         }) => {
-            // Only evaluate the full BinOp, not the nested components.
             if checker
                 .semantic()
                 .current_expression_parent()
@@ -76,7 +74,6 @@ pub(crate) fn hardcoded_sql_expression(checker: &Checker, expr: &Expr) {
             }
             checker.generator().expr(expr)
         }
-        // "select * from table where val = %s" % ...
         Expr::BinOp(ast::ExprBinOp {
             left,
             op: Operator::Mod,
@@ -91,7 +88,6 @@ pub(crate) fn hardcoded_sql_expression(checker: &Checker, expr: &Expr) {
             let Expr::Attribute(ast::ExprAttribute { attr, value, .. }) = func.as_ref() else {
                 return;
             };
-            // "select * from table where val = {}".format(...)
             if attr != "format" {
                 return;
             }
@@ -101,7 +97,6 @@ pub(crate) fn hardcoded_sql_expression(checker: &Checker, expr: &Expr) {
             string.value.to_str().escape_default().to_string()
         }
 
-        // f"select * from table where val = {val}"
         Expr::FString(f_string)
             if f_string.value.f_strings().any(|fs| {
                 fs.elements
@@ -145,20 +140,16 @@ fn is_explicit_concatenation(expr: &Expr) -> Option<bool> {
             let left = is_explicit_concatenation(left);
             let right = is_explicit_concatenation(right);
             match (left, right) {
-                // If either side is definitively _not_ a string, neither is the expression.
                 (Some(false), _) | (_, Some(false)) => Some(false),
-                // If either side is definitively a string, the expression is a string.
                 (Some(true), _) | (_, Some(true)) => Some(true),
                 _ => None,
             }
         }
-        // Ambiguous (e.g., `x + y`).
         Expr::Call(_) => None,
         Expr::Subscript(_) => None,
         Expr::Attribute(_) => None,
         Expr::Name(_) => None,
 
-        // Non-strings.
         Expr::Lambda(_) => Some(false),
         Expr::List(_) => Some(false),
         Expr::Tuple(_) => Some(false),
@@ -178,22 +169,18 @@ fn is_explicit_concatenation(expr: &Expr) -> Option<bool> {
         Expr::DictComp(_) => Some(false),
         Expr::Compare(_) => Some(false),
         Expr::FString(_) => Some(true),
-        // TODO(dylan): decide whether to trigger here
         Expr::TString(_) => Some(false),
         Expr::StringLiteral(_) => Some(true),
         Expr::BytesLiteral(_) => Some(false),
         Expr::NoneLiteral(_) => Some(false),
         Expr::IpyEscapeCommand(_) => Some(false),
 
-        // Conditionally strings.
         Expr::Named(ast::ExprNamed { value, .. }) => is_explicit_concatenation(value),
         Expr::If(ast::ExprIf { body, orelse, .. }) => {
             let body = is_explicit_concatenation(body);
             let orelse = is_explicit_concatenation(orelse);
             match (body, orelse) {
-                // If either side is definitively a string, the expression could be a string.
                 (Some(true), _) | (_, Some(true)) => Some(true),
-                // If both sides are definitively _not_ a string, neither is the expression.
                 (Some(false), Some(false)) => Some(false),
                 _ => None,
             }

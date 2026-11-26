@@ -43,8 +43,6 @@ impl Renderer for GithubRenderer<'_> {
                 write!(f, ",file={file}", file = file.path(self.resolver))?;
 
                 let (start_location, end_location) = if self.resolver.is_notebook(file) {
-                    // We can't give a reasonable location for the structured formats,
-                    // so we show one that's clearly a fallback
                     None
                 } else {
                     let diagnostic_source = file.diagnostic_source(self.resolver);
@@ -59,9 +57,6 @@ impl Renderer for GithubRenderer<'_> {
                 }
                 .unwrap_or_default();
 
-                // GitHub Actions workflow commands have constraints on error annotations:
-                // - `col` and `endColumn` cannot be set if `line` and `endLine` are different
-                // See: https://github.com/astral-sh/ruff/issues/22074
                 if start_location.line == end_location.line {
                     write!(
                         f,
@@ -99,9 +94,6 @@ impl Renderer for GithubRenderer<'_> {
 
             write!(f, " {}", diagnostic.concise_message())?;
 
-            // After rendering the main diagnostic, render its secondary annotations and
-            // sub-diagnostics. Note that lines within a single diagnostic must be separated by
-            // URL-encoded newlines (`%0A`) to render properly in GitHub annotations.
             for annotation in diagnostic.secondary_annotations().filter_map(|annotation| {
                 GithubAnnotation::from_annotation(annotation, self.resolver)
             }) {

@@ -44,7 +44,6 @@ impl AlwaysFixableViolation for PassInClassBody {
 
 /// PYI012
 pub(crate) fn pass_in_class_body(checker: &Checker, class_def: &ast::StmtClassDef) {
-    // `pass` is required in these situations (or handled by `pass_statement_stub_body`).
     if class_def.body.len() < 2 {
         return;
     }

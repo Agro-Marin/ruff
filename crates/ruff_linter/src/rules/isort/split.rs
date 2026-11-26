@@ -22,12 +22,10 @@ pub(crate) fn split_by_forced_separate<'a>(
     forced_separate: &[String],
 ) -> Vec<ImportBlock<'a>> {
     if forced_separate.is_empty() {
-        // Nothing to do here.
         return vec![block];
     }
-    let mut blocks = vec![ImportBlock::default()]; // The zeroth block is for non-forced-separate imports.
+    let mut blocks = vec![ImportBlock::default()];
     for _ in forced_separate {
-        // Populate the blocks with empty blocks for each forced_separate pattern.
         blocks.push(ImportBlock::default());
     }
     let ImportBlock {

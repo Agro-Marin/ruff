@@ -77,7 +77,6 @@ impl ScriptTag {
     /// marker inside an unclosed comment block would scan the same suffix and fail too.
     fn parse_at(contents: &str, index: usize) -> Result<Self, usize> {
         let mut end = index + 1;
-        // The opening pragma must be the first line, or immediately preceded by a newline.
         if !(index == 0 || matches!(contents.as_bytes()[index - 1], b'\r' | b'\n')) {
             return Err(end);
         }
@@ -87,24 +86,17 @@ impl ScriptTag {
         let start = TextSize::try_from(index).map_err(|_| end)?;
         let mut lines = UniversalNewlineIterator::with_offset(contents, start);
 
-        // Ensure that the first line is exactly `# /// script`.
         let opening = lines.next().ok_or(end)?;
         if opening != "# /// script" {
             return Err(end);
         }
         end = usize::from(opening.end());
 
-        // > Every line between these two lines (# /// TYPE and # ///) MUST be a comment starting
-        // > with #. If there are characters after the # then the first character MUST be a space. The
-        // > embedded content is formed by taking away the first two characters of each line if the
-        // > second character is a space, otherwise just the first character (which means the line
-        // > consists of only a single #).
         let mut metadata = String::new();
         let mut source_map = ScriptSourceMap::default();
         let mut closing = None;
 
         for line in lines {
-            // Remove the leading `#`.
             let Some(comment) = line.strip_prefix('#') else {
                 break;
             };
@@ -129,18 +121,6 @@ impl ScriptTag {
             end = usize::from(line.end());
         }
 
-        // The last closing `# ///` wins, so discard that delimiter and everything after it.
-        //
-        // For example, given:
-        // ```python
-        // # /// script
-        // #
-        // # ///
-        // #
-        // # ///
-        // ```
-        //
-        // The latter `///` is the closing pragma
         let (metadata_end, marker_count, closing_range) = closing.ok_or(end)?;
         metadata.truncate(metadata_end);
         source_map.truncate(marker_count);

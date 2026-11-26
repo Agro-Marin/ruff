@@ -171,8 +171,6 @@ pub(crate) fn module_visibility(module: Module) -> Visibility {
             }
         }
         ModuleSource::File(path) => {
-            // Check to see if the filename itself indicates private visibility.
-            // Ex) `_foo.py` (but not `__init__.py`)
             let mut components = path.iter().rev();
             if let Some(filename) = components.next() {
                 let module_name = filename.to_string_lossy();
@@ -197,7 +195,6 @@ pub(crate) fn function_visibility(function: &ast::StmtFunctionDef) -> Visibility
 
 /// Infer the [`Visibility`] of a method from its name and decorators.
 pub fn method_visibility(function: &ast::StmtFunctionDef) -> Visibility {
-    // Is this a setter or deleter?
     if function.decorator_list.iter().any(|decorator| {
         UnqualifiedName::from_expr(&decorator.expression).is_some_and(|name| {
             name.segments() == [function.name.as_str(), "setter"]
@@ -207,12 +204,10 @@ pub fn method_visibility(function: &ast::StmtFunctionDef) -> Visibility {
         return Visibility::Private;
     }
 
-    // Is the method non-private?
     if !function.name.starts_with('_') {
         return Visibility::Public;
     }
 
-    // Is this a magic method?
     if is_magic(&function.name) {
         return Visibility::Public;
     }

@@ -32,14 +32,12 @@ impl OpenMode {
             open_mode.insert(flag);
         }
 
-        // Both text and binary mode cannot be set at the same time.
         if open_mode.contains(OpenMode::TEXT | OpenMode::BINARY) {
             return Err(
                 "Open mode cannot contain both text (`t`) and binary (`b`) flags".to_string(),
             );
         }
 
-        // The `U` mode is only valid with `r`.
         if open_mode.contains(OpenMode::UNIVERSAL_NEWLINES)
             && open_mode.intersects(OpenMode::WRITE | OpenMode::APPEND | OpenMode::CREATE)
         {
@@ -50,7 +48,6 @@ impl OpenMode {
             );
         }
 
-        // Otherwise, reading, writing, creating, and appending are mutually exclusive.
         if [
             OpenMode::READ | OpenMode::UNIVERSAL_NEWLINES,
             OpenMode::WRITE,
@@ -77,13 +74,10 @@ impl OpenMode {
     pub fn reduce(self) -> Self {
         let mut open_mode = self;
 
-        // `t` is always redundant.
         open_mode.remove(Self::TEXT);
 
-        // `U` is always redundant.
         open_mode.remove(Self::UNIVERSAL_NEWLINES);
 
-        // `r` is redundant, unless `b` or `+` is also set, in which case, we need one of `w`, `a`, `r`, or `x`.
         if open_mode.intersects(Self::BINARY | Self::PLUS) {
             if !open_mode.intersects(Self::WRITE | Self::CREATE | Self::APPEND) {
                 open_mode.insert(Self::READ);

@@ -63,7 +63,6 @@ pub(crate) fn inplace_argument(checker: &Checker, call: &ast::ExprCall) {
         return;
     }
 
-    // If the function doesn't take an `inplace` argument, abort.
     if !call
         .func
         .as_attribute_expr()
@@ -82,11 +81,6 @@ pub(crate) fn inplace_argument(checker: &Checker, call: &ast::ExprCall) {
             if is_const_true(&keyword.value) {
                 let mut diagnostic =
                     checker.report_diagnostic(PandasUseOfInplaceArgument, keyword.range());
-                // Avoid applying the fix if:
-                // 1. The keyword argument is followed by a star argument (we can't be certain that
-                //    the star argument _doesn't_ contain an override).
-                // 2. The call is part of a larger expression (we're converting an expression to a
-                //    statement, and expressions can't contain statements).
                 let statement = checker.semantic().current_statement();
                 if !seen_star
                     && checker.semantic().current_expression_parent().is_none()
@@ -104,7 +98,6 @@ pub(crate) fn inplace_argument(checker: &Checker, call: &ast::ExprCall) {
                 }
             }
 
-            // Duplicate keywords is a syntax error, so we can stop here.
             break;
         }
     }
@@ -119,7 +112,6 @@ fn convert_inplace_argument_to_assignment(
     tokens: &Tokens,
     locator: &Locator,
 ) -> Option<Fix> {
-    // Add the assignment.
     let attr = call.func.as_attribute_expr()?;
     let insert_assignment = Edit::insertion(
         format!("{name} = ", name = locator.slice(attr.value.range())),
@@ -128,7 +120,6 @@ fn convert_inplace_argument_to_assignment(
             .start(),
     );
 
-    // Remove the `inplace` argument.
     let remove_argument = remove_argument(
         keyword,
         &call.arguments,

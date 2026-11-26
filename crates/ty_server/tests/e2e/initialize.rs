@@ -97,8 +97,6 @@ fn deferred_request_burst_does_not_block_responses() -> Result<()> {
         .with_file(file, source)?
         .build();
 
-    // Hold the configuration response until the entire burst is queued, so every request
-    // must pass through the deferred-message queue.
     server.open_text_document(file, source, 1);
     let uri = server.file_uri(file);
     let mut request_ids = Vec::with_capacity(REQUEST_COUNT);
@@ -136,8 +134,6 @@ fn workspace_diagnostic_registration_without_configuration() -> Result<()> {
         .enable_diagnostic_dynamic_registration(true)
         .build();
 
-    // No need to wait for workspaces to initialize as the client does not support workspace
-    // configuration.
 
     let (_, params) = server.await_request::<RegistrationRequest>();
     let [registration] = params.registrations.as_slice() else {
@@ -179,8 +175,6 @@ fn open_files_diagnostic_registration_without_configuration() -> Result<()> {
         .enable_diagnostic_dynamic_registration(true)
         .build();
 
-    // No need to wait for workspaces to initialize as the client does not support workspace
-    // configuration.
 
     let (_, params) = server.await_request::<RegistrationRequest>();
     let [registration] = params.registrations.as_slice() else {
@@ -566,7 +560,6 @@ fn register_multiple_capabilities() -> Result<()> {
 fn missing_virtual_env_does_not_panic() -> Result<()> {
     let workspace_root = SystemPath::new("project");
 
-    // This should not panic even though VIRTUAL_ENV points to a non-existent path
     let mut server = TestServerBuilder::new()?
         .with_workspace(workspace_root, None)?
         .with_env_var("VIRTUAL_ENV", "/nonexistent/virtual/env/path")

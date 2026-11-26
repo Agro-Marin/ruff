@@ -101,15 +101,9 @@ impl NeedsParentheses for ExprSubscript {
                                 if function.parameters.is_empty()
                                     && !context.comments().has(&*function.parameters)
                                 {
-                                    // Apply the `optional_parentheses` layout when the subscript
-                                    // is in a return type position of a function without parameters.
-                                    // This ensures the subscript is parenthesized if it has a very
-                                    // long name that goes over the line length limit.
                                     return OptionalParentheses::Multiline;
                                 }
 
-                                // Don't use the best fitting layout for return type annotation because it results in the
-                                // return type expanding before the parameters.
                                 return OptionalParentheses::Never;
                             }
                         }

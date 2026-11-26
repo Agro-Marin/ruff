@@ -115,22 +115,11 @@ impl ModulePath {
             return PyTyped::Untyped;
         };
 
-        // Different module names revisit the same package. Share the tracked contents instead of
-        // reading its marker from disk again for every module resolution.
         let py_typed_contents = source_text(resolver.db, py_typed_file);
-        // If we fail to read it let's say that's like it doesn't exist
-        // (right now the difference between Untyped and Full is academic)
         if py_typed_contents.read_error().is_some() {
             return PyTyped::Untyped;
         }
 
-        // The python typing spec says to look for "partial\n" but in the wild we've seen:
-        //
-        // * PARTIAL\n
-        // * partial\\n (as in they typed "\n")
-        // * partial/n
-        //
-        // since the py.typed file never really grew any other contents, let's be permissive
         if py_typed_contents.to_ascii_lowercase().contains("partial") {
             PyTyped::Partial
         } else {
@@ -181,10 +170,6 @@ impl ModulePath {
             let parent = relative_path.parent()?;
             let name = relative_path.file_stem()?;
             if parent.as_str().is_empty() {
-                // Stubs should only be stripped when there is no
-                // extension. e.g., `foo-stubs` should be stripped
-                // by not `foo-stubs.pyi`. In the latter case,
-                // `ModuleName::new` will fail (which is what we want).
                 return ModuleName::new(if relative_path.extension().is_some() {
                     name
                 } else {
@@ -195,10 +180,6 @@ impl ModulePath {
             let parent_components = parent.components().enumerate().map(|(index, component)| {
                 let component = component.as_str();
 
-                // For stub packages, strip the `-stubs` suffix from
-                // the first component because it isn't a valid module
-                // name part AND the module name is the name without
-                // the `-stubs`.
                 if index == 0 {
                     strip_stubs(component)
                 } else {
@@ -262,15 +243,8 @@ impl PartialEq<ModulePath> for VendoredPathBuf {
 /// Models a directory that participates in the module resolution process.
 #[derive(Debug, Clone)]
 pub(crate) struct ModuleDirectory<'db> {
-    // The path to the directory.
     path: ModulePath,
-    // The contents of the directory.
     listing: Option<&'db DirectoryListing>,
-    // Whether or not this directory may supply names during module enumeration
-    // (according to the symlink policy defined at [`ModuleSearchCursor::list_modules`]).
-    //
-    // This is `None` when it's value is unknown, in which case it will be
-    // computed on demand.
     enumeration_allowed: Option<bool>,
 }
 
@@ -307,11 +281,8 @@ impl<'db> ModuleDirectory<'db> {
                 path,
                 self.enumeration_allowed.map(|parent_allowed| {
                     if self.path.search_path.as_vendored_path().is_some() {
-                        // Vendored paths can't contain symlinks, so they are allowed so long as
-                        // the parent is within policy.
                         parent_allowed
                     } else {
-                        // Otherwise, actually check that this step doesn't contain a symlink.
                         Self::enumeration_allowed_after_step(
                             parent_allowed,
                             self.listing.and_then(|listing| listing.file_type(name)),
@@ -352,12 +323,10 @@ impl<'db> ModuleDirectory<'db> {
             return allowed;
         }
 
-        // Search roots are always allowed.
         let Some(search_root) = self.path.search_path().as_system_path() else {
             return true;
         };
 
-        // Otherwise, disallow enumeration when the relative path from the root crosses a symlink.
         let mut parent = search_root.to_path_buf();
         for component in self.path.relative_path.components() {
             let child_type = directory_listing(db, &parent)
@@ -408,20 +377,14 @@ impl<'db> ModuleDirectory<'db> {
     pub(crate) fn resolve_file(&self, context: &ResolverContext, filename: &str) -> Option<File> {
         let path = Utf8Path::new(filename);
 
-        // Verify that the provided `filename` input identifies just the final filename
-        // component of a path (i.e., plain `tools.py` instead of, say, `pkg/tools.py`).
         if path.file_name() != Some(filename) {
             return None;
         }
 
-        // Do not resolve runtime modules for standard library stubs.
         if path.extension() == Some("py") && self.path.is_standard_library_stub() {
             return None;
         }
 
-        // Verify that the directory listing contains a file or symlink entry
-        // with the correct name. Symlink targets and vendored paths are
-        // validated further down.
         if self.path.search_path.as_vendored_path().is_none()
             && !matches!(
                 self.listing.and_then(|listing| listing.file_type(filename)),
@@ -1062,7 +1025,6 @@ value = 1
             SearchPath::first_party(db.system(), root.clone()).expect("Existing source directory");
         let directory = ModuleDirectory::new(&resolver, search_path.to_module_path(), None);
 
-        // Require exact filename casing even when the filesystem is case-insensitive.
         assert_eq!(directory.resolve_file(&resolver, "tools.py"), None);
         let file = directory
             .resolve_file(&resolver, "Tools.py")
@@ -1210,13 +1172,11 @@ value = 1
 
         let root = SearchPath::custom_stdlib(db.system(), stdlib.parent().unwrap()).unwrap();
 
-        // Must have a `.pyi` extension or no extension:
         let bad_absolute_path = SystemPath::new("foo/stdlib/x.py");
         assert_eq!(root.relativize_system_path(bad_absolute_path), None);
         let second_bad_absolute_path = SystemPath::new("foo/stdlib/x.rs");
         assert_eq!(root.relativize_system_path(second_bad_absolute_path), None);
 
-        // Must be a path that is a child of `root`:
         let third_bad_absolute_path = SystemPath::new("bar/stdlib/x.pyi");
         assert_eq!(root.relativize_system_path(third_bad_absolute_path), None);
     }
@@ -1226,10 +1186,8 @@ value = 1
         let TestCase { db, src, .. } = TestCaseBuilder::new().build();
 
         let root = SearchPath::extra(db.system(), src.clone()).unwrap();
-        // Must have a `.py` extension, a `.pyi` extension, or no extension:
         let bad_absolute_path = src.join("x.rs");
         assert_eq!(root.relativize_system_path(&bad_absolute_path), None);
-        // Must be a path that is a child of `root`:
         let second_bad_absolute_path = SystemPath::new("bar/src/x.pyi");
         assert_eq!(root.relativize_system_path(second_bad_absolute_path), None);
     }
@@ -1289,7 +1247,6 @@ value = 1
 
         let asyncio_regular_package = stdlib_path.join("asyncio");
         assert!(asyncio_regular_package.is_directory(&resolver));
-        // Paths to directories don't resolve to VfsFiles
         assert_eq!(asyncio_regular_package.to_file(&resolver), None);
         assert!(
             asyncio_regular_package
@@ -1298,8 +1255,6 @@ value = 1
                 .is_some()
         );
 
-        // The `asyncio` package exists on Python 3.8, but the `asyncio.tasks` submodule does not,
-        // according to the `VERSIONS` file in our typeshed mock:
         let asyncio_tasks_module = stdlib_path.join("asyncio/tasks.pyi");
         assert_eq!(asyncio_tasks_module.to_file(&resolver), None);
         assert!(!asyncio_tasks_module.is_directory(&resolver));
@@ -1321,7 +1276,6 @@ value = 1
 
         let xml_namespace_package = stdlib_path.join("xml");
         assert!(xml_namespace_package.is_directory(&resolver));
-        // Paths to directories don't resolve to VfsFiles
         assert_eq!(xml_namespace_package.to_file(&resolver), None);
 
         let xml_etree = stdlib_path.join("xml/etree.pyi");
@@ -1435,11 +1389,8 @@ value = 1
             ModuleResolveMode::Typing,
         );
 
-        // Since we've set the target version to Py39,
-        // `collections` should now exist as a directory, according to VERSIONS...
         let collections_regular_package = stdlib_path.join("collections");
         assert!(collections_regular_package.is_directory(&resolver));
-        // (This is still `None`, as directories don't resolve to `Vfs` files)
         assert_eq!(collections_regular_package.to_file(&resolver), None);
         assert!(
             collections_regular_package
@@ -1448,7 +1399,6 @@ value = 1
                 .is_some()
         );
 
-        // ...and so should the `asyncio.tasks` submodule (though it's still not a directory):
         let asyncio_tasks_module = stdlib_path.join("asyncio/tasks.pyi");
         assert!(asyncio_tasks_module.to_file(&resolver).is_some());
         assert!(!asyncio_tasks_module.is_directory(&resolver));
@@ -1468,13 +1418,10 @@ value = 1
             ModuleResolveMode::Typing,
         );
 
-        // The `importlib` directory now also exists
         let importlib_namespace_package = stdlib_path.join("importlib");
         assert!(importlib_namespace_package.is_directory(&resolver));
-        // (This is still `None`, as directories don't resolve to `Vfs` files)
         assert_eq!(importlib_namespace_package.to_file(&resolver), None);
 
-        // Submodules in the `importlib` namespace package also now exist:
         let importlib_abc = importlib_namespace_package.join("abc.pyi");
         assert!(!importlib_abc.is_directory(&resolver));
         assert!(importlib_abc.to_file(&resolver).is_some());
@@ -1494,7 +1441,6 @@ value = 1
             ModuleResolveMode::Typing,
         );
 
-        // The `xml` package no longer exists on py39:
         let xml_namespace_package = stdlib_path.join("xml");
         assert_eq!(xml_namespace_package.to_file(&resolver), None);
         assert!(!xml_namespace_package.is_directory(&resolver));

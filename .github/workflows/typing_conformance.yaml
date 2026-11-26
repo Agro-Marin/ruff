@@ -21,9 +21,6 @@ on:
       - "Cargo.lock"
       - "!**.md"
       - "!**.snap"
-      # It's tempting to skip all Python files in every directory, but changes to
-      # Python files in `ty_vendored` can affect the output of the ecosystem analysis,
-      # so we apply a narrow exemption for all files in the corpus directory instead.
       - "!crates/ty_python_semantic/resources/corpus/**"
 
 concurrency:
@@ -37,7 +34,6 @@ env:
   CARGO_TERM_COLOR: always
   RUSTUP_MAX_RETRIES: 10
   RUST_BACKTRACE: 1
-  # Line-tables-only debug info: faster builds, backtraces still work.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_DEV_LTO: "false"
   CARGO_PROFILE_DEV_OPT_LEVEL: 0
@@ -50,12 +46,11 @@ jobs:
     runs-on: ${{ github.repository == 'astral-sh/ruff' && 'depot-ubuntu-22.04-32' || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           path: ruff
           persist-credentials: false
 
-      # Faster to do this separately than to use `fetch-depth: 0` with `actions/checkout`
       - name: Fetch full history without tags
         env:
           GH_TOKEN: ${{ github.token }}
@@ -63,18 +58,18 @@ jobs:
           gh auth setup-git
           git -C ruff fetch --no-tags --filter=blob:none --unshallow origin
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: python/typing
           ref: ${{ env.CONFORMANCE_SUITE_COMMIT }}
           path: typing
           persist-credentials: false
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: "ruff"
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -116,7 +111,7 @@ jobs:
           )
 
       - name: Upload diff
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: typing_conformance_diagnostics_diff
           path: typing_conformance_diagnostics.diff

@@ -219,7 +219,6 @@ impl<'db> DynamicClassLiteral<'db> {
                 return Box::default();
             };
 
-            // Use `definition_expression_type` for deferred inference support.
             extract_fixed_length_iterable_element_types(db, &env, bases_arg, |expr| {
                 definition_expression_type(db, definition, expr)
             })
@@ -227,9 +226,7 @@ impl<'db> DynamicClassLiteral<'db> {
         }
 
         match self.anchor(db) {
-            // For dangling calls, bases are stored directly on the anchor.
             DynamicClassAnchor::ScopeOffset { explicit_bases, .. } => explicit_bases.as_ref(),
-            // For assigned calls, use deferred inference.
             DynamicClassAnchor::Definition(definition) => deferred_explicit_bases(db, *definition),
         }
     }
@@ -291,25 +288,18 @@ impl<'db> DynamicClassLiteral<'db> {
         let original_bases = self.explicit_bases(db);
         let env = ProgramEnvironment::from_scope(self.scope(db));
 
-        // If no bases, metaclass is `type`.
-        // To dynamically create a class with no bases that has a custom metaclass,
-        // you have to invoke that metaclass rather than `type()`.
         if original_bases.is_empty() {
             return Ok(ClassMetaclass::Selected(
                 KnownClass::Type.to_class_literal(db, &env),
             ));
         }
 
-        // If there's an MRO error, return unknown to avoid cascading errors.
         if self.try_mro(db).is_err() {
             return Ok(ClassMetaclass::Selected(
                 SubclassOfType::subclass_of_unknown(),
             ));
         }
 
-        // Convert Types to ClassBases for metaclass computation.
-        // All bases should convert successfully here: `try_mro()` above would have
-        // returned `Err(InvalidBases)` if any failed, causing us to return early.
         let mut has_protocol_fallback = false;
         let mut bases = original_bases
             .iter()
@@ -324,7 +314,6 @@ impl<'db> DynamicClassLiteral<'db> {
                 }
             });
 
-        // Start with the first selected metaclass, ignoring protocol fallbacks.
         let Some((mut candidate_base, mut candidate)) = bases.next() else {
             return Ok(ClassMetaclass::with_protocol_fallback(
                 db,
@@ -333,14 +322,11 @@ impl<'db> DynamicClassLiteral<'db> {
             ));
         };
 
-        // Reconcile with other bases' metaclasses.
         for (base, base_metaclass) in bases {
             if base_metaclass == SubclassOfType::subclass_of_unknown() {
                 return Ok(ClassMetaclass::Selected(base_metaclass));
             }
-            // Get the ClassType for comparison.
             let Some(candidate_class) = candidate.to_class_type(db) else {
-                // If candidate isn't a class type, keep it as is.
                 continue;
             };
             let Some(base_metaclass_class) = base_metaclass.to_class_type(db) else {
@@ -357,8 +343,6 @@ impl<'db> DynamicClassLiteral<'db> {
                 continue;
             }
 
-            // Conflict: neither metaclass is a subclass of the other.
-            // Python raises `TypeError: metaclass conflict` at runtime.
             return Err(DynamicMetaclassConflict {
                 metaclass1: candidate_class,
                 base1: candidate_base,
@@ -395,7 +379,6 @@ impl<'db> DynamicClassLiteral<'db> {
         match MroLookup::new(db, env, self.iter_mro(db)).instance_member(name) {
             InstanceMemberResult::Done(result) => result,
             InstanceMemberResult::TypedDict => {
-                // Simplified `TypedDict` handling without type mapping.
                 KnownClass::TypedDictFallback
                     .to_instance(db, env)
                     .instance_member(db, env, name)
@@ -415,12 +398,10 @@ impl<'db> DynamicClassLiteral<'db> {
         name: &str,
         policy: MemberLookupPolicy,
     ) -> PlaceAndQualifiers<'db> {
-        // Check if this dynamic class is dataclass-like (via dataclass_transform inheritance).
         if CodeGeneratorKind::from_class(db, self.into())
             .is_some_and(CodeGeneratorKind::is_dataclass_like)
         {
             if name == "__dataclass_fields__" {
-                // Make this class look like a subclass of the `DataClassInstance` protocol.
                 return Place::declared(KnownClass::Dict.to_specialized_instance(
                     db,
                     env,
@@ -431,14 +412,13 @@ impl<'db> DynamicClassLiteral<'db> {
                 ))
                 .with_qualifiers(TypeQualifiers::CLASS_VAR);
             } else if name == "__dataclass_params__" {
-                // There is no typeshed class for this. For now, we model it as `Any`.
                 return Place::declared(Type::any()).with_qualifiers(TypeQualifiers::CLASS_VAR);
             }
         }
 
         let result = MroLookup::new(db, env, self.iter_mro(db)).class_member(
-            name, policy, None,  // No inherited generic context.
-            false, // Dynamic classes are never `object`.
+            name, policy, None,
+            false,
         );
 
         match result {
@@ -454,8 +434,6 @@ impl<'db> DynamicClassLiteral<'db> {
     /// Returns [`Member::unbound`] if the member is not found in the namespace dict,
     /// unless the namespace is dynamic, in which case returns `Unknown`.
     pub(super) fn own_class_member(self, db: &'db dyn Db, name: &str) -> Member<'db> {
-        // If the namespace is dynamic (not a literal dict) and the name isn't in `self.members`,
-        // return Unknown since we can't know what attributes might be defined.
         self.members(db)
             .iter()
             .find_map(|(member_name, ty)| (name == member_name).then_some(*ty))
@@ -497,21 +475,16 @@ impl<'db> DynamicClassLiteral<'db> {
     /// X = type("X", (), {"__slots__": ("a",)})
     /// ```
     pub(super) fn as_disjoint_base(self, db: &'db dyn Db) -> Option<DisjointBase<'db>> {
-        // Check if __slots__ is in the members
         for (name, ty) in self.members(db) {
             if name.as_str() == "__slots__" {
-                // Check if the slots are non-empty
                 let is_non_empty = match ty {
-                    // __slots__ = ("a", "b")
                     Type::NominalInstance(nominal) => {
                         let env = ProgramEnvironment::from_scope(self.scope(db));
                         nominal.tuple_spec(db, &env).is_some_and(|spec| {
                             spec.len().into_fixed_length().is_some_and(|len| len > 0)
                         })
                     }
-                    // __slots__ = "abc"  # Same as ("abc",)
                     Type::LiteralValue(literal) if literal.is_string() => true,
-                    // Other types are considered dynamic/unknown
                     _ => false,
                 };
                 if is_non_empty {

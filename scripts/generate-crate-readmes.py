@@ -92,7 +92,6 @@ def main() -> None:
     content = json.loads(result.stdout)
     packages = {package["id"]: package for package in content["packages"]}
 
-    # Find the Ruff version from the ruff crate.
     ruff_version = None
     for package in content["packages"]:
         if package["name"] == "ruff":
@@ -108,10 +107,8 @@ def main() -> None:
     for workspace_member in content["workspace_members"]:
         package = packages[workspace_member]
         name = package["name"]
-        # Skip the main Ruff crate.
         if name == "ruff":
             continue
-        # Skip crates with publish = false.
         if package.get("publish") == []:
             continue
         workspace_members.append(name)
@@ -122,7 +119,6 @@ def main() -> None:
         f"- [{name}](https://crates.io/crates/{name})" for name in workspace_members
     )
 
-    # Generate the README for the main Ruff crate.
     ruff_source_url = f"{REPO_URL}/blob/{ruff_version}/crates/ruff"
     readme_content = RUFF_TEMPLATE.format(
         GENERATED_HEADER=GENERATED_HEADER,
@@ -135,15 +131,12 @@ def main() -> None:
     # Track all generated README paths for formatting at the end.
     generated_paths = [readme_path]
 
-    # Generate READMEs for all workspace members.
     for workspace_member in content["workspace_members"]:
         package = packages[workspace_member]
         name = package["name"]
 
-        # Skip the main Ruff crate (already handled above).
         if name == "ruff":
             continue
-        # Skip crates that aren't released to crates.io.
         if package.get("publish") == []:
             continue
 

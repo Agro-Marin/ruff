@@ -215,13 +215,6 @@ impl<'db> CodeGeneratorKind<'db> {
             db: &'db dyn Db,
             class: StaticClassLiteral<'db>,
         ) -> Option<CodeGeneratorKind<'db>> {
-            // If a class is directly decorated as a dataclass, it's a dataclass.
-            // If a class' metaclass is a dataclass transformer, it's a dataclass.
-            // If a class inherits from a base class that is a dataclass
-            // transformer, it's a dataclass (unless it is a subclass of `type`,
-            // in which case we assume the subclass is itself also meant for use
-            // as a metaclass dataclass transformer, not itself supposed to be a
-            // dataclass.)
             if class.dataclass_params(db).is_some() {
                 Some(CodeGeneratorKind::DataclassLike(None))
             } else if let Ok((_, Some(info))) = class.try_metaclass(db) {
@@ -277,12 +270,10 @@ impl<'db> CodeGeneratorKind<'db> {
             db: &'db dyn Db,
             class: DynamicClassLiteral<'db>,
         ) -> Option<CodeGeneratorKind<'db>> {
-            // Check if the dynamic class was passed to `dataclass()` as a function.
             if class.dataclass_params(db).is_some() {
                 return Some(CodeGeneratorKind::DataclassLike(None));
             }
 
-            // Dynamic classes can also inherit from classes with dataclass_transform.
             class.iter_mro(db).skip(1).find_map(|base| {
                 base.into_class().and_then(|class| {
                     class
@@ -420,7 +411,6 @@ pub(super) fn walk_generic_alias<'db, V: super::visitor::TypeVisitor<'db> + ?Siz
     walk_specialization(db, alias.specialization(db), visitor);
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for GenericAlias<'_> {}
 
 impl<'db> GenericAlias<'db> {
@@ -589,15 +579,11 @@ impl<'db> GenericAlias<'db> {
 
         let specialization = self.specialization(db);
 
-        // Note that we only care about the variance of the specialized generic alias with respect
-        // to the given type variable, not the unspecialized class literal origin.
         let variances = specialization
             .generic_context(db)
             .variables(db)
             .zip(specialization.types(db))
             .map(|(generic_typevar, ty)| {
-                // Composition is commutative. Keep the argument on the left so evaluation can
-                // skip the class's potentially expensive equation when the argument is bivariant.
                 ty.variance_of(db, &env, typevar).compose_thunk(db, || {
                     match generic_typevar.typevar(db).explicit_variance(db) {
                         Some(explicit_variance)
@@ -787,7 +773,6 @@ impl<'db> ClassLiteral<'db> {
             | Self::DynamicNamedTuple(_)
             | Self::DynamicTypedDict(_)
             | Self::DynamicEnum(_) => {
-                // Dynamic classes don't have inherited generic context and are never `object`.
                 let result =
                     MroLookup::new(db, env, mro_iter).class_member(name, policy, None, false);
                 match result {
@@ -923,8 +908,6 @@ impl<'db> ClassLiteral<'db> {
                 crate::types::enums::enum_metadata(db, Self::DynamicEnum(enum_lit))
                     .is_some_and(|metadata| !metadata.members.is_empty())
             }
-            // Dynamic classes created via `type()`, `collections.namedtuple()`, etc. cannot be
-            // marked as final.
             Self::Dynamic(_) | Self::DynamicNamedTuple(_) | Self::DynamicTypedDict(_) => false,
         }
     }
@@ -1028,9 +1011,6 @@ impl<'db> ClassLiteral<'db> {
         match self {
             Self::Static(class) => class.as_disjoint_base(db),
             Self::Dynamic(class) => class.as_disjoint_base(db),
-            // Dynamic namedtuples define `__slots__ = ()`, but `__slots__` must be
-            // non-empty for a class to be a disjoint base.
-            // Dynamic TypedDicts don't define `__slots__`.
             Self::DynamicNamedTuple(_) | Self::DynamicTypedDict(_) | Self::DynamicEnum(_) => None,
         }
     }
@@ -1148,7 +1128,6 @@ impl<'db> ClassLiteral<'db> {
                 [Type::from(namedtuple.tuple_base_class(db, &env))].into()
             }
             Self::DynamicTypedDict(_) => {
-                // TypedDicts always inherit from `dict`
                 Box::default()
             }
             Self::DynamicEnum(enum_lit) => enum_lit.explicit_bases(db),
@@ -1192,11 +1171,6 @@ impl<'db> From<DynamicEnumLiteral<'db>> for ClassLiteral<'db> {
     Clone, Copy, Debug, Eq, Hash, PartialEq, salsa::Supertype, get_size2::GetSize, salsa::SalsaValue,
 )]
 pub enum ClassType<'db> {
-    // `NonGeneric` is intended to mean that the `ClassLiteral` has no type parameters. There are
-    // places where we currently violate this rule (e.g. so that we print `Foo` instead of
-    // `Foo[Unknown]`), but most callers who need to make a `ClassType` from a `ClassLiteral`
-    // should use `StaticClassLiteral::default_specialization` instead of assuming
-    // `ClassType::NonGeneric`.
     NonGeneric(ClassLiteral<'db>),
     Generic(GenericAlias<'db>),
 }
@@ -1598,8 +1572,6 @@ impl<'db> ClassType<'db> {
             return false;
         }
 
-        // A cyclic MRO uses an unknown base for recovery. It need not correspond to an
-        // explicit unknown base, and rejecting it here can make recursive inference oscillate.
         if ClassBase::Class(self).has_cyclic_mro(db) {
             return true;
         }
@@ -1771,8 +1743,6 @@ impl<'db> ClassType<'db> {
         other: Self,
         checker: &DisjointnessChecker<'_, 'c, 'db>,
     ) -> bool {
-        // Reuse the active disjointness checker for nested specialization and
-        // metaclass checks so recursive class graphs keep the same cycle guard.
         self.could_coexist_in_mro_with_impl(
             db,
             env,
@@ -1831,12 +1801,10 @@ impl<'db> ClassType<'db> {
             return compatible;
         }
 
-        // A class cannot implement two incompatible specializations of an invariant base.
         if self.has_incompatible_generic_base(db, other, specializations_are_disjoint) {
             return false;
         }
 
-        // Two disjoint bases can only coexist in an MRO if one is a subclass of the other.
         if self
             .nearest_disjoint_base(db)
             .is_some_and(|disjoint_base_1| {
@@ -1856,11 +1824,6 @@ impl<'db> ClassType<'db> {
             return false;
         }
 
-        // Check to see whether the metaclasses of `self` and `other` are disjoint.
-        // Avoid this check if the metaclass of either `self` or `other` is `type`,
-        // however, since we end up with infinite recursion in that case due to the fact
-        // that `type` is its own metaclass (and we know that `type` can coexist in an MRO
-        // with any other arbitrary class, anyway).
         let type_class = KnownClass::Type.to_class_literal(db, env);
         let self_metaclass = self.inferred_metaclass(db).for_inheritance(db, env);
         if self_metaclass == type_class {
@@ -1996,11 +1959,6 @@ impl<'db> ClassType<'db> {
                             FxIndexMap::default();
 
                         match tuple {
-                            // E.g. for `tuple[int, str]`, we will generate the following overloads:
-                            //
-                            //    __getitem__(self, index: Literal[0, -2], /) -> int
-                            //    __getitem__(self, index: Literal[1, -1], /) -> str
-                            //
                             TupleSpec::Fixed(fixed_length_tuple) => {
                                 let tuple_length = fixed_length_tuple.len();
 
@@ -2017,15 +1975,6 @@ impl<'db> ClassType<'db> {
                                 }
                             }
 
-                            // E.g. for `tuple[str, *tuple[float, ...], bytes, range]`, we will generate the following overloads:
-                            //
-                            //    __getitem__(self, index: Literal[0], /) -> str
-                            //    __getitem__(self, index: Literal[1], /) -> float | bytes
-                            //    __getitem__(self, index: Literal[2], /) -> float | bytes | range
-                            //    __getitem__(self, index: Literal[-1], /) -> range
-                            //    __getitem__(self, index: Literal[-2], /) -> bytes
-                            //    __getitem__(self, index: Literal[-3], /) -> float | str
-                            //
                             TupleSpec::Variable(variable_length_tuple) => {
                                 for (index, ty) in
                                     variable_length_tuple.prefix_elements().iter().enumerate()
@@ -2109,7 +2058,6 @@ impl<'db> ClassType<'db> {
                                     return None;
                                 }
 
-                                // Sorting isn't strictly required, but leads to nicer `reveal_type` output
                                 indices.sort_unstable();
 
                                 let index_annotation = UnionType::from_elements(
@@ -2125,16 +2073,6 @@ impl<'db> ClassType<'db> {
                             },
                         ));
 
-                        // Fallback overloads: for `tuple[int, str]`, we will generate the following overloads:
-                        //
-                        //    __getitem__(self, index: int, /) -> int | str
-                        //    __getitem__(self, index: slice[SupportsIndex | None, SupportsIndex | None, SupportsIndex | None], /) -> tuple[int | str, ...]
-                        //
-                        // and for `tuple[str, *tuple[float, ...], bytes]`, we will generate the following overloads:
-                        //
-                        //    __getitem__(self, index: int, /) -> str | float | bytes
-                        //    __getitem__(self, index: slice[SupportsIndex | None, SupportsIndex | None, SupportsIndex | None], /) -> tuple[str | float | bytes, ...]
-                        //
                         overload_signatures.push(synthesize_getitem_overload_signature(
                             KnownClass::SupportsIndex.to_instance(db, env),
                             all_elements_unioned,
@@ -2169,8 +2107,6 @@ impl<'db> ClassType<'db> {
                     .unwrap_or_else(fallback_member_lookup)
             }
 
-            // Typeshed's `Iterable[_T_co]` parameter accepts any length. For a tuple with a
-            // fixed or minimum length, require a tuple argument that satisfies that constraint.
             "__new__"
                 if class_literal.is_tuple(db)
                     && let Some(tuple) = specialization.and_then(|spec| spec.tuple(db))
@@ -2233,10 +2169,6 @@ impl<'db> ClassType<'db> {
                     return Place::Undefined.into();
                 }
 
-                // MRO lookup already specializes each member in the class that defines it.
-                // Applying the receiver's specialization again would also substitute type
-                // variables inside the replacement types. For example, applying `T -> list[T]`
-                // twice changes an attribute's type from `list[T]` to `list[list[T]]`.
                 class_literal.instance_member(db, env, specialization, name)
             }
         }
@@ -2366,10 +2298,7 @@ impl<'db> ClassType<'db> {
     ) -> CallableTypes<'db> {
         let env = &ProgramEnvironment::from_file(self.class_literal(db).program_file(db));
         // TODO: This mimics a lot of the logic in Type::try_call_from_constructor. Can we
-        // consolidate the two? Can we invoke a class by upcasting the class into a Callable, and
-        // then relying on the call binding machinery to Just Work™?
 
-        // Dynamic classes don't have a generic context.
         let class_generic_context = self
             .static_class_literal(db)
             .and_then(|(class_literal, _)| class_literal.generic_context(db));
@@ -2397,16 +2326,6 @@ impl<'db> ClassType<'db> {
             .place;
 
         if let Place::Defined(DefinedPlace { ty, .. }) = metaclass_dunder_call {
-            // TODO: this intentionally diverges from step 1 in
-            // https://typing.python.org/en/latest/spec/constructors.html#converting-a-constructor-to-callable
-            // by always respecting the signature of the metaclass `__call__`, rather than
-            // using a heuristic which makes unwarranted assumptions to sometimes ignore it.
-            //
-            // The only situation where we ignore the metaclass `__call__` is when the class is an actual enum
-            // (i.e. not a memberless superclass like `Enum`, `StrEnum`, etc.). In this case, we want to fall
-            // back to `Enum.__new__`/`StrEnum.__new__`/... which have more precise signatures for calls like
-            // `Color("red")`, instead of the overloaded signature of `EnumMeta.__call__` which also accounts
-            // for dynamic Enum creation.
             let is_actual_enum = enum_metadata(db, self.class_literal(db)).is_some();
             if !is_actual_enum && let Some(callables) = ty.try_upcast_to_callable(db, env) {
                 return callables;
@@ -2426,8 +2345,6 @@ impl<'db> ClassType<'db> {
             let bound_callables =
                 callables.map(|callable| callable.bind_self(db, env, receiver, instance_type));
 
-            // Step 3: If the return type of the `__new__` evaluates to a type that is not a subclass of this class,
-            // then we should ignore the `__init__` and just return the `__new__` method.
             let returns_non_subclass = bound_callables
                 .signatures(db)
                 .any(|signature| !signature.return_ty.is_assignable_to(db, env, instance_type));
@@ -2450,9 +2367,6 @@ impl<'db> ClassType<'db> {
             )
             .place;
 
-        // If the class defines an `__init__` method, then we synthesize a callable type with the
-        // same parameters as the `__init__` method after it is bound, and with the return type of
-        // the concrete type of `Self`.
         let synthesized_dunder_init_callable = if let Place::Defined(DefinedPlace { ty, .. }) =
             dunder_init_function_symbol
         {
@@ -2524,8 +2438,6 @@ impl<'db> ClassType<'db> {
             (Some(constructors), None) => constructors,
             (None, Some(constructor)) => CallableTypes::one(constructor),
             (None, None) => {
-                // If no `__new__` or `__init__` method is found, then we fall back to looking for
-                // an `object.__new__` method.
                 let new_function_symbol = lookup_type
                     .member_lookup_with_policy(
                         db,
@@ -2552,7 +2464,6 @@ impl<'db> ClassType<'db> {
                     }
                 }
 
-                // Fallback if no `object.__new__` is found.
                 CallableTypes::one(CallableType::single(
                     db,
                     Signature::new_generic(
@@ -2639,8 +2550,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         source: ClassType<'db>,
         target: ClassType<'db>,
     ) -> ConstraintSet<'db, 'c> {
-        // Fast path: if source and target are the same class (possibly with different
-        // specializations), we can compare them directly without walking the MRO.
         if source == target && matches!(target, ClassType::NonGeneric(_)) {
             return self.always();
         }
@@ -2695,9 +2604,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return result;
         }
 
-        // The MRO retains only one specialization per class. A different inheritance path can
-        // still establish the relation: `Child(Gradual, Concrete)` is a subtype of `Base[int]`
-        // through `Concrete`, even if `Gradual` contributes `Base[Any]` to Child's MRO.
         result.or(db, self.constraints, || {
             source
                 .iter_explicit_ancestors(db, self.env)
@@ -2730,7 +2636,7 @@ impl MethodDecorator {
     /// Returns the decorator category for a function type.
     pub fn try_from_fn_type(db: &dyn Db, fn_type: FunctionType) -> Option<Self> {
         match (fn_type.is_classmethod(db), fn_type.is_staticmethod(db)) {
-            (true, true) => None, // A method can't be static and class method at the same time.
+            (true, true) => None,
             (true, false) => Some(Self::ClassMethod),
             (false, true) => Some(Self::StaticMethod),
             (false, false) => Some(Self::None),
@@ -2808,8 +2714,6 @@ impl Field<'_> {
     pub(crate) const fn is_required(&self) -> bool {
         match &self.kind {
             FieldKind::NamedTuple { default_ty } => default_ty.is_none(),
-            // A dataclass field is NOT required if `default` (or `default_factory`) is set
-            // or if `init` has been set to `False`.
             FieldKind::Dataclass {
                 init, default_ty, ..
             } => default_ty.is_none() && *init,
@@ -2891,7 +2795,6 @@ impl<'db, I: Iterator<Item = ClassBase<'db>>> MroLookup<'db, I> {
                 | ClassBase::Any
                 | ClassBase::Dynamic(_) => continue,
                 ClassBase::Class(base) => base,
-                // A divergent base is not yet known, and TypedDict has a special member lookup.
                 ClassBase::Divergent(_) | ClassBase::TypedDict(_) => return None,
             };
             let (base, specialization) = base.static_class_literal(db)?;
@@ -2931,8 +2834,6 @@ impl<'db, I: Iterator<Item = ClassBase<'db>>> MroLookup<'db, I> {
                     class: base,
                 }
             };
-            // The first class to bind a bare ClassVar supplies its type to subclasses.
-            // An uninitialized declaration or a stub placeholder supplies only the qualifier.
             if declaration.member.is_class_var()
                 && !declaration.member.place.is_definitely_bound()
                 && let Place::Defined(binding) = place_by_id(
@@ -3047,13 +2948,9 @@ impl<'db, I: Iterator<Item = ClassBase<'db>>> MroLookup<'db, I> {
         for superclass in self.mro_iter {
             match superclass {
                 ClassBase::Generic | ClassBase::Protocol => {
-                    // Skip over these very special class bases that aren't really classes.
                 }
                 ClassBase::Any | ClassBase::Dynamic(_) if policy.require_concrete() => {}
                 ClassBase::Any | ClassBase::Dynamic(_) => {
-                    // Note: calling `Type::from(superclass).member()` would be incorrect here.
-                    // What we'd really want is a `Type::Any.own_class_member()` method,
-                    // but adding such a method wouldn't make much sense -- it would always return `Any`!
                     dynamic_type.get_or_insert(Type::from(superclass));
                 }
                 ClassBase::Divergent(_) => {
@@ -3062,7 +2959,6 @@ impl<'db, I: Iterator<Item = ClassBase<'db>>> MroLookup<'db, I> {
                 ClassBase::Class(class) => {
                     let known = class.known(db);
 
-                    // Only exclude `object` members if this is not an `object` class itself
                     if known == Some(KnownClass::Object)
                         && policy.mro_no_object_fallback()
                         && !is_self_object
@@ -3151,12 +3047,8 @@ impl<'db, I: Iterator<Item = ClassBase<'db>>> MroLookup<'db, I> {
         for superclass in self.mro_iter {
             match superclass {
                 ClassBase::Generic | ClassBase::Protocol => {
-                    // Skip over these very special class bases that aren't really classes.
                 }
                 ClassBase::Any | ClassBase::Dynamic(_) | ClassBase::Divergent(_) => {
-                    // We already return the dynamic type for class member lookup, so we can
-                    // just return unbound here (to avoid having to build a union of the
-                    // dynamic type with itself).
                     return InstanceMemberResult::Done(PlaceAndQualifiers::unbound());
                 }
                 ClassBase::Class(class) => {
@@ -3177,8 +3069,6 @@ impl<'db, I: Iterator<Item = ClassBase<'db>>> MroLookup<'db, I> {
                                 .qualifiers
                                 .contains(TypeQualifiers::IMPLICIT_INSTANCE_ATTRIBUTE);
                         if !overriding_class_default {
-                            // Annotations take precedence over inferred writes, including augmented
-                            // assignments. Avoid inferring method bodies just to discard their types.
                             return InstanceMemberResult::Done(member.inner);
                         }
                     }
@@ -3194,8 +3084,6 @@ impl<'db, I: Iterator<Item = ClassBase<'db>>> MroLookup<'db, I> {
                     }
 
                     if definitely_declared {
-                        // An overriding class default shadows this declaration, but its augmented
-                        // assignments can still contribute to an inherited instance attribute.
                         continue;
                     }
 
@@ -3214,14 +3102,9 @@ impl<'db, I: Iterator<Item = ClassBase<'db>>> MroLookup<'db, I> {
                             definitely_bound_member = Some(member);
                         }
 
-                        // If the attribute is not definitely declared on this class, keep looking
-                        // higher up in the MRO, and build a union of all inferred types (and
-                        // possibly-declared types):
                         union = union.add(ty);
                         provenance = provenance.or(member_provenance);
 
-                        // TODO: We could raise a diagnostic here if there are conflicting type
-                        // qualifiers
                         union_qualifiers |= qualifiers;
 
                         if !pending_augmented_bindings.is_empty() {
@@ -3364,10 +3247,6 @@ pub(super) enum InstanceMemberResult<'db> {
     TypedDict,
 }
 
-// N.B. It would be incorrect to derive `Eq`, `PartialEq`, or `Hash` for this struct,
-// because two `QualifiedClassName` instances might refer to different classes but
-// have the same components. You'd expect them to compare equal, but they'd compare
-// unequal if `PartialEq`/`Eq` were naively derived.
 #[derive(Clone, Copy)]
 pub(super) struct QualifiedClassName<'db> {
     db: &'db dyn Db,
@@ -3389,7 +3268,6 @@ impl<'db> QualifiedClassName<'db> {
         let (file, file_scope_id, skip_count) = match self.class {
             ClassLiteral::Static(class) => {
                 let body_scope = class.body_scope(self.db);
-                // Skip the class body scope itself.
                 (
                     body_scope.program_file(self.db),
                     body_scope.file_scope_id(self.db),
@@ -3397,12 +3275,10 @@ impl<'db> QualifiedClassName<'db> {
                 )
             }
             ClassLiteral::Dynamic(class) => {
-                // Dynamic classes don't have a body scope; start from the enclosing scope.
                 let scope = class.scope(self.db);
                 (scope.program_file(self.db), scope.file_scope_id(self.db), 0)
             }
             ClassLiteral::DynamicNamedTuple(namedtuple) => {
-                // Dynamic namedtuples don't have a body scope; start from the enclosing scope.
                 let scope = namedtuple.scope(self.db);
                 (scope.program_file(self.db), scope.file_scope_id(self.db), 0)
             }
@@ -3474,8 +3350,6 @@ impl<'db> DisjointBase<'db> {
 
     /// Two disjoint bases can only coexist in a class's MRO if one is a subclass of the other
     fn could_coexist_in_mro_with(&self, db: &'db dyn Db, other: &Self) -> bool {
-        // CPython's layout check operates on runtime classes. Type arguments are irrelevant here:
-        // a generic disjoint base and any specialization of that base share the same layout.
         self == other
             || self
                 .class
@@ -3510,8 +3384,6 @@ pub(super) fn metaclass_instance_type<'db>(
     let instance = metaclass
         .to_instance_approximation(db, env)
         .expect("the type of a metaclass should always be instantiable");
-    // TODO: Intersect `instance` with `type` once equivalent representations are unified:
-    // https://github.com/astral-sh/ty/issues/222
     match instance {
         Type::Dynamic(dynamic) => SubclassOfType::from(db, env, dynamic),
         _ => instance,

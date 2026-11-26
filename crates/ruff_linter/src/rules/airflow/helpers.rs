@@ -21,32 +21,22 @@ pub(crate) const INTERNAL_MODULE_WARNING: &str = "This is an internal module whi
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Replacement {
-    // There's no replacement or suggestion other than removal
     None,
-    // Additional information. Used when there's no direct mapping replacement.
     Message(&'static str),
-    // The attribute name of a class has been changed.
     AttrName(&'static str),
-    // Symbols updated in Airflow 3 with replacement
-    // e.g., `airflow.datasets.Dataset` to `airflow.sdk.Asset`
     Rename {
         module: &'static str,
         name: &'static str,
     },
-    // Symbols updated in Airflow 3 with only module changed. Used when we want to match multiple names.
-    // e.g., `airflow.configuration.as_dict | get` to `airflow.configuration.conf.as_dict | get`
     SourceModuleMoved {
         module: &'static str,
         name: String,
     },
-    // Symbols moved to Task SDK in Airflow 3. Used when we want to match multiple names.
-    // e.g., `airflow.io.get_fs | has_fs | Properties` to `airflow.sdk.io.get_fs | has_fs | Properties`
     SourceModuleMovedToSDK {
         module: &'static str,
         name: String,
         version: &'static str,
     },
-    // Symbols updated in Airflow 3 with only module changed. Used when we want to include custom message and optionally report diagnostics.
     SourceModuleMovedWithMessage {
         module: &'static str,
         name: String,
@@ -183,8 +173,6 @@ pub(crate) fn is_airflow_builtin_or_provider(
             if let (Some(pos), Some(last_element)) =
                 (rest.iter().position(|&s| s == module), rest.last())
             {
-                // Check that the module is not the last element i.e., there's a symbol that's
-                // being used from the `module` that ends with `symbol_suffix`.
                 pos + 1 < rest.len() && last_element.ends_with(symbol_suffix)
             } else {
                 false

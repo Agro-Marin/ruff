@@ -1,5 +1,4 @@
 #!/bin/bash
-# Wrapper for ecosystem_all_check.py
 
 if [ ! -d ".venv/bin" ]; then
   python -m venv .venv

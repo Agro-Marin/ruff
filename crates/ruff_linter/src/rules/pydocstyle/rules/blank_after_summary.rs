@@ -100,7 +100,6 @@ pub(crate) fn blank_after_summary(checker: &Checker, docstring: &Docstring) {
             let mut lines = UniversalNewlineIterator::with_offset(&body, body.start());
             let mut summary_end = body.start();
 
-            // Find the "summary" line (defined as the first non-blank line).
             for line in lines.by_ref() {
                 if !line.trim().is_empty() {
                     summary_end = line.full_end();
@@ -108,7 +107,6 @@ pub(crate) fn blank_after_summary(checker: &Checker, docstring: &Docstring) {
                 }
             }
 
-            // Find the last blank line
             let mut blank_end = summary_end;
             for line in lines {
                 if !line.trim().is_empty() {
@@ -117,7 +115,6 @@ pub(crate) fn blank_after_summary(checker: &Checker, docstring: &Docstring) {
                 }
             }
 
-            // Insert one blank line after the summary (replacing any existing lines).
             diagnostic.set_fix(Fix::safe_edit(Edit::replacement(
                 checker.stylist().line_ending().to_string(),
                 summary_end,

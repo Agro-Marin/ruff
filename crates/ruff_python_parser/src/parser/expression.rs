@@ -67,49 +67,23 @@ pub(super) const EXPR_SET: TokenSet = TokenSet::new([
 
 /// Tokens that can appear after an expression.
 const END_EXPR_SET: TokenSet = TokenSet::new([
-    // Ex) `expr` (without a newline)
     TokenKind::EndOfFile,
-    // Ex) `expr`
     TokenKind::Newline,
-    // Ex) `expr;`
     TokenKind::Semi,
-    // Ex) `data[expr:]`
-    // Ex) `def foo() -> expr:`
-    // Ex) `{expr: expr}`
     TokenKind::Colon,
-    // Ex) `{expr}`
     TokenKind::Rbrace,
-    // Ex) `[expr]`
     TokenKind::Rsqb,
-    // Ex) `(expr)`
     TokenKind::Rpar,
-    // Ex) `expr,`
     TokenKind::Comma,
-    // Ex)
-    //
-    // if True:
-    //     expr
-    //     # <- Dedent
-    // x
     TokenKind::Dedent,
-    // Ex) `expr if expr else expr`
     TokenKind::If,
     TokenKind::Else,
-    // Ex) `with expr as target:`
-    // Ex) `except expr as NAME:`
     TokenKind::As,
-    // Ex) `raise expr from expr`
     TokenKind::From,
-    // Ex) `[expr for expr in iter]`
     TokenKind::For,
-    // Ex) `[expr async for expr in iter]`
     TokenKind::Async,
-    // Ex) `expr in expr`
     TokenKind::In,
-    // Ex) `name: expr = expr`
-    // Ex) `f"{expr=}"`
     TokenKind::Equal,
-    // Ex) `f"{expr!s}"`
     TokenKind::Exclamation,
 ]);
 
@@ -269,8 +243,6 @@ impl<'src> Parser<'src> {
             let current_token = self.current_token_kind();
 
             if matches!(current_token, TokenKind::In) && context.is_in_excluded() {
-                // Omit the `in` keyword when parsing the target expression in a comprehension or
-                // a `for` statement.
                 break;
             }
 
@@ -278,7 +250,6 @@ impl<'src> Parser<'src> {
                 matches!(current_token, TokenKind::Is | TokenKind::Not).then(|| self.peek());
             let Some(operator) = BinaryLikeOperator::try_from_tokens(current_token, next_token)
             else {
-                // Not an operator.
                 break;
             };
 
@@ -350,10 +321,6 @@ impl<'src> Parser<'src> {
                         );
                     }
                 } else {
-                    // > The power operator `**` binds less tightly than an arithmetic
-                    // > or bitwise unary operator on its right, that is, 2**-1 is 0.5.
-                    //
-                    // Reference: https://docs.python.org/3/reference/expressions.html#id21
                     if left_precedence > OperatorPrecedence::PosNegBitNot
                         && left_precedence != OperatorPrecedence::Exponent
                     {
@@ -387,7 +354,6 @@ impl<'src> Parser<'src> {
                 TokenKind::Await => {
                     let await_expr = self.parse_await_expression();
 
-                    // `await` expressions cannot be nested
                     if left_precedence >= OperatorPrecedence::Await {
                         self.add_error(
                             ParseErrorType::OtherError(
@@ -400,8 +366,6 @@ impl<'src> Parser<'src> {
                     return Expr::Await(await_expr).into();
                 }
                 TokenKind::Lambda => {
-                    // Lambda expression isn't allowed in this context but we'll still parse it and
-                    // report an error for better recovery.
                     let lambda_expr = self.parse_lambda_expr();
                     self.add_error(ParseErrorType::InvalidLambdaExpressionUsage, &lambda_expr);
                     return Expr::Lambda(lambda_expr).into();
@@ -435,7 +399,6 @@ impl<'src> Parser<'src> {
         let parsed_expr = self.parse_conditional_expression_or_higher();
 
         if parsed_expr.is_parenthesized {
-            // Parentheses resets the precedence, so we don't need to validate it.
             return parsed_expr;
         }
 
@@ -541,7 +504,6 @@ impl<'src> Parser<'src> {
         }
 
         if self.current_token_kind().is_keyword() {
-            // Non-soft keyword
             self.add_error(
                 ParseErrorType::OtherError(format!(
                     "Expected an identifier, but found a keyword {} that cannot be used here",
@@ -733,8 +695,8 @@ impl<'src> Parser<'src> {
 
         let args_snapshot = self.expr_scratch.snapshot();
         let keywords_snapshot = self.keyword_scratch.snapshot();
-        let mut seen_keyword_argument = false; // foo = 1
-        let mut seen_keyword_unpacking = false; // **foo
+        let mut seen_keyword_argument = false;
+        let mut seen_keyword_unpacking = false;
 
         let has_trailing_comma =
             self.parse_comma_separated_list(RecoveryContextKind::Arguments, |parser| {
@@ -816,9 +778,6 @@ impl<'src> Parser<'src> {
                                 node_index: AtomicNodeIndex::NONE,
                             }
                         } else {
-                            // TODO(dhruvmanila): Parser shouldn't drop the `parsed_expr` if it's
-                            // not a name expression. We could add the expression into `args` but
-                            // that means the error is a missing comma instead.
                             parser.add_error(
                                 ParseErrorType::OtherError("Expected a parameter name".to_string()),
                                 &parsed_expr,
@@ -886,14 +845,10 @@ impl<'src> Parser<'src> {
     ) -> ast::ExprSubscript {
         self.bump(TokenKind::Lsqb);
 
-        // To prevent the `value` context from being `Del` within a `del` statement,
-        // we set the context as `Load` here.
         helpers::set_expr_ctx(&mut value, ExprContext::Load);
 
-        // Slice range doesn't include the `[` token.
         let slice_start = self.node_start();
 
-        // Create an error when receiving an empty slice to parse, e.g. `x[]`
         if self.eat(TokenKind::Rsqb) {
             let slice_range = self.node_range(slice_start);
             self.add_error(ParseErrorType::EmptySlice, slice_range);
@@ -914,8 +869,6 @@ impl<'src> Parser<'src> {
 
         let mut slice = self.parse_slice();
 
-        // If there are more than one element in the slice, we need to create a tuple
-        // expression to represent it.
         if self.eat(TokenKind::Comma) {
             let slices_snapshot = self.expr_scratch.snapshot();
             self.expr_scratch.push(slice);
@@ -933,9 +886,6 @@ impl<'src> Parser<'src> {
                 node_index: AtomicNodeIndex::NONE,
             });
         } else if slice.is_starred_expr() {
-            // If the only slice element is a starred expression, that is represented
-            // using a tuple expression with a single element. This is the second case
-            // in the `slices` rule in the Python grammar.
             slice = Expr::Tuple(ast::ExprTuple {
                 elts: vec![slice],
                 ctx: ExprContext::Load,
@@ -1021,7 +971,6 @@ impl<'src> Parser<'src> {
             let lower =
                 self.parse_named_expression_or_higher(ExpressionContext::starred_conditional());
 
-            // This means we're in a subscript.
             if self.at_ts(NEWLINE_EOF_SET.union([TokenKind::Rsqb, TokenKind::Comma].into())) {
                 // test_ok parenthesized_named_expr_index_py38
                 // # parse_options: {"target-version": "3.8"}
@@ -1045,7 +994,6 @@ impl<'src> Parser<'src> {
                 return lower.expr;
             }
 
-            // Now we know we're in a slice.
             if !lower.is_parenthesized {
                 match lower.expr {
                     Expr::Starred(_) => {
@@ -1168,8 +1116,6 @@ impl<'src> Parser<'src> {
         self.expr_scratch.push(lhs);
         let mut progress = ParserProgress::default();
 
-        // Keep adding the expression to `values` until we see a different
-        // token than `operator_token`.
         loop {
             progress.assert_progressing(self);
 
@@ -1372,12 +1318,6 @@ impl<'src> Parser<'src> {
 
         if has_bytes {
             if byte_literal_count < strings.len() {
-                // TODO(dhruvmanila): This is not an ideal recovery because the parser
-                // replaces the byte literals with an invalid string literal node. Any
-                // downstream tools can extract the raw bytes from the range.
-                //
-                // We could convert the node into a string and mark it as invalid
-                // and would be clever to mark the type which is fewer in quantity.
 
                 // test_err mixed_tstring_and_bytes_literals
                 // t'first' b'second'
@@ -1394,9 +1334,6 @@ impl<'src> Parser<'src> {
                 // 'first' f'second' b'third'
                 self.report_mixed_string_literal_error(&strings, range);
             }
-            // Only construct a byte expression if all the literals are bytes
-            // otherwise, we'll try either string, t-string, or f-string. This is to retain
-            // as much information as possible.
             else {
                 let mut values = Vec::with_capacity(strings.len());
                 for string in strings {
@@ -1415,9 +1352,6 @@ impl<'src> Parser<'src> {
             if tstring_count < strings.len() {
                 self.report_mixed_string_literal_error(&strings, range);
             }
-            // Only construct a t-string expression if all the literals are t-strings
-            // otherwise, we'll try either string or f-string. This is to retain
-            // as much information as possible.
             else {
                 let mut values = Vec::with_capacity(strings.len());
                 for string in strings {
@@ -1434,8 +1368,6 @@ impl<'src> Parser<'src> {
             }
         }
 
-        // TODO(dhruvmanila): Parser drops unterminated strings here as well
-        // because the lexer doesn't emit them.
 
         // test_err implicitly_concatenated_unterminated_string
         // 'hello' 'world
@@ -1476,9 +1408,6 @@ impl<'src> Parser<'src> {
             match string {
                 StringType::FString(fstring) => parts.push(ast::FStringPart::FString(fstring)),
                 StringType::Str(string) => parts.push(ast::FStringPart::Literal(string)),
-                // Bytes and Template strings are invalid at this point
-                // and stored as invalid string literal parts in the
-                // f-string
                 StringType::TString(tstring) => parts.push(ast::FStringPart::Literal(
                     ast::StringLiteral::invalid(tstring.range()),
                 )),
@@ -1496,8 +1425,6 @@ impl<'src> Parser<'src> {
     }
 
     fn report_mixed_string_literal_error(&mut self, strings: &[StringType], range: TextRange) {
-        // CPython reports the first incompatible pair. A t-string mismatch takes
-        // precedence over a bytes mismatch within that pair.
         for pair in strings.windows(2) {
             let message = match pair {
                 [StringType::TString(_), StringType::TString(_)]
@@ -1666,16 +1593,11 @@ impl<'src> Parser<'src> {
                                 }),
                         )
                     }
-                    // `Invalid` tokens are created when there's a lexical error, so
-                    // we ignore it here to avoid creating unexpected token errors
                     TokenKind::Unknown => {
                         parser.bump_any();
                         return;
                     }
                     tok => {
-                        // This should never happen because the list parsing will only
-                        // call this closure for the above token kinds which are the same
-                        // as in the FIRST set.
                         unreachable!(
                             "{}: unexpected token `{tok:?}` at {:?}",
                             string_kind,
@@ -1731,9 +1653,6 @@ impl<'src> Parser<'src> {
         let value = self.parse_expression_list(ExpressionContext::yield_or_starred_bitwise_or());
 
         if !value.is_parenthesized && value.expr.is_lambda_expr() {
-            // TODO(dhruvmanila): This requires making some changes in lambda expression
-            // parsing logic to handle the emitted `FStringMiddle` token in case the
-            // lambda expression is not parenthesized.
 
             // test_err f_string_lambda_without_parentheses
             // f"{lambda x: x}"
@@ -1762,8 +1681,6 @@ impl<'src> Parser<'src> {
         };
 
         let conversion = if self.eat(TokenKind::Exclamation) {
-            // Ensure that the `r` is lexed as an identifier token instead of a raw string
-            // in `f{abc!r"` (note the missing `}`).
             self.tokens.re_lex_raw_string_in_format_spec();
 
             let conversion_flag_range = self.current_token_range();
@@ -1819,7 +1736,6 @@ impl<'src> Parser<'src> {
                     ),
                     conversion_flag_range,
                 );
-                // TODO(dhruvmanila): Avoid dropping this token
                 self.bump_any();
                 ConversionFlag::None
             }
@@ -1848,11 +1764,7 @@ impl<'src> Parser<'src> {
         self.tokens
             .re_lex_string_token_in_interpolation_element(string_kind);
 
-        // We're using `eat` here instead of `expect` to use the f-string specific error type.
         if !self.eat(TokenKind::Rbrace) {
-            // TODO(dhruvmanila): This requires some changes in the lexer. One of them
-            // would be to emit `FStringEnd`. Currently, the following test cases doesn't
-            // really work as expected. Refer https://github.com/astral-sh/ruff/pull/10372
 
             // test_err f_string_unclosed_lbrace
             // f"{"
@@ -1869,7 +1781,6 @@ impl<'src> Parser<'src> {
             // t"{"
             // t"""{"""
 
-            // The lexer does emit `FStringEnd` for the following test cases:
 
             // test_err f_string_unclosed_lbrace_in_format_spec
             // f"hello {x:"
@@ -1964,9 +1875,6 @@ impl<'src> Parser<'src> {
         if !self.options.target_version.supports_pep_701()
             && matches!(string_kind, InterpolatedStringKind::FString)
         {
-            // We need to check the whole expression range, including any leading or trailing
-            // debug text, but exclude the format spec, where escapes and escaped, reused quotes
-            // are allowed.
             let range = format_spec
                 .as_ref()
                 .map(|format_spec| TextRange::new(range.start(), format_spec.start()))
@@ -1997,8 +1905,6 @@ impl<'src> Parser<'src> {
 
             has_backslash_or_comment |= self.check_fstring_comments(range);
 
-            // Before Python 3.12, replacement fields could only span physical lines when the
-            // outer f-string was triple-quoted.
             if !flags.is_triple_quoted()
                 && !has_backslash_or_comment
                 && memchr::memchr2(b'\n', b'\r', self.source[range].as_bytes()).is_some()
@@ -2032,7 +1938,6 @@ impl<'src> Parser<'src> {
 
         self.bump(TokenKind::Lsqb);
 
-        // Nice error message when having a unclosed open bracket `[`
         if self.at_ts(NEWLINE_EOF_SET) {
             self.add_error(
                 ParseErrorType::OtherError("Missing closing bracket `]`".to_string()),
@@ -2040,7 +1945,6 @@ impl<'src> Parser<'src> {
             );
         }
 
-        // Return an empty `ListExpr` when finding a `]` right after the `[`
         if self.eat(TokenKind::Rsqb) {
             return Expr::List(ast::ExprList {
                 elts: vec![],
@@ -2050,15 +1954,12 @@ impl<'src> Parser<'src> {
             });
         }
 
-        // Parse the first element with a more general rule and limit it later.
         let first_element = self.parse_named_expression_or_higher(
             ExpressionContext::starred_bitwise_or().with_for_excluded(),
         );
 
         match self.current_token_kind() {
             TokenKind::Async | TokenKind::For => {
-                // Parenthesized starred expression isn't allowed either but that is
-                // handled by the `parse_parenthesized_expression` method.
 
                 // test_ok starred_list_comp_py315
                 // # parse_options: {"target-version": "3.15"}
@@ -2124,7 +2025,6 @@ impl<'src> Parser<'src> {
         let start = self.node_start();
         self.bump(TokenKind::Lbrace);
 
-        // Nice error message when having a unclosed open brace `{`
         if self.at_ts(NEWLINE_EOF_SET) {
             self.add_error(
                 ParseErrorType::OtherError("Missing closing brace `}`".to_string()),
@@ -2132,7 +2032,6 @@ impl<'src> Parser<'src> {
             );
         }
 
-        // Return an empty `DictExpr` when finding a `}` right after the `{`
         if self.eat(TokenKind::Rbrace) {
             return Expr::Dict(ast::ExprDict {
                 items: vec![],
@@ -2144,8 +2043,6 @@ impl<'src> Parser<'src> {
         let after_brace = self.node_start();
 
         if self.eat(TokenKind::DoubleStar) {
-            // Handle dictionary unpacking. Here, the grammar is `'**' bitwise_or`
-            // which requires limiting the expression.
             let value = self.parse_expression_with_bitwise_or_precedence();
             let unpack_range = TextRange::new(after_brace, value.range().end());
 
@@ -2186,9 +2083,6 @@ impl<'src> Parser<'src> {
             return Expr::Dict(self.parse_dictionary_expression(None, value.expr, start));
         }
 
-        // For dictionary expressions, the key uses the `expression` rule while for
-        // set expressions, the element uses the `star_expression` rule. So, use the
-        // one that is more general and limit it later.
         let key_or_element = self.parse_named_expression_or_higher(
             ExpressionContext::starred_bitwise_or().with_for_excluded(),
         );
@@ -2227,8 +2121,6 @@ impl<'src> Parser<'src> {
                 Expr::SetComp(self.parse_set_comprehension_expression(key_or_element.expr, start))
             }
             TokenKind::Colon => {
-                // Now, we know that it's either a dictionary expression or a dictionary comprehension.
-                // In either case, the key is limited to an `expression`.
                 if !key_or_element.is_parenthesized {
                     match key_or_element.expr {
                         Expr::Starred(_) => self.add_error(
@@ -2284,7 +2176,6 @@ impl<'src> Parser<'src> {
         let start = self.node_start();
         self.bump(TokenKind::Lpar);
 
-        // Nice error message when having a unclosed open parenthesis `(`
         if self.at_ts(NEWLINE_EOF_SET) {
             let range = self.current_token_range();
             self.add_error(
@@ -2293,7 +2184,6 @@ impl<'src> Parser<'src> {
             );
         }
 
-        // Return an empty `TupleExpr` when finding a `)` right after the `(`
         if self.eat(TokenKind::Rpar) {
             return Expr::Tuple(ast::ExprTuple {
                 elts: vec![],
@@ -2305,15 +2195,12 @@ impl<'src> Parser<'src> {
             .into();
         }
 
-        // Use the more general rule of the three to parse the first element
-        // and limit it later.
         let mut parsed_expr = self.parse_named_expression_or_higher(
             ExpressionContext::yield_or_starred_bitwise_or().with_for_excluded(),
         );
 
         match self.current_token_kind() {
             TokenKind::Comma => {
-                // grammar: `tuple`
                 let tuple =
                     self.parse_tuple_expression(parsed_expr.expr, start, Parenthesized::Yes, |p| {
                         p.parse_named_expression_or_higher(ExpressionContext::starred_bitwise_or())
@@ -2325,7 +2212,6 @@ impl<'src> Parser<'src> {
                 }
             }
             TokenKind::Async | TokenKind::For => {
-                // grammar: `genexp`
                 if parsed_expr.is_unparenthesized_starred_expr() {
                     self.add_unsupported_syntax_error(
                         UnsupportedSyntaxErrorKind::UnpackingInComprehension(
@@ -2347,7 +2233,6 @@ impl<'src> Parser<'src> {
                 }
             }
             _ => {
-                // grammar: `group`
                 if parsed_expr.expr.is_starred_expr() {
                     self.add_error(ParseErrorType::InvalidStarredExpressionUsage, &parsed_expr);
                 }
@@ -2370,8 +2255,6 @@ impl<'src> Parser<'src> {
         parenthesized: Parenthesized,
         mut parse_func: impl FnMut(&mut Parser<'src>) -> ParsedExpr,
     ) -> ast::ExprTuple {
-        // TODO(dhruvmanila): Can we remove `parse_func` and use `parenthesized` to
-        // determine the parsing function?
 
         if !self.at_sequence_end() {
             self.expect(TokenKind::Comma);
@@ -2494,8 +2377,6 @@ impl<'src> Parser<'src> {
 
         self.parse_comma_separated_list(RecoveryContextKind::DictElements, |parser| {
             if parser.eat(TokenKind::DoubleStar) {
-                // Handle dictionary unpacking. Here, the grammar is `'**' bitwise_or`
-                // which requires limiting the expression.
                 items.push(ast::DictItem {
                     key: None,
                     value: parser.parse_expression_with_bitwise_or_precedence().expr,
@@ -2805,21 +2686,6 @@ impl<'src> Parser<'src> {
     ///
     /// See: <https://docs.python.org/3/reference/expressions.html#yield-expressions>
     fn parse_yield_from_expression(&mut self, start: TextSize) -> Expr {
-        // Grammar:
-        //     'yield' 'from' expression
-        //
-        // Here, a tuple expression isn't allowed without the parentheses. But, we
-        // allow it here to report better error message.
-        //
-        // Now, this also solves another problem. Take the following example:
-        //
-        // ```python
-        // yield from x, y
-        // ```
-        //
-        // If we didn't use the `parse_expression_list` method here, the parser
-        // would have stopped at the comma. Then, the outer expression would
-        // have been a tuple expression with two elements: `yield from x` and `y`.
         let expr = self
             .parse_expression_list(ExpressionContext::default())
             .expr;
@@ -2914,7 +2780,6 @@ impl<'src> Parser<'src> {
         // lambda x: yield y
         // lambda x: yield from y
 
-        // Lambda bodies recurse through the conditional layer without entering the binary parser.
         let body = self.with_recursion(Self::parse_conditional_expression_or_higher);
 
         ast::ExprLambda {
@@ -2939,7 +2804,6 @@ impl<'src> Parser<'src> {
 
         self.expect(TokenKind::Else);
 
-        // The binary-expression guard has already returned before parsing the `else` branch.
         let orelse = self.with_recursion(Self::parse_conditional_expression_or_higher);
 
         ast::ExprIf {
@@ -2963,7 +2827,6 @@ impl<'src> Parser<'src> {
         let (value, kind) = self.bump_ipython_escape_command(IpyEscapeContext::Assignment);
 
         if !matches!(kind, IpyEscapeKind::Magic | IpyEscapeKind::Shell) {
-            // This should never occur as the lexer won't allow it.
             unreachable!("IPython escape command expression is only allowed for % and !");
         }
 
@@ -2991,8 +2854,6 @@ impl<'src> Parser<'src> {
     ) {
         let generator_must_be_parenthesized = match context {
             ArgumentsContext::Call => has_trailing_comma || arguments.len() > 1,
-            // CPython rejects an unparenthesized generator expression as a class base even though
-            // this restriction isn't specified in the class definition grammar.
             ArgumentsContext::ClassDefinition => true,
         };
 

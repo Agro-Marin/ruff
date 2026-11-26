@@ -13,9 +13,6 @@ from typing import Any, ClassVar, Protocol, _SpecialForm
 
 from typing_extensions import LiteralString, Self, TypeForm
 
-# -------------
-# Special forms
-# -------------
 
 TypeOf: _SpecialForm
 """
@@ -53,9 +50,6 @@ descriptor-style method binding. Use this when you want to compare a callable ag
 ordinary `Callable[...]` types in type-theoretic tests.
 """
 
-# -----
-# Types
-# -----
 
 Unknown: _SpecialForm
 """
@@ -98,33 +92,16 @@ class NamedTupleLike(Protocol):
     created using `typing.NamedTuple` or `collections.namedtuple`.
     """
 
-    # _fields is defined as `tuple[Any, ...]` rather than `tuple[str, ...]` so
-    # that instances of actual `NamedTuple` classes with more precise `_fields`
-    # types are considered assignable to this protocol (protocol attribute members
-    # are invariant, and `tuple[str, str]` is not invariantly assignable to
-    # `tuple[str, ...]`).
     _fields: ClassVar[tuple[Any, ...]]
     _field_defaults: ClassVar[dict[str, Any]]
     @classmethod
     def _make(cls: type[Self], iterable: collections.abc.Iterable[Any]) -> Self: ...
     def _asdict(self, /) -> dict[str, Any]: ...
 
-    # Positional arguments aren't actually accepted by these methods at runtime,
-    # but adding the `*args` parameters means that all `NamedTuple` classes
-    # are understood as assignable to this protocol due to the special case
-    # outlined in https://typing.python.org/en/latest/spec/callables.html#meaning-of-in-callable:
-    #
-    # > If the input signature in a function definition includes both a
-    # > `*args` and `**kwargs` parameter and both are typed as `Any`
-    # > (explicitly or implicitly because it has no annotation), a type
-    # > checker should treat this as the equivalent of `...`.
     def _replace(self, *args, **kwargs) -> Self: ...
     if sys.version_info >= (3, 13):
         def __replace__(self, *args, **kwargs) -> Self: ...
 
-# -----------
-# Constraints
-# -----------
 
 class ConstraintSetSolution:
     """One solution path for a constraint set."""
@@ -278,9 +255,6 @@ class GenericContext:
 class Specialization:
     """A mapping of typevars to specific types"""
 
-# -------------------
-# Predicates on types
-# -------------------
 
 def is_equivalent_to(
     type_a: TypeForm[object], type_b: TypeForm[object]
@@ -343,9 +317,6 @@ def is_disjoint_from(
 def is_singleton(ty: TypeForm[object]) -> bool:
     """Returns `True` if `ty` is a singleton type with exactly one inhabitant."""
 
-# -------------------
-# Operations on types
-# -------------------
 
 def generic_context(input: Any) -> GenericContext | None:
     """Returns the generic context of the input (a class, a function, a method, a type alias, ..)
@@ -402,10 +373,6 @@ def reveal_protocol_interface(protocol: type) -> None:
 def reveal_mro(cls: type | types.GenericAlias) -> None:
     """Reveal the MRO that ty infers for the given class or generic alias."""
 
-# Special variants of the corresponding protocols in `typing`, but without the
-# `__iter__`/`__aiter__` on Iterator/AsyncIterator, which is often omitted in
-# practice. These protocols are used for generating better `non-iterable` error
-# messages, nothing else.
 class Iterator[T](Protocol):
     def __next__(self, /) -> T: ...
 

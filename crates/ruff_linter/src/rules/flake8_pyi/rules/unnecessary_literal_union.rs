@@ -74,11 +74,9 @@ pub(crate) fn unnecessary_literal_union<'a>(checker: &Checker, expr: &'a Expr) {
     let mut literal_exprs = Vec::new();
     let mut other_exprs = Vec::new();
 
-    // For the sake of consistency, use the first `Literal` subscript to construct the fix.
     let mut literal_subscript = None;
     let mut total_literals = 0;
 
-    // Split members into `literal_exprs` if they are a `Literal` annotation  and `other_exprs` otherwise
     let mut collect_literal_expr = |expr: &'a Expr, _parent: &'a Expr| {
         if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr {
             if checker.semantic().match_typing_expr(value, "Literal") {
@@ -90,7 +88,6 @@ pub(crate) fn unnecessary_literal_union<'a>(checker: &Checker, expr: &'a Expr) {
 
                 let slice = &**slice;
 
-                // flatten already-unioned literals to later union again
                 if let Expr::Tuple(tuple) = slice {
                     for item in tuple {
                         literal_exprs.push(item);
@@ -106,7 +103,6 @@ pub(crate) fn unnecessary_literal_union<'a>(checker: &Checker, expr: &'a Expr) {
         }
     };
 
-    // Traverse the union, collect all members, split out the literals from the rest.
     traverse_union(&mut collect_literal_expr, checker.semantic(), expr);
 
     let union_subscript = expr.as_subscript_expr();
@@ -118,7 +114,6 @@ pub(crate) fn unnecessary_literal_union<'a>(checker: &Checker, expr: &'a Expr) {
         return;
     }
 
-    // If there are no literal members, we don't need to do anything.
     let Some(literal_subscript) = literal_subscript else {
         return;
     };

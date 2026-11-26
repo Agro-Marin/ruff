@@ -43,7 +43,6 @@ impl BackgroundDocumentRequestHandler for DocumentSymbolRequestHandler {
             return Ok(None);
         };
 
-        // Check if the client supports hierarchical document symbols
         let supports_hierarchical = snapshot
             .resolved_client_capabilities()
             .supports_hierarchical_document_symbols();
@@ -73,7 +72,6 @@ impl BackgroundDocumentRequestHandler for DocumentSymbolRequestHandler {
                 lsp_symbols,
             )))
         } else {
-            // Return flattened symbols as SymbolInformation
             let lsp_symbols = symbols
                 .iter()
                 .filter_map(|(_, symbol)| {

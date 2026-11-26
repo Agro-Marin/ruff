@@ -1,6 +1,5 @@
 //! Algorithmic mapping for hangul syllables.
 
-// derived from Jamo.txt
 pub static CHOSEONG: &[&str] = &[
     "G", "GG", "N", "D", "DD", "R", "M", "B", "BB", "S", "SS", "", "J", "JJ", "C", "K", "T", "P",
     "H",
@@ -21,13 +20,11 @@ pub fn is_hangul_syllable(c: char) -> bool {
 pub fn syllable_decomposition(c: char) -> Option<(u8, u8, u8)> {
     if is_hangul_syllable(c) {
         let n = c as u32 - 0xAC00;
-        // break this into the various parts.
         let jongseong = n % 28;
         let jungseong = (n / 28) % 21;
         let choseong = n / (28 * 21);
         Some((choseong as u8, jungseong as u8, jongseong as u8))
     } else {
-        // outside the range
         None
     }
 }
@@ -187,7 +184,6 @@ mod tests {
             );
         }
 
-        // there is no empty jungseong
         assert_eq!(super::slice_shift_jungseong(b""), (None, b"" as &[u8]));
     }
 

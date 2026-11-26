@@ -66,14 +66,11 @@ pub(crate) fn type_comparison(checker: &Checker, compare: &ast::ExprCompare) {
         .iter()
         .filter(|(_, op, _)| matches!(op, CmpOp::Eq | CmpOp::NotEq))
     {
-        // If either expression is a type...
         if is_type(left, checker.semantic()) || is_type(right, checker.semantic()) {
-            // And neither is a `dtype`...
             if is_dtype(left, checker.semantic()) || is_dtype(right, checker.semantic()) {
                 continue;
             }
 
-            // Disallow the comparison.
             checker.report_diagnostic(TypeComparison, compare.range());
         }
     }
@@ -83,11 +80,9 @@ pub(crate) fn type_comparison(checker: &Checker, compare: &ast::ExprCompare) {
 fn is_type(expr: &Expr, semantic: &SemanticModel) -> bool {
     match expr {
         Expr::Call(ast::ExprCall { func, .. }) => {
-            // Ex) `type(obj) == type(1)`
             semantic.match_builtin_expr(func, "type")
         }
         Expr::Name(ast::ExprName { id, .. }) => {
-            // Ex) `type(obj) == int`
             matches!(
                 id.as_str(),
                 "bool"
@@ -195,13 +190,10 @@ fn is_type(expr: &Expr, semantic: &SemanticModel) -> bool {
 /// > `x.dtype == ['i1,i4']`; basically, __eq__ always tries to do `dtype(other)`).
 fn is_dtype(expr: &Expr, semantic: &SemanticModel) -> bool {
     match expr {
-        // Ex) `np.dtype(obj)`
         Expr::Call(ast::ExprCall { func, .. }) => {
             semantic.matches_qualified_name(func, &["numpy", "dtype"])
         }
-        // Ex) `obj.dtype`
         Expr::Attribute(ast::ExprAttribute { attr, .. }) => {
-            // Ex) `obj.dtype`
             attr.as_str() == "dtype"
         }
         _ => false,

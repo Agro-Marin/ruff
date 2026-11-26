@@ -24,9 +24,7 @@ impl BackgroundRequestHandler for WorkspaceSymbolRequestHandler {
         let query = &params.query;
         let mut all_symbols = Vec::new();
 
-        // Iterate through all projects in the session
         for db in snapshot.projects() {
-            // Get workspace symbols matching the query
             let start = std::time::Instant::now();
             let workspace_symbol_infos = workspace_symbols(db, query);
             tracing::debug!(
@@ -35,11 +33,9 @@ impl BackgroundRequestHandler for WorkspaceSymbolRequestHandler {
                 elapsed = std::time::Instant::now().duration_since(start)
             );
 
-            // Convert to LSP SymbolInformation
             for workspace_symbol_info in workspace_symbol_infos {
                 let WorkspaceSymbolInfo { symbol, file } = workspace_symbol_info;
 
-                // Get position encoding from session
                 let encoding = snapshot.position_encoding();
 
                 let Some(symbol) = convert_to_lsp_symbol_information(db, file, symbol, encoding)

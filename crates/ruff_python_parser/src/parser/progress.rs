@@ -6,8 +6,6 @@ pub(super) struct TokenId(u32);
 impl TokenId {
     /// Increments the value of the token ID.
     pub(super) fn increment(&mut self) {
-        // It's fine to just wrap around because the main purpose is to check whether
-        // the previous token ID is different from the current token ID.
         self.0 = self.0.wrapping_add(1);
     }
 }

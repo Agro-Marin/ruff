@@ -68,19 +68,14 @@ impl<'a> RenderPlan<'a> {
                     }
                 }
                 rst::Field::Metadata { body } if body.is_empty() => {
-                    // Sphinx metadata fields are not user-facing hover sections.
                 }
                 rst::Field::Metadata { .. } => return None,
                 rst::Field::Unknown { .. } => {
-                    // Unknown or unsupported fields may have section semantics we
-                    // do not understand, so leave the full field list unstructured.
                     return None;
                 }
             }
         }
 
-        // Resolve supplemental types in a second pass so their matching value fields are known
-        // even when the type fields appear first.
         for field in fields {
             match field {
                 rst::Field::ParameterType { lookup_name, ty } => {
@@ -159,14 +154,10 @@ impl<'a> RenderPlan<'a> {
                 rst::Field::ParameterType { .. }
                 | rst::Field::AttributeType { .. }
                 | rst::Field::ReturnType { .. } => {
-                    // Supplemental types render with their value fields.
                 }
                 rst::Field::Metadata { .. } => {
-                    // Metadata is omitted because it isn't user-facing.
                 }
                 rst::Field::Unknown { .. } => {
-                    // Required for exhaustiveness. `RenderPlan::from_fields` rejects this
-                    // variant before constructing `Self`.
                 }
             }
         }
@@ -546,16 +537,10 @@ Trailing prose.
     #[test]
     fn unstructured_field_lists_stay_raw() {
         for docstring in [
-            // Recognized fields that would lose information or render no
-            // visible item if converted structurally.
-            // `:type orphan:` has no matching value field, so rendering the
-            // field list structurally would drop the type information.
             "\
 :param first: First parameter.
 :type orphan: str
 ",
-            // Malformed or body-bearing metadata may contain user-visible text,
-            // so preserve the full field list rather than dropping it.
             "\
 :param value: The value.
 :meta: Preserve this field list.
@@ -564,39 +549,29 @@ Trailing prose.
 :param value: The value.
 :meta private: Preserve this field list.
 ",
-            // Unsupported or ambiguous field lists.
-            // `:unknown field:` is not a supported Sphinx-style field.
             "\
 Summary.
 
 :param value: The value.
 :unknown field: Preserve this field list.
 ",
-            // A malformed supported field must keep the surrounding contiguous
-            // field list from being partially converted.
             "\
 :param first: First parameter.
 :param second:Missing whitespace before the body.
 :param third: Third parameter.
 ",
-            // Empty `:returns:` and `:raises:` fields would render as empty
-            // section items.
             "\
 Summary.
 
 :returns:
 :raises:
 ",
-            // `:type value:` cannot supplement a parameter that already has
-            // an inline type.
             "\
 Summary.
 
 :param str value: The value.
 :type value: int
 ",
-            // Duplicate `:type value:` fields make the supplemental type
-            // ambiguous.
             "\
 Summary.
 
@@ -604,15 +579,12 @@ Summary.
 :type value: str
 :type value: int
 ",
-            // The empty `:returns:` field would render as an empty section item.
             "\
 Summary.
 
 :param value: The value.
 :returns:
 ",
-            // Empty supplemental type fields would otherwise be dropped from
-            // an otherwise renderable field list.
             "\
 :param value: The value.
 :type value:
@@ -625,14 +597,10 @@ Summary.
 :param value: The value.
 :rtype:
 ",
-            // `:rtype:` does not accept an argument, which the structured
-            // representation would otherwise drop.
             "\
 :param value: The value.
 :rtype result: int
 ",
-            // A field list requires a preceding block boundary. Without one,
-            // field-like lines remain part of the surrounding paragraph.
             "\
 Summary.
 :param value: This is paragraph text.
@@ -643,8 +611,6 @@ Summary.
 :meta private:
 Continuation.
 ",
-            // Escaped colons belong to the field name. Leave the field list raw
-            // rather than interpreting one as the end of the field header.
             r#"\
 :param first: First parameter.
 :param Literal["a\: b"] value: The value.

@@ -172,9 +172,6 @@ impl SpecialFormType {
 
             Self::TypeQualifier(qualifier) => qualifier.class(),
 
-            // Typeshed says it's an instance of `_SpecialForm`,
-            // but then we wouldn't recognise things like `issubclass(`X, Protocol)`
-            // as being valid.
             Self::Protocol => KnownClass::ProtocolMeta,
 
             Self::Generic | Self::Any | Self::CollectionsAbcCallable => KnownClass::Type,
@@ -348,8 +345,6 @@ impl SpecialFormType {
             NotRequired,
         }
 
-        // This implementation exists purely to enforce that every variant of `SpecialFormType`
-        // is included in the `SpecialFormTypeBuilder` enum
         #[cfg(test)]
         impl From<SpecialFormType> for SpecialFormTypeBuilder {
             fn from(value: SpecialFormType) -> Self {
@@ -570,11 +565,8 @@ impl SpecialFormType {
     /// but some like `TypedDict` and collection constructors can be called.
     pub(super) const fn is_callable(self) -> bool {
         match self {
-            // TypedDict can be called as a constructor to create TypedDict types
             Self::TypedDict(_) => true,
 
-            // Collection constructors are callable
-            // TODO actually implement support for calling them
             Self::LegacyStdlibAlias(
                 LegacyStdlibAlias::ChainMap
                 | LegacyStdlibAlias::Counter
@@ -585,8 +577,6 @@ impl SpecialFormType {
             | Self::NamedTuple => true,
             Self::TypeForm => true,
 
-            // Unlike the aliases to `collections` classes,
-            // the aliases to builtin classes are *not* callable...
             Self::LegacyStdlibAlias(
                 LegacyStdlibAlias::List
                 | LegacyStdlibAlias::Dict
@@ -598,7 +588,6 @@ impl SpecialFormType {
 
             Self::TypeQualifier(qualifier) => qualifier.is_callable(),
 
-            // All other special forms are also not callable
             Self::Annotated
             | Self::Literal
             | Self::LiteralString
@@ -675,7 +664,6 @@ impl SpecialFormType {
             | Self::Unpack
             | Self::TypeForm => false,
 
-            // can be used in `issubclass()` but not `isinstance()`.
             Self::Any => false,
         }
     }
@@ -831,12 +819,6 @@ impl SpecialFormType {
             Self::AlwaysTruthy => Ok(Type::AlwaysTruthy),
             Self::AlwaysFalsy => Ok(Type::AlwaysFalsy),
 
-            // Special case: `NamedTuple` in a type expression is understood to describe the type
-            // `tuple[object, ...] & <a protocol that any `NamedTuple` class would satisfy>`.
-            // This isn't very principled (since at runtime, `NamedTuple` is just a function),
-            // but it appears to be what users often expect, and it improves compatibility with
-            // other type checkers such as mypy.
-            // See conversation in https://github.com/astral-sh/ruff/pull/19915.
             Self::NamedTuple => Ok(IntersectionType::from_two_elements(
                 db,
                 env,
@@ -905,9 +887,6 @@ impl SpecialFormType {
                     .map(Type::TypeVar)
                     .unwrap_or(Type::SpecialForm(self)))
             }
-            // We ensure that `typing.TypeAlias` used in the expected position (annotating an
-            // annotated assignment statement) doesn't reach here. Using it in any other type
-            // expression is an error.
             Self::TypeAlias => Err(InvalidTypeExpression::TypeAlias),
             Self::TypedDict(_) => Err(InvalidTypeExpression::TypedDict),
 
@@ -918,7 +897,6 @@ impl SpecialFormType {
             Self::Protocol => Err(InvalidTypeExpression::Protocol),
             Self::Generic => Err(InvalidTypeExpression::Generic),
 
-            // `Concatenate` is just always invalid in this context in a type expression
             Self::Concatenate
                 if !inference_flags.contains(InferenceFlags::IN_VALID_CONCATENATE_CONTEXT) =>
             {
@@ -940,7 +918,6 @@ impl SpecialFormType {
             | Self::CallableTypeOf
             | Self::RegularCallableTypeOf => Err(InvalidTypeExpression::RequiresOneArgument(self)),
 
-            // We treat `typing.Type` exactly the same as `builtins.type`:
             SpecialFormType::Type => Ok(KnownClass::Type.to_instance(db, env)),
             SpecialFormType::TypeForm => Ok(TypeFormType::from_type_expression(db, Type::any())),
             SpecialFormType::Tuple => Ok(Type::homogeneous_tuple(db, env, Type::unknown())),

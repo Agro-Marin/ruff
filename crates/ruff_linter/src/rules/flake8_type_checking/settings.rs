@@ -30,9 +30,6 @@ pub enum RuntimeSemantics {
     /// Use the default runtime semantics of the targeted annotations, this
     /// exists so that child configurations can revert entries the parent
     /// configuration configured back to the default semantics.
-    // NOTE: Until we're sure how to properly support this with `extend` we
-    //       don't want to expose this at the configuration level, we still
-    //       need it as a possible result for the X_runtime_semantics helpers.
     #[serde(skip)]
     Default,
 }

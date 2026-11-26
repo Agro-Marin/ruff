@@ -59,11 +59,9 @@ impl AlwaysFixableViolation for AssertWithPrintMessage {
 /// replace the message with the arguments to the `print` call.
 pub(crate) fn assert_with_print_message(checker: &Checker, stmt: &ast::StmtAssert) {
     if let Some(Expr::Call(call)) = stmt.msg.as_deref() {
-        // We have to check that the print call is a call to the built-in `print` function
         let semantic = checker.semantic();
 
         if semantic.match_builtin_expr(&call.func, "print") {
-            // This is the confirmed rule condition
             let mut diagnostic = checker.report_diagnostic(AssertWithPrintMessage, call.range());
             diagnostic.set_fix(Fix::unsafe_edit(Edit::range_replacement(
                 checker.generator().stmt(&Stmt::Assert(ast::StmtAssert {
@@ -72,9 +70,6 @@ pub(crate) fn assert_with_print_message(checker: &Checker, stmt: &ast::StmtAsser
                     range: TextRange::default(),
                     node_index: ruff_python_ast::AtomicNodeIndex::NONE,
                 })),
-                // We have to replace the entire statement,
-                // as the `print` could be empty and thus `call.range()`
-                // will cease to exist.
                 stmt.range(),
             )));
         }
@@ -108,7 +103,6 @@ mod print_arguments {
     /// - otherwise, the expression will be wrapped in a `FStringExpressionElement`.
     fn expr_to_fstring_elements(expr: &Expr) -> Vec<InterpolatedStringElement> {
         match expr {
-            // If the expression is a string literal, convert each part to a `FStringLiteralElement`.
             Expr::StringLiteral(string) => string
                 .value
                 .iter()
@@ -121,11 +115,8 @@ mod print_arguments {
                 })
                 .collect(),
 
-            // If the expression is an f-string, return the elements.
             Expr::FString(fstring) => fstring.value.elements().cloned().collect(),
 
-            // Otherwise, return the expression as a single `FStringExpressionElement` wrapping
-            // the expression.
             expr => vec![InterpolatedStringElement::Interpolation(
                 InterpolatedElement {
                     expression: Box::new(expr.clone()),
@@ -174,32 +165,23 @@ mod print_arguments {
         sep: impl ExactSizeIterator<Item = &'a InterpolatedStringElement>,
         flags: StringLiteralFlags,
     ) -> Option<Expr> {
-        // If there are no arguments, short-circuit and return `None`
         if args.len() == 0 {
             return None;
         }
 
-        // Attempt to convert the `sep` and `args` arguments to string literals.
-        // We need to maintain `args` as a Vec of Vecs, as the first Vec represents
-        // the arguments to the `print` call, and the inner Vecs represent the elements
-        // of a concatenated string literal. (e.g. "text", "text" "text") The `sep` will
-        // be inserted only between the outer Vecs.
         let (Some(sep), Some(args)) = (
             fstring_elements_to_string_literals(sep, flags),
             args.map(|arg| fstring_elements_to_string_literals(arg.iter(), flags))
                 .collect::<Option<Vec<_>>>(),
         ) else {
-            // If any of the arguments are not string literals, return None
             return None;
         };
 
-        // Put the `sep` into a single Rust `String`
         let sep_string = sep
             .into_iter()
             .map(|string_literal| string_literal.value)
             .join("");
 
-        // Join the `args` with the `sep`
         let combined_string = args
             .into_iter()
             .map(|string_literals| {
@@ -233,7 +215,6 @@ mod print_arguments {
         sep: impl ExactSizeIterator<Item = InterpolatedStringElement>,
         flags: FStringFlags,
     ) -> Option<Expr> {
-        // If there are no arguments, short-circuit and return `None`
         let first_arg = args.next()?;
         let sep = sep.collect::<Vec<_>>();
 
@@ -269,11 +250,9 @@ mod print_arguments {
     /// - [`Some`]<[`Expr::FString`]> if any of the arguments are not string literals.
     /// - [`None`] if the `print` contains no positional arguments at all.
     pub(super) fn to_expr(arguments: &Arguments, checker: &Checker) -> Option<Expr> {
-        // Convert the `sep` argument into `FStringElement`s
         let sep = arguments
             .find_keyword("sep")
             .and_then(
-                // If the `sep` argument is `None`, treat this as default behavior.
                 |keyword| {
                     if let Expr::NoneLiteral(_) = keyword.value {
                         None
@@ -299,8 +278,6 @@ mod print_arguments {
             .map(expr_to_fstring_elements)
             .collect::<Vec<_>>();
 
-        // Attempt to convert the `sep` and `args` arguments to a string literal,
-        // falling back to an f-string if the arguments are not all string literals.
         args_to_string_literal_expr(args.iter(), sep.iter(), checker.default_string_flags())
             .or_else(|| {
                 args_to_fstring_expr(

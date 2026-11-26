@@ -32,9 +32,6 @@ pub(super) fn bind_type_guard_return_type<'db>(
     };
 
     let find_narrowed_place = || {
-        // Use the call binding to find the argument that maps to the first parameter a type
-        // guard can narrow. This supports keyword arguments without falling back to a later
-        // parameter when the target is defaulted.
         let matched_narrowed_argument_index = bindings.single_element().and_then(|binding| {
             let has_implicit_receiver = binding
                 .signature_type
@@ -75,10 +72,7 @@ pub(super) fn bind_type_guard_return_type<'db>(
 
         let argument = match matched_narrowed_argument_index {
             Some(Some(argument_index)) => arguments.iter_source_order().nth(argument_index),
-            // The target parameter was omitted, so there is no expression to narrow.
             Some(None) => None,
-            // Preserve positional behavior when there isn't a unique callable binding whose
-            // parameter mapping we can use.
             None => arguments
                 .args
                 .get(narrowed_argument_index())

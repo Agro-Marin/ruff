@@ -281,7 +281,6 @@ impl UvWorker {
     fn run(self) {
         loop {
             let mut job = crossbeam::channel::select_biased! {
-                // The worker pool disconnected, exit immetiatley
                 recv(self.shutdown) -> _ => return,
                 recv(self.jobs) -> job => {
                     let Ok(job) = job else {
@@ -318,8 +317,6 @@ impl UvWorker {
                 Some(output)
             };
 
-            // Send the result
-            // The receiver disappears when the owning project is dropped.
             if job
                 .result_sender
                 .send(UvMetadataResult {
@@ -329,7 +326,6 @@ impl UvWorker {
                 })
                 .is_ok()
             {
-                // Signal that there's a new result.
                 let _ = job.wake_sender.try_send(());
             }
         }

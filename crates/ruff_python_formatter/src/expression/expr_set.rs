@@ -15,9 +15,7 @@ impl FormatNodeRule<ExprSet> for FormatExprSet {
             node_index: _,
             elts,
         } = item;
-        // That would be a dict expression
         assert!(!elts.is_empty());
-        // Avoid second mutable borrow of f
         let joined = format_with(|f: &mut PyFormatter| {
             f.join_comma_separated(item.end())
                 .nodes(elts.iter())

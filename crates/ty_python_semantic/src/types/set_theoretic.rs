@@ -33,8 +33,6 @@ pub struct UnionType<'db> {
     pub(crate) recursively_defined: RecursivelyDefined,
 }
 
-// Whole-input memoization pays for its key on wider unions, where the individual
-// ordered redundancy comparisons would otherwise be repeated quadratically.
 const WIDE_UNION: usize = 8;
 
 #[salsa::interned(heap_size=ruff_memory_usage::heap_size)]
@@ -66,8 +64,6 @@ impl<'db> OrderedUnionInput<'db> {
                 .build()
         }
 
-        // A provisional redundancy check can drop a union member on one iteration and retain it
-        // on the next. Build the union in the caller when normalization participates in a cycle.
         #[salsa::tracked(returns(copy), cycle_result=|_, _, _| None, heap_size=ruff_memory_usage::heap_size)]
         fn normalized<'db>(db: &'db dyn Db, input: OrderedUnionInput<'db>) -> Option<Type<'db>> {
             Some(build(db, input))
@@ -87,7 +83,6 @@ pub(crate) fn walk_union<'db, V: visitor::TypeVisitor<'db> + ?Sized>(
     }
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for UnionType<'_> {}
 
 #[salsa::tracked]
@@ -240,7 +235,6 @@ impl<'db> UnionType<'db> {
         db: &'db dyn Db,
         env: &ProgramEnvironment<'db>,
     ) -> Type<'db> {
-        // Relation checks expand the same target union for many different source types.
         self.cached_expand_aliases(db, env.program(db))
     }
 
@@ -254,7 +248,6 @@ impl<'db> UnionType<'db> {
     )]
     fn cached_expand_aliases(self, db: &'db dyn Db, program: Program<'db>) -> Type<'db> {
         let env = &ProgramEnvironment::from_program(program);
-        // Expose both alias forms without expanding aliases inside containers during reduction.
         let mut builder = UnionBuilder::new(db, env).unpack_aliases(false);
         let mut pending = vec![Type::Union(self)];
         let mut seen = FxHashSet::default();
@@ -321,8 +314,6 @@ impl<'db> UnionType<'db> {
             return None;
         }
 
-        // Recovery cannot perform relation queries, including when combining tuple elements.
-        // Mark those elements recursive so growing literal unions also widen promptly.
         let mut elements = UnionBuilder::new(db, env)
             .cycle_recovery(true)
             .or_recursively_defined(RecursivelyDefined::Yes);
@@ -331,8 +322,6 @@ impl<'db> UnionType<'db> {
             .or_recursively_defined(current.as_union().map_or(RecursivelyDefined::No, |union| {
                 union.recursively_defined(db)
             }));
-        // During the first cycle iterations, the caller can discard previous alternatives.
-        // Retain their tuple elements for widening without restoring unrelated alternatives.
         for ty in current_types {
             if ty.exact_tuple_instance_spec(db).is_none() {
                 result.add_in_place(*ty);
@@ -346,8 +335,6 @@ impl<'db> UnionType<'db> {
             }
         }
         let element_type = match elements.build() {
-            // `tuple[Never, ...]` normalizes to the empty tuple, which does not contain
-            // fixed-length types like `tuple[Never]`. Preserve a static upper bound.
             Type::Never => Type::object(),
             element_type => element_type,
         };
@@ -489,7 +476,6 @@ impl<'db> UnionType<'db> {
         let mut iter = elements.iter().enumerate();
         while let Some((i, ty)) = iter.next() {
             let new_ty = transform_fn(ty)?;
-            // The builder unpacks `TypeAlias` nodes but preserves structural recursive types.
             if &new_ty != ty || matches!(new_ty, Type::TypeAlias(_)) {
                 let mut builder = UnionBuilder::new(db, env);
                 for prev in &elements[..i] {
@@ -531,11 +517,6 @@ impl<'db> UnionType<'db> {
         db: &'db dyn Db,
         env: &ProgramEnvironment<'db>,
     ) -> Option<Type<'db>> {
-        // Do not use `Type::literal_fallback_instance` here: it also falls back from function
-        // literals to `FunctionType`. Since `FunctionType.__call__` is gradual, it can be
-        // assignable to a callable that the function literal's precise signature is not.
-        // Literal values have fully static supertypes, so a successful relation check for the
-        // supertype proves the relation for every literal in the union.
         let supertype = |element: &Type<'db>| match element {
             Type::LiteralValue(literal) if literal.is_string() => Some(Type::literal_string()),
             Type::LiteralValue(literal) => Some(literal.fallback_instance(db, env)),
@@ -694,7 +675,6 @@ impl<'db> UnionType<'db> {
         let mut empty = true;
         for ty in self.elements(db) {
             if nested {
-                // list[T | Divergent] => list[Divergent]
                 let ty = ty.recursive_type_normalized_impl(db, env, div, nested)?;
                 if ty.same_divergent_marker(div) {
                     return Some(ty);
@@ -702,8 +682,6 @@ impl<'db> UnionType<'db> {
                 builder.add_in_place(ty);
                 empty = false;
             } else {
-                // `Divergent` in a union type does not mean true divergence, so we skip it if not nested.
-                // e.g. T | Divergent == T | (T | (T | (T | ...))) == T
                 if (*ty).same_divergent_marker(div) {
                     builder = builder.or_recursively_defined(RecursivelyDefined::Yes);
                     continue;
@@ -745,8 +723,8 @@ impl<'db> UnionType<'db> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KnownUnion {
-    Float,   // `int | float`
-    Complex, // `int | float | complex`
+    Float,
+    Complex,
 }
 
 impl KnownUnion {
@@ -854,8 +832,6 @@ impl<'db> NegativeIntersectionElements<'db> {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        // See struct-level comment: we don't try to maintain the invariant that empty
-        // collections are represented as `Self::Empty`
         self.len() == 0
     }
 
@@ -909,8 +885,6 @@ impl<'db> NegativeIntersectionElements<'db> {
                     false
                 }
             }
-            // See struct-level comment: we don't try to maintain the invariant that collections
-            // with size 0 or 1 are represented as `Empty` or `Single`.
             Self::Multiple(set) => set.swap_remove(ty),
         }
     }
@@ -932,8 +906,6 @@ impl<'db> NegativeIntersectionElements<'db> {
                     None
                 }
             }
-            // See struct-level comment: we don't try to maintain the invariant that collections
-            // with size 0 or 1 are represented as `Empty` or `Single`.
             Self::Multiple(set) => set.swap_remove_index(index),
         }
     }
@@ -982,7 +954,6 @@ impl<'a, 'db> IntoIterator for &'a NegativeIntersectionElements<'db> {
 
 impl PartialEq for NegativeIntersectionElements<'_> {
     fn eq(&self, other: &Self) -> bool {
-        // Same implementation as `OrderSet::eq`
         self.len() == other.len() && self.iter().eq(other)
     }
 }
@@ -991,7 +962,6 @@ impl Eq for NegativeIntersectionElements<'_> {}
 
 impl std::hash::Hash for NegativeIntersectionElements<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // Same implementation as `OrderSet::hash`
         self.len().hash(state);
         for value in self {
             value.hash(state);
@@ -1018,7 +988,6 @@ impl<'a, 'db> Iterator for NegativeIntersectionElementsIterator<'a, 'db> {
 
 impl std::iter::FusedIterator for NegativeIntersectionElementsIterator<'_, '_> {}
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for IntersectionType<'_> {}
 
 pub(crate) fn walk_intersection_type<'db, V: visitor::TypeVisitor<'db> + ?Sized>(
@@ -1292,8 +1261,6 @@ impl<'db> IntersectionType<'db> {
                     visitor,
                 ));
             }
-            // Regular promotion should remove negative contributions from intersections,
-            // so we don't preserve them here when regular promotion is enabled.
             if !matches!(
                 type_mapping,
                 TypeMapping::Promote(PromotionMode::On, PromotionKind::Regular)

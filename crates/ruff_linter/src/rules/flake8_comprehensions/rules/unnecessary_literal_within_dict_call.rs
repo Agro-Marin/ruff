@@ -82,12 +82,9 @@ pub(crate) fn unnecessary_literal_within_dict_call(checker: &Checker, call: &ast
         call.range(),
     );
 
-    // Convert `dict({"a": 1})` to `{"a": 1}`
     diagnostic.set_fix({
-        // Delete from the start of the call to the start of the argument.
         let call_start = Edit::deletion(call.start(), argument.start());
 
-        // Delete from the end of the argument to the end of the call.
         let call_end = Edit::deletion(argument.end(), call.end());
 
         Fix::unsafe_edits(call_start, [call_end])

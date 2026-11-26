@@ -229,16 +229,13 @@ fn ambiguous_unicode_character(
     context: Context,
     lint_context: &LintContext,
 ) {
-    // Most of the time, we don't need to check for ambiguous unicode characters at all.
     if text.is_ascii() {
         return;
     }
 
-    // Iterate over the "words" in the text.
     let mut word_flags = WordFlags::empty();
     let mut word_candidates: Vec<Candidate> = vec![];
     for (relative_offset, current_char) in text.char_indices() {
-        // Word boundary.
         if !current_char.is_alphanumeric() {
             if !word_candidates.is_empty() {
                 if word_flags.is_candidate_word() {
@@ -250,8 +247,6 @@ fn ambiguous_unicode_character(
             }
             word_flags = WordFlags::empty();
 
-            // Check if the boundary character is itself an ambiguous unicode character, in which
-            // case, it's always included as a diagnostic.
             if !current_char.is_ascii() {
                 if let Some(representant) = confusable(current_char as u32).filter(|representant| {
                     is_unicode_to_unicode_confusables_enabled(lint_context.settings())
@@ -266,25 +261,21 @@ fn ambiguous_unicode_character(
                 }
             }
         } else if current_char.is_ascii() {
-            // The current word contains at least one ASCII character.
             word_flags |= WordFlags::ASCII;
         } else if let Some(representant) = confusable(current_char as u32).filter(|representant| {
             is_unicode_to_unicode_confusables_enabled(lint_context.settings())
                 || representant.is_ascii()
         }) {
-            // The current word contains an ambiguous unicode character.
             word_candidates.push(Candidate::new(
                 TextSize::try_from(relative_offset).unwrap() + range.start(),
                 current_char,
                 representant,
             ));
         } else {
-            // The current word contains at least one unambiguous unicode character.
             word_flags |= WordFlags::UNAMBIGUOUS_UNICODE;
         }
     }
 
-    // End of the text.
     if !word_candidates.is_empty() {
         if word_flags.is_candidate_word() {
             for candidate in word_candidates.drain(..) {

@@ -2,20 +2,16 @@
 name = "ty"
 version = "0.0.0"
 publish = false
-# required for correct pypi metadata
 homepage = "https://github.com/astral-sh/ty/"
 documentation = "https://docs.astral.sh/ty/"
-# Releases occur in this other repository!
 repository = "https://github.com/astral-sh/ty/"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [package.metadata.cargo-shear]
-# Used only to enable parser stack growth.
 ignored = ["ruff_python_parser"]
 
 [lib]

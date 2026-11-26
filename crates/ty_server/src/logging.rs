@@ -20,8 +20,6 @@ use tracing_subscriber::layer::SubscriberExt;
 pub fn init_logging(log_level: LogLevel, log_file: Option<&SystemPath>) {
     let log_file = log_file
         .map(|path| {
-            // this expands `logFile` so that tildes and environment variables
-            // are replaced with their values, if possible.
             if let Some(expanded) = shellexpand::full(&path.to_string())
                 .ok()
                 .map(|path| SystemPathBuf::from(&*path))
@@ -132,9 +130,6 @@ impl<S> tracing_subscriber::layer::Filter<S> for LogLevelFilter {
     }
 
     fn callsite_enabled(&self, meta: &'static Metadata<'static>) -> Interest {
-        // The result of `self.enabled(metadata, ...)` will always be
-        // the same for any given `Metadata`, so we can convert it into
-        // an `Interest`:
         if self.is_enabled(meta) {
             Interest::always()
         } else {

@@ -36,7 +36,6 @@ struct FileCase {
     file_path: SystemPathBuf,
 }
 
-// "https://raw.githubusercontent.com/python/cpython/8e8a4baf652f6e1cee7acde9d78c4b6154539748/Lib/tomllib";
 static TOMLLIB_FILES: [TestFile; 4] = [
     TestFile::new(
         "tomllib/__init__.py",
@@ -226,7 +225,6 @@ fn benchmark_micro_case(criterion: &mut Criterion, name: &str, code: &str) {
 
 /// Shared recursive references should reuse constructor bodies when aliases are unfolded.
 fn benchmark_mutually_recursive_aliases(criterion: &mut Criterion) {
-    // Cover both sparse and dense references between specialized aliases.
     for (aliases, references) in [(16, 3), (8, 8)] {
         let mut code = String::from("from typing import TypeVar\nT = TypeVar('T')\n");
         for alias in 0..aliases {
@@ -264,7 +262,6 @@ fn benchmark_dense_recursive_alias_definitions(criterion: &mut Criterion) {
         }
         writeln!(code, "]").unwrap();
     }
-    // Only define aliases: using them would also measure recursive unfolding.
     benchmark_micro_case(
         criterion,
         &format!("ty_micro[dense_recursive_alias_definitions_{aliases}]"),
@@ -273,8 +270,6 @@ fn benchmark_dense_recursive_alias_definitions(criterion: &mut Criterion) {
 }
 
 fn benchmark_many_string_assignments(criterion: &mut Criterion) {
-    // This is a micro benchmark, but it is effectively identical to a code sample
-    // observed "in the wild":
     let code = "
         def f(x) -> str:
             s = ''
@@ -312,8 +307,6 @@ fn benchmark_many_string_assignments(criterion: &mut Criterion) {
 }
 
 fn benchmark_many_tuple_assignments(criterion: &mut Criterion) {
-    // This is a micro benchmark, but it is effectively identical to a code sample
-    // observed in https://github.com/astral-sh/ty/issues/362
     let code = "
         def flag() -> bool:
             return True
@@ -344,8 +337,6 @@ fn benchmark_many_tuple_assignments(criterion: &mut Criterion) {
 }
 
 fn benchmark_tuple_implicit_instance_attributes(criterion: &mut Criterion) {
-    // This is a regression benchmark for a case that used to hang:
-    // https://github.com/astral-sh/ty/issues/765
     let code = "
         from typing import Any
 
@@ -386,8 +377,6 @@ fn benchmark_recursive_collection_use_constraints(criterion: &mut Criterion) {
 fn benchmark_complex_constrained_attributes_1(criterion: &mut Criterion) {
     setup_rayon();
 
-    // This is a regression benchmark for https://github.com/astral-sh/ty/issues/627.
-    // Before this was fixed, the following sample would take >1s to type check.
     let code = "
         class C:
             def f(self: 'C'):
@@ -434,8 +423,6 @@ fn benchmark_complex_constrained_attributes_1(criterion: &mut Criterion) {
 }
 
 fn benchmark_complex_constrained_attributes_2(criterion: &mut Criterion) {
-    // This is similar to the case above, but now the attributes are actually defined.
-    // https://github.com/astral-sh/ty/issues/711
     let code = "
         class C:
             def f(self: 'C'):
@@ -469,7 +456,6 @@ fn benchmark_complex_constrained_attributes_2(criterion: &mut Criterion) {
 }
 
 fn benchmark_complex_constrained_attributes_3(criterion: &mut Criterion) {
-    // This is a regression test for https://github.com/astral-sh/ty/issues/758
     let code = "
         class GridOut:
             def __init__(self: 'GridOut') -> None:
@@ -950,8 +936,6 @@ fn benchmark_very_large_tuple(criterion: &mut Criterion) {
         ",
     );
 
-    // This slice operation (msg[2:]) is what triggers the expensive type inference:
-    // ty must compute the union of all possible slice results.
     code.push_str(
         "
         for msg in translations_tuple:
@@ -1370,8 +1354,6 @@ fn benchmark_nested_generic_materialization(criterion: &mut Criterion) {
 /// the cycle is still active. Both cases should avoid exponential work as the nesting grows.
 fn benchmark_recursive_callable_materialization(criterion: &mut Criterion) {
     for (leaf_depth, cycle_depth) in [(8, 8), (12, 10)] {
-        // Implicit aliases in the leaf case expose shared callables directly, without an
-        // intervening cache for each named type alias.
         for (name, depth, recursive_target, alias_prefix) in [
             ("leaf", leaf_depth, "Recursive".to_string(), ""),
             ("cycle", cycle_depth, format!("A{cycle_depth}"), "type "),
@@ -1667,8 +1649,6 @@ fn benchmark_union_construction(criterion: &mut Criterion) {
         .map(|index| format!("C{index}[int]"))
         .join(" | ");
 
-    // The unused alias measures the cost of building a runtime union in a single expression.
-    // Nothing asks for the type it denotes, so the union can stay unnormalized.
     writeln!(construction, "Alias = {members}").ok();
     benchmark_micro_case(
         criterion,
@@ -1676,8 +1656,6 @@ fn benchmark_union_construction(criterion: &mut Criterion) {
         &construction,
     );
 
-    // Storing the union in an unannotated tuple makes ty infer it in a value context. The later
-    // assignment forces ty to normalize the stored union to check it against `TypeForm[CommonBase]`.
     writeln!(type_form, "stored = ({members},)").ok();
     type_form.push_str("checked: tuple[TypeForm[CommonBase], ...] = stored\n");
     benchmark_micro_case(
@@ -1686,8 +1664,6 @@ fn benchmark_union_construction(criterion: &mut Criterion) {
         &type_form,
     );
 
-    // Each assignment extends a previously inferred union by one literal. The final union is unused,
-    // but rescanning the growing prefix at each assignment would still make construction quadratic.
     let mut split = String::from("from typing import Literal\nU1 = Literal[0] | Literal[1]\n");
     for i in 2..=1024 {
         writeln!(split, "U{i} = U{} | Literal[{i}]", i - 1).ok();
@@ -1698,7 +1674,6 @@ fn benchmark_union_construction(criterion: &mut Criterion) {
 fn benchmark_literal_union_aliases(criterion: &mut Criterion) {
     let members = (1..=4000).join(", ");
 
-    // Keeping the single literal alongside Codes should not require negating all of Codes.
     let codes = format!(
         "
         from typing import Literal
@@ -1715,7 +1690,6 @@ fn benchmark_literal_union_aliases(criterion: &mut Criterion) {
         &codes,
     );
 
-    // Integer covers every literal in the group. Returning an arbitrary int forces ty to check it.
     let integer = format!(
         "
         from typing import Literal
@@ -2899,7 +2873,6 @@ fn bench_project(
             ProjectVariant::AllRules => format!("{name} (all rules)"),
         };
         group.bench_function(&benchmark_name, |b| {
-            // Prepare the project once, when its first selected variant runs.
             let project = LazyCell::force(&prepared);
             b.iter_batched_ref(
                 || project.setup_iteration(variant),
@@ -2940,7 +2913,6 @@ fn attrs(criterion: &mut Criterion) {
         project,
         &[
             ProjectVariant::Default,
-            // Keep one real-world benchmark frozen to catch regressions from newly added inputs.
             ProjectVariant::FrozenInputs,
             ProjectVariant::AllRules,
         ],

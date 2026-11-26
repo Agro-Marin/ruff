@@ -22,7 +22,6 @@ where
     let debouncer = std::thread::Builder::new()
         .name("watcher::debouncer".to_string())
         .spawn(move || {
-            // Wait for the next set of changes
             for message in &receiver {
                 let event = match message {
                     DebouncerMessage::Event(event) => event,
@@ -35,10 +34,6 @@ where
 
                 debouncer.add_result(event);
 
-                // Debounce any new incoming changes:
-                // * Take any new incoming change events and merge them with the previous change events
-                // * If there are no new incoming change events after 10 ms, flush the changes and wait for the next notify event.
-                // * Flush no later than after 3s.
                 let batch_start = std::time::Instant::now();
 
                 loop {
@@ -48,7 +43,6 @@ where
                                 Ok(DebouncerMessage::Event(event)) => {
                                     debouncer.add_result(event);
 
-                                    // Ensure that we flush the changes eventually.
                                     if batch_start.elapsed() > std::time::Duration::from_secs(3) {
                                         break;
                                     }
@@ -58,8 +52,6 @@ where
                                 }
 
                                 Err(_) => {
-                                    // There are no more senders. That means `stop` was called.
-                                    // Drop all events and exit immediately.
                                     return;
                                 }
                             }
@@ -70,7 +62,6 @@ where
                     }
                 }
 
-                // No more file changes after 10 ms, send the changes and schedule a new analysis
                 let events = debouncer.into_events();
 
                 if !events.is_empty() {
@@ -139,15 +130,10 @@ impl Watcher {
 
     fn set_stop(&mut self) {
         if let Some(inner) = self.inner.take() {
-            // drop the watcher to ensure there will be no more events.
-            // and to drop the sender used by the notify callback.
             drop(inner.watcher);
 
-            // Drop "our" sender to ensure the sender count goes down to 0.
-            // The debouncer thread will end as soon as the sender count is 0.
             drop(inner.debouncer_sender);
 
-            // Wait for the debouncer to finish, propagate any panics
             inner.debouncer_thread.join().unwrap();
         }
     }
@@ -204,20 +190,14 @@ impl Debouncer {
 
     #[expect(clippy::unused_self, clippy::needless_pass_by_value)]
     fn add_error(&mut self, error: notify::Error) {
-        // Micha: I skimmed through some of notify's source code and it seems the most common errors
-        // are IO errors. All other errors should really only happen when adding or removing a watched folders.
-        // It's not clear what an upstream handler should do in the case of an IOError (other than logging it).
-        // That's what we do for now as well.
         tracing::warn!("File watcher error: {error:?}");
     }
 
     fn add_event(&mut self, event: notify::Event) {
         if self.rescan_event.is_some() {
-            // We're already in a rescan state, ignore all other events
             return;
         }
 
-        // If the file watcher is out of sync or we observed too many changes, trigger a full rescan
         if event.need_rescan() || self.events.len() > 10000 {
             self.events = Vec::new();
             self.rescan_event = Some(ChangeEvent::Rescan);
@@ -227,8 +207,6 @@ impl Debouncer {
 
         let kind = event.kind;
 
-        // There are cases where paths can be empty.
-        // https://github.com/astral-sh/ruff/issues/14222
         let Some(path) = event.paths.into_iter().next() else {
             tracing::debug!("Ignoring change event with kind '{kind:?}' without a path",);
             return;
@@ -242,7 +220,6 @@ impl Debouncer {
                     path = path.display()
                 );
 
-                // Ignore non-UTF8 paths because they aren't handled by the rest of the system.
                 return;
             }
         };
@@ -265,7 +242,6 @@ impl Debouncer {
                     if ExistingPathKind::from_io_metadata(&path.as_std_path().metadata())
                         != ExistingPathKind::File
                     {
-                        // Only interested in file metadata events.
                         return;
                     }
 
@@ -281,7 +257,6 @@ impl Debouncer {
                         | MetadataKind::WriteTime
                         | MetadataKind::Ownership
                         | MetadataKind::Extended => {
-                            // We're not interested in these metadata changes
                             return;
                         }
                     }
@@ -294,11 +269,6 @@ impl Debouncer {
 
                 ModifyKind::Name(rename) => match rename {
                     RenameMode::From => {
-                        // TODO: notify_debouncer_full matches the `RenameMode::From` and `RenameMode::To` events.
-                        //  Matching the from and to event would have the added advantage that we know the
-                        //  type of the path that was renamed, allowing `apply_changes` to avoid traversing the
-                        //  entire package.
-                        //   https://github.com/notify-rs/notify/blob/128bf6230c03d39dbb7f301ff7b20e594e34c3a2/notify-debouncer-full/src/lib.rs#L293-L297
                         ChangeEvent::Deleted {
                             kind: DeletedKind::Any,
                             path,
@@ -313,20 +283,14 @@ impl Debouncer {
                     },
 
                     RenameMode::Both => {
-                        // Both is only emitted when moving a path from within a watched directory
-                        // to another watched directory. The event is not emitted if the `to` or `from` path
-                        // lay outside the watched directory. However, the `To` and `From` events are always emitted.
-                        // That's why we ignore `Both` and instead rely on `To` and `From`.
                         return;
                     }
 
                     RenameMode::Other => {
-                        // Skip over any other rename events
                         return;
                     }
 
                     RenameMode::Any => {
-                        // Guess the action based on the current file system state
                         if path.as_std_path().exists() {
                             let file_type =
                                 ExistingPathKind::from_io_metadata(&path.as_std_path().metadata());
@@ -344,7 +308,6 @@ impl Debouncer {
                     }
                 },
                 ModifyKind::Other => {
-                    // Skip other modification events that are not content or metadata related
                     return;
                 }
                 ModifyKind::Any => {
@@ -361,7 +324,6 @@ impl Debouncer {
             },
 
             EventKind::Access(_) => {
-                // We're not interested in any access events
                 return;
             }
 
@@ -376,7 +338,6 @@ impl Debouncer {
             }
 
             EventKind::Other => {
-                // Skip over meta events
                 return;
             }
 

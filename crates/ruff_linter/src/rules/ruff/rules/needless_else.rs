@@ -94,14 +94,6 @@ fn else_contains_comments(
     let else_full_end = checker.source().full_line_end(else_range.end());
     let commentable_range = TextRange::new(else_range.start(), else_full_end);
 
-    // A comment after the `else` keyword or after the dummy statement.
-    //
-    // ```python
-    // if ...:
-    //  ...
-    // else: # comment
-    //  pass # comment
-    // ```
     if checker.comment_ranges().intersects(commentable_range) {
         return true;
     }
@@ -149,7 +141,6 @@ fn else_branch_has_preceding_comment(
             comment_indentation_after(preceding_stmt.into(), token.range(), source);
 
         match comment_indentation.cmp(&preceding_indentation) {
-            // Comment belongs to preceding statement.
             Ordering::Greater | Ordering::Equal => continue,
             Ordering::Less => return true,
         }

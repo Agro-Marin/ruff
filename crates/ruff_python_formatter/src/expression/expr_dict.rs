@@ -26,14 +26,6 @@ impl FormatNodeRule<ExprDict> for FormatExprDict {
             return empty_parenthesized("{", dangling, "}").fmt(f);
         };
 
-        // Dangling comments can either appear after the open bracket, or around the key-value
-        // pairs:
-        // ```python
-        // {  # open_parenthesis_comments
-        //     x:  # key_value_comments
-        //     y
-        // }
-        // ```
         let (open_parenthesis_comments, key_value_comments) =
             dangling.split_at(dangling.partition_point(|comment| {
                 comment.end() < KeyValuePair::new(first_dict_item).start()
@@ -123,14 +115,11 @@ impl Format<PyFormatContext<'_>> for KeyValuePair<'_> {
                 }))]
             )
         } else {
-            // TODO(charlie): Make these dangling comments on the `ExprDict`, and identify them
-            // dynamically, so as to avoid the parent rendering its child's comments.
             let comments = f.context().comments().clone();
             let leading_value_comments = comments.leading(self.value);
             write!(
                 f,
                 [
-                    // make sure the leading comments are hoisted past the `**`
                     leading_comments(leading_value_comments),
                     group(&format_args![token("**"), self.value.format()])
                 ]

@@ -7,33 +7,16 @@
   schedule: ["before 4am on Wednesday"],
   enabledManagers: ["github-actions", "pre-commit", "cargo", "pep621", "pip_requirements", "npm", "custom.regex"],
   pep621: {
-    // The default for this package manager is to only search for `pyproject.toml` files
-    // found at the repository root: https://docs.renovatebot.com/modules/manager/pep621/#file-matching
     managerFilePatterns: ["^(python|scripts)/.*pyproject\\.toml$"],
   },
   pip_requirements: {
-    // The default for this package manager is to run on all requirements.txt files:
-    // https://docs.renovatebot.com/modules/manager/pip_requirements/#file-matching
-    // `fileMatch` doesn't work for excluding files; to exclude `requirements.txt` files
-    // outside the `doc/` directory, we instead have to use `ignorePaths`. Unlike `fileMatch`,
-    // which takes a regex string, `ignorePaths` takes a glob string, so we have to use
-    // a "negative glob pattern".
-    // See:
-    // - https://docs.renovatebot.com/modules/manager/#ignoring-files-that-match-the-default-filematch
-    // - https://docs.renovatebot.com/configuration-options/#ignorepaths
-    // - https://docs.renovatebot.com/string-pattern-matching/#negative-matching
     ignorePaths: ["!docs/requirements*.txt"]
   },
   npm: {
-    // The default for this package manager is to only search for `package.json` files
-    // found at the repository root: https://docs.renovatebot.com/modules/manager/npm/#file-matching
     managerFilePatterns: ["^playground/.*package\\.json$"],
   },
   packageRules: [
     {
-      // This package rule disables updates for GitHub runners:
-      // we'd only pin them to a specific version
-      // if there was a deliberate reason to do so
       groupName: "GitHub runners",
       matchManagers: ["github-actions"],
       matchDatasources: ["github-runners"],
@@ -43,8 +26,6 @@
     {
       groupName: "prek dependencies",
       matchManagers: ["pre-commit"],
-      // The shared preset groups uv-pre-commit with uv workflow pins.
-      // Exclude it here so the prek group doesn't override that grouping.
       matchPackageNames: ["!astral-sh/uv-pre-commit"],
       description: "Weekly update of prek dependencies",
     },
@@ -76,8 +57,6 @@
       commitMessageTopic: "MSRV",
       matchManagers: ["custom.regex"],
       matchDepNames: ["msrv"],
-      // We have a rolling support policy for the MSRV
-      // 2 releases back * 6 weeks per release * 7 days per week + 1
       minimumReleaseAge: "85 days",
       groupName: "MSRV",
     },
@@ -93,7 +72,6 @@
     },
   ],
   customManagers: [
-    // uv release archives used by the workspace action and the reusable security review workflow.
     {
       customType: "regex",
       managerFilePatterns: [
@@ -108,7 +86,6 @@
       datasourceTemplate: "github-release-attachments",
       versioningTemplate: "semver",
     },
-    // Maturin version used in maturin-action
     {
       customType: "regex",
       managerFilePatterns: [
@@ -119,7 +96,6 @@
       packageNameTemplate: "PyO3/maturin",
       datasourceTemplate: "github-releases",
     },
-    // Minimum supported Rust toolchain version
     {
       customType: "regex",
       managerFilePatterns: ["/(^|/)Cargo\\.toml?$/"],
@@ -130,7 +106,6 @@
       packageNameTemplate: "rust-lang/rust",
       datasourceTemplate: "github-releases",
     },
-    // Rust toolchain version
     {
       customType: "regex",
       managerFilePatterns: ["/(^|/)rust-toolchain\\.toml?$/"],

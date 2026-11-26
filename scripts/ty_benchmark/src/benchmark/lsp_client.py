@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 def _register_notebook_structure_hooks(converter):
     """Register structure hooks for notebook document types to work around cattrs deserialization issues."""
 
-    # Define a union type that cattrs struggles with.
     notebook_filter_union = (
         str
         | lsp.NotebookDocumentFilterNotebookType
@@ -31,7 +30,6 @@ def _register_notebook_structure_hooks(converter):
         if isinstance(obj, str):
             return obj
         if isinstance(obj, dict):
-            # Try to structure it as one of the known types.
             if "notebookType" in obj:
                 return converter.structure(obj, lsp.NotebookDocumentFilterNotebookType)
             elif "scheme" in obj:
@@ -57,12 +55,10 @@ class LSPClient(LanguageClient):
             "v1",
         )
 
-        # Register custom structure hooks to work around lsprotocol/cattrs issues.
         _register_notebook_structure_hooks(self.protocol._converter)
 
         self.diagnostics = {}
 
-        # TODO: remove the suppression comment when https://github.com/openlawlibrary/pygls/pull/635 has been released
         # ty: ignore[dynamic-function-decorator-return]
         @self.feature(lsp.TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
         def publish_diagnostics(
@@ -79,7 +75,6 @@ class LSPClient(LanguageClient):
 
             future.set_result(params)
 
-        # TODO: remove the suppression comment when https://github.com/openlawlibrary/pygls/pull/635 has been released
         # ty: ignore[dynamic-function-decorator-return]
         @self.feature(lsp.WINDOW_LOG_MESSAGE)
         def log_message(client: LSPClient, params: lsp.LogMessageParams):
@@ -131,8 +126,6 @@ class LSPClient(LanguageClient):
 
             return list(pull_diagnostics.items)
 
-        # Use publish diagnostics otherwise.
-        # Pyrefly doesn't support pull diagnostics as of today (27th of November 2025)
         publish_diagnostics = await self.wait_for_push_diagnostics_async(path)
         return list(publish_diagnostics.diagnostics)
 

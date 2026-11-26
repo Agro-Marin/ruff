@@ -384,7 +384,6 @@ pub(crate) fn is_not_implemented_stub_with_variable(
     function_def: &StmtFunctionDef,
     semantic: &SemanticModel,
 ) -> bool {
-    // Ignore doc-strings.
     let statements = match function_def.body.as_slice() {
         [Stmt::Expr(StmtExpr { value, .. }), rest @ ..] if value.is_string_literal_expr() => rest,
         _ => &function_def.body,
@@ -513,8 +512,6 @@ pub(crate) fn unused_arguments(checker: &Checker, scope: &Scope) {
                         && !visibility::is_override(decorator_list, checker.semantic())
                         && !visibility::is_overload(decorator_list, checker.semantic())
                     {
-                        // we use `method()` here rather than `function()`, as although `__new__` is
-                        // an implicit staticmethod, `__new__` methods must always have at least one parameter
                         method(Argumentable::StaticMethod, parameters, scope, checker);
                     }
                 }

@@ -146,7 +146,6 @@ impl TextDocument {
         });
     }
 
-    // A private function for overriding how we update the line index by default.
     fn modify(&mut self, func: impl FnOnce(&mut String, &mut DocumentVersion)) {
         let old_version = self.version;
         func(&mut self.contents, &mut self.version);
@@ -182,7 +181,6 @@ def interface():
             LanguageKind::Python,
         );
 
-        // Add an `s`, remove it again (back to the original code), and then re-add the `s`
         document.apply_changes(
             vec![
                 TextDocumentContentChangeEvent::TextDocumentContentChangePartial(

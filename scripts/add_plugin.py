@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-#
 # /// script
 # requires-python = ">=3.12"
 # dependencies = []
@@ -45,12 +44,10 @@ def get_indent(line: str) -> str:
 
 def main(*, plugin: str, url: str, prefix_code: str) -> None:
     """Generate boilerplate for a new plugin."""
-    # Create the test fixture folder.
     (ROOT_DIR / "crates/ruff_linter/resources/test/fixtures" / dir_name(plugin)).mkdir(
         exist_ok=True,
     )
 
-    # Create the Plugin rules module.
     plugin_dir = ROOT_DIR / "crates/ruff_linter/src/rules" / dir_name(plugin)
     plugin_dir.mkdir(exist_ok=True)
 
@@ -85,23 +82,19 @@ mod tests {
             % dir_name(plugin),
         )
 
-    # Create a subdirectory for rules and create a `mod.rs` placeholder
     rules_dir = plugin_dir / "rules"
     rules_dir.mkdir(exist_ok=True)
 
     (rules_dir / "mod.rs").touch()
 
-    # Create the snapshots subdirectory
     (plugin_dir / "snapshots").mkdir(exist_ok=True)
 
-    # Add the plugin to `rules/mod.rs`.
     rules_mod_path = ROOT_DIR / "crates/ruff_linter/src/rules/mod.rs"
     lines = rules_mod_path.read_text().strip().splitlines()
     lines.append(f"pub mod {dir_name(plugin)};")
     lines.sort()
     rules_mod_path.write_text("\n".join(lines) + "\n")
 
-    # Add the relevant sections to `src/registry.rs`.
     content = (ROOT_DIR / "crates/ruff_linter/src/registry.rs").read_text()
 
     with (ROOT_DIR / "crates/ruff_linter/src/registry.rs").open("w") as fp:

@@ -82,7 +82,6 @@ pub(crate) fn map_codes(func: &ItemFn) -> syn::Result<TokenStream> {
         )
     });
 
-    // Map from: linter (e.g., `Flake8Bugbear`) to rule code (e.g.,`"002"`) to rule data.
     let mut linter_to_rules: BTreeMap<Ident, BTreeMap<String, &Rule>> = BTreeMap::new();
     for rule in &rules {
         if let Some(LinterCode { linter, code }) = &rule.code {
@@ -133,8 +132,6 @@ pub(crate) fn map_codes(func: &ItemFn) -> syn::Result<TokenStream> {
                 }
             }
 
-            // Rust doesn't yet support `impl const From<RuleCodePrefix> for RuleSelector`
-            // See https://github.com/rust-lang/rust/issues/67792
             impl From<#linter> for crate::rule_selector::RuleSelector {
                 fn from(linter: #linter) -> Self {
                     let prefix = RuleCodePrefix::#linter(linter);
@@ -223,7 +220,6 @@ pub(crate) fn map_codes(func: &ItemFn) -> syn::Result<TokenStream> {
 fn rules_by_prefix(
     rules: &BTreeMap<String, &Rule>,
 ) -> BTreeMap<String, Vec<(Path, Vec<Attribute>)>> {
-    // TODO(charlie): Why do we do this here _and_ in `rule_code_prefix::expand`?
     let mut rules_by_prefix = BTreeMap::new();
 
     for code in rules.keys() {
@@ -272,7 +268,6 @@ fn generate_rule_to_code(rules: &[Rule]) -> TokenStream {
 
     let mut rule_noqa_code_match_arms = quote!();
 
-    // Keep the proc-macro output stable so unchanged code can be reused incrementally.
     for (rule, codes) in rule_to_codes
         .into_iter()
         .sorted_by_key(|(rule, _)| rule.to_token_stream().to_string())
@@ -431,7 +426,6 @@ fn register_rules<'a>(input: impl Iterator<Item = &'a Rule>) -> TokenStream {
             #(#attrs)*
             #name,
         });
-        // Apply the `attrs` to each arm, like `[cfg(feature = "foo")]`.
         rule_message_formats_match_arms.extend(
             quote! {#(#attrs)* Self::#name => <#path as crate::Violation>::message_formats(),},
         );

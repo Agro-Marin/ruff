@@ -47,7 +47,6 @@ impl Violation for EllipsisInNonEmptyClassBody {
 
 /// PYI013
 pub(crate) fn ellipsis_in_non_empty_class_body(checker: &Checker, body: &[Stmt]) {
-    // If the class body contains a single statement, then it's fine for it to be an ellipsis.
     if body.len() == 1 {
         return;
     }
@@ -61,7 +60,6 @@ pub(crate) fn ellipsis_in_non_empty_class_body(checker: &Checker, body: &[Stmt])
             let mut diagnostic =
                 checker.report_diagnostic(EllipsisInNonEmptyClassBody, stmt.range());
 
-            // Try to preserve trailing comment if it exists
             let edit = if let Some(index) = trailing_comment_start_offset(stmt, checker.source()) {
                 Edit::range_deletion(stmt.range().add_end(index))
             } else {

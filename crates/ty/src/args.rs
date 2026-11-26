@@ -13,7 +13,6 @@ use ty_project::metadata::value::{RelativeGlobPattern, RelativePathBuf};
 use ty_python_semantic::lint;
 use ty_static::EnvVars;
 
-// Configures Clap v3-style help menu colors
 const STYLES: Styles = Styles::styled()
     .header(AnsiColor::Green.on_default().effects(Effects::BOLD))
     .usage(AnsiColor::Green.on_default().effects(Effects::BOLD))
@@ -266,9 +265,6 @@ impl CheckCommand {
             )
         };
 
-        // --no-respect-gitignore defaults to false and is set true by CLI flag. If passed, override config file
-        // Otherwise, only pass this through if explicitly set (don't default to anything here to
-        // make sure that doesn't take precedence over an explicitly-set config file value)
         let respect_ignore_files = self
             .no_respect_ignore_files
             .then_some(false)
@@ -315,7 +311,6 @@ impl CheckCommand {
             rules,
             ..Options::default()
         };
-        // Merge with options passed in via --config
         options.combine(self.config.into_options().unwrap_or_default())
     }
 }
@@ -368,7 +363,6 @@ impl clap::FromArgMatches for RulesArg {
             );
         }
 
-        // Sort by their index so that values specified later override earlier ones.
         rules.sort_by_key(|(index, _, _)| *index);
 
         Ok(Self(

@@ -24,7 +24,7 @@ pub enum Emit {
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-#[expect(clippy::struct_excessive_bools)] // It's only the dev cli anyways
+#[expect(clippy::struct_excessive_bools)]
 pub struct Cli {
     /// Python files to format. If there are none, stdin will be used. `-` as stdin is not supported
     pub files: Vec<PathBuf>,
@@ -49,7 +49,6 @@ pub struct Cli {
 pub fn format_and_debug_print(source: &str, cli: &Cli, source_path: &Path) -> Result<String> {
     let source_type = PySourceType::from(source_path);
 
-    // Parse the AST.
     let parsed = parse(
         source,
         ParseOptions::from(source_type).with_target_version(cli.target_version),
@@ -77,7 +76,6 @@ pub fn format_and_debug_print(source: &str, cli: &Cli, source_path: &Path) -> Re
         println!("{}", formatted.document().display(source_code));
     }
     if cli.print_comments {
-        // Print preceding, following and enclosing nodes
         let decorated_comments = collect_comments(parsed.syntax(), source_code, trivia.comments());
         if !decorated_comments.is_empty() {
             println!("# Comment decoration: Range, Preceding, Following, Enclosing, Comment");

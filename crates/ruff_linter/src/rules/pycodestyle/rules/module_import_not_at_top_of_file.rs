@@ -89,7 +89,6 @@ pub(crate) fn module_import_not_at_top_of_file(checker: &Checker, stmt: &Stmt) {
             return;
         }
 
-        // Support for fixing notebooks is not yet implemented.
         if checker.cell_offsets().is_some() {
             return;
         }
@@ -97,8 +96,6 @@ pub(crate) fn module_import_not_at_top_of_file(checker: &Checker, stmt: &Stmt) {
         let indexer = checker.indexer();
         let locator = checker.locator();
 
-        // Special-cases: there's leading or trailing content in the import block. These
-        // are too hard to get right, and relatively rare, so flag but don't fix.
         if indexer.preceded_by_multi_statement_line(stmt, locator.contents())
             || indexer.followed_by_multi_statement_line(stmt, locator.contents())
         {
@@ -107,7 +104,6 @@ pub(crate) fn module_import_not_at_top_of_file(checker: &Checker, stmt: &Stmt) {
 
         let edit = checker.importer().add_import_at_start(stmt);
 
-        // Include trailing comments and the newline in the removal.
         let removal_range = TextRange::new(stmt.start(), locator.full_line_end(stmt.end()));
 
         diagnostic.set_fix(Fix::unsafe_edits(

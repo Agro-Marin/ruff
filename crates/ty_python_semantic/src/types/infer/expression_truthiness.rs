@@ -120,8 +120,6 @@ where
                         return None;
                     }
                     if truthiness == Truthiness::from(op.is_or()) || truthiness.is_ambiguous() {
-                        // A short-circuit path can produce an object. Its truthiness may
-                        // change when the caller tests that object again.
                         return value();
                     }
                 }
@@ -181,7 +179,6 @@ where
                                 .all(|argument| self.can_complete(argument))
                     }
                     ast::Expr::Compare(compare) => {
-                        // Later comparisons can be skipped by short-circuiting.
                         self.can_complete(compare.first_operand())
                             && compare
                                 .iter()

@@ -27,13 +27,10 @@ pub fn find_references(
         ReferencesMode::ReferencesSkipDeclaration
     };
 
-    // A decorator's `name="..."` literal names a fixture without defining a Python symbol.
-    // Start a fixture-only search before the ordinary symbol lookup below.
     if let Some(target) = explicit_fixture_name_at_offset(&model, &module, offset) {
         return target.references(db, file, mode);
     }
 
-    // Get the definitions for the symbol at the cursor position
     let goto_target = find_goto_target(&model, &module, offset)?;
     references(db, file, &goto_target, mode)
 }
@@ -66,36 +63,27 @@ fn explicit_fixture_name_at_offset<'db>(
         return None;
     };
 
-    // Match a string literal in a function decorator's `name` argument:
-    //
     // @pytest.fixture(name="resource")
-    // def implementation(): ...
-    //
-    // The semantic lookup below verifies that the decorator declares a fixture.
     let mut ancestors = covering.ancestors();
     let mut in_name_argument = false;
     let function = loop {
         match ancestors.next()? {
-            // The literal must be the value of `name`, not another keyword.
             AnyNodeRef::Keyword(keyword)
                 if keyword.arg.as_deref() == Some("name")
                     && keyword.value.is_string_literal_expr() =>
             {
                 in_name_argument = true;
             }
-            // The decorator must belong directly to a function, not a class.
             AnyNodeRef::Decorator(_) if in_name_argument => {
                 let AnyNodeRef::StmtFunctionDef(function) = ancestors.next()? else {
                     return None;
                 };
                 break function;
             }
-            // Skip over intermediate nodes that connect the literal, keyword, and decorator.
             AnyNodeRef::StringLiteral(_)
             | AnyNodeRef::ExprStringLiteral(_)
             | AnyNodeRef::Arguments(_)
             | AnyNodeRef::ExprCall(_) => {}
-            // Reject unrelated syntax, such as return annotations, and failed guards.
             _ => return None,
         }
     };
@@ -1867,8 +1855,6 @@ func<CURSOR>_alias()
             )
             .build();
 
-        // When finding references to the alias, we should NOT find references
-        // to the original function in the original module
         assert_snapshot!(test.references(), @"
         info[references]: Found 2 references
          --> importer.py:2:30
@@ -2056,7 +2042,6 @@ func<CURSOR>_alias()
             )
             .build();
 
-        // TODO(submodule-imports): this should light up both instances of `subpkg`
         assert_snapshot!(test.references(), @"
         info[references]: Found 1 references
          --> mypackage/__init__.py:4:5
@@ -2086,7 +2071,6 @@ func<CURSOR>_alias()
             )
             .build();
 
-        // TODO(submodule-imports): this should light up both instances of `subpkg`
         assert_snapshot!(test.references(), @"No references found");
     }
 
@@ -2110,7 +2094,6 @@ func<CURSOR>_alias()
             )
             .build();
 
-        // No references is actually correct (or it should only see itself)
         assert_snapshot!(test.references(), @"No references found");
     }
 
@@ -2134,7 +2117,6 @@ func<CURSOR>_alias()
             )
             .build();
 
-        // No references is actually correct (or it should only see itself)
         assert_snapshot!(test.references(), @"No references found");
     }
 
@@ -2157,7 +2139,6 @@ func<CURSOR>_alias()
             )
             .build();
 
-        // No references is actually correct (or it should only see itself)
         assert_snapshot!(test.references(), @"No references found");
     }
 
@@ -2180,7 +2161,6 @@ func<CURSOR>_alias()
             )
             .build();
 
-        // Includes both the local import binding and the underlying definition target.
         assert_snapshot!(test.references(), @"
         info[references]: Found 3 references
          --> mypackage/__init__.py:2:21
@@ -2234,7 +2214,6 @@ func<CURSOR>_alias()
         ");
     }
 
-    // TODO: Should only return references to the last declaration
     #[test]
     fn declarations() {
         let test = CursorTest::builder()
@@ -2629,7 +2608,6 @@ class C:
           |           --------
         ");
 
-        // Every position in the prefix, quotes, and contents selects the same name.
         for offset in usize::from(test.cursor.offset)..=end {
             test.cursor.offset = TextSize::try_from(offset).expect("the test offset should fit");
             assert_eq!(test.references(), expected, "cursor offset {offset}");

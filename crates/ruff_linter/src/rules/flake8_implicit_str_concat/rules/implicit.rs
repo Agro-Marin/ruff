@@ -200,8 +200,6 @@ fn concatenate_strings(
     let a_prefix = a_string_flags.prefix();
     let b_prefix = b_string_flags.prefix();
 
-    // Require, for now, that the strings have the same prefix,
-    // quote style, and number of quotes
     if a_prefix != b_prefix
         || a_string_flags.quote_style() != b_string_flags.quote_style()
         || a_string_flags.is_triple_quoted() != b_string_flags.is_triple_quoted()
@@ -237,19 +235,16 @@ fn concatenate_strings(
 /// Pads an octal at the end of the string
 /// to three digits, if necessary.
 fn normalize_ending_octal(text: &mut Cow<'_, str>) {
-    // Early return for short strings
     if text.len() < 2 {
         return;
     }
 
     let mut rev_bytes = text.bytes().rev();
     if let Some(last_byte @ b'0'..=b'7') = rev_bytes.next() {
-        // "\y" -> "\00y"
         if has_odd_consecutive_backslashes(&mut rev_bytes.clone()) {
             let prefix = &text[..text.len() - 2];
             *text = Cow::Owned(format!("{prefix}\\00{}", last_byte as char));
         }
-        // "\xy" -> "\0xy"
         else if let Some(penultimate_byte @ b'0'..=b'7') = rev_bytes.next() {
             if has_odd_consecutive_backslashes(&mut rev_bytes.clone()) {
                 let prefix = &text[..text.len() - 3];

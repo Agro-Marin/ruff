@@ -82,7 +82,6 @@ fn is_legitimate(definitions: &[&ast::StmtFunctionDef]) -> bool {
         return true;
     }
     // `@other.setter` above a second `f` re-decorates `other`, not `f`: the first
-    // `f` dies exactly as it would under a bare redefinition.
     (decorators[0].contains("property") || decorators[0].contains("cached_property"))
         && definitions[1..]
             .iter()
@@ -127,7 +126,6 @@ pub(crate) fn shadowed_definition(checker: &Checker, class: &ast::StmtClassDef) 
     for function in functions {
         let name = function.name.as_str();
         // `@f.register` hands back the plain function, so an implementation takes
-        // a throwaway name; under `f` itself it replaces the dispatcher.
         if !dispatchers.contains(name)
             && registers_on(function).any(|owner| dispatchers.contains(owner))
         {

@@ -21,19 +21,6 @@ impl FormatNodeRule<Comprehension> for FormatComprehension {
             fn fmt(&self, f: &mut PyFormatter) -> FormatResult<()> {
                 let has_leading_comments = f.context().comments().has_leading(self.expression);
 
-                // Don't add a soft line break for parenthesized expressions with a leading comment.
-                // The comments are rendered **inside** the parentheses and adding a softline break
-                // unnecessarily forces the parentheses to be on their own line.
-                // ```python
-                // y = [
-                //    ...
-                //    if
-                //    (
-                //          # See how the `(` gets forced on its own line? We don't want that.
-                //         ...
-                //     )
-                // ]
-                // ```
                 let will_be_parenthesized = self.preserve_parentheses
                     && f.context()
                         .is_expression_parenthesized(self.expression.into());

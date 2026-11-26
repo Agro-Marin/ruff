@@ -126,11 +126,9 @@ impl<'a> Callee<'a> {
         semantic: &'a SemanticModel,
     ) -> Option<Self> {
         if let Expr::Attribute(ast::ExprAttribute { attr, value, .. }) = call.func.as_ref() {
-            // Direct: Path(...).open()
             if Self::is_pathlib_path_call(value, semantic) {
                 return Some(Callee::Pathlib(attr));
             }
-            // Indirect: x.open() where x = Path(...)
             else if let Expr::Name(name) = value.as_ref() {
                 if let Some(binding_id) = semantic.only_binding(name) {
                     let binding = semantic.binding(binding_id);
@@ -205,11 +203,9 @@ fn is_binary_mode(expr: &Expr) -> Option<bool> {
 
 /// Returns `true` if the given call lacks an explicit `encoding`.
 fn is_violation(call: &ast::ExprCall, qualified_name: &Callee) -> bool {
-    // If we have something like `*args`, which might contain the encoding argument, abort.
     if call.arguments.args.iter().any(Expr::is_starred_expr) {
         return false;
     }
-    // If we have something like `**kwargs`, which might contain the encoding argument, abort.
     if call
         .arguments
         .keywords
@@ -223,19 +219,15 @@ fn is_violation(call: &ast::ExprCall, qualified_name: &Callee) -> bool {
             ["" | "builtins" | "codecs" | "_io", "open"] => {
                 if let Some(mode_arg) = call.arguments.find_argument_value("mode", 1) {
                     if is_binary_mode(mode_arg).unwrap_or(true) {
-                        // binary mode or unknown mode is no violation
                         return false;
                     }
                 }
 
                 let encoding_param_pos = match qualified_name.segments() {
-                    // The `encoding` parameter position for `codecs.open`
                     ["codecs", _] => 2,
-                    // The `encoding` parameter position for `_io.open` and the builtin `open`
                     _ => 3,
                 };
 
-                // else mode not specified, defaults to text mode
                 call.arguments
                     .find_argument_value("encoding", encoding_param_pos)
                     .is_none()
@@ -247,11 +239,9 @@ fn is_violation(call: &ast::ExprCall, qualified_name: &Callee) -> bool {
                 let mode_pos = usize::from(*tempfile_class == "SpooledTemporaryFile");
                 if let Some(mode_arg) = call.arguments.find_argument_value("mode", mode_pos) {
                     if is_binary_mode(mode_arg).unwrap_or(true) {
-                        // binary mode or unknown mode is no violation
                         return false;
                     }
                 } else {
-                    // defaults to binary mode
                     return false;
                 }
                 call.arguments
@@ -267,11 +257,9 @@ fn is_violation(call: &ast::ExprCall, qualified_name: &Callee) -> bool {
             "open" => {
                 if let Some(mode_arg) = call.arguments.find_argument_value("mode", 0) {
                     if is_binary_mode(mode_arg).unwrap_or(true) {
-                        // binary mode or unknown mode is no violation
                         return false;
                     }
                 }
-                // else mode not specified, defaults to text mode
                 call.arguments.find_argument_value("encoding", 2).is_none()
             }
             "read_text" => call.arguments.find_argument_value("encoding", 0).is_none(),

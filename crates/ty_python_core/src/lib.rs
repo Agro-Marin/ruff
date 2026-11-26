@@ -185,9 +185,6 @@ pub fn attribute_scopes<'db>(
         .filter_map(move |(child_scope_id, scope)| {
             let (function_scope_id, function_scope) =
                 if scope.node().scope_kind() == ScopeKind::TypeParams {
-                    // This could be a generic method with a type-params scope.
-                    // Go one level deeper to find the function scope. The first
-                    // descendant is the (potential) function scope.
                     let function_scope_id = scope.descendants().start;
                     (function_scope_id, index.scope(function_scope_id))
                 } else {
@@ -197,8 +194,6 @@ pub fn attribute_scopes<'db>(
             Some(function_scope_id)
         })
         .flat_map(move |func_id| {
-            // Add any descendent scope that is eager and have eager scopes between the scope
-            // and the method scope. Since attributes can be defined in this scope.
             let nested = index.descendent_scopes(func_id).filter_map(move |(id, s)| {
                 let is_eager = s.kind().is_eager();
                 let parents_are_eager = {
@@ -309,10 +304,8 @@ pub struct SemanticIndex<'db> {
     /// Map from a lambda expression to its containing statement.
     enclosing_lambda_statements: FrozenMap<ExpressionNodeKey, Statement<'db>>,
 
-    // Map from a constraining use of a collection initializer to its definition.
     collections_by_use: FrozenMap<ExpressionNodeKey, Definition<'db>>,
 
-    // Map from a collection initializer definition to statements containing a constraining use.
     uses_by_collection: FrozenMap<Definition<'db>, Box<[(Statement<'db>, ExpressionNodeKey)]>>,
 
     /// Map from the file-local [`FileScopeId`] to the salsa-ingredient [`ScopeId`].
@@ -520,11 +513,9 @@ impl<'db> SemanticIndex<'db> {
     ) -> bool {
         let symbol = self.place_table(scope).symbol(symbol);
         let name = symbol.name();
-        // Note that `visible_ancestor_scopes` includes the starting scope itself.
         for (visible_scope_id, _) in self.visible_ancestor_scopes(scope) {
             if visible_scope_id.is_global() {
                 // We return `true` here even if the global variable isn't actually defined. That
-                // case will be probably a diagnostic elsewhere.
                 return true;
             }
             let place_table = self.place_table(visible_scope_id);
@@ -1163,7 +1154,6 @@ impl HasTrackedScope for ast::Expr {}
 impl HasTrackedScope for ast::ExprRef<'_> {}
 impl HasTrackedScope for &ast::ExprRef<'_> {}
 
-// An identifier between expressions in the same scope inherits that scope.
 impl HasTrackedScope for ast::Identifier {}
 
 #[cfg(test)]
@@ -2086,10 +2076,6 @@ class C[T]:
 
     #[test]
     fn expression_scope() {
-        // Annotation tracking preserves lexical scope lookup, including for attribute identifiers
-        // inside annotations, which are not registered separately in the expression scope map.
-        // `annotation_parent_scope_id` returns the module scope for `module.Type`, the annotation
-        // on `x`. It returns `None` for `x` itself and for `y`, since neither is inside an annotation.
         let TestCase { db, file } = test_case("x: module.Type = 1;\ndef test():\n  y = 4");
 
         let index = semantic_index(&db, program_file(&db, file));

@@ -20,7 +20,6 @@ impl FormatNodeRule<ExprNamed> for FormatExprNamed {
             node_index: _,
         } = item;
 
-        // This context, a dangling comment is a comment between the `:=` and the value.
         let comments = f.context().comments().clone();
         let dangling = comments.dangling(item);
 
@@ -51,8 +50,6 @@ impl NeedsParentheses for ExprNamed {
         parent: AnyNodeRef,
         _context: &PyFormatContext,
     ) -> OptionalParentheses {
-        // Unlike tuples, named expression parentheses are not part of the range even when
-        // mandatory. See [PEP 572](https://peps.python.org/pep-0572/) for details.
         if parent.is_stmt_ann_assign()
             || parent.is_stmt_assign()
             || parent.is_stmt_aug_assign()

@@ -26,7 +26,6 @@ fn update_and_use_configured_baseline() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // `reveal_type` is not a lint, so it remains visible when the assignment error is baselined.
     assert_cmd_snapshot!(case.command().arg("--update-baseline"), @"
     success: true
     exit_code: 0
@@ -153,8 +152,6 @@ x: int = 1.5
     }
     "#);
 
-    // The inserted assignment has the same rule and columns as the final assignment.
-    // The multiline diagnostic between them lets Myers distinguish the two occurrences.
     case.write_file("test.py", &format!("y: int = 0.5\n{source}"))?;
     assert_cmd_snapshot!(case.command().args(["--baseline", "baseline.json", "--output-format=concise"]), @"
     success: false
@@ -171,7 +168,6 @@ x: int = 1.5
 #[test]
 fn baseline_accepts_previous_rule_name() {
     let case = CliTest::with_files([
-        // Both diagnostics underline `missing`. Renaming the import rule reverses their sort order.
         (
             "test.py",
             "
@@ -329,7 +325,6 @@ fn cli_baseline_path() -> anyhow::Result<()> {
     ");
     let baseline: serde_json::Value =
         serde_json::from_slice(&fs::read(case.root().join("state/baseline.json"))?)?;
-    // A backslash separates directories on Windows and is part of the filename on Unix.
     let expected_path = if cfg!(windows) {
         "nested/a/b.py"
     } else {
@@ -579,7 +574,6 @@ fn baseline_entries_are_sorted_and_matched_by_file_path() -> anyhow::Result<()> 
     }
     "#);
 
-    // Both files have identical baseline entries. Only the error in the renamed file should reappear.
     fs::rename(case.root().join("a.py"), case.root().join("renamed.py"))?;
     assert_cmd_snapshot!(case.command().args(["--baseline", "baseline.json", "--output-format=concise"]), @r#"
     success: false

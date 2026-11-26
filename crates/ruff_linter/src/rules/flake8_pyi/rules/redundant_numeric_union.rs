@@ -62,7 +62,6 @@ pub(crate) struct RedundantNumericUnion {
 }
 
 impl Violation for RedundantNumericUnion {
-    // Always fixable, but currently under preview.
     const FIX_AVAILABILITY: FixAvailability = FixAvailability::Sometimes;
 
     #[derive_message_formats]
@@ -112,20 +111,17 @@ where
 
     let annotation = map_maybe_stringized_annotation(checker, unresolved_annotation);
 
-    // Traverse the union, and remember which numeric types are found.
     traverse_union(&mut find_numeric_type, checker.semantic(), &annotation);
 
     let Some(redundancy) = Redundancy::from_numeric_flags(numeric_flags) else {
         return;
     };
 
-    // Traverse the union a second time to construct the fix.
     let mut necessary_nodes: Vec<&Expr> = Vec::new();
 
     let mut union_type = UnionKind::TypingUnion;
     let mut remove_numeric_type = |expr: &'b Expr, parent: &'b Expr| {
         let Some(builtin_type) = checker.semantic().resolve_builtin_symbol(expr) else {
-            // Keep type annotations that are not numeric.
             necessary_nodes.push(expr);
             return;
         };
@@ -134,8 +130,6 @@ where
             union_type = UnionKind::PEP604;
         }
 
-        // `int` is always dropped, since `float` or `complex` must be present.
-        // `float` is only dropped if `complex`` is present.
         if (builtin_type == "float" && !numeric_flags.contains(NumericFlags::COMPLEX))
             || (builtin_type != "float" && builtin_type != "int")
         {
@@ -143,7 +137,6 @@ where
         }
     };
 
-    // Traverse the union a second time to construct a [`Fix`].
     traverse_union(&mut remove_numeric_type, checker.semantic(), &annotation);
 
     let mut diagnostic =
@@ -153,19 +146,13 @@ where
         && !checker.source_type.is_stub()
         && fix_starts_with_none_none(&necessary_nodes)
     {
-        // If there are multiple `None` literals, we cannot apply the fix in a runtime context.
-        // E.g., `None | None | int` will cause a `RuntimeError`.
         return;
     }
 
     if annotation.is_complex() {
-        // No fix for concatenated string literals and other complex
-        // annotations. They're rare and too complex to handle.
-        // https://github.com/astral-sh/ruff/issues/19184#issuecomment-3047695205
         return;
     }
 
-    // Mark [`Fix`] as unsafe when comments are in range.
     let applicability =
         if annotation.is_string() || checker.comment_ranges().intersects(annotation.range()) {
             Applicability::Unsafe
@@ -173,9 +160,7 @@ where
             Applicability::Safe
         };
 
-    // Generate the flattened fix once.
     let fix = if let &[edit_expr] = necessary_nodes.as_slice() {
-        // Generate a [`Fix`] for a single type expression, e.g. `int`.
         Some(Fix::applicable_edit(
             Edit::range_replacement(checker.generator().expr(edit_expr), annotation.range()),
             applicability,

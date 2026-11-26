@@ -90,11 +90,9 @@ impl<'a> Visitor<'a> for SuspiciousVariablesVisitor<'a> {
             Stmt::FunctionDef(ast::StmtFunctionDef {
                 parameters, body, ..
             }) => {
-                // Collect all loaded variable names.
                 let mut visitor = LoadedNamesVisitor::default();
                 visitor.visit_body(body);
 
-                // Treat any non-arguments as "suspicious".
                 self.names
                     .extend(visitor.loaded.into_iter().filter(|loaded| {
                         if visitor.stored.iter().any(|stored| stored.id == loaded.id) {
@@ -110,7 +108,6 @@ impl<'a> Visitor<'a> for SuspiciousVariablesVisitor<'a> {
 
                 return;
             }
-            // Mark `return lambda: x` as safe.
             Stmt::Return(ast::StmtReturn {
                 value: Some(value),
                 range: _,
@@ -131,8 +128,6 @@ impl<'a> Visitor<'a> for SuspiciousVariablesVisitor<'a> {
                 range_start: _,
                 node_index: _,
             }) => {
-                // Mark immediately-invoked lambdas as safe — the closure
-                // is consumed right away, so late-binding is not a concern.
                 if func.is_lambda_expr() {
                     self.safe_functions.push(func);
                 }
@@ -175,11 +170,9 @@ impl<'a> Visitor<'a> for SuspiciousVariablesVisitor<'a> {
                 range: _,
                 node_index: _,
             }) if !self.safe_functions.contains(&expr) => {
-                // Collect all loaded variable names.
                 let mut visitor = LoadedNamesVisitor::default();
                 visitor.visit_expr(body);
 
-                // Treat any non-arguments as "suspicious".
                 self.names
                     .extend(visitor.loaded.into_iter().filter(|loaded| {
                         if visitor.stored.iter().any(|stored| stored.id == loaded.id) {
@@ -238,7 +231,6 @@ struct AssignedNamesVisitor<'a> {
 impl<'a> Visitor<'a> for AssignedNamesVisitor<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         if stmt.is_function_def_stmt() {
-            // Don't recurse.
             return;
         }
 
@@ -265,7 +257,6 @@ impl<'a> Visitor<'a> for AssignedNamesVisitor<'a> {
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         if expr.is_lambda_expr() {
-            // Don't recurse.
             return;
         }
 
@@ -283,8 +274,6 @@ impl<'a> Visitor<'a> for AssignedNamesVisitor<'a> {
 
 /// B023
 pub(crate) fn function_uses_loop_variable(checker: &Checker, node: &Node) {
-    // Identify any "suspicious" variables. These are defined as variables that are
-    // referenced in a function or lambda body, but aren't bound as arguments.
     let suspicious_variables = {
         let mut visitor = SuspiciousVariablesVisitor::default();
         match node {
@@ -295,7 +284,6 @@ pub(crate) fn function_uses_loop_variable(checker: &Checker, node: &Node) {
     };
 
     if !suspicious_variables.is_empty() {
-        // Identify any variables that are assigned in the loop (ignoring functions).
         let reassigned_in_loop = {
             let mut visitor = AssignedNamesVisitor::default();
             match node {
@@ -305,8 +293,6 @@ pub(crate) fn function_uses_loop_variable(checker: &Checker, node: &Node) {
             visitor.names
         };
 
-        // If a variable was used in a function or lambda body, and assigned in the
-        // loop, flag it.
         for name in suspicious_variables {
             if reassigned_in_loop.contains(&name.id.as_str()) {
                 if checker.insert_flake8_bugbear_range(name.range()) {

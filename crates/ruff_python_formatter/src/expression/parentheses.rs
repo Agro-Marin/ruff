@@ -177,15 +177,12 @@ impl<'ast> Format<PyFormatContext<'ast>> for FormatParenthesized<'_, 'ast> {
 
         let inner = format_with(|f| {
             if let NodeLevel::Expression(Some(group_id)) = current_level {
-                // Use fits expanded if there's an enclosing group that adds the optional parentheses.
-                // This ensures that expanding this parenthesized expression does not expand the optional parentheses group.
                 write!(
                     f,
                     [fits_expanded(&indented)
                         .with_condition(Some(Condition::if_group_fits_on_line(group_id)))]
                 )
             } else {
-                // It's not necessary to wrap the content if it is not inside of an optional_parentheses group.
                 indented.fmt(f)
             }
         });
@@ -215,17 +212,10 @@ pub(crate) struct FormatOptionalParentheses<'content, 'ast> {
 
 impl<'ast> Format<PyFormatContext<'ast>> for FormatOptionalParentheses<'_, 'ast> {
     fn fmt(&self, f: &mut Formatter<PyFormatContext<'ast>>) -> FormatResult<()> {
-        // The group id is used as a condition in [`in_parentheses_only_group`] to create a
-        // conditional group that is only active if the optional parentheses group expands.
         let parens_id = f.group_id("optional_parentheses");
 
         let mut f = WithNodeLevel::new(NodeLevel::Expression(Some(parens_id)), f);
 
-        // We can't use `soft_block_indent` here because that would always increment the indent,
-        // even if the group does not break (the indent is not soft). This would result in
-        // too deep indentations if a `parenthesized` group expands. Using `indent_if_group_breaks`
-        // gives us the desired *soft* indentation that is only present if the optional parentheses
-        // are shown.
         write!(
             f,
             [group(&format_args![
@@ -326,11 +316,9 @@ pub(super) fn write_in_parentheses_only_group_start_tag(f: &mut PyFormatter) {
             )));
         }
         NodeLevel::ParenthesizedExpression => {
-            // Unconditionally group the content if it is not enclosed by an optional parentheses group.
             f.write_element(FormatElement::Tag(tag::Tag::StartGroup(tag::Group::new())));
         }
         NodeLevel::Expression(None) | NodeLevel::TopLevel(_) | NodeLevel::CompoundStatement => {
-            // No group
         }
     }
 }
@@ -341,11 +329,9 @@ pub(super) fn write_in_parentheses_only_group_end_tag(f: &mut PyFormatter) {
             f.write_element(FormatElement::Tag(tag::Tag::EndConditionalGroup));
         }
         NodeLevel::ParenthesizedExpression => {
-            // Unconditionally group the content if it is not enclosed by an optional parentheses group.
             f.write_element(FormatElement::Tag(tag::Tag::EndGroup));
         }
         NodeLevel::Expression(None) | NodeLevel::TopLevel(_) | NodeLevel::CompoundStatement => {
-            // No group
         }
     }
 }
@@ -360,7 +346,6 @@ where
 {
     format_with(move |f: &mut PyFormatter| match f.context().node_level() {
         NodeLevel::TopLevel(_) | NodeLevel::CompoundStatement | NodeLevel::Expression(None) => {
-            // no-op, not parenthesized
             Ok(())
         }
         NodeLevel::Expression(Some(parentheses_id)) => if_group_breaks(&content)
@@ -411,19 +396,8 @@ impl Format<PyFormatContext<'_>> for FormatEmptyParenthesized<'_> {
         );
         group(&format_args![
             token(self.left),
-            // end-of-line comments
             trailing_comments(&self.comments[..end_of_line_split]),
-            // Avoid unstable formatting with
-            // ```python
-            // x = () - (#
-            // )
-            // ```
-            // Without this the comment would go after the empty tuple first, but still expand
-            // the bin op. In the second formatting pass they are trailing bin op comments
-            // so the bin op collapse. Suboptimally we keep parentheses around the bin op in
-            // either case.
             (!self.comments[..end_of_line_split].is_empty()).then_some(hard_line_break()),
-            // own line comments, which need to be indented
             soft_block_indent(&dangling_comments(&self.comments[end_of_line_split..])),
             token(self.right)
         ])

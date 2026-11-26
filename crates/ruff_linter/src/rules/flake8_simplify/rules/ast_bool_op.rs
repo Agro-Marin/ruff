@@ -314,7 +314,6 @@ fn is_same_expr<'a>(a: &'a Expr, b: &'a Expr) -> Option<&'a str> {
 
 /// If `call` is an `isinstance()` call, return its target.
 fn isinstance_target<'a>(call: &'a Expr, semantic: &'a SemanticModel) -> Option<&'a Expr> {
-    // Verify that this is an `isinstance` call.
     let ast::ExprCall {
         func,
         arguments:
@@ -337,7 +336,6 @@ fn isinstance_target<'a>(call: &'a Expr, semantic: &'a SemanticModel) -> Option<
         return None;
     }
 
-    // Collect the target (e.g., `obj` in `isinstance(obj, int)`).
     Some(&args[0])
 }
 
@@ -353,8 +351,6 @@ pub(crate) fn duplicate_isinstance_call(checker: &Checker, expr: &Expr) {
         return;
     };
 
-    // Locate duplicate `isinstance` calls, represented as a vector of vectors
-    // of indices of the relevant `Expr` instances in `values`.
     let mut duplicates: Vec<Vec<usize>> = Vec::new();
     let mut last_target_option: Option<ComparableExpr> = None;
     for (index, call) in values.iter().enumerate() {
@@ -377,11 +373,8 @@ pub(crate) fn duplicate_isinstance_call(checker: &Checker, expr: &Expr) {
         }
     }
 
-    // Generate a `Diagnostic` for each duplicate.
     for indices in duplicates {
         if indices.len() > 1 {
-            // Grab the target used in each duplicate `isinstance` call (e.g., `obj` in
-            // `isinstance(obj, int)`).
             let target = if let Expr::Call(ast::ExprCall {
                 arguments: Arguments { args, .. },
                 ..
@@ -403,9 +396,6 @@ pub(crate) fn duplicate_isinstance_call(checker: &Checker, expr: &Expr) {
                 expr.range(),
             );
             if !contains_effect(target, |id| checker.semantic().has_builtin_binding(id)) {
-                // Flatten the type expressions from each duplicate `isinstance` call into the
-                // elements they would contribute to the merged tuple. Tuple operands splice
-                // their elements; everything else contributes itself.
                 let flattened: Vec<&Expr> = indices
                     .iter()
                     .flat_map(|index| {
@@ -425,11 +415,6 @@ pub(crate) fn duplicate_isinstance_call(checker: &Checker, expr: &Expr) {
                     })
                     .collect();
 
-                // Build the replacement by splicing source slices for the target and the
-                // type expressions, rather than letting the generator re-render them.
-                // The generator normalizes escape sequences and otherwise reformats
-                // expressions, which can break f-strings that rely on specific spelling
-                // (e.g. `\x7d` in a format spec) or change observable behavior.
                 let locator = checker.locator();
                 let target_src = locator.slice(target);
                 let mut type_srcs = flattened.iter().map(|e| locator.slice(*e)).join(", ");
@@ -438,12 +423,6 @@ pub(crate) fn duplicate_isinstance_call(checker: &Checker, expr: &Expr) {
                 }
                 let combined = format!("isinstance({target_src}, ({type_srcs}))");
 
-                // Replace the consecutive duplicate calls (and the `or`s between them) with
-                // the combined call. Extend the replacement to absorb any parentheses that
-                // wrap the first or last operand within the `BoolOp`; otherwise those
-                // parentheses would be left dangling against a merged operand that has its
-                // own balance, producing invalid syntax (e.g. `((isinstance(x, int)) or
-                // isinstance(x, str))`).
                 let [first, .., last] = indices.as_slice() else {
                     unreachable!("Indices should have at least two elements")
                 };
@@ -490,8 +469,6 @@ pub(crate) fn compare_with_tuple(checker: &Checker, expr: &Expr) {
         return;
     };
 
-    // Given `a == "foo" or a == "bar"`, we generate `{"a": [(0, "foo"), (1,
-    // "bar")]}`.
     let mut id_to_comparators: BTreeMap<&Name, Vec<(usize, &Expr)>> = BTreeMap::new();
     for (index, value) in values.iter().enumerate() {
         if let Some((id, comparator)) = match_eq_target(value) {
@@ -509,7 +486,6 @@ pub(crate) fn compare_with_tuple(checker: &Checker, expr: &Expr) {
 
         let (indices, comparators): (Vec<_>, Vec<_>) = matches.iter().copied().unzip();
 
-        // Avoid rewriting (e.g.) `a == "foo" or a == f()`.
         if comparators
             .iter()
             .any(|expr| contains_effect(expr, |id| checker.semantic().has_builtin_binding(id)))
@@ -517,7 +493,6 @@ pub(crate) fn compare_with_tuple(checker: &Checker, expr: &Expr) {
             continue;
         }
 
-        // Avoid removing comments.
         if checker
             .comment_ranges()
             .has_comments(expr, checker.source())
@@ -525,8 +500,6 @@ pub(crate) fn compare_with_tuple(checker: &Checker, expr: &Expr) {
             continue;
         }
 
-        // Anchor the replacement expression to the position of the earliest matched
-        // comparator, so that it sorts correctly against any unmatched operands below.
         let Some(node_range) = comparators
             .iter()
             .map(Ranged::range)
@@ -535,7 +508,6 @@ pub(crate) fn compare_with_tuple(checker: &Checker, expr: &Expr) {
             continue;
         };
 
-        // Create a `x in (a, b)` expression.
         let node = ast::ExprTuple {
             elts: comparators.into_iter().cloned().collect(),
             ctx: ExprContext::Load,
@@ -571,8 +543,6 @@ pub(crate) fn compare_with_tuple(checker: &Checker, expr: &Expr) {
         let in_expr = if unmatched.is_empty() {
             in_expr
         } else {
-            // Wrap in a `x in (a, b) or ...` boolean operation, preserving the original
-            // left-to-right order of the replacement and any unmatched operands.
             let node = ast::ExprBoolOp {
                 op: BoolOp::Or,
                 values: iter::once(in_expr)
@@ -606,7 +576,6 @@ pub(crate) fn expr_and_not_expr(checker: &Checker, expr: &Expr) {
         return;
     }
 
-    // Collect all negated and non-negated expressions.
     let mut negated_expr = vec![];
     let mut non_negated_expr = vec![];
     for expr in values {
@@ -664,7 +633,6 @@ pub(crate) fn expr_or_not_expr(checker: &Checker, expr: &Expr) {
         return;
     }
 
-    // Collect all negated and non-negated expressions.
     let mut negated_expr = vec![];
     let mut non_negated_expr = vec![];
     for expr in values {
@@ -760,13 +728,11 @@ fn is_short_circuit(
     let mut remove = None;
 
     for (index, (value, next_value)) in values.iter().tuple_windows().enumerate() {
-        // Keep track of the location of the furthest-right, truthy or falsey expression.
         let value_truthiness =
             Truthiness::from_expr(value, |id| checker.semantic().has_builtin_binding(id));
         let next_value_truthiness =
             Truthiness::from_expr(next_value, |id| checker.semantic().has_builtin_binding(id));
 
-        // Keep track of the location of the furthest-right, non-effectful expression.
         if value_truthiness.is_unknown()
             && (!checker.semantic().in_boolean_test()
                 || contains_effect(value, |id| checker.semantic().has_builtin_binding(id)))
@@ -775,10 +741,6 @@ fn is_short_circuit(
             continue;
         }
 
-        // If the current expression is a constant, and it matches the short-circuit value, then
-        // we can return the location of the expression. This should only trigger if the
-        // short-circuit expression is the first expression in the list; otherwise, we'll see it
-        // as `next_value` before we see it as `value`.
         if value_truthiness.into_bool() == Some(short_circuit_truthiness) {
             remove = Some(ContentAround::After);
 
@@ -797,8 +759,6 @@ fn is_short_circuit(
             break;
         }
 
-        // If the next expression is a constant, and it matches the short-circuit value, then
-        // we can return the location of the expression.
         if next_value_truthiness.into_bool() == Some(short_circuit_truthiness) {
             remove = Some(if index + 1 == values.len() - 1 {
                 ContentAround::Before

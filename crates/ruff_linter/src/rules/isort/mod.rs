@@ -88,10 +88,8 @@ pub(crate) fn format_imports(
         tokens,
     );
 
-    // Normalize imports (i.e., deduplicate, aggregate `from` imports).
     let block = normalize_imports(block, settings);
 
-    // Categorize imports.
     let mut output = String::new();
 
     for block in split::split_by_forced_separate(block, &settings.forced_separate) {
@@ -107,16 +105,12 @@ pub(crate) fn format_imports(
         );
 
         if !block_output.is_empty() && !output.is_empty() {
-            // If we are about to output something, and had already
-            // output a block, separate them.
             output.push_str(&stylist.line_ending());
         }
         output.push_str(block_output.as_str());
     }
 
     let lines_after_imports = if source_type.is_stub() {
-        // Limit the number of lines after imports in stub files to at most 1 to be compatible with the formatter.
-        // `isort` does the same when using the profile `isort`
         match settings.lines_after_imports {
             0 => 0,
             _ => 1,
@@ -184,7 +178,6 @@ fn format_import_block(
 
     let mut output = String::new();
 
-    // Generate replacement source code.
     let mut is_first_block = true;
     let mut pending_lines_before = false;
     for import_section in &settings.section_order {
@@ -199,10 +192,6 @@ fn format_import_block(
 
         let mut imports = order_imports(import_block, import_section, settings);
 
-        // Strip any heading comments from all imports in the section,
-        // as they will be re-added in the correct position.
-        // Heading comments may be on any import (not just the first) since
-        // sorting may have reordered them.
         if !settings.import_headings.is_empty() {
             for import in &mut imports {
                 let atop = match import {
@@ -218,7 +207,6 @@ fn format_import_block(
             }
         }
 
-        // Add a blank line between every section.
         if is_first_block {
             is_first_block = false;
             pending_lines_before = false;
@@ -227,7 +215,6 @@ fn format_import_block(
             pending_lines_before = false;
         }
 
-        // Insert heading comment for this section, if configured.
         if let Some(heading) = settings.import_headings.get(import_section) {
             output.push_str(heading);
             output.push_str(&stylist.line_ending());
@@ -239,7 +226,6 @@ fn format_import_block(
         for import in imports {
             match import {
                 Import((alias, comments)) => {
-                    // Add a blank lines between direct and from imports.
                     if settings.from_first
                         && lines_between_types > 0
                         && !settings.force_sort_within_sections
@@ -265,7 +251,6 @@ fn format_import_block(
                 }
 
                 ImportFrom((import_from, comments, trailing_comma, aliases)) => {
-                    // Add a blank lines between direct and from imports.
                     if !settings.from_first
                         && lines_between_types > 0
                         && !settings.force_sort_within_sections
@@ -411,15 +396,12 @@ mod tests {
             ..LinterSettings::for_rules([Rule::UnsortedImports, Rule::LineTooLong])
         };
 
-        // `test_contents` applies fixes to convergence (and panics if they fail to converge).
         let (_, transformed) = test_contents(&source_kind, &path, &settings);
         insta::assert_snapshot!(
             "fit_line_length_merged_pragma_fixed",
             transformed.source_code()
         );
 
-        // Re-linting the converged output must produce no diagnostics: I001 is fully fixed
-        // and, in particular, the fix must not have introduced any E501 violations.
         let (diagnostics, _) = test_contents(&transformed, &path, &settings);
         assert!(
             diagnostics.is_empty(),
@@ -1558,9 +1540,8 @@ mod tests {
                 src: vec![test_resource_path("fixtures/isort")],
                 isort: super::settings::Settings {
                     forced_separate: vec![
-                        // The order will be retained by the split mechanism.
                         "tests".to_string(),
-                        "not_there".to_string(), // doesn't appear, shouldn't matter
+                        "not_there".to_string(),
                         "experiments".to_string(),
                     ],
                     ..super::settings::Settings::default()

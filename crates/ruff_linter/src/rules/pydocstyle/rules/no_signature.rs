@@ -64,12 +64,9 @@ pub(crate) fn no_signature(checker: &Checker, docstring: &Docstring) {
         return;
     };
 
-    // Search for occurrences of the function name followed by an open parenthesis (e.g., `foo(` for
-    // a function named `foo`).
     if first_line
         .match_indices(function.name.as_str())
         .any(|(index, _)| {
-            // The function name must be preceded by a word boundary.
             let preceded_by_word_boundary = first_line[..index]
                 .chars()
                 .next_back()
@@ -78,7 +75,6 @@ pub(crate) fn no_signature(checker: &Checker, docstring: &Docstring) {
                 return false;
             }
 
-            // The function name must be followed by an open parenthesis.
 
             first_line[index + function.name.len()..].starts_with('(')
         })

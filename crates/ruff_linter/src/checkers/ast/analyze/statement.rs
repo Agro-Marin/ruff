@@ -875,7 +875,6 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
             }
             for alias in names {
                 if !import_from.is_future_import(checker.parser_version()) && &alias.name == "*" {
-                    // F403
                     checker.report_diagnostic_if_enabled(
                         pyflakes::rules::UndefinedLocalWithImportStar {
                             name: helpers::format_import_from(level, module).to_string(),
@@ -1549,7 +1548,6 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
                     Rule::ComplexAssignmentInStub,
                     Rule::TypeAliasWithoutAnnotation,
                 ]) {
-                    // Ignore assignments in function bodies; those are covered by other rules.
                     if !checker
                         .semantic
                         .current_scopes()
@@ -1638,7 +1636,6 @@ pub(crate) fn statement(stmt: &Stmt, checker: &mut Checker) {
             if checker.source_type.is_stub() {
                 if let Some(value) = value {
                     if checker.is_rule_enabled(Rule::AssignmentDefaultInStub) {
-                        // Ignore assignments in function bodies; those are covered by other rules.
                         if !checker
                             .semantic
                             .current_scopes()

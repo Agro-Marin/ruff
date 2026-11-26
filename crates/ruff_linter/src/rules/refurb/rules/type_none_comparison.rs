@@ -88,14 +88,12 @@ pub(crate) fn type_none_comparison(checker: &Checker, compare: &ast::ExprCompare
 /// Returns the object passed to the function, if the expression is a call to
 /// `type` with a single argument.
 fn type_call_arg<'a>(expr: &'a Expr, semantic: &'a SemanticModel) -> Option<&'a Expr> {
-    // The expression must be a single-argument call to `type`.
     let ast::ExprCall {
         func, arguments, ..
     } = expr.as_call_expr()?;
     if arguments.len() != 1 {
         return None;
     }
-    // The function itself must be the builtin `type`.
     if !semantic.match_builtin_expr(func, "type") {
         return None;
     }

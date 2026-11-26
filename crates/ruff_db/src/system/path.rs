@@ -29,7 +29,6 @@ impl SystemPath {
     pub fn new(path: &(impl AsRef<Utf8Path> + ?Sized)) -> &Self {
         let path = path.as_ref();
         // SAFETY: FsPath is marked as #[repr(transparent)] so the conversion from a
-        // *const Utf8Path to a *const FsPath is valid.
         unsafe { &*(path as *const Utf8Path as *const SystemPath) }
     }
 
@@ -609,7 +608,6 @@ impl From<SystemPathBuf> for Box<SystemPath> {
     fn from(path: SystemPathBuf) -> Self {
         let path = Box::into_raw(path.0.into_boxed_path()) as *mut SystemPath;
         // SAFETY: SystemPath is marked as #[repr(transparent)] so the conversion from a
-        // *mut Utf8Path to a *mut SystemPath is valid.
         unsafe { Box::from_raw(path) }
     }
 }
@@ -784,7 +782,6 @@ pub struct SystemVirtualPath(str);
 impl SystemVirtualPath {
     pub const fn new(path: &str) -> &SystemVirtualPath {
         // SAFETY: SystemVirtualPath is marked as #[repr(transparent)] so the conversion from a
-        // *const str to a *const SystemVirtualPath is valid.
         unsafe { &*(path as *const str as *const SystemVirtualPath) }
     }
 
@@ -838,7 +835,6 @@ impl From<SystemVirtualPathBuf> for Box<SystemVirtualPath> {
     fn from(path: SystemVirtualPathBuf) -> Self {
         let path = Box::into_raw(path.0.into_boxed_str()) as *mut SystemVirtualPath;
         // SAFETY: SystemVirtualPath is marked as #[repr(transparent)] so the conversion from a
-        // *mut str to a *mut SystemVirtualPath is valid.
         unsafe { Box::from_raw(path) }
     }
 }
@@ -972,7 +968,6 @@ where
         I: IntoIterator<Item = P>,
     {
         let mut paths = paths.into_iter().collect::<Vec<_>>();
-        // Sort the path to ensure that e.g. `/a/b/c`, comes right after `/a/b`.
         paths.sort_unstable_by(|left, right| left.as_ref().cmp(right.as_ref()));
 
         let mut iter = paths.into_iter();
@@ -994,7 +989,6 @@ where
         let current = self.next.take()?;
 
         for next in self.inner.by_ref() {
-            // Skip all paths that have the same prefix as the current path
             if !next.as_ref().starts_with(current.as_ref()) {
                 self.next = Some(next);
                 break;

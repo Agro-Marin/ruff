@@ -70,7 +70,6 @@ pub(crate) fn replace_stdout_stderr(checker: &Checker, call: &ast::ExprCall) {
         .semantic()
         .matches_qualified_name(&call.func, &["subprocess", "run"])
     {
-        // Find `stdout` and `stderr` kwargs.
         let Some(stdout) = call.arguments.find_keyword("stdout") else {
             return;
         };
@@ -78,7 +77,6 @@ pub(crate) fn replace_stdout_stderr(checker: &Checker, call: &ast::ExprCall) {
             return;
         };
 
-        // Verify that they're both set to `subprocess.PIPE`.
         if !checker
             .semantic()
             .matches_qualified_name(&stdout.value, &["subprocess", "PIPE"])
@@ -117,7 +115,6 @@ fn generate_fix(
     } else {
         (stderr, stdout)
     };
-    // Replace one argument with `capture_output=True`, and remove the other.
     Ok(Fix::unsafe_edits(
         Edit::range_replacement("capture_output=True".to_string(), first.range()),
         [remove_argument(

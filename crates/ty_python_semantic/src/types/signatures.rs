@@ -82,10 +82,8 @@ pub(super) fn function_signature_expression_type<'db>(
     let file_scope = index.expression_scope_id(expression);
     let scope = file_scope.to_scope_id(db, file);
     if scope == definition.scope(db) {
-        // expression is in the function definition scope, but always deferred
         infer_deferred_types(db, definition).expression_type(expression)
     } else {
-        // expression is in the PEP-695 type params sub-scope
         infer_complete_scope_types(db, scope).expression_type(expression)
     }
 }
@@ -118,8 +116,6 @@ fn merge_receiver_constraints<'db>(
     first: Option<&ReceiverConstraints<'db>>,
     second: Option<&ReceiverConstraints<'db>>,
 ) -> Option<ReceiverConstraints<'db>> {
-    // An always-satisfied assignability constraint can still leave a receiver relation that
-    // needs checking under strict subtyping, such as `Source[Any]` against `Source[int]`.
     match (
         first.filter(|constraints| !constraints.is_trivially_always_satisfied()),
         second.filter(|constraints| !constraints.is_trivially_always_satisfied()),
@@ -320,8 +316,6 @@ impl<'db> CallableSignature<'db> {
                         )
                     };
 
-                    // The synthesized ParamSpec parameters still correspond to the original
-                    // `*args` and `**kwargs` annotations. Keep their positions for diagnostics.
                     for (parameter, source) in Arc::make_mut(&mut parameters.data)
                         .value
                         .iter_mut()
@@ -365,8 +359,6 @@ impl<'db> CallableSignature<'db> {
                                         .update_signature_generic_context(db, context, visitor)
                                 }),
                             ),
-                            // Keep the enclosing method's definition for binding `Self` and
-                            // other receiver type variables after specializing its parameters.
                             definition: self_signature.definition,
                             extras: SignatureExtras::new(
                                 signature.source_overload_index_raw(),
@@ -404,8 +396,6 @@ impl<'db> CallableSignature<'db> {
                         }),
                     ))
                 }
-                // Preserving intersections requires a `Type` result rather than a
-                // `CallableSignature`. `Type::apply_type_mapping_impl` performs that expansion.
                 ParamSpecValue::Intersection(_) => None,
             }
         }
@@ -575,7 +565,6 @@ impl<'db> CallableSignature<'db> {
     fn signatures_is_single_paramspec<'a>(
         signatures: &'a [Signature<'db>],
     ) -> Option<(BoundTypeVarInstance<'db>, &'a Signature<'db>)> {
-        // TODO: This might need updating once we support `Concatenate`
         let [signature] = signatures else {
             return None;
         };
@@ -637,7 +626,6 @@ impl<'a, 'db> IntoIterator for &'a CallableSignature<'db> {
 }
 
 impl<'db> VarianceInferable<'db> for &CallableSignature<'db> {
-    // TODO: possibly need to replace self
     fn variance_of(
         self,
         db: &'db dyn Db,
@@ -738,8 +726,6 @@ impl<'db> ReceiverConstraints<'db> {
             relations: relations
                 .into_iter()
                 .filter(|&(receiver, annotation)| {
-                    // These relations remain true after specialization. An equal pair does not:
-                    // specializing `T <= T` to `Any <= Any` makes strict subtyping fail.
                     !(receiver == Type::Never || annotation == Type::object())
                 })
                 .collect(),
@@ -788,7 +774,6 @@ impl<'db> ReceiverConstraints<'db> {
             || (checker.relation != TypeRelation::Assignability
                 && self.relations.iter().any(|&(receiver, annotation)| {
                     [receiver, annotation].into_iter().any(|ty| {
-                        // Aliases can hide type variables; leave their evaluation to the checker.
                         any_over_type(db, checker.env, ty, false, |ty| {
                             matches!(ty, Type::TypeVar(_) | Type::TypeAlias(_))
                         })
@@ -823,10 +808,7 @@ pub(crate) enum ReturnTypeConsistency<'db> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct SignatureRelationKey<'db> {
-    // Signature recursion for recursive protocols keeps revisiting the same method declarations
-    // under ever-growing specializations. We key the guard on declaration identity so it can
     // break that active cycle, while synthetic `Callable[...]` signatures still fall through to
-    // the ordinary relation logic because they do not carry definitions.
     source_definition: Definition<'db>,
     target_definition: Definition<'db>,
     relation: TypeRelation,
@@ -862,8 +844,6 @@ pub(super) fn walk_signature<'db, V: super::visitor::TypeVisitor<'db> + ?Sized>(
     for ty in signature.receiver_constraint_types() {
         visitor.visit_type(db, ty);
     }
-    // By default we usually don't visit the type of the default value,
-    // as it isn't relevant to most things
     for parameter in &signature.parameters {
         visitor.visit_type(db, parameter.annotated_type());
     }
@@ -990,8 +970,6 @@ impl<'db> Signature<'db> {
     ) -> Self {
         let file = definition.program_file(db);
         let index = semantic_index(db, file);
-        // All annotations in a signature are inferred together, either in the type-parameter
-        // scope or in the function's deferred definition. An unannotated signature needs neither.
         let inference = LazyCell::new(|| {
             if function_node.type_params.is_some() {
                 let scope =
@@ -1034,9 +1012,6 @@ impl<'db> Signature<'db> {
         let (generic_context, return_ty) = match return_callable_typevar_scope {
             ReturnCallableTypeVarScope::Lexical => (full_generic_context, return_ty),
             ReturnCallableTypeVarScope::Public => {
-                // Look for any typevars bound by this function that are only mentioned in a
-                // Callable return type. (We do this after merging the legacy and PEP-695 contexts
-                // because we need to apply this heuristic to PEP-695 typevars as well.)
                 GenericContext::remove_callable_only_typevars(
                     db,
                     full_generic_context,
@@ -1267,14 +1242,8 @@ impl<'db> Signature<'db> {
                 .then_some(argument)
             });
         if let Some(delta) = freshening_delta(db, arguments, generic_context) {
-            // Accessing `Box[T]` inside `Box.method[T]` must keep the class argument separate
-            // from the projected method's local T. Rename the method's binders before
-            // substituting the class arguments, while those occurrences are distinguishable.
             self.freshen_bound_typevars(db, env, delta)
         } else {
-            // Identity substitutions introduce no new occurrences. A different nonce already
-            // distinguishes two occurrences; freshening just because they share a declaration
-            // would introduce unbounded new identities during recursive member projection.
             self.clone()
         }
     }
@@ -1363,9 +1332,6 @@ impl<'db> Signature<'db> {
             if overriding.iter().all(|signature| {
                 let parameters = signature.parameters();
                 parameters.get_positional(index).is_some_and(|positional| {
-                    // Keep the keyword requirement if it can bind to a named parameter or
-                    // to **kwargs without also needing a positional argument in its slot.
-                    // In that case normal assignability must still check the keyword's type.
                     parameters.keyword_by_name(name).is_none()
                         && !(parameters.keyword_variadic().is_some() && positional.has_default())
                         && positional.keyword_name().is_none_or(|keyword| {
@@ -1379,7 +1345,6 @@ impl<'db> Signature<'db> {
                         name: Some(name.clone()),
                         default_type: *default_type,
                     };
-                // Recursive comparisons of the declarations must use their original signatures.
                 adapted.definition = None;
             }
         }
@@ -1407,8 +1372,6 @@ impl<'db> Signature<'db> {
         {
             return None;
         }
-        // The receiver is implicit at call sites, so its name and default do not participate
-        // in signature compatibility.
         let receiver = Parameter::positional_only(None)
             .with_annotated_type(Type::NominalInstance(protocol.nominal_origin_instance(db)?));
         let parameters = self.parameters.with_transformed_parameters(
@@ -1452,10 +1415,6 @@ impl<'db> Signature<'db> {
         {
             first_parameter.annotated_type = self_type;
 
-            // If we've added an implicit `self` annotation, we might need to update the
-            // signature's generic context, too. (The generic context should include any synthetic
-            // typevars created for `typing.Self`, even if the `typing.Self` annotation was added
-            // implicitly.)
             let self_typevar = match self_type {
                 Type::TypeVar(self_typevar) => Some(self_typevar),
                 Type::SubclassOf(subclass_of) => subclass_of.into_type_var(),
@@ -1512,8 +1471,6 @@ impl<'db> Signature<'db> {
         receiver_type: Option<Type<'db>>,
         typing_self_type: Option<Type<'db>>,
     ) -> Self {
-        // A fixed unpacked tuple has a known first positional argument, even though it is
-        // declared with `*args`. Expand it before consuming the receiver.
         let binding_parameters = if self.parameters.get(0).is_some_and(|parameter| {
             parameter.is_variadic()
                 && parameter.has_starred_annotation()
@@ -1539,8 +1496,6 @@ impl<'db> Signature<'db> {
             && !removed_receiver
             && !first_parameter.is_some_and(Parameter::is_variadic);
 
-        // TODO: Binding a receiver through a variable-length unpacked tuple needs to account for
-        // its possible positional prefixes and suffixes.
         let mut parameters = if removed_receiver {
             binding_parameters.without_first()
         } else {
@@ -1549,8 +1504,6 @@ impl<'db> Signature<'db> {
         let mut return_ty = self.return_ty;
         let binding_context = self.definition.map(BindingContext::Definition);
         let self_mapping = |self_type| {
-            // In `P[Self].method`, the owner argument and the method's own `Self` can have
-            // the same declaration. Only the occurrence bound by this signature is the receiver.
             if let Some(context) = self.generic_context
                 && let Some(typevar) = context.variables(db).find(|typevar| {
                     Some(typevar.binding_context(db)) == binding_context
@@ -1567,8 +1520,6 @@ impl<'db> Signature<'db> {
             }
         };
         let receiver_constraint = if impossible_receiver {
-            // Keep the signature for bound-method diagnostics, but make it incompatible with
-            // callable contracts: no parameter can receive the implicit positional argument.
             Some(ReceiverConstraints::new(OwnedConstraintSet::default(), []))
         } else {
             explicit_receiver.map(|parameter| {
@@ -1591,9 +1542,6 @@ impl<'db> Signature<'db> {
                 } else {
                     parameter.annotated_type()
                 };
-                // TODO: Also intersect nested receiver type variables, such as the `T` in
-                // `self: list[T]`, with their valid specializations when constructing or solving the
-                // receiver constraint set.
                 let receiver_typevar = match annotation {
                     Type::TypeVar(typevar) => Some(typevar),
                     Type::TypeAlias(_) => annotation.resolve_type_alias(db).as_typevar(),
@@ -1709,8 +1657,6 @@ impl<'db> Signature<'db> {
             Ok(Solutions::Unconstrained) | Err(_) => {
                 return Some(CallableSignature::single(self.clone()));
             }
-            // Each receiver path can leave a different type variable unconstrained. Preserve the
-            // original relation instead of combining those independent solutions.
             Ok(Solutions::Constrained(solutions)) if solutions.as_slice().len() > 1 => {
                 return Some(CallableSignature::single(self.clone()));
             }
@@ -1738,8 +1684,6 @@ impl<'db> Signature<'db> {
                 return Some(solution);
             }
 
-            // A callable receiver supplies its parameter list even when the bound method uses
-            // the ParamSpec only in contravariant parameter positions.
             if let Some(bounds) = bounds
                 && (concrete_class_receiver || callable_receiver)
                 && (typevar.is_paramspec(db)
@@ -1768,8 +1712,6 @@ impl<'db> Signature<'db> {
             &ApplyTypeMappingVisitor::new(env),
         );
 
-        // The captured `ParamSpec` can carry overload indices from another callable. Keep
-        // this method's overload index so call diagnostics refer to the correct declaration.
         for signature in &mut specialized.overloads {
             signature.set_source_overload_index(self.source_overload_index_raw());
         }
@@ -1787,23 +1729,18 @@ impl<'db> Signature<'db> {
         env: &ProgramEnvironment<'db>,
         self_type: Type<'db>,
     ) -> bool {
-        // A dynamic receiver might be compatible with any explicit receiver annotation.
         if self_type.is_dynamic() {
             return true;
         }
 
-        // Without a first parameter, there is no receiver annotation to check.
         let Some(first_parameter) = self.parameters.get(0) else {
             return true;
         };
 
-        // If there is no positional receiver, this signature cannot be pruned based on `self`.
         if !first_parameter.is_positional() {
             return true;
         }
 
-        // Inferred receiver annotations describe the method owner, rather than constraining which
-        // overload is exposed for a bound receiver. Only explicit receiver annotations can prune.
         if first_parameter.inferred_annotation {
             return true;
         }
@@ -1812,25 +1749,20 @@ impl<'db> Signature<'db> {
         let accepts_any_or_exact_self =
             |ty: Type<'db>| ty.is_dynamic() || ty.is_object() || ty == self_type;
 
-        // Avoid the more expensive normalization below for receiver annotations that already
-        // accept all values, or already exactly match the bound receiver.
         if accepts_any_or_exact_self(expected_self_ty) {
             return true;
         }
 
         expected_self_ty = expected_self_ty.bind_self_typevars(db, env, self_type);
 
-        // `Self` binding can make the receiver annotation trivially compatible.
         if accepts_any_or_exact_self(expected_self_ty) {
             return true;
         }
 
-        // A specialized receiver can make generic receiver annotations concrete enough to compare.
         if let Some((_, self_specialization)) = self_type.class_specialization(db, env) {
             expected_self_ty =
                 expected_self_ty.apply_optional_specialization(db, Some(self_specialization));
 
-            // Specialization can also make the receiver annotation trivially compatible.
             if accepts_any_or_exact_self(expected_self_ty) {
                 return true;
             }
@@ -1964,17 +1896,11 @@ impl<'db> Signature<'db> {
         let context = self.generic_context?;
         let self_typevar = self.unused_self_typevar(db, env)?;
 
-        // Also ensure that the receiver satisfies the upper bound of `Self`.
         let bound = self_typevar.typevar(db).upper_bound(db, env)?;
         if !self_type.is_assignable_to(db, env, bound) {
             return None;
         }
 
-        // And that `Self` is not referenced by any other type variable, in which case removing it
-        // from the generic context may leave it unspecialized.
-        //
-        // TODO: References to `Self` inside of bounds or defaults should not generally be permitted
-        // in the first place, but we still avoid leaving dangling references to `Self` out of principle.
         for typevar in context.variables(db) {
             if typevar.identity(db) == self_typevar.identity(db) {
                 continue;
@@ -2218,8 +2144,6 @@ impl<'db> Signature<'db> {
             remaining.push(parameter);
         }
 
-        // Expand `P.args`/`P.kwargs` while the pair is still adjacent. The keyword-only reshuffle
-        // below can separate them, which would otherwise prevent expansion.
         let remaining = self
             .parameters
             .with_transformed_parameters(remaining)
@@ -2441,7 +2365,6 @@ impl<'db> Signature<'db> {
         other: &CallableSignature<'db>,
         constraints: &'c ConstraintSetBuilder<'db>,
     ) -> ConstraintSet<'db, 'c> {
-        // If this signature is a paramspec, bind it to the entire overloaded other callable.
         if let Some(self_bound_typevar) = self.parameters.as_paramspec()
             && other.is_single_paramspec().is_none()
         {
@@ -2637,19 +2560,12 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         }
 
         let other_parameter_type = target_signature.single_required_positional_parameter_type()?;
-        // Keep this aggregate path narrowly scoped to unary target callables whose parameter
-        // domain is an explicit union.
-        //
-        // Broader overload-set assignability (non-union unary domains, higher arity,
-        // typevars/dynamic interactions) needs dedicated relation logic.
         if !matches!(other_parameter_type, Type::Union(_)) {
             return None;
         }
 
         let env = self.env;
         let is_unary_overload_aggregate_candidate_type = |ty: Type<'db>| {
-            // Keep aggregate probing away from inference-sensitive shapes and defer them to the
-            // legacy path, which already handles dynamic/typevar interactions.
             !ty.has_dynamic(db, env) && !ty.has_typevar_or_typevar_instance(db, env)
         };
 
@@ -2688,7 +2604,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return None;
         }
 
-        // Function assignability here is parameter-contravariant and return-covariant.
         let parameters_cover_target =
             self.check_type_pair(db, other_parameter_type, parameter_type_union.build());
         let returns_match_target =
@@ -2718,19 +2633,12 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         target_overloads: &[Signature<'db>],
     ) -> ConstraintSet<'db, 'c> {
         if self.typevar_evaluation == TypeVarEvaluation::Lazy {
-            // TODO: Oof, maybe ParamSpec needs to live at CallableSignature, not Signature?
             let source_is_single_paramspec =
                 CallableSignature::signatures_is_single_paramspec(source_overloads);
             let target_is_single_paramspec =
                 CallableSignature::signatures_is_single_paramspec(target_overloads);
 
-            // TODO: Adding proper support for overloads with ParamSpec will likely require some
-            // changes here.
 
-            // Only handle ParamSpec here when we still need the whole overload set. Once we're
-            // down to a single signature on both sides, let
-            // `TypeRelationChecker::check_signature_pair_inner` handle the ParamSpec binding
-            // instead.
             match (source_is_single_paramspec, target_is_single_paramspec) {
                 (Some((source_tvar, source_signature)), None) if target_overloads.len() > 1 => {
                     let env = self.env;
@@ -2756,8 +2664,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         upper,
                     );
                     let return_types_match = || {
-                        // TODO: Similar to how we do this for unions, we should collect error
-                        // context for all elements and report it if *all* checks fail.
                         self.without_context_collection(|| {
                             target_overloads.iter().when_any(
                                 db,
@@ -2777,9 +2683,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
 
                 (None, Some((target_tvar, target_signature))) if source_overloads.len() > 1 => {
                     let env = self.env;
-                    // TODO: Ideally, the constraint solver should use the return type constraint
-                    // to remove unmatched overloads from the `ParamSpec` specialization instead
-                    // of filtering them here.
                     let lower = Type::Callable(CallableType::paramspec_value_from_signatures(
                         db,
                         CallableSignature::from_overloads(
@@ -2815,8 +2718,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         lower,
                     );
                     let return_types_match = || {
-                        // TODO: Similar to how we do this for unions, we should collect error
-                        // context for all elements and report it if *all* checks fail.
                         self.without_context_collection(|| {
                             source_overloads.iter().when_any(
                                 db,
@@ -2840,7 +2741,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
 
         match (source_overloads, target_overloads) {
             ([source_signature], [target_signature]) => {
-                // Base case: both callable types contain a single signature.
                 if self.typevar_evaluation == TypeVarEvaluation::Lazy
                     && (source_signature
                         .parameters
@@ -2857,7 +2757,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 }
             }
 
-            // source is possibly overloaded while target is definitely not overloaded.
             (_, [target_signature]) => {
                 if let Some(aggregate_relation) = self.try_unary_overload_aggregate_relation(
                     db,
@@ -2867,8 +2766,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return aggregate_relation;
                 }
 
-                // TODO: Similar to how we do this for unions, we should collect error
-                // context for all elements and report it if *all* checks fail.
                 self.without_context_collection(|| {
                     source_overloads
                         .iter()
@@ -2882,7 +2779,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 })
             }
 
-            // source is definitely not overloaded while target is possibly overloaded.
             ([_], _) => {
                 target_overloads
                     .iter()
@@ -2895,7 +2791,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     })
             }
 
-            // source is definitely overloaded while target is possibly overloaded.
             (_, _) => target_overloads
                 .iter()
                 .when_all(db, self.constraints, |target_signature| {
@@ -2923,8 +2818,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 || std::iter::once(signature.return_ty)
                     .chain(signature.parameters.iter().map(Parameter::annotated_type))
                     .any(|ty| {
-                        // Aliases and recursive types can hide typevars. Avoid expanding them just
-                        // to decide whether to take a fast path.
                         any_over_type(db, self.env, ty, false, |ty| {
                             matches!(
                                 ty,
@@ -2934,10 +2827,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     })
         };
 
-        // Fast path: If the source is the bottom signature or the target is the top signature,
-        // assignability holds no matter what, and we can return without spending the time matching
-        // parameter lists. However, the opposite signature's typevars still need inference
-        // bounds: even `Never ≤ T` or `T ≤ object` can determine an inferred type.
         if (source.is_bottom() && !may_contain_typevars(target))
             || (target.is_top() && !may_contain_typevars(source))
         {
@@ -2945,20 +2834,12 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         }
 
         let env = self.env;
-        // In lazy comparisons, a captured parameter list refers to typevars owned by the
-        // surrounding call inference. Preserve constraints on those variables instead of
-        // freshening and quantifying them as callable-local variables. Eager comparisons still
-        // use the stored generic context to simplify bounds for compatibility inference.
         let signature_context = |signature: &Signature<'db>| {
             signature.generic_context.filter(|_| {
                 !signature.is_paramspec_value()
                     || self.typevar_evaluation != TypeVarEvaluation::Lazy
             })
         };
-        // If either signature is generic, freshen that signature's typevars before considering
-        // them inferable for this relation. The relation only needs to find one specialization of
-        // each generic callable that causes the check to succeed, but those callable-local
-        // specializations must not collide with any same-source typevars in the other signature.
         let freshened_source;
         let source = if signature_context(source) != signature_context(target)
             && let Some(generic_context) = signature_context(source)
@@ -2990,9 +2871,7 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
 
         let inferable = self.inferable.merge(db, signature_inferable);
 
-        // `inner` will create a constraint set that references these newly inferable typevars.
         let mut checker = self.with_inferable_typevars(inferable);
-        // Preserve receiver typevar constraints until the complete signature relation is solved.
         if [source, target].iter().any(|signature| {
             signature
                 .receiver_constraints()
@@ -3006,9 +2885,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 && source.parameters.is_gradual()
                 && target.parameters.is_gradual()
             {
-                // Unrestricted tails tell us which calls each union member accepts. Also compare
-                // the fixed parameters alone: a zero-argument function can implement `(...)`
-                // but cannot implement `(str, /, ...)`.
                 let fixed = |signature: &Signature<'db>| {
                     signature
                         .clone()
@@ -3023,8 +2899,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 && !source.parameters.is_top()
                 && result.is_never_satisfied(db, env, checker.inferable)
             {
-                // Preserve return-type inference for an incompatible object-variadic callback.
-                // A compatible prefix contributes its own inference bounds in the comparison above.
                 let parameters = source.parameters.expand_starred_variadic_annotations(db);
                 if parameters.has_unrestricted_variadics(db) {
                     return checker.check_signature_return_pair(db, source, target);
@@ -3033,8 +2907,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             result
         };
         let when = checker.with_signature_recursion_guard(source, target, || {
-            // A target that permits no calls imposes no receiver requirements. Still compare
-            // return types so that their constraints contribute to inference.
             if target.parameters.is_top() {
                 return check_parameters_and_return();
             }
@@ -3042,10 +2914,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             source
                 .receiver_constraints_when_satisfied(db, &checker)
                 .and(db, self.constraints, || {
-                    // Once its receiver is eligible, a source accepting every argument list
-                    // accepts every call permitted by the target, regardless of the target's
-                    // receiver restriction. Parameter and return types still contribute
-                    // inference bounds.
                     if source.parameters.is_bottom() {
                         return check_parameters_and_return();
                     }
@@ -3056,10 +2924,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 })
         });
 
-        // But the caller does not need to consider those extra typevars. Whatever constraint set
-        // we produce, we reduce it back down to the inferable set that the caller asked about.
-        // If we introduced new inferable typevars, those will be existentially quantified away
-        // before returning.
         when.reduce_inferable(db, env, self.constraints, signature_inferable)
     }
 
@@ -3078,12 +2942,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return work();
         };
 
-        // Signature recursion through recursive protocols is coinductive in the same way as
-        // recursive type-relation checks: if checking this signature pair asks for the same
-        // declaration pair again, the inner obligation is the assumption currently being proved.
-        // Use `always` as the cycle value so valid fixed points can close; any real mismatch in
-        // the finite layer still bubbles out of `work`, because only exact active revisits take
-        // this branch and the result is not memoized.
         self.signature_relation_visitor
             .visit(&key, || self.always(), work)
     }
@@ -3122,13 +2980,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 })
             })
         {
-            // Comparing the generic callable `(value: T) -> T` against the declared type
-            // `Callable[P, Any]` contributes the constraint `T <= Any`, despite the gradual return
-            // type not constraining the callable-scoped type variable, so we ignore the constraints
-            // in this case.
-            //
-            // TODO: Remove this special case once `ParamSpec` inference correctly handles captured
-            // type variables when solving return-type constraints.
             self.always()
         } else {
             self.check_type_pair(db, source.return_ty, target)
@@ -3219,9 +3070,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         let mut source_parameters = source.parameters.expand_starred_variadic_annotations(db);
         let mut target_parameters = target.parameters.expand_starred_variadic_annotations(db);
 
-        // Expanding `*args: *tuple[*tuple[int, ...], str]` creates a synthetic positional `str`
-        // parameter immediately after the variadic `int` parameter. Check whether either
-        // signature contains such a positional suffix.
         let source_has_unpacked_suffix = source_parameters.variadic().is_some_and(|(index, _)| {
             source_parameters
                 .get(index + 1)
@@ -3233,9 +3081,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 .is_some_and(Parameter::is_positional)
         });
 
-        // Gradual variadics and TypeVarTuples need their original suffix boundaries for
-        // materialization and inference. Named source prefixes must also remain visible when a
-        // target keyword could fill the same parameter.
         if let (Some((_, source_variadic)), Some((_, target_variadic))) =
             (source_parameters.variadic(), target_parameters.variadic())
             && !source_variadic.has_starred_annotation()
@@ -3284,11 +3129,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             None
         };
 
-        // Fast path: if the target accepts positional calls that the source cannot accept, reject
-        // without checking return types or individual parameter types. The full parameter
-        // comparison below reaches the same result, but only after doing work that is expensive for
-        // large overload sets. An unpacked target TypeVarTuple bypasses this fast path so it can be
-        // constrained from the source parameters.
         if source_parameters.is_standard()
             && target_parameters.is_standard()
             && source_parameters.variadic().is_none()
@@ -3298,14 +3138,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             let target_positional = target_parameters.positional().count();
             let target_variadic = target_parameters.variadic();
 
-            // A subdiagnostic telling the user that `source` is missing a `*args` parameter
-            // is only guaranteed to be correct when `target` has a plain, open-ended variadic tail.
-            // (Well: we might be able to do better here in the future, but we simplify the logic here
-            // for now.)
-            //
-            // An unpacked annotation may represent a fixed-length tuple, and a variadic parameter
-            // followed by positional parameters may represent an unpacked tuple with a required suffix
-            // instead of an open-ended tail.
             let target_has_open_ended_variadic = || {
                 target_variadic.is_some_and(|(index, parameter)| {
                     !parameter.has_starred_annotation()
@@ -3367,9 +3199,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         let env = self.env;
         let mut result = self.always();
 
-        // Avoid returning early after checking the return types in case there is a `ParamSpec` type
-        // variable in either signature to ensure that the `ParamSpec` binding is still applied even
-        // if the return types are incompatible.
         let return_type_constraints = if target_parameters.as_paramspec_with_prefix().is_some() {
             self.check_paramspec_return_pair(db, source, target)
         } else {
@@ -3389,20 +3218,13 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             });
         }
 
-        // Concrete target keywords can collide with a fixed source prefix even when the source
-        // has a gradual or ParamSpec tail. Check them before those specialized paths can return.
         let mut keyword_collision_checks = true;
         let source_is_gradual = source_parameters.is_gradual();
         let target_is_gradual = target_parameters.is_gradual();
-        // A bottom-materialized gradual tail accepts arbitrary positional and keyword arguments.
-        // Its fixed parameters can bind the same calls as in the original signature.
         let match_variadic_prefix = source_is_gradual
             || target_is_gradual
             || source_parameters.has_unrestricted_variadics(db);
         let specialize_target_tail = target_is_gradual && self.relation.is_assignability();
-        // Keep every fixed parameter for both keyword collisions and ordinary matching. A
-        // gradual target can specialize its tail to the source's remaining parameters. Strict
-        // subtyping must also hold when the tail accepts unrestricted arguments.
         let gradual_target = (target_is_gradual
             && !(specialize_target_tail && target_parameters.is_fully_gradual()))
         .then(|| {
@@ -3427,7 +3249,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 if let Some(index) = target_parameters.positional().position(is_never) {
                     return Some(index);
                 }
-                // A `*args: Never` segment is empty, but its required suffix still binds.
                 if target_variadic.is_some_and(|(_, variadic)| is_never(variadic)) {
                     return Some(
                         target_parameters
@@ -3438,9 +3259,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 }
                 None
             });
-            // A target call can fill a source parameter positionally and also pass its name as a
-            // keyword. A matching target prefix protects that name only when the same call must
-            // already have filled the target parameter, including every prefix before a suffix.
             for (source_index, source_parameter) in source_parameters.positional().enumerate() {
                 let Some(source_name) = source_parameter.keyword_name() else {
                     continue;
@@ -3462,8 +3280,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     continue;
                 };
 
-                // Beyond an uninhabited positional parameter, the keyword can only bind by name.
-                // Otherwise the keyword must be uninhabited to avoid binding the source twice.
                 let keyword_type = if positional_limit.is_some_and(|limit| source_index >= limit) {
                     source_parameter.annotated_type()
                 } else {
@@ -3474,7 +3290,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     .intersect(db, self.constraints, no_collision)
                     .is_never_satisfied(db, env, self.inferable)
                 {
-                    // Still allow the ParamSpec handling below to preserve its inferred binding.
                     keyword_collision_checks = false;
                     break;
                 }
@@ -3487,12 +3302,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                            target_name: Option<&Name>,
                            target_index: usize| {
             match (target_ty, source_ty) {
-                // This is a special case where the _same_ components of two different `ParamSpec`
-                // type variables are assignable to each other when they're both in an inferable
-                // position.
-                //
-                // `ParamSpec` type variables can only occur in parameter lists so this special case
-                // is present here instead of in `TypeRelationChecker::check_type_pair`.
                 (Type::TypeVar(typevar1), Type::TypeVar(typevar2))
                     if typevar1.paramspec_attr(db).is_some()
                         && typevar1.paramspec_attr(db) == typevar2.paramspec_attr(db)
@@ -3519,8 +3328,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     parameter,
                 });
             }
-            // Continuing past a nonterminal contradiction can bind later `ParamSpec`s or
-            // replace the diagnostic context that explains the incompatible parameter.
             !result
                 .intersect(db, self.constraints, constraint_set)
                 .is_never_satisfied(db, env, self.inferable)
@@ -3531,8 +3338,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             }
         };
 
-        // The top signature is supertype of (and assignable from) all other signatures. It is a
-        // subtype of no signature except itself, and assignable only to the gradual signature.
         if target_parameters.is_top() {
             return result;
         }
@@ -3541,13 +3346,7 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             let source_paramspec = source_parameters.as_paramspec_with_prefix();
             let target_paramspec = target_parameters.as_paramspec_with_prefix();
 
-            // If either signature is a ParamSpec, the constraint set should bind the ParamSpec to
-            // the other signature before the return-type and gradual/top fast paths can return
-            // early. We also need to compare the return types here so a return-type mismatch still
-            // preserves the inferred ParamSpec binding.
             match (source_paramspec, target_paramspec) {
-                // self: `P`
-                // other: `P`
                 (Some(([], source_bound_typevar)), Some(([], target_bound_typevar))) => {
                     let param_spec_matches = ConstraintSet::constrain_typevar_equivalence_bound(
                         db,
@@ -3561,8 +3360,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return result;
                 }
 
-                // self: `Concatenate[<prefix_params>, P]`
-                // other: `P`
                 (
                     Some((source_prefix_params, source_bound_typevar)),
                     Some(([], target_bound_typevar)),
@@ -3591,8 +3388,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return result;
                 }
 
-                // self: `P`
-                // other: `Concatenate[<prefix_params>, P]`
                 (
                     Some(([], source_bound_typevar)),
                     Some((target_prefix_params, target_bound_typevar)),
@@ -3621,8 +3416,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return result;
                 }
 
-                // self: `Concatenate[<prefix_params>, P]`
-                // other: `Concatenate[<prefix_params>, P]`
                 (
                     Some((source_prefix_params, source_bound_typevar)),
                     Some((target_prefix_params, target_bound_typevar)),
@@ -3634,15 +3427,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         target_iter: target_prefix_params.iter(),
                     };
 
-                    // Note that in the following loop, the `Concatenate` case could come from a
-                    // regular function signature like:
-                    //
-                    // ```python
-                    // def test[**P](fn: Callable[P, None], /, x: int, *args: P.args, **kwargs: P.kwargs) -> None: ...
-                    // ```
-                    //
-                    // Here, `fn` is positional-only parameter because of the `/` while `x` is a
-                    // positional-or-keyword parameter.
 
                     let mut target_index = 0usize;
                     while let Some(EitherOrBoth::Both(source_param, target_param)) =
@@ -3696,7 +3480,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                                     }
                                     return self.never();
                                 }
-                                // The following checks are the same as positional-only parameters.
                                 if source_default.is_none() && other_default.is_some() {
                                     return self.never();
                                 }
@@ -3718,8 +3501,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
 
                     let (mut source_params, mut target_params) = parameters.into_remaining();
 
-                    // At this point, we should've exhausted at least one of the parameter lists,
-                    // so only one side can have remaining prefix parameters.
                     if let Some(source_param) = source_params.next() {
                         let lower = Type::Callable(CallableType::paramspec_value_from_signatures(
                             db,
@@ -3777,7 +3558,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                             );
                         result.intersect(db, self.constraints, param_spec_prefix_matches);
                     } else {
-                        // When the prefixes match exactly, we just relate the remaining tails.
                         let param_spec_matches = ConstraintSet::constrain_typevar_equivalence_bound(
                             db,
                             env,
@@ -3791,8 +3571,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return result;
                 }
 
-                // self: callable without ParamSpec
-                // other: `P`
                 (None, Some(([], target_bound_typevar))) => {
                     let lower = Type::Callable(CallableType::paramspec_value_from_signatures(
                         db,
@@ -3817,11 +3595,7 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return result;
                 }
 
-                // self: callable without ParamSpec
-                // other: `Concatenate[<prefix_params>, P]`
                 (None, Some((target_prefix_params, target_bound_typevar))) => {
-                    // Loop over self parameters and target_prefix_params in a similar manner to the
-                    // above loop
                     let mut parameters = ParametersZip {
                         current_source: None,
                         current_target: None,
@@ -3833,8 +3607,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     while let Some(next_parameter) = parameters.next() {
                         match next_parameter {
                             EitherOrBoth::Left(_) => {
-                                // If the non-Concatenate callable has remaining parameters, they
-                                // should be bound to the `ParamSpec` in other.
                                 break;
                             }
                             EitherOrBoth::Right(_) => {
@@ -3883,7 +3655,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                                         if source_name != target_name {
                                             return self.never();
                                         }
-                                        // The following checks are the same as positional-only parameters.
                                         if source_default.is_none() && target_default.is_some() {
                                             return self.never();
                                         }
@@ -3964,8 +3735,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return result;
                 }
 
-                // self: `P`
-                // other: callable without ParamSpec
                 (Some(([], source_bound_typevar)), None) => {
                     let upper = Type::Callable(CallableType::paramspec_value_from_signatures(
                         db,
@@ -3990,8 +3759,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return result;
                 }
 
-                // self: `Concatenate[<prefix_params>, P]`
-                // other: callable without ParamSpec
                 (Some((source_prefix_params, source_bound_typevar)), None) => {
                     let mut parameters = ParametersZip {
                         current_source: None,
@@ -4008,8 +3775,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                                     return self.never();
                                 }
                                 EitherOrBoth::Right(_) => {
-                                    // If the non-Concatenate callable has remaining parameters, they
-                                    // should be bound to the `ParamSpec` in self.
                                     break;
                                 }
                                 EitherOrBoth::Both(source_param, target_param) => {
@@ -4056,7 +3821,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                                             if source_name != target_name {
                                                 return self.never();
                                             }
-                                            // The following checks are the same as positional-only parameters.
                                             if source_default.is_none() && target_default.is_some()
                                             {
                                                 return self.never();
@@ -4107,7 +3871,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     return result;
                 }
 
-                // Both self and other are callables without ParamSpecs
                 (None, None) => {}
             }
         }
@@ -4132,7 +3895,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return self.never();
         }
 
-        // Keep an unpacked target TypeVarTuple for the parameter loop so it can infer the pack.
         if target_typevartuple.is_none() {
             if self.relation.is_assignability()
                 && (source_parameters.is_fully_gradual() || target_parameters.is_fully_gradual())
@@ -4143,7 +3905,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 if target_is_gradual && matches!(self.relation, TypeRelation::Redundancy { .. }) {
                     source_parameters = source_parameters.with_unrestricted_variadics();
                 } else {
-                    // Some materialization of the source could require an extra argument.
                     return self.never();
                 }
             }
@@ -4153,14 +3914,11 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     && let Some((prefix, tail)) = source_parameters.as_paramspec_with_prefix()
                     && !tail.is_inferable(db, self.inferable)
                 {
-                    // Only the fixed prefix of a caller-owned ParamSpec is guaranteed.
                     source_parameters = Parameters::standard(prefix.iter().cloned());
                 }
             }
         }
 
-        // Align the fixed target prefix and suffix before entering the parameter loop so that the
-        // target TypeVarTuple captures only the source parameter entries between them.
         let typevartuple_source_parameter_count = if let Some((typevartuple_index, _)) =
             target_typevartuple
         {
@@ -4220,8 +3978,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             target_iter: target_parameters.iter(),
         };
 
-        // Target parameters whose positional form has matched but whose keyword form
-        // binds a different source parameter.
         let mut target_keywords = Vec::new();
         let mut target_index = 0usize;
         let mut reuse_current_source = false;
@@ -4234,11 +3990,8 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             };
             let Some(next_parameter) = next_parameter else {
                 if target_keywords.is_empty() {
-                    // All parameters have been checked or both the parameter lists were empty.
-                    // In either case, `source` is a subtype of `target`.
                     return result;
                 }
-                // Check the remaining keyword forms by name below.
                 break;
             };
 
@@ -4256,17 +4009,11 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         | ParameterKind::KeywordVariadic { .. }
                             if !target_keywords.is_empty() =>
                         {
-                            // If there are any unmatched keyword parameters in `other`, they need
-                            // to be checked against the keyword-only / keyword-variadic parameters
-                            // that will be done after this loop.
                             break;
                         }
                         ParameterKind::PositionalOnly { default_type, .. }
                         | ParameterKind::PositionalOrKeyword { default_type, .. }
                         | ParameterKind::KeywordOnly { default_type, .. } => {
-                            // For `source <: target` to be valid, if there are no more parameters
-                            // in `target`, then the non-variadic parameters in `source` must have a
-                            // default value.
                             if default_type.is_none() && !specialize_target_tail {
                                 if let Some(context) = self.report_context() {
                                     let parameter = ParameterDescription::new(
@@ -4280,8 +4027,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                             }
                         }
                         ParameterKind::Variadic { .. } | ParameterKind::KeywordVariadic { .. } => {
-                            // Variadic parameters don't have any restrictions in this context, so
-                            // we'll just continue to the next parameter set.
                         }
                     }
                 }
@@ -4306,8 +4051,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         continue;
                     }
 
-                    // If there are more parameters in `target` than in `source`, then `source` is
-                    // not a subtype of `target`.
                     if let Some(context) = self.report_context()
                         && target_parameters.as_paramspec_with_prefix().is_none()
                     {
@@ -4359,8 +4102,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                                     }
                                     return self.never();
                                 }
-                                // Positional calls bind this slot. Keyword calls omit it and
-                                // must be accepted by a different slot or by **kwargs.
                                 target_keywords.push(target_param);
                             }
                             if !source_param.has_default() && target_param.has_default() {
@@ -4405,16 +4146,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                                 target_keywords.push(target_param);
                             }
 
-                            // We've reached a variadic parameter in `source` which means there can
-                            // be no more positional parameters after this in a valid AST. But, the
-                            // current parameter in `target` is a positional-only which means there
-                            // can be more positional parameters after this which could be either
-                            // more positional-only parameters, standard parameters or a variadic
-                            // parameter.
-                            //
-                            // So, any remaining positional parameters in `target` would need to be
-                            // checked against the variadic parameter in `source`. This loop does
-                            // that by only moving the `other` iterator forward.
                             while let Some(target_parameter) = parameters.peek_target() {
                                 if as_target_typevartuple(target_parameter).is_some() {
                                     break;
@@ -4426,8 +4157,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                                     ParameterKind::PositionalOnly { .. }
                                     | ParameterKind::Variadic { .. } => {}
                                     _ => {
-                                        // Any other parameter kind cannot be checked against a
-                                        // variadic parameter and is deferred to the next iteration.
                                         break;
                                     }
                                 }
@@ -4527,9 +4256,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                                 && source_param.is_positional()
                                 && (prefix_len < target_suffix_len || source_param.has_default())
                             {
-                                // The suffix sets the minimum number of remaining positional
-                                // arguments. Each source slot can receive a variadic element or
-                                // any suffix element up to the same position.
                                 prefix_len += 1;
                                 let suffix = parameters
                                     .target_iter
@@ -4576,8 +4302,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                                 return result;
                             }
 
-                            // Align fixed suffixes from the end, reusing the source variadic for
-                            // any additional target suffix elements.
                             let source_suffix_len = parameters
                                 .source_iter
                                 .as_slice()
@@ -4622,9 +4346,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                             ParameterKind::KeywordOnly { .. }
                             | ParameterKind::KeywordVariadic { .. },
                         ) => {
-                            // Keyword parameters are not considered in this loop as the order of
-                            // parameters is not important for them and so they are checked by
-                            // doing name-based lookups.
                             break;
                         }
 
@@ -4635,17 +4356,10 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             }
         }
 
-        // At this point, the remaining parameters in `target` are keyword-only or keyword-variadic.
-        // But, `source` could contain any unmatched positional parameters.
         let (source_params, target_params) = parameters.into_remaining();
 
-        // Collect all the keyword-only parameters and the unmatched standard parameters.
         let mut source_keywords = FxHashMap::default();
 
-        // Type of the variadic keyword parameter in `source`.
-        //
-        // This is an option representing the presence (and annotated type) of a keyword-variadic
-        // parameter in `source`.
         let mut source_keyword_variadic: Option<Type<'db>> = None;
 
         for source_param in source_params {
@@ -4658,10 +4372,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     source_keyword_variadic = Some(source_param.annotated_type());
                 }
                 ParameterKind::PositionalOnly { default_type, .. } => {
-                    // These are the unmatched positional-only parameters in `source` from the
-                    // previous loop. They cannot be matched against any parameter in `target` which
-                    // only contains keyword-only and keyword-variadic parameters. However, if the
-                    // parameter has a default, it's valid because callers don't need to provide it.
                     if default_type.is_none() && !specialize_target_tail {
                         if let Some(context) = self.report_context() {
                             if let Some(source_name) = source_param.name()
@@ -4697,8 +4407,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     default_type: target_default,
                 } => {
                     let source_param = source_keywords.remove(&**target_name).or_else(|| {
-                        // For a deferred keyword, its destination may already have been
-                        // compared positionally with a different target parameter.
                         if target_param.is_positional() {
                             source_parameters
                                 .keyword_by_name(target_name)
@@ -4708,7 +4416,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         }
                     });
                     if let Some(source_param) = source_param {
-                        // The positional form of this call fills a different source slot.
                         if !source_param.has_default() && target_param.is_positional() {
                             if let Some(context) = self.report_context() {
                                 context.push(ErrorContext::ExtraRequiredParameter {
@@ -4774,8 +4481,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                 }
                 ParameterKind::KeywordVariadic { .. } => {
                     let Some(source_keyword_variadic) = source_keyword_variadic else {
-                        // For a `source <: target` relationship, if `target` has a keyword variadic
-                        // parameter, `source` must also have a keyword variadic parameter.
                         if let Some(context) = self.report_context()
                             && target_parameters.as_paramspec_with_prefix().is_none()
                         {
@@ -4784,9 +4489,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                         return self.never();
                     };
 
-                    // An explicit source keyword takes precedence over its `**kwargs`. Unless
-                    // the target also binds that name explicitly, values from its keyword
-                    // variadic must therefore be compatible with the source parameter too.
                     for source_param in &source_parameters {
                         let Some(source_name) = source_param.keyword_name() else {
                             continue;
@@ -4820,14 +4522,11 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
                     }
                 }
                 _ => {
-                    // This can only occur in case of a syntax error.
                     return self.never();
                 }
             }
         }
 
-        // If there are still unmatched keyword parameters from `source`, then they should be
-        // optional otherwise the subtype relation is invalid.
         #[expect(
             clippy::iter_over_hash_type,
             reason = "any required unmatched keyword parameter makes the relation invalid"
@@ -4915,12 +4614,8 @@ pub(crate) enum ParametersKind<'db> {
 ///
 /// The `kind` field is used to indicate the specific form of the parameter list which can,
 /// optionally, include additional information such as the bound `ParamSpec` type variable.
-// TODO: Given how the current structure is laid out which needs to follow certain invariants
-// between the `value` and `kind` field, it would be better to structure it such that these
-// invariants are followed at the type level instead.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, get_size2::GetSize, salsa::SalsaValue)]
 struct ParametersData<'db> {
-    // TODO: use SmallVec here once invariance bug is fixed
     value: Box<[Parameter<'db>]>,
     kind: ParametersKind<'db>,
 }
@@ -5033,13 +4728,6 @@ impl<'db> Parameters<'db> {
                 .unwrap_or(&[]);
 
             match (variadic_type, keyword_variadic_type) {
-                // > If the input signature in a function definition includes both a `*args` and
-                // > `**kwargs` parameter and both are typed as Any (explicitly or implicitly
-                // > because it has no annotation), a type checker should treat this as the
-                // > equivalent of `...`. Any other parameters in the signature are unaffected and
-                // > are retained as part of the signature.
-                //
-                // https://typing.python.org/en/latest/spec/callables.html#meaning-of-in-callable
                 (Type::Dynamic(_), Type::Dynamic(_)) => {
                     if keyword_only_params.is_empty()
                         && !prefix_params.is_empty()
@@ -5051,12 +4739,6 @@ impl<'db> Parameters<'db> {
                     }
                 }
 
-                // > A function declared as
-                // > `def inner(a: A, b: B, *args: P.args, **kwargs: P.kwargs) -> R`
-                // > has type `Callable[Concatenate[A, B, P], R]`. Placing keyword-only parameters
-                // > between the `*args` and `**kwargs` is forbidden.
-                //
-                // https://typing.python.org/en/latest/spec/generics.html#id5
                 (Type::TypeVar(variadic_typevar), Type::TypeVar(keyword_variadic_typevar))
                     if keyword_only_params.is_empty() =>
                 {
@@ -5072,9 +4754,6 @@ impl<'db> Parameters<'db> {
                             if prefix_params.is_empty() {
                                 kind = ParametersKind::ParamSpec(typevar);
                             } else if prefix_params.iter().all(Parameter::is_positional) {
-                                // TODO: Currently, we accept both positional-only and
-                                // positional-or-keyword parameter but we should raise a warning to
-                                // let users know that these parameters should be positional-only
                                 kind = ParametersKind::Concatenate(ConcatenateTail::ParamSpec(
                                     typevar,
                                 ));
@@ -5091,8 +4770,6 @@ impl<'db> Parameters<'db> {
 
     /// Create an empty parameter list.
     pub(crate) fn empty() -> Self {
-        // Binding a receiver often leaves no parameters. Give each worker its own empty list
-        // so that cloning these signatures does not contend on one shared reference count.
         thread_local! {
             static EMPTY: Parameters<'static> = Parameters {
                 data: Arc::new(ParametersData {
@@ -5277,9 +4954,6 @@ impl<'db> Parameters<'db> {
     /// Returns whether this is the bottom parameter list, `(*args: object, **kwargs: object)`,
     /// which accepts every call.
     pub(crate) fn is_bottom(&self) -> bool {
-        // `Parameters::top()` stores the same parameter list, but `ParametersKind::Top`
-        // makes it reject every call. Bottom parameters use `ParametersKind::Standard`,
-        // so check the kind before checking the parameter types.
         self.is_standard()
             && matches!(
                 self.as_slice(),
@@ -5436,9 +5110,6 @@ impl<'db> Parameters<'db> {
     /// `ParametersKind`.
     pub(crate) fn top() -> Self {
         Self::new(
-            // We always emit `called-top-callable` for any call to the top callable (based on the
-            // `kind` below), so we otherwise give it the most permissive signature`(*object,
-            // **object)`, so that we avoid emitting any other errors about arity mismatches.
             [
                 Parameter::variadic(Name::new_static("args")).with_annotated_type(Type::object()),
                 Parameter::keyword_variadic(Name::new_static("kwargs"))
@@ -5488,8 +5159,6 @@ impl<'db> Parameters<'db> {
 
         let mut pos_or_keyword_iter = args.iter();
 
-        // If there are no PEP-570 positional-only parameters, check for the legacy PEP-484 convention
-        // for denoting positional-only parameters (parameters that start with `__` and do not end with `__`)
         if positional_only.is_empty() {
             let pos_or_keyword_iter = pos_or_keyword_iter.by_ref();
 
@@ -5578,11 +5247,8 @@ impl<'db> Parameters<'db> {
             && self.is_gradual()
         {
             match materialization_kind {
-                // A gradual tail may require additional arguments, so no call is guaranteed.
                 MaterializationKind::Top => return Self::top(),
                 MaterializationKind::Bottom if self.is_fully_gradual() => return Self::bottom(),
-                // Materializing the parameter types below turns the gradual variadics into
-                // `*object, **object` and retains any explicit parameters.
                 MaterializationKind::Bottom => ParametersKind::Standard,
             }
         } else if matches!(type_mapping, TypeMapping::FreshenBoundTypeVars { .. }) {
@@ -5592,7 +5258,6 @@ impl<'db> Parameters<'db> {
                     .as_typevar()
                     .unwrap_or(paramspec)
             };
-            // The structural tail and its two component annotations identify the same ParamSpec.
             match self.data.kind {
                 ParametersKind::ParamSpec(paramspec) => {
                     ParametersKind::ParamSpec(freshen(paramspec))
@@ -5606,7 +5271,6 @@ impl<'db> Parameters<'db> {
             self.data.kind
         };
 
-        // Parameters are in contravariant position, so we need to flip the type mapping.
         let type_mapping = type_mapping.flip();
         let value: Box<[_]> = self
             .iter()
@@ -5621,14 +5285,8 @@ impl<'db> Parameters<'db> {
                 .exact_tuple_instance_spec(db)
                 .is_some_and(|tuple| tuple.is_variadic())
         {
-            // Resolving typevar identities does not specialize a pack. Keep its fixed boundaries
-            // in the starred annotation so call binding can infer the residual tuple shape.
             parameters
         } else {
-            // TODO: Make expansion an explicit operation for consumers that need it. Type
-            // mappings can otherwise introduce positional suffixes after unsolved variadics,
-            // which call binding does not handle correctly. This also happens when specializing
-            // a class parameter unrelated to a method's pack.
             parameters.expand_starred_variadic_annotations(db)
         }
     }
@@ -6324,7 +5982,6 @@ impl<'db> Parameter<'db> {
     }
 
     pub(super) fn argument_context_type(&self) -> Option<Type<'db>> {
-        // The fallback `Unknown` for a missing annotation provides no context for an argument.
         if self.inferred_annotation && self.annotated_type == Type::unknown() {
             return None;
         }
@@ -6446,8 +6103,6 @@ impl<'db> ParameterDefault<'db> {
     fn map_type(self, f: impl FnOnce(Type<'db>) -> Type<'db>) -> Self {
         match self {
             Self::Inferred(ty) => Self::Inferred(f(ty)),
-            // A source default is a runtime value, not part of the callable's type parameters.
-            // Specializing or otherwise transforming the signature must not evaluate it.
             Self::Deferred(_) => self,
         }
     }
@@ -6476,8 +6131,6 @@ fn parameter_default_type<'db>(db: &'db dyn Db, parameter: Definition<'db>) -> T
     let Some(default) = node.node(&module).default() else {
         return Type::unknown();
     };
-    // Use the function's default inference so the default retains its annotation context.
-    // Nested callable defaults still need the existing cycle-breaking normalization.
     infer_function_default_types(db, function)
         .expression_type(default)
         .replace_parameter_defaults(db, &ProgramEnvironment::from_definition(function))
@@ -6595,9 +6248,6 @@ impl<'db> ParameterKind<'db> {
                     cycle,
                 ),
             },
-            // Variadic / KeywordVariadic have no types to normalize.
-            // Also, if the current `ParameterKind` is different from `previous`, it means that `previous` is the cycle initial value,
-            // and the current value should take precedence.
             _ => self.clone(),
         }
     }
@@ -6614,8 +6264,6 @@ impl<'db> ParameterKind<'db> {
                 TypeMapping::ReplaceParameterDefaults => {
                     ParameterDefault::Inferred(Type::unknown())
                 }
-                // Defaults describe values, not the set of accepted arguments. Promoting the
-                // enclosing callable must not widen those values.
                 TypeMapping::Promote(..) => default,
                 _ => default
                     .map_type(|ty| ty.apply_type_mapping_impl(db, type_mapping, tcx, visitor)),
@@ -6869,7 +6517,6 @@ mod tests {
             panic!("expected one positional-or-keyword parameter");
         };
         assert_eq!(name, "a");
-        // Parameter resolution not deferred; we should see A not B
         assert_eq!(
             annotated_type
                 .display(&db, &db.program_environment())
@@ -6912,7 +6559,6 @@ mod tests {
             panic!("expected one positional-or-keyword parameter");
         };
         assert_eq!(name, "a");
-        // Parameter resolution deferred:
         assert_eq!(
             annotated_type
                 .display(&db, &db.program_environment())
@@ -7015,7 +6661,6 @@ mod tests {
         };
         assert_eq!(a_name, "a");
         assert_eq!(b_name, "b");
-        // Parameter resolution deferred:
         assert_eq!(
             a_annotated_ty
                 .display(&db, &db.program_environment())
@@ -7045,7 +6690,6 @@ mod tests {
         let overload = func.literal(&db).last_definition;
         let expected_sig = overload.signature(&db);
 
-        // With no decorators, internal and external signature are the same
         assert_eq!(
             func.signature(&db),
             &CallableSignature::single(expected_sig)

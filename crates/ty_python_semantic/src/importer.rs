@@ -160,10 +160,6 @@ impl<'a> Importer<'a> {
             };
         };
 
-        // When we just have a request to import a module (and not
-        // any members from that module), then the only way we can be
-        // here is if we found a pre-existing import that definitively
-        // satisfies the request. So we're done.
         let Some(member) = request.member else {
             return ImportAction {
                 import: None,
@@ -173,8 +169,6 @@ impl<'a> Importer<'a> {
         match response.kind {
             ImportResponseKind::Unqualified { alias } => {
                 let member = alias.asname.as_ref().unwrap_or(&alias.name).as_str();
-                // As long as it's not a wildcard import, we use whatever name
-                // the member is imported as when inserting the symbol.
                 if member != "*" {
                     symbol_text = member.into();
                 }
@@ -359,8 +353,6 @@ impl<'a> Importer<'a> {
                 if symbol.is_reassigned() {
                     return false;
                 }
-                // Ignore the implicit initial unbound state, but retain deletions so a deleted
-                // import cannot be reused.
                 let mut bindings = index
                     .use_def_map(scope)
                     .end_of_scope_symbol_bindings(symbol_id)
@@ -413,19 +405,6 @@ impl<'a> Importer<'a> {
         let notebook = self.source.as_notebook();
 
         for import in self.imports() {
-            // If the import statement comes after the spot where we
-            // need the symbol, then we conservatively assume that
-            // the import statement does not satisfy the request. It
-            // is possible the import statement *could* satisfy the
-            // request. For example, if `available_at` is inside a
-            // function defined before the import statement. But this
-            // only works if the function is known to be called *after*
-            // the import statement executes. So... it's complicated.
-            // In the worst case, we'll end up inserting a superfluous
-            // import statement at the top of the module.
-            //
-            // Also, we can stop here since our import statements are
-            // sorted by their start location in the source.
             if import.stmt.start() >= available_at {
                 return choice;
             }
@@ -433,9 +412,6 @@ impl<'a> Importer<'a> {
             if let Some(response) = import.satisfies(self.db, importing_file, request) {
                 let partial = matches!(response.kind, ImportResponseKind::Partial);
 
-                // The LSP doesn't support edits across cell boundaries.
-                // Skip over imports that only partially satisfy the import
-                // because they would require changes to the import (across cell boundaries).
                 if partial
                     && let Some(notebook) = notebook
                     && notebook
@@ -452,9 +428,6 @@ impl<'a> Importer<'a> {
                     let is_top_priority =
                         matches!(response.kind, ImportResponseKind::Unqualified { .. });
                     choice = Some(response);
-                    // When we find an unqualified import, it's (currently)
-                    // impossible for any later import to override it in
-                    // priority. So we can just quit here.
                     if is_top_priority {
                         return choice;
                     }
@@ -470,7 +443,6 @@ impl<'a> Importer<'a> {
 
         self.imports()
             .take_while(|import| import.stmt.start() <= at)
-            // Skip over imports from other cells.
             .skip_while(|import| {
                 notebook.is_some_and(|notebook| {
                     notebook
@@ -514,7 +486,6 @@ fn stylist(db: &dyn Db, file: PythonFile<'_>) -> Stylist<'static> {
 #[salsa::tracked(returns(ref), no_eq, heap_size=ruff_memory_usage::heap_size)]
 fn top_level_imports(db: &dyn Db, file: PythonFile<'_>) -> Box<[AstNodeRef<ast::Stmt>]> {
     let parsed = parsed_module(db, file).load(db);
-    // Imports inside an `if` or `try` suite may never execute.
     parsed
         .suite()
         .iter()
@@ -739,15 +710,6 @@ impl<'ast> AstImportKind<'ast> {
                 Some(ImportResponseKind::Qualified { alias })
             }
             AstImportKind::ImportFrom(ast) => {
-                // If the request is for a module itself, then we
-                // assume that it can never be satisfies by a
-                // `from ... import ...` statement. For example, a
-                // `request for collections.abc` needs an
-                // `import collections.abc`. Now, there could be a
-                // `from collections import abc`, and we could
-                // plausibly consider that a match and return a
-                // symbol text of `abc`. But it's not clear if that's
-                // the right choice or not.
                 let member = request.member?;
 
                 if request.force_style && !matches!(request.style, ImportStyle::ImportFrom) {
@@ -862,15 +824,8 @@ impl<'a> ImportRequest<'a> {
             };
         };
         match (members.map.get(self.module), members.map.get(member)) {
-            // Neither symbol exists, so we can just proceed as
-            // normal.
             (None, None) => self,
-            // The symbol we want to import already exists but
-            // the module symbol does not, so we can import the
-            // symbol in a qualified way safely.
             (None, Some(member)) => {
-                // ... unless the symbol we want is already
-                // imported, then leave it as-is.
                 if member.satisfies_anywhere(db, importing_file, &self) {
                     return self;
                 }
@@ -880,12 +835,6 @@ impl<'a> ImportRequest<'a> {
                     ..self
                 }
             }
-            // The symbol we want to import doesn't exist but
-            // the module does. So we can import the symbol we
-            // want *unqualified* safely.
-            //
-            // ... unless the module symbol we found here is
-            // actually a module symbol.
             (
                 Some(&MemberInScope {
                     ty: Type::ModuleLiteral(_),
@@ -898,21 +847,6 @@ impl<'a> ImportRequest<'a> {
                 force_style: true,
                 ..self
             },
-            // Both the module and the member symbols are in
-            // scope. We *assume* that the module symbol is in
-            // scope because it is imported. Since the member
-            // symbol is definitively in scope, we attempt a
-            // qualified import.
-            //
-            // This could lead to a situation where we add an
-            // `import` that is shadowed by some other symbol.
-            // This is unfortunate, but it's not clear what we
-            // should do instead. rust-analyzer will still add
-            // the conflicting import. I think that's the wiser
-            // choice, instead of silently doing nothing or
-            // silently omitting the symbol from completions.
-            // (I suppose the best choice would be to ask the
-            // user for an alias for the import or something.)
             (Some(_), Some(_)) => Self {
                 style: ImportStyle::Import,
                 force_style: false,
@@ -996,15 +930,6 @@ impl ImportResponseKind<'_> {
         match *self {
             ImportResponseKind::Unqualified { .. } => 0,
             ImportResponseKind::Partial => 1,
-            // N.B. When given the choice between adding a
-            // name to an existing `from ... import ...`
-            // statement and using an existing `import ...`
-            // in a qualified manner, we currently choose
-            // the former. Originally we preferred qualification,
-            // but there is some evidence that this violates
-            // expectations.
-            //
-            // Ref: https://github.com/astral-sh/ty/issues/1274#issuecomment-3352233790
             ImportResponseKind::Qualified { .. } => 2,
         }
     }

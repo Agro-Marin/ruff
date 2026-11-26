@@ -13,10 +13,6 @@ export function secondaryAnnotationsWithMessages<
         return false;
       }
 
-      // Match ty_server's LSP rendering: omit message-less secondary annotations.
-      // Unlike subdiagnostics, these have no parent message to use as a fallback.
-      // Ruff also represents highlight-only annotations with empty messages, and
-      // Monaco related information requires a message.
       return annotation.message != null && annotation.message.length > 0;
     },
   );

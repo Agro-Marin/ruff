@@ -42,9 +42,6 @@ impl BackgroundRequestHandler for CallHierarchyIncomingCallsRequestHandler {
             };
 
             for call in ty_ide::incoming_calls(db, db.program_file(file), offset) {
-                // `from_ranges` are byte offsets into `call.from.file` (the caller),
-                // NOT into `file` (the prepared/queried symbol). Capture the caller
-                // file before moving `call.from` into `convert_to_lsp_item`.
                 let caller_file = call.from.file;
                 let Some(from) = convert_to_lsp_item(db, call.from, encoding) else {
                     continue;

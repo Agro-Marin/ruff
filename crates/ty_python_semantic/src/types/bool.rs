@@ -74,7 +74,6 @@ impl<'db> Type<'db> {
             match ty.as_literal_value_kind() {
                 Some(LiteralValueTypeKind::Bool(bool_val)) => Truthiness::from(bool_val),
                 Some(LiteralValueTypeKind::Int(int_val)) => Truthiness::from(int_val.as_i64() != 0),
-                // anything else is handled lower down
                 _ => Truthiness::Ambiguous,
             }
         };
@@ -91,8 +90,6 @@ impl<'db> Type<'db> {
                     let return_type = outcome.return_type(db, env);
                     if !return_type.is_assignable_to(db, env, KnownClass::Bool.to_instance(db, env))
                     {
-                        // The type has a `__bool__` method, but it doesn't return a
-                        // boolean.
                         return Err(BoolError::IncorrectReturnType {
                             return_type,
                             not_boolable_type: *self,
@@ -107,22 +104,15 @@ impl<'db> Type<'db> {
                     let return_type = outcome.return_type(db, env);
                     if !return_type.is_assignable_to(db, env, KnownClass::Bool.to_instance(db, env))
                     {
-                        // The type has a `__bool__` method, but it doesn't return a
-                        // boolean.
                         return Err(BoolError::IncorrectReturnType {
                             return_type: outcome.return_type(db, env),
                             not_boolable_type: *self,
                         });
                     }
 
-                    // Don't trust possibly missing `__bool__` method.
                     Ok(Truthiness::Ambiguous)
                 }
 
-                // TODO: with regards to tuple types, we intend to emit a diagnostic
-                // if a tuple subclass defines a `__bool__` method with a return type
-                // that is inconsistent with the tuple's length. Otherwise, the special
-                // handling for tuples here isn't sound.
                 Err(CallDunderError::MethodNotAvailable)
                     if let Type::NominalInstance(instance) = self
                         && let Some(tuple_spec) = instance.tuple_spec(db, env) =>
@@ -131,8 +121,6 @@ impl<'db> Type<'db> {
                 }
 
                 // We only consider `__len__` for tuples and `@final` types,
-                // since `__bool__` takes precedence
-                // and a subclass could add a `__bool__` method.
                 Err(CallDunderError::MethodNotAvailable)
                     if let Type::NominalInstance(instance) = self
                         && instance.class(db, env).is_final(db) =>
@@ -153,15 +141,11 @@ impl<'db> Type<'db> {
                             ) {
                                 Ok(type_to_truthiness(return_type))
                             } else {
-                                // TODO: should report a diagnostic similar to if return type of `__bool__`
-                                // is not assignable to `bool`
                                 Ok(Truthiness::Ambiguous)
                             }
                         }
                         // if a `@final` type does not define `__bool__` or `__len__`, it is always truthy
                         Err(CallDunderError::MethodNotAvailable) => Ok(Truthiness::AlwaysTrue),
-                        // TODO: errors during a `__len__` call (if `__len__` exists) should be reported
-                        // as diagnostics similar to errors during a `__bool__` call (when `__bool__` exists)
                         Err(_) => Ok(Truthiness::Ambiguous),
                     }
                 }
@@ -344,7 +328,6 @@ impl<'db> Type<'db> {
                 if let Some(alternatives) = intersection.finite_alternative_union(db, env) {
                     alternatives.try_bool_impl(db, env, allow_short_circuit, visitor)?
                 } else {
-                    // TODO
                     Truthiness::Ambiguous
                 }
             }
@@ -521,9 +504,6 @@ impl<'db> BoolError<'db> {
                         not_boolable_type.display(db, env)
                     ),
                 );
-                // TODO: It would be nice to create an annotation here for
-                // where `__bool__` is defined. At time of writing, I couldn't
-                // figure out a straight-forward way of doing this. ---AG
                 diag.sub(sub);
             }
             Self::Union { union, .. } => {

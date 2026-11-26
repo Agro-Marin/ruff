@@ -146,7 +146,6 @@ fn locate_cmp_ops(range: TextRange, tokens: &Tokens) -> Vec<LocatedCmpOp> {
 
     let mut ops: Vec<LocatedCmpOp> = vec![];
 
-    // Track the nesting level.
     let mut nesting = 0u32;
 
     while let Some(token) = tok_iter.next() {

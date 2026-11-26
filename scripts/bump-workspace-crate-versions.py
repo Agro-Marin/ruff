@@ -1,9 +1,3 @@
-# Naively increment the patch version of each crate in the workspace.
-#
-# This excludes crates which are versioned with Ruff's command-line interface.
-#
-# After incrementing the version in each member `Cargo.toml`, it updates the version pins in the
-# root `Cargo.toml` to match.
 
 # /// script
 # requires-python = ">=3.13"
@@ -28,12 +22,6 @@ NO_BUMP_CRATES = {"ruff", "ruff_linter", "ruff_wasm"}
 
 
 def main() -> None:
-    # Pre-sync NO_BUMP_CRATES versions before running cargo metadata.
-    #
-    # Rooster updates crate versions but isn't workspace-aware, so it doesn't update
-    # the workspace dependency pins in the root Cargo.toml. This can cause cargo metadata
-    # to fail with version mismatches (e.g., when going from 0.15.x to 0.16.0).
-    # We fix the pins first by reading the crate versions directly.
     script_dir = pathlib.Path(__file__).parent
     workspace_manifest = script_dir.parent / "Cargo.toml"
     workspace_manifest_contents = workspace_manifest.read_text()
@@ -58,7 +46,6 @@ def main() -> None:
 
     workspace_manifest.write_text(workspace_manifest_contents)
 
-    # Now cargo metadata will succeed.
     result = subprocess.run(
         ["cargo", "metadata", "--format-version", "1"],
         capture_output=True,
@@ -77,14 +64,9 @@ def main() -> None:
         manifest = pathlib.Path(packages[workspace_member]["manifest_path"])
         name = packages[workspace_member]["name"]
 
-        # Only crates released to crates.io participate in the workspace release sequence.
         if packages[workspace_member].get("publish") == []:
             continue
 
-        # For the members we're not bumping, we'll still make sure that the version pinned in the
-        # workspace manifest matches the version of the crate. This is done because Rooster isn't
-        # Cargo workspace aware and won't otherwise bump these when updating the member `Cargo.toml`
-        # files.
         if name in NO_BUMP_CRATES:
             manifest_dependency = parsed_workspace_manifest["workspace"][
                 "dependencies"
@@ -97,7 +79,6 @@ def main() -> None:
                 version_changes[name] = (manifest_version, metadata_version)
             continue
 
-        # For other members, bump the patch version.
         version = packages[workspace_member]["version"]
         version_parts = [int(part) for part in version.split(".")]
         new_version = f"{version_parts[0]}.{version_parts[1]}.{version_parts[2] + 1}"
@@ -112,7 +93,6 @@ def main() -> None:
         version_changes[name] = (version, new_version)
         manifest.write_text(contents)
 
-    # Update all the pins in the workspace root.
     for name, (old_version, new_version) in version_changes.items():
         workspace_manifest_contents = workspace_manifest_contents.replace(
             f'{name} = {{ version = "{old_version}"',

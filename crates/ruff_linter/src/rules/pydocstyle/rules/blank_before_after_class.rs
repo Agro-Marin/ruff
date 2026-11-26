@@ -171,10 +171,6 @@ pub(crate) fn blank_before_after_class(checker: &Checker, docstring: &Docstring)
         return;
     };
 
-    // Special-case: the docstring is on the same line as the class. For example:
-    // ```python
-    // class PhotoMetadata: """Metadata about a photo."""
-    // ```
     let between_range = TextRange::new(class.start(), docstring.start());
     if !checker.locator().contains_line_break(between_range) {
         return;
@@ -205,7 +201,6 @@ pub(crate) fn blank_before_after_class(checker: &Checker, docstring: &Docstring)
             if blank_lines_before != 0 {
                 let mut diagnostic =
                     checker.report_diagnostic(BlankLineBeforeClass, docstring.range());
-                // Delete the blank line before the class.
                 diagnostic.set_fix(Fix::safe_edit(Edit::deletion(
                     blank_lines_start,
                     docstring.line_start(),
@@ -216,7 +211,6 @@ pub(crate) fn blank_before_after_class(checker: &Checker, docstring: &Docstring)
             if blank_lines_before != 1 {
                 let mut diagnostic =
                     checker.report_diagnostic(IncorrectBlankLineBeforeClass, docstring.range());
-                // Insert one blank line before the class.
                 diagnostic.set_fix(Fix::safe_edit(Edit::replacement(
                     checker.stylist().line_ending().to_string(),
                     blank_lines_start,
@@ -234,8 +228,6 @@ pub(crate) fn blank_before_after_class(checker: &Checker, docstring: &Docstring)
             class_after_docstring_range.start(),
         );
 
-        // If the class is empty except for comments, we don't need to insert a newline between
-        // docstring and no content
         let all_blank_after = lines.clone().all(|line| {
             line.trim_whitespace().is_empty() || line.trim_whitespace_start().starts_with('#')
         });
@@ -246,8 +238,6 @@ pub(crate) fn blank_before_after_class(checker: &Checker, docstring: &Docstring)
         let first_line = lines.next();
         let mut replacement_start = first_line.as_ref().map_or_default(Line::start);
 
-        // Edge case: There is trailing end-of-line content after the docstring, either a statement
-        // separated by a semicolon or a comment.
         if let Some(first_line) = &first_line {
             let trailing = first_line.as_str().trim_whitespace_start();
             if let Some(next_statement) = trailing.strip_prefix(';') {
@@ -256,12 +246,6 @@ pub(crate) fn blank_before_after_class(checker: &Checker, docstring: &Docstring)
                 let mut diagnostic =
                     checker.report_diagnostic(IncorrectBlankLineAfterClass, docstring.range());
                 let line_ending = checker.stylist().line_ending().as_str();
-                // We have to trim the whitespace twice, once before the semicolon above and
-                // once after the semicolon here, or we get invalid indents:
-                // ```rust
-                // class Priority:
-                //     """Has priorities"""   ;   priorities=1
-                // ```
                 let next_statement = next_statement.trim_whitespace_start();
                 diagnostic.set_fix(Fix::safe_edit(Edit::replacement(
                     line_ending.to_string() + line_ending + indentation + next_statement,
@@ -271,7 +255,6 @@ pub(crate) fn blank_before_after_class(checker: &Checker, docstring: &Docstring)
 
                 return;
             } else if trailing.starts_with('#') {
-                // Keep the end-of-line comment, start counting empty lines after it
                 replacement_start = first_line.end();
             }
         }
@@ -291,7 +274,6 @@ pub(crate) fn blank_before_after_class(checker: &Checker, docstring: &Docstring)
         if blank_lines_after != 1 {
             let mut diagnostic =
                 checker.report_diagnostic(IncorrectBlankLineAfterClass, docstring.range());
-            // Insert a blank line before the class (replacing any existing lines).
             diagnostic.set_fix(Fix::safe_edit(Edit::replacement(
                 checker.stylist().line_ending().to_string(),
                 replacement_start,

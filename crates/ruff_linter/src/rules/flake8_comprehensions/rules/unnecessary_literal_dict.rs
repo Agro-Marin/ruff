@@ -69,7 +69,6 @@ pub(crate) fn unnecessary_literal_dict(
         Expr::List(ast::ExprList { elts, .. }) => (LiteralKind::List, elts),
         _ => return,
     };
-    // Accept `dict((1, 2), ...))` `dict([(1, 2), ...])`.
     if !elts
         .iter()
         .all(|elt| matches!(&elt, Expr::Tuple(tuple) if tuple.len() == 2))

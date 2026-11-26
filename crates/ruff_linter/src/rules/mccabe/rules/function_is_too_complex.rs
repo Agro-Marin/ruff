@@ -113,18 +113,6 @@ fn get_complexity_number(stmts: &[Stmt]) -> usize {
                     complexity += get_complexity_number(&case.body);
                 }
                 if let Some(last_case) = cases.last() {
-                    // The complexity of an irrefutable pattern is similar to an `else` block of an `if` statement.
-                    //
-                    // For example:
-                    // ```python
-                    // match subject:
-                    //     case 1: ...
-                    //     case _: ...
-                    //
-                    // match subject:
-                    //     case 1: ...
-                    //     case foo: ...
-                    // ```
                     if last_case.guard.is_none() && last_case.pattern.is_irrefutable() {
                         complexity -= 1;
                     }

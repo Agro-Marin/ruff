@@ -9,7 +9,6 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 /// Note that the ranges for all unterminated interpolated strings are not stored.
 #[derive(Debug)]
 pub struct InterpolatedStringRanges {
-    // Mapping from the interpolated string start location to its range.
     raw: BTreeMap<TextSize, TextRange>,
 }
 
@@ -33,25 +32,6 @@ impl InterpolatedStringRanges {
 
     /// Return the [`TextRange`] of the outermost f-string at the given offset.
     pub fn outermost(&self, offset: TextSize) -> Option<TextRange> {
-        // Explanation of the algorithm:
-        //
-        // ```python
-        // #                                                     v
-        //   f"normal" f"another" f"first {f"second {f"third"} second"} first"
-        // #                                         ^^(1)^^^
-        // #                               ^^^^^^^^^^^^(2)^^^^^^^^^^^^
-        // #                      ^^^^^^^^^^^^^^^^^^^^^(3)^^^^^^^^^^^^^^^^^^^^
-        // #           ^^^(4)^^^^
-        // # ^^^(5)^^^
-        // ```
-        //
-        // The offset is marked with a `v` and the ranges are numbered in the order
-        // they are yielded by the iterator in the reverse order. The algorithm
-        // works as follows:
-        //   1. Skip all ranges that don't contain the offset (1).
-        //   2. Take all ranges that contain the offset (2, 3).
-        //   3. Stop taking ranges when the offset is no longer contained.
-        //   4. Take the last range that contained the offset (3, the outermost).
         self.raw
             .range(..=offset)
             .rev()
@@ -86,9 +66,6 @@ pub(crate) struct InterpolatedStringRangesBuilder {
 
 impl InterpolatedStringRangesBuilder {
     pub(crate) fn visit_token(&mut self, token: &Token) {
-        // While the logic of this visitor makes it seem possible to pair, say,
-        // an `FStringStart` with a `TStringEnd`, it is not actually possible to
-        // encounter this in tokenized code free from lexical errors.
         match token.kind() {
             TokenKind::FStringStart | TokenKind::TStringStart => {
                 self.start_locations.push(token.start());

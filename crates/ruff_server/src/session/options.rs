@@ -52,7 +52,6 @@ pub(crate) struct GlobalOptions {
     client: ClientOptions,
 
     // These settings are only needed for tracing, and are only read from the global configuration.
-    // These will not be in the resolved settings.
     #[serde(flatten)]
     pub(crate) tracing: TracingOptions,
 }
@@ -449,7 +448,6 @@ where
 
 impl<T> Combine for Vec<T> {
     fn combine_with(&mut self, _other: Self) {
-        // No-op, use own elements
     }
 }
 
@@ -468,7 +466,6 @@ macro_rules! impl_noop_combine {
     };
 }
 
-// std types
 impl_noop_combine!(bool);
 impl_noop_combine!(usize);
 impl_noop_combine!(u8);
@@ -484,7 +481,6 @@ impl_noop_combine!(i64);
 impl_noop_combine!(i128);
 impl_noop_combine!(String);
 
-// Custom types
 impl_noop_combine!(ConfigurationPreference);
 impl_noop_combine!(ClientConfiguration);
 impl_noop_combine!(LineLength);
@@ -509,8 +505,6 @@ mod tests {
     const EMPTY_INIT_OPTIONS_FIXTURE: &str =
         include_str!("../../resources/test/fixtures/settings/empty.json");
 
-    // This fixture contains multiple workspaces with empty initialization options. It only sets
-    // the `cwd` and the `workspace` value.
     const EMPTY_MULTIPLE_WORKSPACE_INIT_OPTIONS_FIXTURE: &str =
         include_str!("../../resources/test/fixtures/settings/empty_multiple_workspace.json");
 

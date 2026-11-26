@@ -57,7 +57,6 @@ pub fn is_notebook(db: &dyn Db, file: File) -> bool {
         return source.is_notebook();
     }
 
-    // The editor can change a file's source type without changing its path.
     let _ = file.revision(db);
 
     is_notebook_path(db.system(), file.path(db))
@@ -188,8 +187,6 @@ struct SourceTextInner {
 enum SourceTextKind {
     Text(String),
     Notebook {
-        // Jupyter notebooks are not very relevant for memory profiling, and contain
-        // arbitrary JSON values that do not implement the `GetSize` trait.
         #[get_size(ignore)]
         notebook: Box<Notebook>,
     },
@@ -269,7 +266,6 @@ mod tests {
 
         assert_eq!(source_text(&db, file).as_str(), "x = 10");
 
-        // Change the file permission only
         file.set_permissions(&mut db).to(Some(0o777));
 
         db.clear_salsa_events();

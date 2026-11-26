@@ -58,8 +58,6 @@ pub(crate) fn iteration_over_set(checker: &Checker, expr: &Expr) {
     let mut seen_values = FxHashSet::with_capacity_and_hasher(set.len(), FxBuildHasher);
     for value in set {
         if !seen_values.insert(HashableExpr::from(value)) {
-            // if the set contains a duplicate literal value, early exit.
-            // rule `B033` can catch that.
             return;
         }
     }

@@ -4,7 +4,6 @@ use ruff_db::system::SystemPath;
 
 use crate::{TestServer, TestServerBuilder};
 
-// Sends an executeCommand request to the TestServer
 fn execute_command(
     server: &mut TestServer,
     command: String,
@@ -59,7 +58,6 @@ python-platform = \"linux\"
         .split_once("=======SALSA SUMMARY=======\n")
         .context("debug response missing Salsa summary section")?;
 
-    // Memory usage varies between platforms and build profiles. Sort entries by name instead.
     let mut salsa_structs = salsa_structs.lines().collect::<Vec<_>>();
     salsa_structs.sort_unstable();
     let query_lines = salsa_queries.lines().collect::<Vec<_>>();

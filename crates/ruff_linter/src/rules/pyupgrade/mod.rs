@@ -438,19 +438,14 @@ mod tests {
             &settings::LinterSettings {
                 isort: isort::settings::Settings {
                     required_imports: BTreeSet::from_iter([
-                        // https://github.com/astral-sh/ruff/issues/18729
                         NameImport::ImportFrom(MemberNameImport::member(
                             "__future__".to_string(),
                             "generator_stop".to_string(),
                         )),
-                        // https://github.com/astral-sh/ruff/issues/16802
                         NameImport::ImportFrom(MemberNameImport::member(
                             "collections".to_string(),
                             "Sequence".to_string(),
                         )),
-                        // Only bail out if _all_ the names in UP035 are required. `pipes.Template`
-                        // isn't flagged by UP035, so requiring it shouldn't prevent `pipes.quote`
-                        // from getting a diagnostic.
                         NameImport::ImportFrom(MemberNameImport::member(
                             "pipes".to_string(),
                             "Template".to_string(),
@@ -504,7 +499,6 @@ mod tests {
             &settings::LinterSettings {
                 isort: isort::settings::Settings {
                     required_imports: BTreeSet::from_iter([
-                        // https://github.com/astral-sh/ruff/issues/20601
                         NameImport::ImportFrom(MemberNameImport::member(
                             "builtins".to_string(),
                             "str".to_string(),

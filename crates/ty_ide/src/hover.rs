@@ -82,10 +82,6 @@ pub fn hover<'db>(
         resolved_call_signature(&model, call)
             .and_then(|details| docstring_for_call_definition(db, details.definition?))
             .or_else(|| {
-                // Fall back to the goto-definition targets. This is what
-                // surfaces the class docstring for a constructor call like
-                // `Foo()`, where the resolved definition is `__init__` and
-                // usually carries no docstring of its own.
                 goto_target
                     .definitions(
                         &model,
@@ -168,7 +164,6 @@ pub fn hover<'db>(
 
     contents.extend(docs);
 
-    // Aliased docs should come after the docs of the target, if they exist
     if let Some(alias_docstring) = alias_docstring {
         contents.push(HoverContent::Docstring(alias_docstring));
     }
@@ -378,17 +373,12 @@ pub enum HoverContent<'db> {
     Signature(String),
     Parameter(String),
     Type {
-        // The type of the target being hovered
         ty: Type<'db>,
-        // The type's variance
         variance: Option<TypeVarVariance>,
-        // The type's qualifiers
         qualifiers: TypeQualifiers,
     },
     TypeAlias {
-        // The declaration of the type alias being hovered
         declaration: String,
-        // The type's qualifiers
         qualifiers: TypeQualifiers,
     },
     TypedDictKey {
@@ -426,8 +416,6 @@ pub(crate) struct DisplayHoverContent<'a, 'db> {
 impl<'db> DisplayHoverContent<'_, 'db> {
     fn ty_string_and_syntax(&self, ty: &Type<'db>) -> (String, &'static str) {
         let db = self.db;
-        // Special types like `<special-form of whatever 'blahblah' with 'florps'>`
-        // render poorly with python syntax-highlighting but well as xml
         let ty_string = ty.display(db, self.env).multiline().to_string();
         let syntax = if ty_string.starts_with('<') {
             "xml"
@@ -516,8 +504,6 @@ mod tests {
     use ruff_text_size::{Ranged, TextRange};
 
     fn hover_test(source: &str) -> CursorTest {
-        // Hover snapshots include markdown-rendered docstrings. Normalize markdown hard breaks
-        // so snapshot literals remain stable even if an editor trims trailing whitespace.
         CursorTest::builder()
             .snapshot_filter("  \n", "<HB>\n")
             .source("main.py", source)
@@ -2051,10 +2037,6 @@ mod tests {
         "#,
         );
 
-        // The type is a union because `test` is conditionally reassigned.
-        // The "Unrelated docstring" comes from the conditional reassignment's
-        // definition, which is the first definition with a docstring found
-        // by the fallback path.
         assert_snapshot!(test.hover(), @"
         (Overload[(x: int) -> int, (x: str) -> str]) | (def test() -> Unknown)
         ---------------------------------------------
@@ -2568,8 +2550,6 @@ mod tests {
             "#,
         );
 
-        // The parameter label comes from the resolved `int` overload, while
-        // the parameter documentation comes from the implementation docstring.
         assert_snapshot!(test.hover(), @"
         (parameter) fallback: int
         ---------------------------------------------
@@ -2618,9 +2598,6 @@ mod tests {
             "#,
         );
 
-        // The selected overload has a docstring, so we stop there and do not
-        // merge in the  `fallback` documentation from the implementation
-        // docstring. We may want to improve this behaviour in the future.
         assert_snapshot!(test.hover(), @"
         (parameter) fallback: int
         ---------------------------------------------
@@ -2814,7 +2791,6 @@ mod tests {
         "#);
     }
 
-    // Hovering over a union operator in a string annotation shows the Union documentation.
     #[test]
     fn hover_string_annotation3() {
         let test = hover_test(
@@ -3854,7 +3830,6 @@ def outer():
 "#,
         );
 
-        // Should find the variable declaration in the outer scope, not the nonlocal statement
         assert_snapshot!(test.hover(), @r#"
         Literal["modified"]
         ---------------------------------------------
@@ -3888,7 +3863,6 @@ def outer():
 "#,
         );
 
-        // Should find the variable declaration in the outer scope, not the nonlocal statement
         assert_snapshot!(test.hover(), @"Hover provided no content");
     }
 
@@ -4269,7 +4243,6 @@ def function():
         );
 
         // TODO: This should just be `**AB@Alias2 (<variance>)`
-        // https://github.com/astral-sh/ty/issues/1581
         assert_snapshot!(test.hover(), @"
         (**AB@Alias2) -> tuple[Unknown]
         ---------------------------------------------
@@ -4439,7 +4412,6 @@ def function():
             "#,
         );
 
-        // TODO: Should this be constravariant instead?
         assert_snapshot!(test.hover(), @"
         P@Alias (covariant)
         ---------------------------------------------
@@ -4537,10 +4509,6 @@ def function():
             "#,
         );
 
-        // We currently show the *previous* value of the variable (1), not the new one (3).
-        // Showing the new value might be more intuitive for some users, but the actual 'use'
-        // of the `value` symbol here in read-context is `1`. This comment mainly exists to
-        // signal that it might be okay to revisit this in the future and reveal 3 instead.
         assert_snapshot!(test.hover(), @"
         Literal[1]
         ---------------------------------------------
@@ -4631,8 +4599,6 @@ def function():
             "#,
         );
 
-        // See the comment in the `hover_augmented_assignment` test above. The same
-        // reasoning applies here.
         assert_snapshot!(test.hover(), @"
         int
         ---------------------------------------------
@@ -6346,7 +6312,6 @@ def function():
         ");
     }
 
-    // An intersection operator in a quoted PEP 613 type alias value shows the Intersection documentation.
     #[test]
     fn hover_intersection_in_type_alias() {
         let test = hover_test(
@@ -6460,7 +6425,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
         "#);
     }
 
-    // A union operator in a type parameter default shows the Union documentation.
     #[test]
     fn hover_union_in_type_parameter_default() {
         let test = hover_test("class C[T = int <CURSOR>| str]: ...");
@@ -6491,7 +6455,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
         ");
     }
 
-    // A negation operator nested in two string annotations shows the Not documentation.
     #[test]
     fn hover_negation_in_string_type_alias() {
         let test = hover_test("type Alias = \"'<CURSOR>~int'\"");
@@ -6528,7 +6491,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
         "#);
     }
 
-    // An operator in a parameter default shows its normal operation method.
     #[test]
     fn hover_operator_in_parameter_default() {
         let test = hover_test("def f(x: int = 1 <CURSOR>& 2): ...");
@@ -6536,7 +6498,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
         assert!(rendered.contains("__and__"), "{rendered}");
     }
 
-    // A locally defined `TypeAlias` name does not mark an assignment as a type alias.
     #[test]
     fn hover_operator_in_annotated_assignment_value() {
         let test = hover_test("TypeAlias = int\nvalue: TypeAlias = 1 <CURSOR>| 2");
@@ -6544,8 +6505,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
         assert!(rendered.contains("__or__"), "{rendered}");
     }
 
-    // The plain-text and Markdown hovers show the special form and its documentation, with a range
-    // covering the operator.
     #[test]
     fn hover_negation_operator_presentation() {
         let test = hover_test("def f(x: <CURSOR>~int): ...");
@@ -6603,8 +6562,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
         "#,
         );
 
-        // TODO: We should only show the matching overload here.
-        // https://github.com/astral-sh/ty/issues/73
         assert_snapshot!(test.hover(), @"
         def __add__(other: Test, /) -> Test
         def __add__(other: Other, /) -> Test
@@ -7001,7 +6958,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
             )
             .build();
 
-        // The module is correct
         assert_snapshot!(test.hover(), @"
         <module 'mypackage.subpkg'>
         ---------------------------------------------
@@ -7040,7 +6996,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
             )
             .build();
 
-        // The module is correct
         assert_snapshot!(test.hover(), @"
         <module 'mypackage.subpkg'>
         ---------------------------------------------
@@ -7079,7 +7034,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
             )
             .build();
 
-        // Unknown is correct
         assert_snapshot!(test.hover(), @"
         Unknown
         ---------------------------------------------
@@ -7118,7 +7072,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
             )
             .build();
 
-        // The submodule is correct
         assert_snapshot!(test.hover(), @"
         <module 'mypackage.subpkg.submod'>
         ---------------------------------------------
@@ -7156,7 +7109,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
             )
             .build();
 
-        // The module is correct
         assert_snapshot!(test.hover(), @"
         <module 'mypackage.subpkg'>
         ---------------------------------------------
@@ -7194,7 +7146,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
             )
             .build();
 
-        // int is correct
         assert_snapshot!(test.hover(), @"
         int
         ---------------------------------------------
@@ -7232,7 +7183,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
             )
             .build();
 
-        // int is correct
         assert_snapshot!(test.hover(), @"
         int
         ---------------------------------------------
@@ -7302,7 +7252,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
         "#,
         );
 
-        // __file__ should be `str` when accessed within a module, not `str | None`
         assert_snapshot!(test.hover(), @"
         str
         ---------------------------------------------
@@ -7321,7 +7270,6 @@ Alias: TypeAlias = "int <CURSOR>& str"
         ");
     }
 
-    // Ref: https://github.com/astral-sh/ty/issues/2401
     #[test]
     fn hover_incomplete_except_handler() {
         let test = hover_test(

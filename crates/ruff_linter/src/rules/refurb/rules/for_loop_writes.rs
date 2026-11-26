@@ -97,7 +97,6 @@ pub(crate) fn for_loop_writes_binding(checker: &Checker, binding: &Binding) {
 
 /// FURB122
 pub(crate) fn for_loop_writes_stmt(checker: &Checker, for_stmt: &StmtFor) {
-    // Loops with bindings are handled later.
     if !binding_names(&for_stmt.target).is_empty() {
         return;
     }
@@ -173,7 +172,6 @@ fn for_loop_writes(
 
     let semantic = checker.semantic();
 
-    // Determine whether `f` in `f.write()` was bound to a file object.
     let Some(name) = semantic.resolve_name(io_object_name) else {
         return;
     };
@@ -242,13 +240,6 @@ fn loop_variables_are_used_outside_loop(
         )
     };
 
-    // If the load simulation succeeds at the position right before the loop,
-    // that binding is shadowed.
-    // ```python
-    //   a = 1
-    //   for a in b: ...
-    // # ^ Load here
-    // ```
     let name_overwrites_outer =
         |name: &ExprName| find_binding_id(name, loop_range.start()).is_some();
 

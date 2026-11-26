@@ -47,8 +47,6 @@ mod tests {
         Ok(())
     }
 
-    // FAST002 autofixes use `typing_extensions` on Python 3.8,
-    // since `typing.Annotated` was added in Python 3.9
     #[test_case(Rule::FastApiNonAnnotatedDependency, Path::new("FAST002_0.py"))]
     #[test_case(Rule::FastApiNonAnnotatedDependency, Path::new("FAST002_1.py"))]
     #[test_case(Rule::FastApiNonAnnotatedDependency, Path::new("FAST002_2.py"))]

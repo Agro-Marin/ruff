@@ -157,15 +157,6 @@ pub(crate) fn extraneous_whitespace(line: &LogicalLine, context: &LintContext) {
             _ => {}
         }
         if let Some(symbol) = BracketOrPunctuation::from_kind(kind) {
-            // Whitespace before "{" or after "}" might be required in f-strings.
-            // For example,
-            //
-            // ```python
-            // f"{ {'a': 1} }"
-            // ```
-            //
-            // Here, `{{` / `}} would be interpreted as a single raw `{` / `}`
-            // character.
             match symbol {
                 BracketOrPunctuation::OpenBracket(symbol)
                     if symbol != '{' || interpolated_strings == 0 =>
@@ -204,15 +195,11 @@ pub(crate) fn extraneous_whitespace(line: &LogicalLine, context: &LintContext) {
                     if let (Whitespace::Single | Whitespace::Many | Whitespace::Tab, offset) =
                         whitespace
                     {
-                        // If we're in a slice, and the token is a colon, and it has
-                        // equivalent spacing on both sides, allow it.
                         if symbol == ':'
                             && brackets
                                 .last()
                                 .is_some_and(|kind| matches!(kind, TokenKind::Lsqb))
                         {
-                            // If we're in the second half of a double colon, disallow
-                            // any whitespace (e.g., `foo[1: :2]` or `foo[1 : : 2]`).
                             if matches!(prev_token, Some(TokenKind::Colon)) {
                                 let range = TextRange::at(token.start() - offset, offset);
                                 if let Some(mut diagnostic) = context.report_diagnostic_if_enabled(
@@ -224,8 +211,6 @@ pub(crate) fn extraneous_whitespace(line: &LogicalLine, context: &LintContext) {
                             } else if iter.peek().is_some_and(|token| {
                                 matches!(token.kind(), TokenKind::Rsqb | TokenKind::Comma)
                             }) {
-                                // Allow `foo[1 :]`, but not `foo[1  :]`.
-                                // Or `foo[index :, 2]`, but not `foo[index  :, 2]`.
                                 if let (Whitespace::Many | Whitespace::Tab, offset) = whitespace {
                                     let range = TextRange::at(token.start() - offset, offset);
                                     if let Some(mut diagnostic) = context
@@ -244,14 +229,6 @@ pub(crate) fn extraneous_whitespace(line: &LogicalLine, context: &LintContext) {
                                     TokenKind::NonLogicalNewline | TokenKind::Comment
                                 )
                             }) {
-                                // Allow [
-                                //      long_expression_calculating_the_index() :
-                                // ]
-                                // But not [
-                                //      long_expression_calculating_the_index()  :
-                                // ]
-                                // distinct from the above case, because ruff format produces a
-                                // whitespace before the colon and so should the fix
                                 if let (Whitespace::Many | Whitespace::Tab, offset) = whitespace {
                                     let range = TextRange::at(token.start() - offset, offset);
                                     if let Some(mut diagnostic) = context
@@ -267,7 +244,6 @@ pub(crate) fn extraneous_whitespace(line: &LogicalLine, context: &LintContext) {
                                     }
                                 }
                             } else {
-                                // Allow, e.g., `foo[1:2]` or `foo[1 : 2]` or `foo[1 :: 2]`.
                                 let token = iter
                                     .peek()
                                     .filter(|next| matches!(next.kind(), TokenKind::Colon))
@@ -290,7 +266,6 @@ pub(crate) fn extraneous_whitespace(line: &LogicalLine, context: &LintContext) {
                                 && symbol == ':'
                                 && matches!(prev_token, Some(TokenKind::Equal))
                             {
-                                // Avoid removing any whitespace for f-string debug expressions.
                                 continue;
                             }
                             let range = TextRange::at(token.start() - offset, offset);

@@ -61,8 +61,6 @@ impl Violation for PytestFailWithoutMessage {
 /// PT016
 pub(crate) fn fail_call(checker: &Checker, call: &ast::ExprCall, qualified_name: &QualifiedName) {
     if matches!(qualified_name.segments(), ["pytest", "fail"]) {
-        // Allow either `pytest.fail(reason="...")` (introduced in pytest 7.0) or
-        // `pytest.fail(msg="...")` (deprecated in pytest 7.0)
         if call
             .arguments
             .find_argument_value("reason", 0)

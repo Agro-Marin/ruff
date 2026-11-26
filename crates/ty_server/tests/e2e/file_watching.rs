@@ -41,7 +41,6 @@ fn refreshes_script_dependency_after_rewatch() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // The initial registration covers both the project and the script's external search path.
     let (initial_id, watches) = watcher_registrations(&mut server)?;
     assert_json_snapshot!(watcher_snapshot(&watches), @r#"
     [
@@ -56,7 +55,6 @@ fn refreshes_script_dependency_after_rewatch() -> Result<()> {
         @""
     );
 
-    // Removing the extra path replaces the registration and leaves the dependency unwatched.
     let without_dependency =
         source.replace(r#"extra-paths = ["../dependencies"]"#, "extra-paths = []");
     server.change_text_document(
@@ -78,7 +76,6 @@ fn refreshes_script_dependency_after_rewatch() -> Result<()> {
     "#);
     assert_eq!(server.acknowledge_unregistration()?, initial_id);
 
-    // No file event reaches the server for this edit while the dependency is unwatched.
     server.write_file(dependency, "value = 'wrong'")?;
     server.change_text_document(
         script,
@@ -103,7 +100,6 @@ fn refreshes_script_dependency_after_rewatch() -> Result<()> {
         @""
     );
 
-    // Completing registration refreshes the known dependency and finds its missed edit.
     server.acknowledge_request(request_id);
     assert_eq!(server.acknowledge_unregistration()?, project_id);
     server.await_diagnostic_refresh();
@@ -192,7 +188,6 @@ fn picks_up_edits_to_unwatched_pth_files() -> Result<()> {
         @""
     );
 
-    // Switch to the default environment so the client stops watching site-packages.
     server.write_file(config, "[tool.ty]")?;
     server.did_change_watched_files(vec![lsp_types::FileEvent {
         uri: server.file_uri(config),
@@ -206,11 +201,9 @@ fn picks_up_edits_to_unwatched_pth_files() -> Result<()> {
     "#);
     server.acknowledge_unregistration()?;
 
-    // The client doesn't report the `.pth` edit while site-packages is unwatched.
     let new = server.file_path("new");
     server.write_file(pth, new.as_str())?;
 
-    // Restoring the environment initially registers paths from the cached `.pth` contents.
     server.write_file(config, project_config)?;
     server.did_change_watched_files(vec![lsp_types::FileEvent {
         uri: server.file_uri(config),
@@ -228,7 +221,6 @@ fn picks_up_edits_to_unwatched_pth_files() -> Result<()> {
     server.acknowledge_request(request_id);
     assert_eq!(server.acknowledge_unregistration()?, project_only_id);
 
-    // Completing registration refreshes `.pth` and registers its new search path.
     let (_, watches) = watcher_registrations(&mut server)?;
     assert_json_snapshot!(watcher_snapshot(&watches), @r#"
     [
@@ -278,7 +270,6 @@ fn deleting_pixi_prefix_selects_project_venv() -> Result<()> {
             format!("home = {workspace}\nversion = 3.13\n"),
         )?
         .with_file(&main, source)?
-        // Disable relative patterns so a single workspace-wide watch covers both environments.
         .with_watched_file_support(false)
         .build()
         .wait_until_workspaces_are_initialized();
@@ -347,7 +338,6 @@ fn nested_search_path_picks_up_missed_dependency_edit() -> Result<()> {
         @""
     );
 
-    // Remove the parent search path before changing the dependency on disk.
     server.write_file(config, "[tool.ty]")?;
     server.did_change_watched_files(vec![lsp_types::FileEvent {
         uri: server.file_uri(config),
@@ -361,9 +351,7 @@ fn nested_search_path_picks_up_missed_dependency_edit() -> Result<()> {
     "#);
     server.acknowledge_unregistration()?;
 
-    // No file event reports the edit while the parent search path is unwatched.
     server.write_file(dependency, "value = 'wrong'")?;
-    // Register the nested search path, which contains the previously read dependency.
     server.write_file(
         config,
         dedent(
@@ -387,8 +375,6 @@ fn nested_search_path_picks_up_missed_dependency_edit() -> Result<()> {
     "#);
     server.acknowledge_unregistration()?;
 
-    // The new search root exposes the same file as `dependency` instead of `pkg.dependency`.
-    // Reimport it to check that the edit missed while it was unwatched has been refreshed.
     server.change_text_document(
         main,
         vec![
@@ -438,7 +424,6 @@ fn watches_project_without_relative_patterns() -> Result<()> {
         .build()
         .wait_until_workspaces_are_initialized();
 
-    // A client without relative patterns receives one workspace-wide glob.
     let (_, watches) = watcher_registrations(&mut server)?;
     assert_json_snapshot!(watcher_snapshot(&watches), @r#"
     [
@@ -551,7 +536,6 @@ fn watcher_snapshot(watchers: &[FileSystemWatcher]) -> Vec<String> {
                     }
                 },
             };
-            // The fixture's virtual environment has a different site-packages layout on Windows.
             let pattern = pattern
                 .replace("/venv/Lib/site-packages", "/venv/<site-packages>")
                 .replace(

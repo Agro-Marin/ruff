@@ -16,10 +16,8 @@ pub fn document_highlights(
     let module = parsed.load(db);
     let model = SemanticModel::new(db, file);
 
-    // Get the definitions for the symbol at the cursor position
     let goto_target = find_goto_target(&model, &module, offset)?;
 
-    // Use DocumentHighlights mode which limits search to current file only
     references(db, file, &goto_target, ReferencesMode::DocumentHighlights)
 }
 
@@ -227,7 +225,6 @@ def test():
         assert_snapshot!(test.document_highlights(), @"No highlights found");
     }
 
-    // TODO: Should only highlight the last use and the last declaration
     #[test]
     fn redeclarations() {
         let test = CursorTest::builder()

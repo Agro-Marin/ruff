@@ -70,7 +70,6 @@ impl<'db> BinaryInferenceState<'db> {
                 .iter()
                 .map(|ty| Self::tuple_alternative_count(db, *ty))
                 .sum(),
-            // Adding an alias can expose more tuples, so check the expanded result.
             Type::TypeAlias(_) => MAX_TUPLE_ADDITION_ALTERNATIVES,
             _ => usize::from(ty.exact_tuple_instance_spec(db).is_some()),
         }
@@ -91,8 +90,6 @@ impl<'db> BinaryInferenceState<'db> {
             let mapped = transform(*element, self)?;
             tuple_alternatives += Self::tuple_alternative_count(db, mapped);
             result.add_in_place(mapped);
-            // This count can include redundant alternatives. Rebuild only when widening
-            // might be needed, so unrelated custom-operator results accumulate normally.
             if self.used_tuple_addition && tuple_alternatives >= MAX_TUPLE_ADDITION_ALTERNATIVES {
                 let limited = self.limit_tuple_addition_result(db, env, result.build());
                 tuple_alternatives = Self::tuple_alternative_count(db, limited);
@@ -142,8 +139,6 @@ impl<'db> BinaryInferenceState<'db> {
             }
         }
         let elements = elements.build();
-        // A fixed tuple containing Never can be inhabited by a subclass. Widening must not
-        // turn a nonempty tuple into `tuple[()]`, as `tuple[Never, ...]` would do.
         let elements = if elements.is_never() {
             Type::object()
         } else {
@@ -215,19 +210,12 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         } = node;
 
         if *op != ast::Operator::BitOr {
-            // TODO diagnostic?
             return Type::unknown();
         }
 
         let left_ty = self.infer_expression(left, tcx);
         let right_ty = self.infer_expression(right, tcx);
 
-        // TODO this is overly aggressive; if the operands' `__or__` does not actually return a
-        // `UnionType` at runtime, we should ideally not infer one here. But this is unlikely to be
-        // a problem in practice: it would require someone having an explicitly annotated
-        // `TypeAlias`, which uses `X | Y` syntax, where the returned type is not actually a union.
-        // And attempting to enforce this more tightly showed a lot of potential false positives in
-        // the ecosystem.
         UnionTypeInstance::from_value_expression_types(
             db,
             [left_ty, right_ty],
@@ -247,15 +235,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         tcx: TypeContext<'db>,
     ) -> BinaryExpressionOperandTypes<'db> {
         let db = self.db();
-        // As a special case, pass `tcx` to binary operands that are collection literals/displays.
-        // Note that it's not correct to pass it to all binary operands, for example:
-        // ```
-        // x: list[str] = ["x"] * 3
-        // ```
-        // It doesn't make sense to pass the list type context to the `3` expression. It wouldn't
-        // have any effect in this case, but it could in more complicated cases.
-        // TODO: When we support passing `tcx` through generic method calls, we can remove this
-        // special case and handle the relevant dunder method instead.
         let operand_tcx = |expr: &ast::Expr| -> TypeContext<'db> {
             match expr {
                 ast::Expr::List(_)
@@ -265,15 +244,11 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 | ast::Expr::ListComp(_)
                 | ast::Expr::SetComp(_)
                 | ast::Expr::DictComp(_) => tcx,
-                // Also pass `tcx` to nested binary expressions.
                 ast::Expr::BinOp(_) => tcx,
                 _ => TypeContext::default(),
             }
         };
 
-        // When a dict literal is `|`'d with a TypedDict, infer the non-literal side first
-        // so we can use bidirectional inference on the literal before calling the synthesized
-        // `__or__`/`__ror__` method on the TypedDict side.
         if op == ast::Operator::BitOr && matches!(left, ast::Expr::Dict(_)) {
             let right_ty = self.infer_expression(right, operand_tcx(right));
             if let Type::TypedDict(typed_dict) = right_ty
@@ -287,8 +262,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 return BinaryExpressionOperandTypes::TypedDictResult(ty);
             }
 
-            // If the TypedDict update path rejects the literal, fall back to ordinary inference
-            // even though that means re-inferring the literal without TypedDict context.
             return BinaryExpressionOperandTypes::Inferred(
                 self.infer_expression(left, operand_tcx(left)),
                 right_ty,
@@ -366,8 +339,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
         let typed_dict_ty = Type::TypedDict(typed_dict);
 
-        // Prefer the full TypedDict as context when possible so exact-shape literals preserve the
-        // named type in bidirectional inference.
         if self
             .try_typed_dict_pep_584_dunder(value_expr, typed_dict, typed_dict, "__ior__")
             .is_some()
@@ -376,7 +347,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return Some(typed_dict_ty);
         }
 
-        // Subset updates use the mutation-safe patch as context.
         let update_patch = typed_dict.to_update_patch(db);
         if self
             .try_typed_dict_pep_584_dunder(value_expr, update_patch, typed_dict, "__ior__")
@@ -389,8 +359,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return Some(typed_dict_ty);
         }
 
-        // The probe failed. Infer the RHS without TypedDict context so we report only the operator
-        // failure, not spurious typed-dict diagnostics.
         let value_ty = infer_value_ty(self, TypeContext::default());
         report_unsupported_augmented_assignment(&self.context, assignment, target_type, value_ty);
         Some(target_type)
@@ -479,8 +447,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let env = self.program_environment();
         let db = self.db();
 
-        // Check for division by zero; this doesn't change the inferred type for the expression, but
-        // may emit a diagnostic
         if !state.emitted_division_by_zero_diagnostic
             && matches!(
                 op,
@@ -573,8 +539,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 Some(Type::TypedDict(right_typed_dict))
             }
 
-            // Non-todo Anys take precedence over Todos (as if we fix this `Todo` in the future,
-            // the result would then become Any or Unknown, respectively).
             (div @ Type::Divergent(_), _, _) | (_, div @ Type::Divergent(_), _) => Some(div),
 
             (unknown @ Type::Dynamic(DynamicType::AmbiguousOverload), _, _)
@@ -609,18 +573,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 _,
             ) => Some(placeholder),
 
-            // When both operands are the same constrained TypeVar (e.g., `T: (int, str)`),
-            // we check if the operation is valid for each constraint paired with itself.
-            // This is different from treating it as a union, where we'd check all combinations.
-            // For example, `T + T` where `T: (int, str)` should check `int + int` and `str + str`,
-            // not `int + str` which would fail.
-            //
-            // If each constraint's operation returns the same type as the constraint (e.g.,
-            // `int + int -> int`), we return the TypeVar to preserve the generic relationship.
-            // Otherwise, we return the union of the return types.
-            //
-            // TODO: We expect to replace this with more general support for handling constrained TypeVars
-            // in arbitrary method/function calls.
             (Type::TypeVar(left_tvar), Type::TypeVar(right_tvar), _)
                 if left_tvar.identity(db) == right_tvar.identity(db) =>
             {
@@ -643,13 +595,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 }
             }
 
-            // When the left operand is a constrained TypeVar (e.g., `T: (int, float)`) and the
-            // right operand is not a TypeVar, we check if each constraint supports the operation
-            // with the right operand. For example, `T * 2` where `T: (int, float)` should check
-            // `int * 2` and `float * 2`, both of which work.
-            //
-            // TODO: We expect to replace this with more general support once we migrate to the new
-            // solver.
             (Type::TypeVar(left_tvar), rhs, _) if !rhs.is_type_var() => {
                 match left_tvar.typevar(db).bound_or_constraints(db, env) {
                     Some(TypeVarBoundOrConstraints::Constraints(constraints)) => {
@@ -670,8 +615,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 }
             }
 
-            // When the right operand is a constrained TypeVar and the left operand is not a TypeVar,
-            // we check if each constraint supports the operation with the left operand.
             (lhs, Type::TypeVar(right_tvar), _) if !lhs.is_type_var() => {
                 match right_tvar.typevar(db).bound_or_constraints(db, env) {
                     Some(TypeVarBoundOrConstraints::Constraints(constraints)) => {
@@ -692,12 +635,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 }
             }
 
-            // `try_call_bin_op` works for almost all `NewType`s, but not for `NewType`s of `float`
-            // and `complex`, where the concrete base type is a union. In that case it turns out
-            // the `self` types of the dunder methods in typeshed don't match, because they don't
-            // get the same `int | float` and `int | float | complex` special treatment that the
-            // positional arguments get. In those cases we need to explicitly delegate to the base
-            // type, so that it hits the `Type::Union` branches above.
             (Type::NewTypeInstance(newtype), rhs, _) => self
                 .infer_binary_dunder(state, left_ty, op, right_ty)
                 .or_else(|| {
@@ -731,9 +668,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     && let Some(right_tuple) = right.exact_tuple_instance_spec(db) =>
             {
                 state.used_tuple_addition = true;
-                // As with tuple slicing and iteration, assume that values typed as `tuple`
-                // have the usual behavior even though they could be subclass instances.
-                // Explicitly known subclasses still use their operator methods below.
                 if left_tuple
                     .len()
                     .minimum()
@@ -817,8 +751,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     ) => Some({
                         let mut q = n.as_i64().checked_div(m.as_i64());
                         let r = n.as_i64().checked_rem(m.as_i64());
-                        // Division works differently in Python than in Rust. If the result is negative and
-                        // there is a remainder, the division rounds down (instead of towards zero):
                         if n.as_i64().is_negative() != m.as_i64().is_negative()
                             && r.unwrap_or(0) != 0
                         {
@@ -834,9 +766,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                         ast::Operator::Mod,
                     ) => Some({
                         let mut r = n.as_i64().checked_rem(m.as_i64());
-                        // Division works differently in Python than in Rust. If the result is negative and
-                        // there is a remainder, the division rounds down (instead of towards zero). Adjust
-                        // the remainder to compensate so that q * m + r == n:
                         if n.as_i64().is_negative() != m.as_i64().is_negative()
                             && r.unwrap_or(0) != 0
                         {
@@ -1017,15 +946,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     ) => {
                         let n = n.as_i64();
 
-                        // An additional overflow check beyond `checked_shl` is necessary
-                        // here, because `checked_shl` only rejects shift amounts >= 64;
-                        // it does not detect when significant bits are shifted into (or
-                        // past) the sign bit. For example, `1i64.checked_shl(63)` returns
-                        // `Some(i64::MIN)`, but Python's `1 << 63` is a large positive int.
-                        //
-                        // We compute the "headroom": the number of redundant sign-extension
-                        // bits minus one (for the sign bit itself). A shift is safe iff
-                        // `m <= headroom`.
                         let headroom = if n >= 0 {
                             n.leading_zeros().saturating_sub(1)
                         } else {
@@ -1100,7 +1020,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 )))
             }
 
-            // PEP 604-style union types using the `|` operator.
             (left, right, ast::Operator::BitOr)
                 if (is_union_type_operand(left)
                     && (is_union_type_operand(right) || right.is_none(db)))
@@ -1115,13 +1034,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 ))
             }
 
-            // We avoid calling `type.__(r)or__`, as typeshed annotates these methods as
-            // accepting `Any` (since typeforms are inexpressable in the type system currently).
-            // This means that many common errors would not be caught if we fell back to typeshed's stubs here.
-            //
-            // Note that if a class had a custom metaclass that overrode `__(r)or__`, we would also ignore
-            // that custom method as we'd take one of the earlier branches.
-            // This seems like it's probably rare enough that it's acceptable, however.
             (
                 Type::ClassLiteral(..) | Type::GenericAlias(..) | Type::SubclassOf(..),
                 _,
@@ -1149,8 +1061,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 binding.return_type(db, env)
             }),
 
-            // We've handled all of the special cases that we support for literals, so we need to
-            // fall back on looking for dunder methods on one of the operand types.
             (
                 Type::FunctionLiteral(_)
                 | Type::Callable(..)

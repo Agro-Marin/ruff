@@ -127,10 +127,6 @@ impl WorkspaceDiagnosticRequestHandler {
             client,
         );
 
-        // Use the work done progress token from the client request, if provided
-        // Note: neither VS Code nor Zed currently support this,
-        // see https://github.com/microsoft/vscode-languageserver-node/issues/528
-        // That's why we fall back to server-initiated progress if no token is provided.
         let work_done_progress = LazyWorkDoneProgress::new(
             client,
             params.work_done_progress_params.work_done_token,
@@ -169,15 +165,6 @@ impl BackgroundRequestHandler for WorkspaceDiagnosticRequestHandler {
     ) {
         let result = Self::workspace_diagnostics(&snapshot, client, params.clone());
 
-        // Test if this is a no-op result, in which case we should long-poll the request and
-        // only respond once some diagnostics have changed to get the latest result ids.
-        //
-        // Bulk response: This the simple case. Simply test if all diagnostics are unchanged (or empty)
-        // Streaming: This trickier but follows the same principle.
-        // * If the server sent any partial results, then `result` is a `Partial` result (in which
-        //   case we shouldn't do any long polling because some diagnostics changed).
-        // * If this is a full report, then check if all items are unchanged (or empty), the same as for
-        //   the non-streaming case.
         if let WorkspaceDiagnosticReportResult::Report(WorkspaceDiagnosticReport { items }) =
             &result
         {
@@ -203,7 +190,6 @@ impl BackgroundRequestHandler for WorkspaceDiagnosticRequestHandler {
                     },
                 )));
 
-                // Don't respond, keep the request open (long polling).
                 return;
             }
         }
@@ -262,9 +248,6 @@ impl ProgressReporter for WorkspaceDiagnosticsProgressReporter<'_> {
     fn report_checked_file(&self, db: &ProjectDatabase, file: File, diagnostics: &[Diagnostic]) {
         let unnecessary_hints = hints(db, file);
 
-        // Another thread might have panicked at this point because of a salsa cancellation which
-        // poisoned the result. If the response is poisoned, just don't report and wait for our thread
-        // to unwind with a salsa cancellation next.
         let Ok(mut state) = self.state.lock() else {
             return;
         };
@@ -279,8 +262,6 @@ impl ProgressReporter for WorkspaceDiagnosticsProgressReporter<'_> {
             state.report_progress(&self.work_done);
         }
 
-        // `into_final_report` clears any previous diagnostics for files with empty results
-        // and for files that are no longer part of the project.
         if !diagnostics.is_empty() || !unnecessary_hints.is_empty() {
             state
                 .response
@@ -345,9 +326,6 @@ struct ResponseWriter<'a> {
     index: &'a Index,
     position_encoding: PositionEncoding,
     client_capabilities: ResolvedClientCapabilities,
-    // It's important that we use `AnySystemPath` over `Uri` here because
-    // `file_to_uri` isn't guaranteed to return the exact same URI as the one provided
-    // by the client.
     previous_result_ids: FxHashMap<DocumentKey, (Uri, String)>,
     global_settings: &'a GlobalSettings,
 }
@@ -404,10 +382,6 @@ impl<'a> ResponseWriter<'a> {
         };
 
         if source_text(db, file).is_notebook() {
-            // Notebooks only support publish diagnostics.
-            // and we can't convert text ranges to notebook ranges unless
-            // the document is open in the editor, in which case
-            // we publish the diagnostics already.
             return;
         }
 
@@ -427,8 +401,6 @@ impl<'a> ResponseWriter<'a> {
             unnecessary_hints,
             self.client_capabilities,
         ) else {
-            // Leave any previous result ID for `into_final_report` to clear. Without a previous
-            // result, there is nothing to report and the request can continue long polling.
             return;
         };
 
@@ -509,14 +481,11 @@ impl<'a> ResponseWriter<'a> {
     fn into_final_report(mut self) -> WorkspaceDiagnosticReportResult {
         let mut items = Vec::new();
 
-        // Handle files that had diagnostics in previous request but no longer have any
-        // Any remaining entries in previous_results are files that were fixed
         #[expect(
             clippy::iter_over_hash_type,
             reason = "workspace diagnostic reports are independently identified by URI"
         )]
         for (key, (previous_uri, _)) in self.previous_result_ids {
-            // This file had diagnostics before but doesn't now, so we need to report it as having no diagnostics
             let version = self
                 .index
                 .document(&key)
@@ -638,7 +607,6 @@ impl Streaming {
             return;
         }
 
-        // Flush every ~50ms or whenever we have two items and this is a test run.
         let should_flush = if self.is_test {
             self.changed.len() >= 2
         } else {
@@ -657,9 +625,6 @@ impl Streaming {
         let partial_result = match self.create_result(items) {
             WorkspaceDiagnosticReportResult::PartialReport(partial_report) => partial_report,
             WorkspaceDiagnosticReportResult::Report(WorkspaceDiagnosticReport { items }) => {
-                // WorkspaceDiagnosticReport and WorkspaceDiagnosticReportPartialResult have the
-                // same serialization in the LSP.
-                // https://github.com/microsoft/language-server-protocol/issues/2281
                 WorkspaceDiagnosticReportPartialResult { items }
             }
         };
@@ -672,9 +637,6 @@ impl Streaming {
         &mut self,
         items: Vec<WorkspaceDocumentDiagnosticReport>,
     ) -> WorkspaceDiagnosticReportResult {
-        // As per the LSP spec:
-        // > partial result: The first literal send need to be a WorkspaceDiagnosticReport followed
-        // > by `n` WorkspaceDiagnosticReportPartialResult literals defined as follows:
         if self.first {
             self.first = false;
             WorkspaceDiagnosticReportResult::Report(WorkspaceDiagnosticReport { items })

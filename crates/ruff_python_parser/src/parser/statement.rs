@@ -128,8 +128,6 @@ impl<'src> Parser<'src> {
             TokenKind::Async => self.parse_async_statement(),
             token => {
                 if token == TokenKind::Match {
-                    // Match is considered a soft keyword, so we will treat it as an identifier if
-                    // it's followed by an unexpected token.
 
                     match self.classify_match_token() {
                         MatchTokenKind::Keyword => {
@@ -157,7 +155,6 @@ impl<'src> Parser<'src> {
     fn parse_single_simple_statement(&mut self) -> Stmt {
         let stmt = self.parse_simple_statement();
 
-        // The order of the token is important here.
         let has_eaten_semicolon = self.eat(TokenKind::Semi);
         let has_eaten_newline = self.eat(TokenKind::Newline);
 
@@ -172,7 +169,6 @@ impl<'src> Parser<'src> {
                     self.current_token_range(),
                 );
             } else if self.at_compound_stmt() && !self.at(TokenKind::Match) {
-                // `match` can also be an identifier. Report this error when parsing it as a keyword.
 
                 // test_err simple_and_compound_stmt_on_same_line
                 // a; if b: pass; b
@@ -229,8 +225,6 @@ impl<'src> Parser<'src> {
             }
         }
 
-        // Ideally, we should use `expect` here but we use `eat` for better error message. Later,
-        // if the parser isn't at the start of a compound statement, we'd `expect` a newline.
         if !self.eat(TokenKind::Newline) {
             if self.at_compound_stmt() {
                 // test_err simple_and_compound_stmt_on_same_line_in_block
@@ -343,8 +337,6 @@ impl<'src> Parser<'src> {
                 }
 
                 if token == TokenKind::Type {
-                    // Type is considered a soft keyword, so we will treat it as an identifier if
-                    // it's followed by an unexpected token.
                     let (first, second) = self.peek2();
 
                     if (first == TokenKind::Identifier || first.is_soft_keyword())
@@ -362,7 +354,6 @@ impl<'src> Parser<'src> {
                 // test_ok yield_after_comma_parenthesized
                 // def f(): 1, (yield 1)
 
-                // simple_stmt: `... | yield_stmt | star_expressions | ...`
                 let parsed_expr =
                     self.parse_expression_list(ExpressionContext::yield_or_starred_bitwise_or());
 
@@ -410,8 +401,6 @@ impl<'src> Parser<'src> {
         let targets = self.parse_comma_separated_list_into_vec(
             RecoveryContextKind::DeleteTargets,
             |parser| {
-                // Allow starred expression to raise a better error message for
-                // an invalid delete target later.
                 let mut target = parser.parse_conditional_expression_or_higher_impl(
                     ExpressionContext::starred_conditional(),
                 );
@@ -1134,9 +1123,6 @@ impl<'src> Parser<'src> {
         &mut self,
         parsed_expr: &ParsedExpr,
     ) -> ast::StmtIpyEscapeCommand {
-        // We are permissive than the original implementation because we would allow whitespace
-        // between the expression and the suffix while the IPython implementation doesn't allow it.
-        // For example, `foo ?` would be valid in our case but invalid for IPython.
         fn unparse_expr(parser: &mut Parser, expr: &Expr, buffer: &mut String) {
             match expr {
                 Expr::Name(ast::ExprName { id, .. }) => {
@@ -1261,7 +1247,6 @@ impl<'src> Parser<'src> {
             self.parse_expression_list(ExpressionContext::yield_or_starred_bitwise_or());
 
         if self.at(TokenKind::Equal) {
-            // This path is only taken when there are more than one assignment targets.
             self.parse_list(RecoveryContextKind::AssignmentTargets, |parser| {
                 parser.bump(TokenKind::Equal);
 
@@ -1385,7 +1370,6 @@ impl<'src> Parser<'src> {
         op: Operator,
         start: TextSize,
     ) -> ast::StmtAugAssign {
-        // Consume the operator
         self.bump_ts(AUGMENTED_ASSIGN_SET);
 
         if !matches!(
@@ -1590,7 +1574,6 @@ impl<'src> Parser<'src> {
         });
         handlers.shrink_to_fit();
 
-        // Empty handler has `is_star` false.
         let is_star = is_star.unwrap_or_default();
         for handler_err_range in mixed_except_ranges {
             self.add_error(
@@ -2357,7 +2340,6 @@ impl<'src> Parser<'src> {
     fn try_parse_parenthesized_with_items(&mut self) -> (Option<Vec<WithItem>>, bool) {
         let checkpoint = self.checkpoint();
 
-        // We'll start with the assumption that the with items are parenthesized.
         let mut with_item_kind = WithItemKind::Parenthesized;
 
         self.bump(TokenKind::Lpar);
@@ -2378,18 +2360,9 @@ impl<'src> Parser<'src> {
                 parsed_with_items.push(parsed_with_item);
             });
 
-        // Check if our assumption is incorrect and it's actually a parenthesized expression.
         if has_optional_vars {
-            // If any of the with item has optional variables, then our assumption is correct
-            // and it is a parenthesized with items. Now, we need to restrict the grammar for a
-            // with item's context expression which is:
-            //
-            //     with_item: expression ...
-            //
-            // So, named, starred and yield expressions not allowed.
             for parsed_with_item in &parsed_with_items {
                 if parsed_with_item.is_parenthesized {
-                    // Parentheses resets the precedence.
                     continue;
                 }
                 let error = match parsed_with_item.item.context_expr {
@@ -2412,13 +2385,8 @@ impl<'src> Parser<'src> {
             )
         {
             if parsed_with_items.is_empty() {
-                // No with items, treat it as a parenthesized expression to create an empty
-                // tuple expression.
                 with_item_kind = WithItemKind::ParenthesizedExpression;
             } else {
-                // These expressions, if unparenthesized, are only allowed if it's a
-                // parenthesized expression and none of the with items have an optional
-                // variable.
                 if parsed_with_items.iter().any(|parsed_with_item| {
                     !parsed_with_item.is_parenthesized
                         && matches!(
@@ -2430,21 +2398,6 @@ impl<'src> Parser<'src> {
                 }
             }
         } else {
-            // For any other token followed by `)`, if any of the items has an optional
-            // variables (`as ...`), then our assumption is correct. Otherwise, treat
-            // it as a parenthesized expression. For example:
-            //
-            // ```python
-            // with (item1, item2 as f): ...
-            // ```
-            //
-            // This also helps in raising the correct syntax error for the following
-            // case:
-            // ```python
-            // with (item1, item2 as f) as x: ...
-            // #                        ^^
-            // #                        Expecting `:` but got `as`
-            // ```
             with_item_kind = WithItemKind::ParenthesizedExpression;
         }
 
@@ -2470,28 +2423,8 @@ impl<'src> Parser<'src> {
     fn parse_with_item(&mut self, state: WithItemParsingState) -> ParsedWithItem {
         let start = self.node_start();
 
-        // The grammar for the context expression of a with item depends on the state
-        // of with item parsing.
         let context_expr = match state {
             WithItemParsingState::Speculative => {
-                // If it's in a speculative state, the parenthesis (`(`) could be part of any of the
-                // following expression:
-                //
-                // Tuple expression          -  star_named_expression
-                // Generator expression      -  named_expression
-                // Parenthesized expression  -  (yield_expr | named_expression)
-                // Parenthesized with items  -  expression
-                //
-                // Here, the right side specifies the grammar for an element corresponding to the
-                // expression mentioned in the left side.
-                //
-                // So, the grammar used should be able to parse an element belonging to any of the
-                // above expression. At a later point, once the parser understands where the
-                // parenthesis belongs to, it'll validate and report errors for any invalid expression
-                // usage.
-                //
-                // Thus, we can conclude that the grammar used should be:
-                //      (yield_expr | star_named_expression)
                 self.parse_named_expression_or_higher(
                     ExpressionContext::yield_or_starred_bitwise_or(),
                 )
@@ -2525,7 +2458,6 @@ impl<'src> Parser<'src> {
         let mut target = self
             .parse_conditional_expression_or_higher_impl(ExpressionContext::starred_conditional());
 
-        // This has the same semantics as an assignment target.
         self.validate_assignment_target(&target.expr);
 
         helpers::set_expr_ctx(&mut target.expr, ExprContext::Store);
@@ -2597,9 +2529,6 @@ impl<'src> Parser<'src> {
             // match[0]: int
             // match [x, y, z]: dict
             TokenKind::Colon if self.peek() == TokenKind::Newline => {
-                // `match` is a keyword — colon followed by newline confirms
-                // this is a match statement, not an annotated assignment like
-                // `match [x, y, z]: {dict}` or `match[0]: int`.
                 self.bump(TokenKind::Colon);
 
                 let cases = self.parse_match_body();
@@ -2612,7 +2541,6 @@ impl<'src> Parser<'src> {
                 })
             }
             TokenKind::Newline if matches!(self.peek2(), (TokenKind::Indent, TokenKind::Case)) => {
-                // `match` is a keyword
 
                 // test_err match_expected_colon
                 // match [1, 2]
@@ -2635,7 +2563,6 @@ impl<'src> Parser<'src> {
                 })
             }
             _ => {
-                // `match` is an identifier
                 self.rewind(checkpoint);
 
                 None
@@ -2687,14 +2614,6 @@ impl<'src> Parser<'src> {
     fn parse_match_subject_expression(&mut self) -> Expr {
         let start = self.node_start();
 
-        // Subject expression grammar is:
-        //
-        //     subject_expr:
-        //         | star_named_expression ',' star_named_expressions?
-        //         | named_expression
-        //
-        // First try with `star_named_expression`, then if there's no comma,
-        // we'll restrict it to `named_expression`.
         let subject =
             self.parse_named_expression_or_higher(ExpressionContext::starred_bitwise_or());
 
@@ -2743,7 +2662,6 @@ impl<'src> Parser<'src> {
         // match foo: case _: ...
         self.expect(TokenKind::Newline);
 
-        // Use `eat` instead of `expect` for better error message.
         if !self.eat(TokenKind::Indent) {
             // test_err match_stmt_expect_indented_block
             // match foo:
@@ -2758,7 +2676,6 @@ impl<'src> Parser<'src> {
 
         let cases = self.parse_match_case_blocks();
 
-        // TODO(dhruvmanila): Should we expect `Dedent` only if there was an `Indent` present?
         self.expect(TokenKind::Dedent);
 
         cases
@@ -2910,9 +2827,6 @@ impl<'src> Parser<'src> {
                     self.current_token_range(),
                 );
 
-                // Although this statement is not a valid `async` statement,
-                // we still parse it. Guard the recursive recovery path so
-                // `async async async ...` cannot overflow the parser stack.
                 self.with_recursion(Self::parse_statement)
             }
         }
@@ -3106,8 +3020,6 @@ impl<'src> Parser<'src> {
     /// This could either be a single statement that's on the same line as the
     /// clause header or an indented block.
     fn parse_body(&mut self, parent_clause: Clause) -> Suite {
-        // Note: The test cases in this method chooses a clause at random to test
-        // the error logic.
 
         let newline_range = self.current_token_range();
         if self.eat(TokenKind::Newline) {
@@ -3187,8 +3099,6 @@ impl<'src> Parser<'src> {
     ) -> ast::Parameter {
         let name = self.parse_identifier();
 
-        // Annotations are only allowed for function definition. For lambda expression,
-        // the `:` token would indicate its body.
         let annotation = match function_kind {
             FunctionKind::FunctionDef if self.eat(TokenKind::Colon) => {
                 if self.at_expr() {
@@ -3330,22 +3240,16 @@ impl<'src> Parser<'src> {
             self.expect(TokenKind::Lpar);
         }
 
-        // TODO(dhruvmanila): This has the same problem as `parse_match_pattern_mapping`
-        // has where if there are multiple kwarg or vararg, the last one will win and
-        // the parser will drop the previous ones. Another thing is the vararg and kwarg
-        // uses `Parameter` (not `ParameterWithDefault`) which means that the parser cannot
-        // recover well from `*args=(1, 2)`.
         let mut parameters = ast::Parameters::default();
         let parameters_snapshot = self.parameter_scratch.snapshot();
         let mut args_snapshot = None;
         let mut kwonlyargs_snapshot = None;
 
-        let mut seen_default_param = false; // `a=10`
-        let mut seen_positional_only_separator = false; // `/`
-        let mut seen_keyword_only_separator = false; // `*`
+        let mut seen_default_param = false;
+        let mut seen_positional_only_separator = false;
+        let mut seen_keyword_only_separator = false;
         let mut seen_keyword_only_param_after_separator = false;
 
-        // Range of the keyword only separator if it's the last parameter in the list.
         let mut last_keyword_only_separator_range = None;
 
         self.parse_comma_separated_list(RecoveryContextKind::Parameters(function_kind), |parser| {
@@ -3398,8 +3302,6 @@ impl<'src> Parser<'src> {
                             );
                         }
 
-                        // TODO(dhruvmanila): The AST doesn't allow multiple `vararg`, so let's
-                        // choose to keep the first one so that the parameters remain in preorder.
                         if parameters.vararg.is_none() {
                             parameters.vararg = Some(Box::new(param));
                         }
@@ -3527,8 +3429,6 @@ impl<'src> Parser<'src> {
                     }
 
                     if !seen_positional_only_separator {
-                        // We should only split if we're seeing the separator for the
-                        // first time, otherwise it's a user error.
                         if kwonlyargs_snapshot.is_none() {
                             args_snapshot = Some(parser.parameter_scratch.snapshot());
                         }
@@ -3555,8 +3455,6 @@ impl<'src> Parser<'src> {
                 _ if parser.at_identifier_or_soft_keyword() => {
                     let param = parser.parse_parameter_with_default(param_start, function_kind);
 
-                    // TODO(dhruvmanila): Pyright seems to only highlight the first non-default argument
-                    // https://github.com/microsoft/pyright/blob/3b70417dd549f6663b8f86a76f75d8dfd450f4a8/packages/pyright-internal/src/parser/parser.ts#L2038-L2042
                     if param.default.is_none()
                         && seen_default_param
                         && !seen_keyword_only_separator
@@ -3581,7 +3479,6 @@ impl<'src> Parser<'src> {
                     last_keyword_only_separator_range = None;
                 }
                 _ => {
-                    // This corresponds to the expected token kinds for `is_list_element`.
                     unreachable!("Expected identifier, '*', '**', or '/'");
                 }
             }
@@ -3665,15 +3562,6 @@ impl<'src> Parser<'src> {
     fn parse_type_param(&mut self) -> ast::TypeParam {
         let start = self.node_start();
 
-        // TODO(dhruvmanila): CPython throws an error if `TypeVarTuple` or `ParamSpec`
-        // has bounds:
-        //
-        //    type X[*T: int] = int
-        //             ^^^^^
-        // SyntaxError: cannot use bound with TypeVarTuple
-        //
-        // We should do the same but currently we can't without throwing away the parsed
-        // expression because the AST can't contain it.
 
         // test_ok type_param_type_var_tuple
         // type X[*Ts] = int

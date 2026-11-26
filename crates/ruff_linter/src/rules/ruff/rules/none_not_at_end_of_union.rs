@@ -116,27 +116,22 @@ pub(crate) fn none_not_at_end_of_union<'a>(checker: &Checker, union: &'a Expr) {
         last_expr = Some(expr);
     };
 
-    // Walk through all type expressions in the union and keep track of `None` literals.
     traverse_union(&mut collect_members, semantic, union);
 
     let Some(last_expr) = last_expr else {
         return;
     };
 
-    // There must be at least one `None` expression.
     let Some(last_none) = none_exprs.last() else {
         return;
     };
 
-    // If any of the `None` literals is last we do not emit.
     if *last_none == last_expr {
         return;
     }
 
     let mut diagnostic = checker.report_diagnostic(NoneNotAtEndOfUnion, union.range());
 
-    // Skip fix for nested unions to avoid flattening, and for PEP 604 unions
-    // with multiple `None`s to avoid generating `None | None`.
     if has_nested_union(semantic, union)
         || other_exprs.is_empty()
         || is_pep604 && none_exprs.len() > 1
@@ -174,7 +169,6 @@ fn generate_fix(
     let new_expr = if is_pep604 {
         pep_604_union(&reordered)
     } else {
-        // Preserve the original subscript value (e.g., `Union`, `U`, `typing.Union`).
         let Expr::Subscript(subscript) = annotation else {
             return None;
         };

@@ -155,7 +155,6 @@ pub fn set_up_logging(level: LogLevel) -> Result<()> {
         .level_for("ty_python_semantic", log::LevelFilter::Warn)
         .level_for("salsa", log::LevelFilter::Warn)
         .chain(fern::Output::call(|record| {
-            // Fern reports write errors to stderr and panics if that write also fails.
             writeln!(io::stderr().lock(), "{}", record.args()).ok();
         }))
         .apply()?;
@@ -196,7 +195,6 @@ impl DisplayParseError {
         source_code: &SourceCode,
         source_kind: &SourceKind,
     ) -> Self {
-        // Translate the byte offset to a location in the originating source.
         let location =
             if let Some(jupyter_index) = source_kind.as_ipy_notebook().map(Notebook::index) {
                 let source_location = source_code.line_column(error.location.start());

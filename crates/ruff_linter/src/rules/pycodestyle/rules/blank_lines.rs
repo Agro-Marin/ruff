@@ -430,7 +430,6 @@ impl Iterator for LinePreprocessor<'_> {
     fn next(&mut self) -> Option<LogicalLineInfo> {
         let mut line_is_comment_only = true;
         let mut is_docstring = false;
-        // Number of consecutive blank lines directly preceding this logical line.
         let mut blank_lines = BlankLines::Zero;
         let mut first_logical_line_token: Option<(LogicalLineKind, TextRange)> = None;
         let mut last_token = TokenKind::EndOfFile;
@@ -445,9 +444,7 @@ impl Iterator for LinePreprocessor<'_> {
                 if let Some(first_token_range) = first_logical_line_token {
                     first_token_range
                 }
-                // At the start of the line...
                 else {
-                    // Check if we are at the beginning of a cell in a notebook.
                     if let Some(ref mut cell_offsets) = self.cell_offsets {
                         if cell_offsets
                             .peek()
@@ -460,7 +457,6 @@ impl Iterator for LinePreprocessor<'_> {
                         }
                     }
 
-                    // An empty line
                     if kind == TokenKind::NonLogicalNewline {
                         blank_lines.add(range);
 
@@ -476,7 +472,6 @@ impl Iterator for LinePreprocessor<'_> {
                         TokenKind::Comment => LogicalLineKind::Comment,
                         TokenKind::At => LogicalLineKind::Decorator,
                         TokenKind::Def => LogicalLineKind::Function,
-                        // Lookahead to distinguish `async def` from `async with`.
                         TokenKind::Async
                             if self
                                 .tokens
@@ -499,8 +494,6 @@ impl Iterator for LinePreprocessor<'_> {
                 line_is_comment_only = false;
             }
 
-            // A docstring line is composed only of the docstring (TokenKind::String) and trivia tokens.
-            // (If a comment follows a docstring, we still count the line as a docstring)
             if kind != TokenKind::String && !is_non_logical_token(kind) {
                 is_docstring = false;
             }
@@ -526,12 +519,10 @@ impl Iterator for LinePreprocessor<'_> {
                     preceding_blank_lines: self.max_preceding_blank_lines,
                 };
 
-                // Reset the blank lines after a non-comment only line.
                 if !line_is_comment_only {
                     self.max_preceding_blank_lines = BlankLines::Zero;
                 }
 
-                // Set the start for the next logical line.
                 self.line_start = range.end();
 
                 if self.cell_offsets.is_some() && !line_is_comment_only {
@@ -637,7 +628,6 @@ enum Follows {
 }
 
 impl Follows {
-    // Allow a function/method to follow a function/method with a dummy body.
     const fn follows_def_with_dummy_body(self) -> bool {
         matches!(self, Follows::DummyDef)
     }
@@ -687,7 +677,6 @@ impl Status {
                 }
             }
             Status::Outside => {
-                // Nothing to do
             }
         }
     }
@@ -741,28 +730,12 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
         );
 
         for logical_line in line_preprocessor {
-            // Reset `follows` after a dedent:
-            // ```python
-            // if True:
-            //      import test
-            // a = 10
-            // ```
-            // The `a` statement doesn't follow the `import` statement but the `if` statement.
             if let Some(prev_indent_length) = prev_indent_length {
                 if prev_indent_length > logical_line.indent_length {
                     state.follows = Follows::Other;
                 }
             }
 
-            // Reset the previous line end after an indent or dedent:
-            // ```python
-            // if True:
-            //      import test
-            //      # comment
-            // a = 10
-            // ```
-            // The `# comment` should be attached to the `import` statement, rather than the
-            // assignment.
             if let Some(prev_logical_line) = prev_logical_line {
                 if prev_logical_line.is_comment_only {
                     if prev_logical_line.indent_length != logical_line.indent_length {
@@ -838,24 +811,15 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
         prev_indent_length: Option<usize>,
     ) {
         if line.preceding_blank_lines == 0
-            // Only applies to methods.
             && matches!(line.kind,  LogicalLineKind::Function | LogicalLineKind::Decorator)
-            // Allow groups of one-liners.
             && !(state.follows.is_any_def() && line.last_token != TokenKind::Colon)
             && !state.follows.follows_def_with_dummy_body()
-            // Only for class scope: we must be inside a class block
             && matches!(state.class_status, Status::Inside(_))
-            // But NOT inside a function body; nested defs inside methods are handled by E306
             && matches!(state.fn_status, Status::Outside | Status::CommentAfter(_))
-            // The class/parent method's docstring can directly precede the def.
-            // Allow following a decorator (if there is an error it will be triggered on the first decorator).
             && !matches!(state.follows, Follows::Docstring | Follows::Decorator)
-            // Do not trigger when the def follows an if/while/etc...
             && prev_indent_length.is_some_and(|prev_indent_length| prev_indent_length >= line.indent_length)
-            // Blank lines in stub files are only used for grouping. Don't enforce blank lines.
             && !self.source_type.is_stub()
         {
-            // E301
             if let Some(mut diagnostic) =
                 self.report_diagnostic(BlankLineBetweenMethods, line.first_token_range)
             {
@@ -866,7 +830,6 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
             }
         }
 
-        // Blank lines in stub files are used to group definitions. Don't enforce blank lines.
         let max_lines_level = if self.source_type.is_stub() {
             1
         } else {
@@ -878,13 +841,7 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
         };
 
         let expected_blank_lines_before_definition = if line.indent_length == 0 {
-            // Mimic the isort rules for the number of blank lines before classes and functions
             if state.follows.is_any_import() {
-                // Fallback to the default if the value is too large for an u32 or if it is negative.
-                // A negative value means that isort should determine the blank lines automatically.
-                // `isort` defaults to 2 if before a class or function definition (except in stubs where it is one) and 1 otherwise.
-                // Defaulting to 2 (or 1 in stubs) here is correct because the variable is only used when testing the
-                // blank lines before a class or function definition.
                 u32::try_from(self.context.settings().isort.lines_after_imports)
                     .unwrap_or(max_lines_level)
             } else {
@@ -895,23 +852,15 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
         };
 
         if line.preceding_blank_lines < expected_blank_lines_before_definition
-            // Allow following a decorator (if there is an error it will be triggered on the first decorator).
             && !matches!(state.follows, Follows::Decorator)
-            // Allow groups of one-liners.
             && !(state.follows.is_any_def() && line.last_token != TokenKind::Colon)
             && !(state.follows.follows_def_with_dummy_body() && line.preceding_blank_lines == 0)
-            // Only trigger on non-indented classes and functions (for example functions within an if are ignored)
             && line.indent_length == 0
-            // Only apply to functions or classes.
             && line.kind.is_class_function_or_decorator()
-            // Blank lines in stub files are used to group definitions. Don't enforce blank lines.
             && !self.source_type.is_stub()
-            // Do not expect blank lines before the first logical line.
             && state.is_not_first_logical_line
-            // Ignore the first logical line (and any comment preceding it) of each cell in notebooks.
             && !line.is_beginning_of_cell
         {
-            // E302
             if let Some(mut diagnostic) = self.report_diagnostic(
                 BlankLinesTopLevel {
                     actual_blank_lines: line.preceding_blank_lines.count(),
@@ -939,10 +888,6 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
             }
         }
 
-        // If between `import` and `from .. import ..` or the other way round,
-        // allow up to `lines_between_types` newlines for isort compatibility.
-        // We let `isort` remove extra blank lines when the imports belong
-        // to different sections.
         let max_blank_lines = if matches!(
             (line.kind, state.follows),
             (LogicalLineKind::Import, Follows::FromImport)
@@ -957,7 +902,6 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
         };
 
         if line.blank_lines > max_blank_lines {
-            // E303
             if let Some(mut diagnostic) = self.report_diagnostic(
                 TooManyBlankLines {
                     actual_blank_lines: line.blank_lines.count(),
@@ -981,15 +925,12 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
             && !line.is_comment_only
             && line.preceding_blank_lines > 0
         {
-            // E304
             if let Some(mut diagnostic) = self.report_diagnostic(
                 BlankLineAfterDecorator {
                     actual_blank_lines: line.preceding_blank_lines.count(),
                 },
                 line.first_token_range,
             ) {
-                // Get all the lines between the last decorator line (included) and the current line (included).
-                // Then remove all blank lines.
                 let trivia_range = TextRange::new(
                     state.last_non_comment_line_end,
                     self.locator.line_start(line.first_token_range.start()),
@@ -1023,12 +964,9 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
             && line.indent_length == 0
             && !line.is_comment_only
             && !line.kind.is_class_function_or_decorator()
-            // Blank lines in stub files are used for grouping, don't enforce blank lines.
             && !self.source_type.is_stub()
-            // Ignore the first logical line (and any comment preceding it) of each cell in notebooks.
             && !line.is_beginning_of_cell
         {
-            // E305
             if let Some(mut diagnostic) = self.report_diagnostic(
                 BlankLinesAfterFunctionOrClass {
                     actual_blank_lines: line.preceding_blank_lines.count(),
@@ -1054,22 +992,15 @@ impl<'a, 'b> BlankLinesChecker<'a, 'b> {
         }
 
         if line.preceding_blank_lines == 0
-            // Only apply to nested functions.
             && matches!(state.fn_status, Status::Inside(_))
             && line.kind.is_class_function_or_decorator()
-            // Allow following a decorator (if there is an error it will be triggered on the first decorator).
             && !matches!(state.follows, Follows::Decorator)
-            // The class's docstring can directly precede the first function.
             && !matches!(state.follows, Follows::Docstring)
-            // Do not trigger when the def/class follows an "indenting token" (if/while/etc...).
             && prev_indent_length.is_some_and(|prev_indent_length| prev_indent_length >= line.indent_length)
-            // Allow groups of one-liners.
             && !(state.follows.is_any_def() && line.last_token != TokenKind::Colon)
             && !state.follows.follows_def_with_dummy_body()
-            // Blank lines in stub files are only used for grouping. Don't enforce blank lines.
             && !self.source_type.is_stub()
         {
-            // E306
             if let Some(mut diagnostic) =
                 self.report_diagnostic(BlankLinesBeforeNestedDefinition, line.first_token_range)
             {

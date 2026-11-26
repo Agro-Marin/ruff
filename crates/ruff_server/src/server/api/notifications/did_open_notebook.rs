@@ -38,7 +38,6 @@ impl super::SyncNotificationHandler for DidOpenNotebook {
 
         session.open_notebook_document(uri.clone(), notebook);
 
-        // publish diagnostics
         let snapshot = session
             .take_snapshot(uri)
             .expect("snapshot should be available");

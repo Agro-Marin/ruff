@@ -357,7 +357,6 @@ pub(crate) fn typing_only_runtime_import(
     scope: &Scope,
     runtime_imports: &[&Binding],
 ) {
-    // Collect all typing-only imports by statement and import type.
     let mut errors_by_statement: FxHashMap<(NodeId, ImportType), Vec<ImportBinding>> =
         FxHashMap::default();
     let mut ignores_by_statement: FxHashMap<(NodeId, ImportType), Vec<ImportBinding>> =
@@ -366,8 +365,6 @@ pub(crate) fn typing_only_runtime_import(
     for binding_id in scope.binding_ids() {
         let binding = checker.semantic().binding(binding_id);
 
-        // If we're in un-strict mode, don't flag typing-only imports that are
-        // implicitly loaded by way of a valid runtime import.
         if !checker.settings().flake8_type_checking.strict
             && runtime_imports
                 .iter()
@@ -395,8 +392,6 @@ pub(crate) fn typing_only_runtime_import(
 
         let needs_future_import = match typing_reference {
             TypingReference::Runtime | TypingReference::RuntimeAmbiguous => continue,
-            // We can only get the `Future` variant if `future_annotations` is
-            // enabled, so we can unconditionally set this here.
             TypingReference::Future => true,
             TypingReference::TypingOnly | TypingReference::Quote => false,
         };
@@ -418,7 +413,6 @@ pub(crate) fn typing_only_runtime_import(
 
         let source_name = import.source_name().join(".");
 
-        // Categorize the import, using coarse-grained categorization.
         let import_type = match categorize(
             &source_name,
             qualified_name.is_unresolved_import(),
@@ -478,8 +472,6 @@ pub(crate) fn typing_only_runtime_import(
         }
     }
 
-    // Generate a diagnostic for every import, but share a fix across all imports within the same
-    // statement (excluding those that are ignored).
     #[expect(
         clippy::iter_over_hash_type,
         reason = "each statement group produces diagnostics and a fix independently"
@@ -511,8 +503,6 @@ pub(crate) fn typing_only_runtime_import(
         }
     }
 
-    // Separately, generate a diagnostic for every _ignored_ import, to ensure that the
-    // suppression comments aren't marked as unused.
     #[expect(
         clippy::iter_over_hash_type,
         reason = "each ignored statement group produces diagnostics independently"
@@ -633,7 +623,6 @@ fn fix_imports(
         .map(Imported::member_name)
         .collect();
 
-    // Find the first reference across all imports.
     let at = imports
         .iter()
         .map(|ImportBinding { reference_id, .. }| {
@@ -644,7 +633,6 @@ fn fix_imports(
 
     let add_future_import = imports.iter().any(|binding| binding.needs_future_import);
 
-    // Step 1) Remove the import.
     let remove_import_edit = fix::edits::remove_unused_imports(
         member_names.iter().map(AsRef::as_ref),
         statement,
@@ -654,7 +642,6 @@ fn fix_imports(
         checker.indexer(),
     )?;
 
-    // Step 2) Add the import to a `TYPE_CHECKING` block.
     let (type_checking_edit, add_import_edit) = checker
         .importer()
         .typing_import_edit(
@@ -667,14 +654,9 @@ fn fix_imports(
         )?
         .into_edits();
 
-    // Step 3) Either add a `__future__` import or quote any runtime usages of the referenced
-    // symbol.
     let fix = if add_future_import {
         let future_import = checker.importer().add_future_import();
 
-        // The order here is very important. We first need to add the `__future__` import, if
-        // needed, since it's a syntax error to come later. Then `type_checking_edit` imports
-        // `TYPE_CHECKING`, if available. Then we can add and/or remove existing imports.
         Fix::unsafe_edits(
             future_import,
             std::iter::once(type_checking_edit)
@@ -739,7 +721,6 @@ impl ImportFixStyle {
             Stmt::ImportFrom(import) => &import.names,
             _ => return Self::TypeCheckingBlock,
         };
-        // Other members may be used at runtime, suppressed, or governed by another lazy-import policy.
         if names.len() != 1 {
             return Self::TypeCheckingBlock;
         }

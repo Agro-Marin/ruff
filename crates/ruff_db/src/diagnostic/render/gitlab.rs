@@ -63,8 +63,6 @@ impl Serialize for SerializedMessages<'_> {
             let location = diagnostic.primary_span().map_or_default(|span| {
                 let file = span.file();
                 let positions = if self.resolver.is_notebook(file) {
-                    // We can't give a reasonable location for the structured formats,
-                    // so we show one that's clearly a fallback
                     Default::default()
                 } else {
                     let diagnostic_source = file.diagnostic_source(self.resolver);
@@ -85,7 +83,6 @@ impl Serialize for SerializedMessages<'_> {
 
             let mut message_fingerprint = fingerprint(diagnostic, &location.path, 0);
 
-            // Make sure that we do not get a fingerprint that is already in use
             // by adding in the previously generated one.
             while fingerprints.contains(&message_fingerprint) {
                 message_fingerprint = fingerprint(diagnostic, &location.path, message_fingerprint);
@@ -102,14 +99,11 @@ impl Serialize for SerializedMessages<'_> {
                 Severity::Hint | Severity::Info => "info",
                 Severity::Warning => "minor",
                 Severity::Error => "major",
-                // Another option here is `blocker`
                 Severity::Fatal => "critical",
             };
 
             let value = Message {
                 check_name,
-                // GitLab doesn't display the separate `check_name` field in a Code Quality report,
-                // so prepend it to the description too.
                 description: format!("{check_name}: {description}"),
                 severity,
                 fingerprint: format!("{:x}", message_fingerprint),

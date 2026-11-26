@@ -58,7 +58,6 @@ pub(crate) fn dag_no_schedule_argument(checker: &Checker, expr: &Expr) {
         return;
     }
 
-    // Don't check non-call expressions.
     let Expr::Call(ast::ExprCall {
         func, arguments, ..
     }) = expr
@@ -66,8 +65,6 @@ pub(crate) fn dag_no_schedule_argument(checker: &Checker, expr: &Expr) {
         return;
     };
 
-    // We don't do anything unless this is a `DAG` (class) or `dag` (decorator
-    // function) from Airflow.
     if !checker
         .semantic()
         .resolve_qualified_name(func)
@@ -76,10 +73,6 @@ pub(crate) fn dag_no_schedule_argument(checker: &Checker, expr: &Expr) {
         return;
     }
 
-    // If there's a schedule keyword argument, we are good.
-    // This includes the canonical 'schedule', and the deprecated 'timetable'
-    // and 'schedule_interval'. Usages of deprecated schedule arguments are
-    // covered by AIR301.
     if ["schedule", "schedule_interval", "timetable"]
         .iter()
         .any(|a| arguments.find_keyword(a).is_some())
@@ -87,6 +80,5 @@ pub(crate) fn dag_no_schedule_argument(checker: &Checker, expr: &Expr) {
         return;
     }
 
-    // Produce a diagnostic when the `schedule` keyword argument is not found.
     checker.report_diagnostic(AirflowDagNoScheduleArgument, expr.range());
 }

@@ -148,7 +148,7 @@ impl Server {
                 encodings
                     .iter()
                     .filter_map(|encoding| PositionEncoding::try_from(encoding).ok())
-                    .max() // this selects the highest priority position encoding
+                    .max()
             })
             .unwrap_or_default()
     }
@@ -218,7 +218,6 @@ impl Server {
             diagnostic_provider: Some(
                 DiagnosticOptions {
                     identifier: Some(crate::DIAGNOSTIC_NAME.into()),
-                    // multi-file analysis could change this
                     inter_file_dependencies: false,
                     workspace_diagnostics: false,
                     work_done_progress_options: WorkDoneProgressOptions {
@@ -376,7 +375,6 @@ type PanicHook = Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>;
 
 struct ServerPanicHookHandler {
     hook: Option<PanicHook>,
-    // Hold on to the strong reference for as long as the panic hook is set.
     _client: Arc<Client>,
 }
 
@@ -385,20 +383,14 @@ impl ServerPanicHookHandler {
         let hook = std::panic::take_hook();
         let client = Arc::new(client);
 
-        // Use a weak reference to the client because it must be dropped when exiting or the
-        // io-threads join hangs forever (because client has a reference to the connection sender).
         let hook_client = Arc::downgrade(&client);
 
-        // When we panic, try to notify the client.
         std::panic::set_hook(Box::new(move |panic_info| {
             use std::io::Write;
 
             let backtrace = std::backtrace::Backtrace::force_capture();
             tracing::error!("{panic_info}\n{backtrace}");
 
-            // we also need to print to stderr directly for when using `$logTrace` because
-            // the message won't be sent to the client.
-            // But don't use `eprintln` because `eprintln` itself may panic if the pipe is broken.
             let mut stderr = std::io::stderr().lock();
             writeln!(stderr, "{panic_info}\n{backtrace}").ok();
 
@@ -422,7 +414,6 @@ impl ServerPanicHookHandler {
 impl Drop for ServerPanicHookHandler {
     fn drop(&mut self) {
         if std::thread::panicking() {
-            // Calling `std::panic::set_hook` while panicking results in a panic.
             return;
         }
 

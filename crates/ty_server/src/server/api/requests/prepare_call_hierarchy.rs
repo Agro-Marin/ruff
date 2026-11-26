@@ -95,8 +95,6 @@ pub(super) fn convert_to_lsp_item(
         uri,
         range: full_range.local_range(),
         selection_range: selection_range.local_range(),
-        // The `data` field is intentionally unused. We re-derive identity from
-        // `(uri, selection_range.start)` — see `resolve_item_location`.
         data: None,
     })
 }

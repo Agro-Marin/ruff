@@ -164,7 +164,6 @@ pub(crate) fn link_door_declared(checker: &Checker, suite: &Suite) {
     for range in module.retired {
         checker.report_diagnostic(LinkDoorDeclared { route: None }, range);
     }
-    // A function that calls a door is a door for the functions of the file.
     let mut doors: FxHashSet<&str> = DOORS.iter().copied().collect();
     let mut grew = true;
     while grew {

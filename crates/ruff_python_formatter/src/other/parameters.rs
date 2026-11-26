@@ -64,18 +64,8 @@ impl FormatNodeRule<Parameters> for FormatParameters {
         let comments = f.context().comments().clone();
         let dangling = comments.dangling(item);
 
-        // First dangling comment: trailing the opening parenthesis, e.g.:
-        // ```python
-        // def f(  # comment
-        //     x,
-        //     y,
-        //     z,
-        // ): ...
-        // TODO(charlie): We already identified this comment as such in placement.rs. Consider
-        // labeling it as such. See: https://github.com/astral-sh/ruff/issues/5247.
         let parenthesis_comments_end = usize::from(dangling.first().is_some_and(|comment| {
             if comment.line_position().is_end_of_line() {
-                // Ensure that there are no tokens between the open bracket and the comment.
                 let mut lexer = SimpleTokenizer::new(
                     f.context().source(),
                     TextRange::new(item.start(), comment.start()),
@@ -96,8 +86,6 @@ impl FormatNodeRule<Parameters> for FormatParameters {
             false
         }));
 
-        // Separate into (dangling comments on the open parenthesis) and (dangling comments on the
-        // argument separators, e.g., `*` or `/`).
         let (parenthesis_dangling, parameters_dangling) =
             dangling.split_at(parenthesis_comments_end);
 
@@ -120,14 +108,6 @@ impl FormatNodeRule<Parameters> for FormatParameters {
                 last_node = Some(parameter_with_default.into());
             }
 
-            // Second dangling comment: trailing the slash, e.g.:
-            // ```python
-            // def f(
-            //     x,
-            //     /,  # comment
-            //     y,
-            //     z,
-            // ): ...
             let slash_comments_end = if posonlyargs.is_empty() {
                 0
             } else {
@@ -158,9 +138,6 @@ impl FormatNodeRule<Parameters> for FormatParameters {
                 last_node = Some(parameter_with_default.into());
             }
 
-            // kw only args need either a `*args` ahead of them capturing all var args or a `*`
-            // pseudo-argument capturing all fields. We can also have `*args` without any kwargs
-            // afterwards.
             if let Some(vararg) = vararg {
                 joiner.entry(&format_args![
                     leading_node_comments(vararg.as_ref()),
@@ -169,22 +146,6 @@ impl FormatNodeRule<Parameters> for FormatParameters {
                 ]);
                 last_node = Some(vararg.as_ref().into());
             } else if !kwonlyargs.is_empty() {
-                // Given very strange comment placement, comments here may not actually have been
-                // marked as `StarLeading`/`StarTrailing`, but that's fine since we still produce
-                // a stable formatting in this case
-                // ```python
-                // def f42(
-                //     a,
-                //     / # 1
-                //     # 2
-                //     , # 3
-                //     # 4
-                //     * # 5
-                //     , # 6
-                //     c,
-                // ):
-                //     pass
-                // ```
                 joiner.entry(&CommentsAroundText {
                     text: "*",
                     comments: &parameters_dangling[slash_comments_end..],
@@ -208,21 +169,7 @@ impl FormatNodeRule<Parameters> for FormatParameters {
 
             joiner.finish()?;
 
-            // Functions use the regular magic trailing comma logic, lambdas may or may not have
-            // a trailing comma but it's just preserved without any magic.
-            // ```python
-            // # Add magic trailing comma if its expands
-            // def f(a): pass
-            // # Expands if magic trailing comma setting is respect, otherwise remove the comma
-            // def g(a,): pass
-            // # Never expands
-            // x1 = lambda y: 1
-            // # Never expands, the comma is always preserved
-            // x2 = lambda y,: 1
-            // ```
             if self.parentheses == ParametersParentheses::Never {
-                // For lambdas (no parentheses), preserve the trailing comma. It doesn't
-                // behave like a magic trailing comma, it's just preserved
                 if has_trailing_comma(item, last_node, f.context().source()) {
                     write!(f, [token(",")])?;
                 }
@@ -232,7 +179,6 @@ impl FormatNodeRule<Parameters> for FormatParameters {
                 if f.options().magic_trailing_comma().is_respect()
                     && has_trailing_comma(item, last_node, f.context().source())
                 {
-                    // Make the magic trailing comma expand the group
                     write!(f, [hard_line_break()])?;
                 }
             }
@@ -246,11 +192,8 @@ impl FormatNodeRule<Parameters> for FormatParameters {
             write!(f, [group(&format_inner), dangling_comments(dangling)])
         } else if num_parameters == 0 {
             let mut f = WithNodeLevel::new(NodeLevel::ParenthesizedExpression, f);
-            // No parameters, format any dangling comments between `()`
             write!(f, [empty_parenthesized("(", dangling, ")")])
         } else if num_parameters == 1 && posonlyargs.is_empty() && kwonlyargs.is_empty() {
-            // If we have a single argument, avoid the inner group, to ensure that we insert a
-            // trailing comma if the outer group breaks.
             let mut f = WithNodeLevel::new(NodeLevel::ParenthesizedExpression, f);
             write!(
                 f,
@@ -262,9 +205,6 @@ impl FormatNodeRule<Parameters> for FormatParameters {
                 ]
             )
         } else {
-            // Intentionally avoid `parenthesized`, which groups the entire formatted contents.
-            // We want parameters to be grouped alongside return types, one level up, so we
-            // format them "inline" here.
             let mut f = WithNodeLevel::new(NodeLevel::ParenthesizedExpression, f);
             write!(
                 f,
@@ -289,18 +229,6 @@ impl Format<PyFormatContext<'_>> for CommentsAroundText<'_> {
         if self.comments.is_empty() {
             token(self.text).fmt(f)
         } else {
-            // There might be own line comments in trailing, but those are weird and we can kinda
-            // ignore them
-            // ```python
-            // def f42(
-            //     a,
-            //     # leading comment (own line)
-            //     / # first trailing comment (end-of-line)
-            //     # trailing own line comment
-            //     ,
-            //     c,
-            // ):
-            // ```
             let (leading, trailing) = self.comments.split_at(
                 self.comments
                     .partition_point(|comment| comment.line_position().is_own_line()),
@@ -345,15 +273,7 @@ pub(crate) fn find_parameter_separators(
     contents: &str,
     parameters: &Parameters,
 ) -> (Option<ParameterSeparator>, Option<ParameterSeparator>) {
-    // We only compute preceding_end and token location here since following_start depends on the
-    // star location, but the star location depends on slash's position
     let slash = if let Some(preceding_end) = parameters.posonlyargs.last().map(Ranged::end) {
-        // ```text
-        // def f(a1=1, a2=2, /, a3, a4): pass
-        //                 ^^^^^^^^^^^ the range (defaults)
-        // def f(a1, a2, /, a3, a4): pass
-        //             ^^^^^^^^^^^^ the range (no default)
-        // ```
         let range = TextRange::new(preceding_end, parameters.end());
         let mut tokens = SimpleTokenizer::new(contents, range).skip_trivia();
 
@@ -371,16 +291,9 @@ pub(crate) fn find_parameter_separators(
         None
     };
 
-    // If we have a vararg we have a node that the comments attach to
     let star = if parameters.vararg.is_some() {
-        // When the vararg is present the comments attach there and we don't need to do manual
-        // formatting
         None
     } else if let Some(first_keyword_argument) = parameters.kwonlyargs.first() {
-        // Check in that order:
-        // * `f(a, /, b, *, c)` and `f(a=1, /, b=2, *, c)`
-        // * `f(a, /, *, b)`
-        // * `f(*, b)` (else branch)
         let after_parameters = parameters
             .args
             .last()
@@ -411,8 +324,6 @@ pub(crate) fn find_parameter_separators(
                 .next()
                 .expect("The function definition can't end here");
 
-            // In a function definition, the first token should always be a `(`; in a lambda
-            // definition, it _can't_ be a `(`.
             let star = if lparen_or_star.kind == SimpleTokenKind::LParen {
                 tokens
                     .next()
@@ -432,13 +343,6 @@ pub(crate) fn find_parameter_separators(
         None
     };
 
-    // Now that we have star, compute how long slash trailing comments can go
-    // Check in that order:
-    // * `f(a, /, b)`
-    // * `f(a, /, *b)`
-    // * `f(a, /, *, b)`
-    // * `f(a, /, *, **b)`
-    // * `f(a, /)`
     let slash_following_start = parameters
         .args
         .first()
@@ -558,15 +462,6 @@ pub(crate) fn assign_argument_separator_comment_placement(
         following_start,
     }) = slash
     {
-        // ```python
-        // def f(
-        //    # start too early
-        //    a,  # not own line
-        //    # this is the one
-        //    /, # too late (handled later)
-        //    b,
-        // )
-        // ```
         if comment_range.start() > *preceding_end
             && comment_range.start() < slash.start()
             && text_position.is_own_line()
@@ -574,15 +469,6 @@ pub(crate) fn assign_argument_separator_comment_placement(
             return Some(ArgumentSeparatorCommentLocation::SlashLeading);
         }
 
-        // ```python
-        // def f(
-        //    a,
-        //    # too early (handled above)
-        //    /, # this is the one
-        //    # not end-of-line
-        //    b,
-        // )
-        // ```
         if comment_range.start() > slash.end()
             && comment_range.start() < *following_start
             && text_position.is_end_of_line()
@@ -597,15 +483,6 @@ pub(crate) fn assign_argument_separator_comment_placement(
         following_start,
     }) = star
     {
-        // ```python
-        // def f(
-        //    # start too early
-        //    a,  # not own line
-        //    # this is the one
-        //    *, # too late (handled later)
-        //    b,
-        // )
-        // ```
         if comment_range.start() > *preceding_end
             && comment_range.start() < star.start()
             && text_position.is_own_line()
@@ -613,15 +490,6 @@ pub(crate) fn assign_argument_separator_comment_placement(
             return Some(ArgumentSeparatorCommentLocation::StarLeading);
         }
 
-        // ```python
-        // def f(
-        //    a,
-        //    # too early (handled above)
-        //    *, # this is the one
-        //    # not end-of-line
-        //    b,
-        // )
-        // ```
         if comment_range.start() > star.end()
             && comment_range.start() < *following_start
             && text_position.is_end_of_line()
@@ -657,7 +525,6 @@ fn has_trailing_comma(
     last_node: Option<AnyNodeRef>,
     source: &str,
 ) -> bool {
-    // No nodes, no trailing comma
     let Some(last_node) = last_node else {
         return false;
     };
@@ -669,8 +536,6 @@ fn has_trailing_comma(
         && parameters.kwarg.is_none();
 
     let mut tokens = SimpleTokenizer::starts_at(last_node.end(), source).skip_trivia();
-    // `def a(b, c, /): ... `
-    // The slash lacks its own node
     if ends_with_pos_only_argument_separator {
         let comma = tokens.next();
         assert_matches!(

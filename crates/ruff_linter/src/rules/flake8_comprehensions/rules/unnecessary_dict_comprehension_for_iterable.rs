@@ -82,10 +82,6 @@ pub(crate) fn unnecessary_dict_comprehension_for_iterable(
         return;
     };
 
-    // Don't suggest `dict.fromkeys` for:
-    // - async generator expressions, because `dict.fromkeys` is not async.
-    // - nested generator expressions, because `dict.fromkeys` might be error-prone option at least for fixing.
-    // - generator expressions with `if` clauses, because `dict.fromkeys` might not be valid option.
     if !generator.ifs.is_empty() {
         return;
     }
@@ -97,24 +93,18 @@ pub(crate) fn unnecessary_dict_comprehension_for_iterable(
         return;
     };
 
-    // Don't suggest `dict.keys` if the target is not the same as the key.
     if ComparableExpr::from(&generator.target) != ComparableExpr::from(key) {
         return;
     }
 
-    // Don't suggest `dict.fromkeys` if the target contains side-effecting expressions
-    // (attributes, subscripts, or slices).
     if contains_side_effecting_sub_expression(&generator.target) {
         return;
     }
 
-    // Don't suggest `dict.fromkeys` if the value is not a constant or constant-like.
     if !is_constant_like(dict_comp.value.as_ref()) {
         return;
     }
 
-    // Don't suggest `dict.fromkeys` if any of the expressions in the value are defined within
-    // the comprehension (e.g., by the target).
     let self_referential = any_over_expr(dict_comp.value.as_ref(), |expr| {
         let Expr::Name(name) = expr else {
             return false;
@@ -126,10 +116,6 @@ pub(crate) fn unnecessary_dict_comprehension_for_iterable(
 
         let binding = checker.semantic().binding(id);
 
-        // Builtin bindings have a range of 0..0, and are never
-        // defined within the comprehension, so we abort before
-        // checking the range overlap below. Note this only matters
-        // if the comprehension appears at the top of the file!
         if binding.kind.is_builtin() {
             return false;
         }

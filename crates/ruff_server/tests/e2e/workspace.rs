@@ -116,7 +116,6 @@ fn nested_workspace_root_is_not_excluded_by_an_ancestor() -> Result<()> {
             .context("nested workspace should be formatted")?,
         @"value = 'hello'"
     );
-    // Explicitly opening `sub` does not override its own exclusion of `foo`.
     assert!(open_and_format(&mut server, "sub/foo/test.py", SOURCE).is_none());
 
     Ok(())

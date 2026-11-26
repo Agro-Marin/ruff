@@ -23,7 +23,6 @@ from benchmark.projects import IncrementalEdit, Project
 from benchmark.tool import Pyrefly, Pyright, Tool, Ty, Zuban
 from benchmark.venv import Venv
 
-# Tools to benchmark (only those with LSP support).
 TOOLS_TO_BENCHMARK: Final = [
     Ty(),
     Pyright(),
@@ -110,21 +109,17 @@ def run_benchmark(
     venv: Venv,
     init_test: Callable[[Project, Tool, Venv], LspTest],
 ):
-    # Set benchmark group to project name for better readability.
     benchmark.group = project.name
     verbose = request.config.getoption("verbose") > 0
 
     edited_file_backup: Path | None = None
 
-    # some make changes to the main file. Create a backup and restore it before each test
-    # and once the entire suite is done.
     if project.edit:
         edited_file_path = venv.project_path / project.edit.edited_file
         edited_file_backup = edited_file_path.with_name(edited_file_path.name + ".bak")
         edited_file_path.copy(edited_file_backup)
 
     try:
-        # Use asyncio.Runner to keep the same event loop alive across setup and measure.
         with tool.configure_lsp(project, venv), asyncio.Runner() as runner:
 
             def setup():
@@ -145,16 +140,12 @@ def run_benchmark(
                 test.assert_output(verbose=verbose)
                 runner.run(test.teardown())
 
-                # Only do verbose output on the first (warm-up) run to avoid
-                # that the printing changes the benchmark result.
                 verbose = False
 
-            # Run the benchmark using pedantic mode.
             benchmark.pedantic(
                 run,
                 setup=setup,
                 teardown=teardown,
-                # total executions = rounds * iterations
                 warmup_rounds=2,
                 rounds=10,
                 iterations=1,
@@ -185,7 +176,6 @@ class LspTest(ABC):
 
     @cached_property
     def cwd(self) -> Path:
-        # Use one physical path for process, workspace, and document identities.
         return self.venv.project_path.resolve()
 
     @property
@@ -324,11 +314,6 @@ class IncrementalEditTest(LspTest):
         )
 
         if not self.client.server_supports_pull_diagnostics:
-            # Pyrefly sometimes sends more than one publish diagnostic per file,
-            # and it doesn't support versioned publish diagnostics, making it impossible
-            # for the client to tell if we already received the newest publish diagnostic
-            # notification or not. Because of that, sleep, clear all publish diagnostic
-            # notifications before sending the change notification.
             await asyncio.sleep(1)
             self.client.clear_pending_publish_diagnostics()
 
@@ -348,7 +333,6 @@ class IncrementalEditTest(LspTest):
 
         all_files = list(self.files_to_check())
 
-        # wait for the didChange publish notifications or pull the new diagnostics
         self.after_edit_diagnostics = (
             await self.client.text_documents_diagnostics_async(all_files)
         )
@@ -357,9 +341,6 @@ class IncrementalEditTest(LspTest):
             len(diagnostics) for f, diagnostics in self.after_edit_diagnostics
         )
 
-        # IMPORTANT: Write the file back to disk!
-        # Pyrefly, as of Nov 27, requires that the content on disk
-        # is updated to show cross-file diagnostics.
         self.edited_file_path.write_text(self.new_content)
 
         self.client.text_document_did_save(
@@ -370,15 +351,9 @@ class IncrementalEditTest(LspTest):
             )
         )
 
-        # Pyrefly only publishes cross-file diagnostics after did_save.
         if isinstance(self.tool, Pyrefly):
             after_did_save_sum = after_did_change_sum
 
-            # Pyrefly sometimes publishes multiple publish diagnostics after a `didSave`.
-            # Especially if checking takes long, as it, e.g., is the case for homeassistant.
-            # We need to wait until pyrefly sends us the cross-file diagnostics.
-            # For now, we use a very simple heuristics where we simply check if the diagnostic
-            # count between the `didChange` (not cross-file) and `didSave` (cross-file) is different.
             while after_did_save_sum == after_did_change_sum:
                 self.after_edit_diagnostics = (
                     await self.client.text_documents_diagnostics_async(all_files)

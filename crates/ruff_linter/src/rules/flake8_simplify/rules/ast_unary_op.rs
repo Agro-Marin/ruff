@@ -170,7 +170,6 @@ pub(crate) fn negation_with_equal_op(checker: &Checker, expr: &Expr, op: UnaryOp
         return;
     }
 
-    // Avoid flagging issues in dunder implementations.
     if let ScopeKind::Function(ast::StmtFunctionDef { name, .. }) =
         &checker.semantic().current_scope().kind
     {
@@ -218,7 +217,6 @@ pub(crate) fn negation_with_not_equal_op(
         return;
     }
 
-    // Avoid flagging issues in dunder implementations.
     if let ScopeKind::Function(ast::StmtFunctionDef { name, .. }) =
         &checker.semantic().current_scope().kind
     {
@@ -250,9 +248,6 @@ pub(crate) fn negation_with_not_equal_op(
 /// equivalent to `expr` without a `bool(...)` wrapper.
 fn is_always_bool(expr: &Expr, semantic: &SemanticModel) -> bool {
     match expr {
-        // Membership and identity tests always produce a `bool`. Other comparison
-        // operators can be overloaded to return arbitrary objects, so every operator in
-        // a chain has to qualify: `x == y in z` evaluates to `x == y` if that is falsy.
         Expr::Compare(ast::ExprCompare { ops, .. }) => ops
             .iter()
             .all(|op| matches!(op, CmpOp::In | CmpOp::NotIn | CmpOp::Is | CmpOp::IsNot)),

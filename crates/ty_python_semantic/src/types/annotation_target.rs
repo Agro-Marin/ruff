@@ -24,7 +24,6 @@ pub fn is_valid_annotation_target(db: &dyn Db, file: ProgramFile, target: &ast::
         return true;
     }
 
-    // A nested function can also annotate an attribute on a captured method receiver.
     attribute.value.as_name_expr().is_some_and(|receiver| {
         receiver_method_scope(db, index, scope, receiver)
             .is_some_and(|receiver_scope_id| receiver_scope_id != scope_id)

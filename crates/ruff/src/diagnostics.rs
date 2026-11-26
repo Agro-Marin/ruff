@@ -60,7 +60,6 @@ impl Diagnostics {
         settings: &LinterSettings,
     ) -> Self {
         match err {
-            // IO errors.
             SourceError::Io(_)
             | SourceError::Notebook(NotebookError::Io(_) | NotebookError::Json(_)) => {
                 if settings.rules.enabled(Rule::IOError) {
@@ -93,7 +92,6 @@ impl Diagnostics {
                     Self::default()
                 }
             }
-            // Syntax errors.
             SourceError::Notebook(
                 NotebookError::InvalidJson(_)
                 | NotebookError::InvalidSchema(_)
@@ -188,7 +186,6 @@ pub(crate) fn lint_path(
     fix_mode: flags::FixMode,
     unsafe_fixes: UnsafeFixes,
 ) -> Result<Diagnostics> {
-    // Check the cache.
     let caching = match cache {
         Some(cache) if noqa.is_enabled() => {
             let relative_path = cache
@@ -203,8 +200,6 @@ pub(crate) fn lint_path(
                 return Ok(Diagnostics::default());
             }
 
-            // Stash the file metadata for later so when we update the cache it reflects the prerun
-            // information
             Some((cache, relative_path, cache_key))
         }
         _ => None,
@@ -272,10 +267,9 @@ pub(crate) fn lint_path(
         SourceType::Python(source_type) => source_type,
     };
 
-    // Extract the sources from the file.
     let source_kind = match SourceKind::from_path(path, SourceType::Python(source_type)) {
         Ok(Some(source_kind)) => match source_kind {
-            SourceKind::Markdown(_) => return Ok(Diagnostics::default()), // skip linting markdown
+            SourceKind::Markdown(_) => return Ok(Diagnostics::default()),
             _ => source_kind,
         },
         Ok(None) => return Ok(Diagnostics::default()),
@@ -284,7 +278,6 @@ pub(crate) fn lint_path(
         }
     };
 
-    // Lint the file.
     let (result, transformed, fixed) =
         if matches!(fix_mode, flags::FixMode::Apply | flags::FixMode::Diff) {
             if let Ok(FixerResult {
@@ -320,7 +313,6 @@ pub(crate) fn lint_path(
                 };
                 (result, transformed, fixed)
             } else {
-                // If we fail to fix, lint the original source code.
                 let result = lint_only(
                     path,
                     package,
@@ -352,16 +344,11 @@ pub(crate) fn lint_path(
     let diagnostics = result.diagnostics;
 
     if let Some((cache, relative_path, key)) = caching {
-        // `FixMode::Apply` and `FixMode::Diff` rely on side-effects (writing to disk,
-        // and writing the diff to stdout, respectively). If a file has diagnostics
-        // with fixes, we need to avoid reading from and writing to the cache in these
-        // modes.
         let use_fixes = match fix_mode {
             flags::FixMode::Generate => true,
             flags::FixMode::Apply | flags::FixMode::Diff => fixed.is_empty(),
         };
 
-        // We don't cache files with diagnostics.
         let linted = diagnostics.is_empty() && use_fixes;
         cache.set_linted(relative_path.to_owned(), &key, linted);
     }
@@ -455,7 +442,6 @@ pub(crate) fn lint_stdin(
             source_type @ SourceType::Python(py_source_type) => (source_type, py_source_type),
         };
 
-    // Extract the sources from the file.
     let source_kind = match SourceKind::from_source_code(contents, source_type) {
         Ok(Some(source_kind)) => source_kind,
         Ok(None) => return Ok(Diagnostics::default()),
@@ -464,7 +450,6 @@ pub(crate) fn lint_stdin(
         }
     };
 
-    // Lint the inputs.
     let (LinterResult { diagnostics, .. }, transformed, fixed) =
         if matches!(fix_mode, flags::FixMode::Apply | flags::FixMode::Diff) {
             if let Ok(FixerResult {
@@ -482,11 +467,9 @@ pub(crate) fn lint_stdin(
             ) {
                 match fix_mode {
                     flags::FixMode::Apply => {
-                        // Write the contents to stdout, regardless of whether any errors were fixed.
                         transformed.write(&mut io::stdout().lock())?;
                     }
                     flags::FixMode::Diff => {
-                        // But only write a diff if it's non-empty.
                         if !fixed.is_empty() {
                             write!(
                                 &mut io::stdout().lock(),
@@ -504,7 +487,6 @@ pub(crate) fn lint_stdin(
                 };
                 (result, transformed, fixed)
             } else {
-                // If we fail to fix, lint the original source code.
                 let result = lint_only(
                     path.unwrap_or_else(|| Path::new("-")),
                     package,
@@ -515,7 +497,6 @@ pub(crate) fn lint_stdin(
                     ParseSource::None,
                 );
 
-                // Write the contents to stdout anyway.
                 if fix_mode.is_apply() {
                     source_kind.write(&mut io::stdout().lock())?;
                 }

@@ -33,9 +33,6 @@ fn detect_wsl() -> bool {
         return false;
     }
 
-    // A container on a WSL2 host still has "microsoft" in the kernel version
-    // string, but the filesystem has proper Unix semantics, so we should not
-    // treat it as WSL.
     !is_container()
 }
 

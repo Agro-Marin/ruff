@@ -123,7 +123,6 @@ fn handle_part(part: &CFormatPart<String>) -> Cow<'_, str> {
         CFormatPart::Spec(spec) => {
             let mut format_string = String::new();
 
-            // TODO(charlie): What case is this?
             if spec.format_char == '%' {
                 format_string.push('%');
                 return Cow::Owned(format_string);
@@ -131,7 +130,6 @@ fn handle_part(part: &CFormatPart<String>) -> Cow<'_, str> {
 
             format_string.push('{');
 
-            // Ex) `{foo}`
             if let Some(key_item) = &spec.mapping_key {
                 format_string.push_str(key_item);
             }
@@ -161,9 +159,6 @@ fn handle_part(part: &CFormatPart<String>) -> Cow<'_, str> {
                     match precision {
                         CFormatPrecision::Quantity(quantity) => match quantity {
                             CFormatQuantity::Amount(amount) => {
-                                // Integer-only presentation types.
-                                //
-                                // See: https://docs.python.org/3/library/string.html#format-specification-mini-language
                                 if matches!(
                                     spec.format_char,
                                     'b' | 'c' | 'd' | 'o' | 'x' | 'X' | 'n'
@@ -248,11 +243,9 @@ fn clean_params_dictionary(right: &Expr, locator: &Locator, stylist: &Stylist) -
                     value: key_string, ..
                 }) = key
                 {
-                    // If the dictionary key is not a valid variable name, abort.
                     if !is_identifier(key_string.to_str()) {
                         return None;
                     }
-                    // If there are multiple entries of the same key, abort.
                     if seen.contains(&key_string.to_str()) {
                         return None;
                     }
@@ -266,7 +259,6 @@ fn clean_params_dictionary(right: &Expr, locator: &Locator, stylist: &Stylist) -
                     let value_string = locator.slice(value);
                     arguments.push(format!("{key_string}={value_string}"));
                 } else {
-                    // If there are any non-string keys, abort.
                     return None;
                 }
             } else {
@@ -274,7 +266,6 @@ fn clean_params_dictionary(right: &Expr, locator: &Locator, stylist: &Stylist) -
                 arguments.push(format!("**{value_string}"));
             }
         }
-        // If we couldn't parse out key values, abort.
         if arguments.is_empty() {
             return None;
         }
@@ -291,7 +282,6 @@ fn clean_params_dictionary(right: &Expr, locator: &Locator, stylist: &Stylist) -
 
             contents.push_str(stylist.line_ending().as_str());
 
-            // For the ending parentheses, go back one indent.
             let default_indent: &str = stylist.indentation();
             if let Some(ident) = indent.strip_prefix(default_indent) {
                 contents.push_str(ident);
@@ -314,7 +304,6 @@ fn convertible(format_string: &CFormatString, params: &Expr) -> bool {
             continue;
         };
 
-        // These require out-of-order parameter consumption.
         if matches!(fmt.min_field_width, Some(CFormatQuantity::FromValuesTuple)) {
             return false;
         }
@@ -325,7 +314,6 @@ fn convertible(format_string: &CFormatString, params: &Expr) -> bool {
             return false;
         }
 
-        // These conversions require modification of parameters.
         if fmt.format_char == 'd'
             || fmt.format_char == 'i'
             || fmt.format_char == 'u'
@@ -334,7 +322,6 @@ fn convertible(format_string: &CFormatString, params: &Expr) -> bool {
             return false;
         }
 
-        // No equivalent in format.
         if fmt.mapping_key.as_ref().is_some_and(String::is_empty) {
             return false;
         }
@@ -342,22 +329,18 @@ fn convertible(format_string: &CFormatString, params: &Expr) -> bool {
         let is_nontrivial =
             !fmt.flags.is_empty() || fmt.min_field_width.is_some() || fmt.precision.is_some();
 
-        // Conversion is subject to modifiers.
         if is_nontrivial && fmt.format_char == '%' {
             return false;
         }
 
-        // No equivalent in `format`.
         if is_nontrivial && (fmt.format_char == 'a' || fmt.format_char == 'r') {
             return false;
         }
 
-        // "%s" with None and width is not supported.
         if fmt.min_field_width.is_some() && fmt.format_char == 's' {
             return false;
         }
 
-        // All dict substitutions must be named.
         if let Expr::Dict(_) = &params {
             if fmt.mapping_key.is_none() {
                 return false;
@@ -380,14 +363,12 @@ pub(crate) fn printf_string_formatting(
     let mut format_strings: Vec<(TextRange, String)> =
         Vec::with_capacity(string_expr.value.as_slice().len());
 
-    // Parse each string segment.
     for string_literal in &string_expr.value {
         let string = checker.locator().slice(string_literal);
         let flags = AnyStringFlags::from(string_literal.flags);
         let string = &string
             [usize::from(flags.opener_len())..(string.len() - usize::from(flags.closer_len()))];
 
-        // Parse the format string (e.g. `"%s"`) into a list of `PercentFormat`.
         let Ok(format_string) = CFormatString::from_str(string) else {
             return;
         };
@@ -396,7 +377,6 @@ pub(crate) fn printf_string_formatting(
             return;
         }
 
-        // Count the number of positional and keyword arguments.
         for (.., format_part) in format_string.iter() {
             let CFormatPart::Spec(fmt) = format_part else {
                 continue;
@@ -408,7 +388,6 @@ pub(crate) fn printf_string_formatting(
             }
         }
 
-        // Convert the `%`-format string to a `.format` string.
         format_strings.push((
             string_literal.range(),
             flags
@@ -417,7 +396,6 @@ pub(crate) fn printf_string_formatting(
         ));
     }
 
-    // Parse the parameters.
     let params_string = match right {
         Expr::StringLiteral(_)
         | Expr::BytesLiteral(_)
@@ -428,23 +406,10 @@ pub(crate) fn printf_string_formatting(
         | Expr::FString(_) => Cow::Owned(format!("({})", checker.locator().slice(right))),
         Expr::Name(_) | Expr::Attribute(_) | Expr::Subscript(_) | Expr::Call(_) => {
             if num_keyword_arguments > 0 {
-                // If we have _any_ named fields, assume the right-hand side is a mapping.
                 Cow::Owned(format!("(**{})", checker.locator().slice(right)))
             } else if num_positional_arguments > 1 {
-                // If we have multiple fields, but no named fields, assume the right-hand side is a
-                // tuple.
                 Cow::Owned(format!("(*{})", checker.locator().slice(right)))
             } else {
-                // Otherwise, if we have a single field, we can't make any assumptions about the
-                // right-hand side. It _could_ be a tuple, but it could also be a single value,
-                // and we can't differentiate between them.
-                // For example:
-                // ```python
-                // x = (1,)
-                // print("%s" % x)
-                // print("{}".format(x))
-                // ```
-                // So we offer an unsafe fix:
                 Cow::Owned(format!("({})", checker.locator().slice(right)))
             }
         }
@@ -461,11 +426,9 @@ pub(crate) fn printf_string_formatting(
         _ => return,
     };
 
-    // Reconstruct the string.
     let mut contents = String::new();
     let mut prev_end = None;
     for (range, format_string) in format_strings {
-        // Add the content before the string segment.
         match prev_end {
             None => {
                 contents.push_str(
@@ -482,13 +445,11 @@ pub(crate) fn printf_string_formatting(
                 );
             }
         }
-        // Add the string itself.
         contents.push_str(&format_string);
         prev_end = Some(range.end());
     }
 
     if let Some(prev_end) = prev_end {
-        // Preserve the parentheses around the format string, along with anything between them.
         if let Some(parenthesized) =
             parenthesized_range(bin_op.left.as_ref().into(), bin_op.into(), checker.tokens())
         {
@@ -500,7 +461,6 @@ pub(crate) fn printf_string_formatting(
         }
     }
 
-    // Add the `.format` call.
     let _ = write!(&mut contents, ".format{params_string}");
 
     let mut diagnostic = checker.report_diagnostic(PrintfStringFormatting, bin_op.range());

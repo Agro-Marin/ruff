@@ -74,7 +74,6 @@ pub(crate) fn use_pep646_unpack(checker: &Checker, expr: &ExprSubscript) {
         ..
     } = expr;
 
-    // Skip semantically invalid subscript calls (e.g. `Unpack[str | num]`).
     if !(slice.is_name_expr() || slice.is_subscript_expr() || slice.is_attribute_expr()) {
         return;
     }
@@ -83,13 +82,6 @@ pub(crate) fn use_pep646_unpack(checker: &Checker, expr: &ExprSubscript) {
         return;
     }
 
-    // Determine whether we're in a valid context for a star expression.
-    //
-    // Star expressions are only allowed in two places:
-    // - Subscript indexes (e.g., `Generic[DType, *Shape]`).
-    // - Variadic positional arguments (e.g., `def f(*args: *int)`).
-    //
-    // See: <https://peps.python.org/pep-0646/#grammar-changes>
     if !in_subscript_index(expr, checker.semantic()) && !in_vararg(expr, checker.semantic()) {
         return;
     }
@@ -112,7 +104,6 @@ fn in_subscript_index(expr: &ExprSubscript, semantic: &SemanticModel) -> bool {
         return false;
     };
 
-    // E.g., `Generic[Unpack[int]]`.
     if parent
         .slice
         .as_subscript_expr()
@@ -121,7 +112,6 @@ fn in_subscript_index(expr: &ExprSubscript, semantic: &SemanticModel) -> bool {
         return true;
     }
 
-    // E.g., `Generic[DType, Unpack[int]]`.
     if parent.slice.as_tuple_expr().is_some_and(|slice| {
         slice
             .elts

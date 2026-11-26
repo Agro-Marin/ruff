@@ -1,5 +1,4 @@
 rules:
-  # TODO(charlie): Move these workflows to use dedicated GitHub environments.
   secrets-outside-env:
     ignore:
       - notify-dependents.yml
@@ -12,6 +11,5 @@ rules:
   forbidden-uses:
     config:
       deny:
-        # Forbidden because we prefer our own astral-dev-toolchain builds.
         - taiki-e/install-action
         - EmbarkStudios/cargo-deny-action

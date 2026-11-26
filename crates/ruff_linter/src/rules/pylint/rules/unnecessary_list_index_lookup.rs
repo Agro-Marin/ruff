@@ -129,7 +129,6 @@ fn enumerate_items<'a>(
         return None;
     };
 
-    // Grab the variable names.
     let Expr::Name(index_name) = index else {
         return None;
     };
@@ -138,18 +137,14 @@ fn enumerate_items<'a>(
         return None;
     };
 
-    // If either of the variable names are intentionally ignored by naming them `_`, then don't
-    // emit.
     if index_name.id == "_" || value_name.id == "_" {
         return None;
     }
 
-    // Get the first argument of the enumerate call.
     let Some(Expr::Name(sequence)) = arguments.args.first() else {
         return None;
     };
 
-    // If the `enumerate` call has a non-zero `start`, don't omit.
     if !arguments
         .find_argument_value("start", 1)
         .is_none_or(|expr| {
@@ -165,7 +160,6 @@ fn enumerate_items<'a>(
         return None;
     }
 
-    // Check that the function is the `enumerate` builtin.
     if !semantic.match_builtin_expr(func, "enumerate") {
         return None;
     }

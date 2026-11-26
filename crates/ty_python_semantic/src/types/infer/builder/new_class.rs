@@ -38,15 +38,11 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             node_index: _,
         } = &call_expr.arguments;
 
-        // `new_class(name, bases=(), kwds=None, exec_body=None)`
-        // We need at least the `name` argument.
         let no_positional_args = args.is_empty();
         if no_positional_args {
-            // Check if `name` is provided as a keyword argument.
             let name_keyword = keywords.iter().find(|kw| kw.arg.as_deref() == Some("name"));
 
             if name_keyword.is_none() {
-                // Infer all keyword values for side effects.
                 for keyword in keywords {
                     self.infer_expression(&keyword.value, TypeContext::default());
                 }
@@ -57,7 +53,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             }
         }
 
-        // Find the arguments we treat specially while preserving normal call-binding diagnostics.
         let name_node = args.first().or_else(|| {
             keywords
                 .iter()
@@ -90,9 +85,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             "<unknown>"
         };
 
-        // For assigned `new_class()` calls, bases inference is deferred to handle forward
-        // references and recursive references, matching the `type()` pattern. For dangling
-        // calls, infer and extract bases eagerly (they'll be stored in the anchor).
         let explicit_bases: Option<Box<[Type<'db>]>> = if definition.is_none() {
             if let Some(bases_arg) = bases_arg {
                 let bases_type = self.expression_type(bases_arg);
@@ -106,13 +98,10 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
         let scope = self.scope();
 
-        // Create the anchor for identifying this dynamic class.
         let anchor = if let Some(def) = definition {
-            // Register for deferred inference to infer bases and validate later.
             self.deferred.insert(def);
             DynamicClassAnchor::Definition(def)
         } else {
-            // Use [Unknown] as fallback if bases extraction failed (e.g., not a tuple).
             let anchor_bases = explicit_bases
                 .clone()
                 .unwrap_or_else(|| Box::from([Type::unknown()]));
@@ -124,13 +113,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             }
         };
 
-        // `new_class()` doesn't accept a namespace dict, so members are always empty.
-        // If `exec_body` is provided (and is not `None`), it can populate the namespace
-        // dynamically, so we mark it as dynamic. Without `exec_body`, no members can be added.
-        //
-        // TODO: Model `kwds`, especially `{"metaclass": Meta}`. `types.new_class()` uses the
-        // third argument for explicit metaclass overrides, but we currently only account for
-        // metaclass behavior that follows from the resolved bases.
         let exec_body_arg = args.get(3).or_else(|| {
             keywords
                 .iter()
@@ -142,8 +124,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let dynamic_class =
             DynamicClassLiteral::new(db, name, anchor, members, has_exec_body, None);
 
-        // For dangling calls, validate bases eagerly. For assigned calls, validation is
-        // deferred along with bases inference.
         if let Some(explicit_bases) = &explicit_bases
             && let Some(bases_arg) = bases_arg
         {
@@ -157,7 +137,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             if report_dynamic_mro_errors(&self.context, dynamic_class, call_expr, bases_arg) {
                 report_inconsistent_dynamic_generic_bases(&self.context, dynamic_class, bases_arg);
 
-                // MRO succeeded, check for instance-layout-conflict.
                 disjoint_bases.remove_redundant_entries(db);
                 if disjoint_bases.len() > 1 {
                     report_instance_layout_conflict(
@@ -169,7 +148,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 }
             }
 
-            // Check for metaclass conflicts.
             if let Err(DynamicMetaclassConflict {
                 metaclass1,
                 base1,
@@ -207,7 +185,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return;
         };
 
-        // Get the already-inferred class type from the initial pass.
         let inferred_type = definition_expression_type(self.db(), definition, call_expr);
         let Type::ClassLiteral(ClassLiteral::Dynamic(dynamic_class)) = inferred_type else {
             return;
@@ -217,24 +194,18 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             return;
         };
 
-        // Set the typevar binding context to allow legacy typevar binding in expressions
-        // like `Generic[T]`. This matches the context used during initial inference.
         let previous_context = self.typevar_binding_context.replace(definition);
 
-        // Infer the bases argument (this was skipped during initial inference).
         let bases_type = self.infer_expression(bases_arg, TypeContext::default());
 
-        // Restore the previous context.
         self.typevar_binding_context = previous_context;
 
-        // Extract and validate bases.
         let Some(bases) =
             self.extract_explicit_bases(bases_arg, bases_type, DynamicClassKind::NewClass)
         else {
             return;
         };
 
-        // Validate individual bases for special types that aren't allowed in dynamic classes.
         let name = dynamic_class.name(db);
         self.validate_dynamic_type_bases(bases_arg, &bases, name, DynamicClassKind::NewClass);
     }

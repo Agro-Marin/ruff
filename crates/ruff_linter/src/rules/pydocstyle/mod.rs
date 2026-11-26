@@ -136,8 +136,6 @@ mod tests {
         let diagnostics = test_path(
             Path::new("pydocstyle/D417.py"),
             &settings::LinterSettings {
-                // When inferring the convention, we'll see a few false negatives.
-                // See: https://github.com/PyCQA/pydocstyle/issues/459.
                 pydocstyle: Settings::default(),
                 ..settings::LinterSettings::for_rule(Rule::UndocumentedParam)
             },
@@ -164,7 +162,6 @@ mod tests {
         let diagnostics = test_path(
             Path::new("pydocstyle/D417.py"),
             &settings::LinterSettings {
-                // With explicit Google convention, we should flag every function.
                 pydocstyle: Settings {
                     convention: Some(Convention::Google),
                     ..Settings::default()
@@ -198,7 +195,6 @@ mod tests {
         let diagnostics = test_path(
             Path::new("pydocstyle/D417.py"),
             &settings::LinterSettings {
-                // With explicit numpy convention, we should only flag the NumPy-style docstrings.
                 pydocstyle: Settings {
                     convention: Some(Convention::Numpy),
                     ..Settings::default()

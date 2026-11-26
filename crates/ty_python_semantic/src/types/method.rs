@@ -35,7 +35,6 @@ pub struct BoundMethodType<'db> {
     receiver: BoundMethodReceiver<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for BoundMethodType<'_> {}
 
 #[salsa::interned(debug, heap_size=ruff_memory_usage::heap_size)]
@@ -46,7 +45,6 @@ pub struct ConstrainedBoundMethodReceiver<'db> {
     constraint: Type<'db>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for ConstrainedBoundMethodReceiver<'_> {}
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, get_size2::GetSize, salsa::SalsaValue)]
@@ -145,7 +143,6 @@ impl<'db> BoundMethodType<'db> {
         visitor: &ApplyTypeMappingVisitor<'_, 'db>,
     ) -> Self {
         let func = self.func(db);
-        // The function supplies the bound method's outer signature. Its receiver is a nested type.
         let func = if type_mapping.without_bindings().is_some() {
             func.map_type(db, type_mapping, tcx, visitor)
         } else {
@@ -334,9 +331,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         source: BoundMethodType<'db>,
         target: BoundMethodType<'db>,
     ) -> ConstraintSet<'db, 'c> {
-        // The receiver exposed by `__self__` is an already-captured value, so it is covariant.
-        // However, `Self` can also appear in the remaining parameters, where binding the
-        // receiver must still preserve ordinary callable contravariance.
         if let (Some(source_function), Some(target_function)) =
             (source.function(db), target.function(db))
             && source_function.literal(db) != target_function.literal(db)
@@ -344,16 +338,12 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return self.never();
         }
 
-        // Incompatible captured receivers already rule out the relation. Check them before
-        // comparing signatures, whose specialized `Self` bounds can contain recursive types.
-        // Diagnostics retain the original order so signature mismatches keep their context.
         let receiver_constraints = (!self.is_context_collection_enabled())
             .then(|| self.check_type_pair(db, source.self_instance(db), target.self_instance(db)));
         if receiver_constraints.is_some_and(ConstraintSet::is_trivially_never_satisfied) {
             return self.never();
         }
 
-        // Keep function evidence before receiver evidence in the constraints' source order.
         self.check_type_pair(db, source.func(db), target.func(db))
             .and(db, self.constraints, || {
                 receiver_constraints.unwrap_or_else(|| {
@@ -399,7 +389,6 @@ pub enum KnownBoundMethodType<'db> {
     /// `if sys.platform.startswith("freebsd")`.
     StrStartswith(StringLiteralType<'db>),
 
-    // ConstraintSet methods
     ConstraintSetLowerBound,
     ConstraintSetUpperBound,
     ConstraintSetEquality,
@@ -580,25 +569,8 @@ impl<'db> KnownBoundMethodType<'db> {
                     .try_upcast_to_callable(db, env)
                     .map(|callables| callables.map(|callable| callable.into_regular(db)));
             }
-            // Here, we dynamically model the overloaded function signature of `types.FunctionType.__get__`.
-            // This is required because we need to return more precise types than what the signature in
-            // typeshed provides:
-            //
-            // ```py
-            // class FunctionType:
-            //     # ...
             //     @overload
-            //     def __get__(self, instance: None, owner: type, /) -> FunctionType: ...
             //     @overload
-            //     def __get__(self, instance: object, owner: type | None = None, /) -> MethodType: ...
-            // ```
-            //
-            // For `builtins.property.__get__`, we use the same signature. The return types are not
-            // specified yet, they will be dynamically added in `Bindings::evaluate_known_cases`.
-            //
-            // TODO: Consider merging these synthesized signatures with the ones in
-            // [`WrapperDescriptorKind::signatures`], since this one is just that signature
-            // with the `self` parameters removed.
             KnownBoundMethodType::FunctionTypeDunderGet(_)
             | KnownBoundMethodType::PropertyDunderGet(_)
             | KnownBoundMethodType::MethodTypeDunderGet(_) => Either::Left(

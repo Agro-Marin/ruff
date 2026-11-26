@@ -32,7 +32,6 @@ impl<'src> TokenSource<'src> {
         let lexer = Lexer::new(source, mode, start_offset);
         let mut source = TokenSource::new(lexer, source, start_offset);
 
-        // Initialize the token source so that the current token is set correctly.
         source.do_bump();
         source
     }
@@ -100,7 +99,6 @@ impl<'src> TokenSource<'src> {
             )
             .0;
 
-        // Trim the already bumped logical line token (and comments coming after it) as it might now have become a logical line token
         self.tokens.truncate(non_logical_line_index);
 
         #[cfg(debug_assertions)]
@@ -116,7 +114,6 @@ impl<'src> TokenSource<'src> {
             assert_eq!(last_non_trivia_end_before, last_non_trivia_end_now);
         }
 
-        // Ensure `current` is positioned at a non-trivia token.
         if self.current_kind().is_trivia() {
             self.bump(self.current_kind());
         }
@@ -237,8 +234,6 @@ impl<'src> TokenSource<'src> {
             "TokenSource was not fully consumed"
         );
 
-        // The `EndOfFile` token shouldn't be included in the token stream, it's mainly to signal
-        // the parser to stop. This isn't in `do_bump` because it only needs to be done once.
         if let Some(last) = self.tokens.pop() {
             assert_eq!(last.kind(), TokenKind::EndOfFile);
         }
@@ -256,9 +251,6 @@ pub(crate) struct TokenSourceCheckpoint {
 
 /// Allocates a token buffer with a capacity intended to skip early grows.
 fn allocate_tokens_vec(contents: &str) -> Vec<Token> {
-    // In sampled ruff-ecosystem projects, about three quarters of Python files contain at least
-    // one token per eight source bytes. Intentionally underestimate the final token count to avoid
-    // over-reserving for token-sparse files.
     const BYTES_PER_PREALLOCATED_TOKEN: usize = 8;
     const MIN_INITIAL_CAPACITY: usize = 128;
 
@@ -267,7 +259,5 @@ fn allocate_tokens_vec(contents: &str) -> Vec<Token> {
         return Vec::new();
     }
 
-    // Stay on a power-of-two bucket so that later geometric growth does not preserve an
-    // arbitrary capacity offset.
     Vec::with_capacity(capacity_hint.isolate_highest_one())
 }

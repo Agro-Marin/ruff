@@ -78,11 +78,6 @@ fn key_in_dict(checker: &Checker, left: &Expr, right: &Expr, operator: CmpOp, pa
         return;
     }
 
-    // Ignore `self.keys()`, which will almost certainly be intentional, as in:
-    // ```python
-    // def __contains__(self, key: object) -> bool:
-    //     return key in self.keys()
-    // ```
     if value
         .as_name_expr()
         .is_some_and(|name| matches!(name.id.as_str(), "self"))
@@ -90,7 +85,6 @@ fn key_in_dict(checker: &Checker, left: &Expr, right: &Expr, operator: CmpOp, pa
         return;
     }
 
-    // Extract the exact range of the left and right expressions.
     let left_range =
         parenthesized_range(left.into(), parent, checker.tokens()).unwrap_or(left.range());
     let right_range =
@@ -102,13 +96,10 @@ fn key_in_dict(checker: &Checker, left: &Expr, right: &Expr, operator: CmpOp, pa
         },
         TextRange::new(left_range.start(), right_range.end()),
     );
-    // Delete from the start of the dot to the end of the expression.
     if let Some(dot) = SimpleTokenizer::starts_at(value.end(), checker.locator().contents())
         .skip_trivia()
         .find(|token| token.kind == SimpleTokenKind::Dot)
     {
-        // The fix is only safe if we know the expression is a dictionary, since other types
-        // can define a `.keys()` method.
         let applicability = {
             let is_dict = value.as_name_expr().is_some_and(|name| {
                 let Some(binding) = checker
@@ -127,11 +118,6 @@ fn key_in_dict(checker: &Checker, left: &Expr, right: &Expr, operator: CmpOp, pa
             }
         };
 
-        // If the `.keys()` is followed by (e.g.) a keyword, we need to insert a space,
-        // since we're removing parentheses, which could lead to invalid syntax, as in:
-        // ```python
-        // if key in foo.keys()and bar:
-        // ```
         let range = TextRange::new(dot.start(), right.end());
         if checker
             .locator()

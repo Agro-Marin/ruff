@@ -40,9 +40,7 @@ impl AlwaysFixableViolation for ExtraneousParentheses {
     }
 }
 
-// See: https://github.com/asottile/pyupgrade/blob/97ed6fb3cf2e650d4f762ba231c3f04c41797710/pyupgrade/_main.py#L148
 fn match_extraneous_parentheses(tokens: &mut Iter<'_, Token>) -> Option<(TextRange, TextRange)> {
-    // Store the location of the extraneous opening parenthesis.
     let start_range = loop {
         let token = tokens.next()?;
 
@@ -59,18 +57,14 @@ fn match_extraneous_parentheses(tokens: &mut Iter<'_, Token>) -> Option<(TextRan
         }
     };
 
-    // Verify that we're not in an empty tuple.
     let mut empty_tuple = true;
 
-    // Verify that we're not in a tuple or coroutine.
     let mut depth = 1u32;
 
-    // Store the location of the extraneous closing parenthesis.
     let end_range = loop {
         let token = tokens.next()?;
 
         match token.kind() {
-            // If we find a comma or a yield at depth 1 or 2, it's a tuple or coroutine.
             TokenKind::Comma | TokenKind::Yield if depth == 1 => return None,
             TokenKind::Lpar | TokenKind::Lbrace | TokenKind::Lsqb => {
                 depth = depth.saturating_add(1);
@@ -97,7 +91,6 @@ fn match_extraneous_parentheses(tokens: &mut Iter<'_, Token>) -> Option<(TextRan
         return None;
     }
 
-    // Find the next non-coding token.
     let token = loop {
         let token = tokens.next()?;
 

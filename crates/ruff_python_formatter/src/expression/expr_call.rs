@@ -36,7 +36,6 @@ impl FormatNodeRule<ExprCall> for FormatExprCall {
         let call_chain_layout = self.call_chain_layout.apply_in_node(item, f);
 
         let fmt_func = format_with(|f: &mut PyFormatter| {
-            // Format the function expression.
             if f.context().is_expression_parenthesized(func.into()) {
                 func.format().with_options(Parentheses::Always).fmt(f)
             } else {
@@ -51,19 +50,11 @@ impl FormatNodeRule<ExprCall> for FormatExprCall {
                 }
             }?;
 
-            // Format comments between the function and its arguments.
             dangling_comments(dangling).fmt(f)?;
 
-            // Format the arguments.
             arguments.format().fmt(f)
         });
 
-        // Allow to indent the parentheses while
-        // ```python
-        // g1 = (
-        //     queryset.distinct().order_by(field.name).values_list(field_name_flat_long_long=True)
-        // )
-        // ```
         if call_chain_layout.is_fluent() && self.call_chain_layout == CallChainLayout::Default {
             group(&fmt_func).fmt(f)
         } else {

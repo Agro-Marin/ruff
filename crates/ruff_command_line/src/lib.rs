@@ -41,6 +41,5 @@ pub fn expand_args(args: impl Iterator<Item = OsString>) -> io::Result<Vec<OsStr
 }
 
 fn is_response_file(arg: &OsStr) -> bool {
-    // Check the directory entry itself so dangling symlinks remain literal paths.
     arg.as_encoded_bytes().starts_with(b"@") && Path::new(arg).symlink_metadata().is_err()
 }

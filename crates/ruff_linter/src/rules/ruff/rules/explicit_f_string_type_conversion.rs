@@ -74,7 +74,6 @@ pub(crate) fn explicit_f_string_type_conversion(checker: &Checker, f_string: &as
             continue;
         };
 
-        // Skip if there's already a conversion flag.
         if !conversion.is_none() {
             continue;
         }
@@ -91,7 +90,6 @@ pub(crate) fn explicit_f_string_type_conversion(checker: &Checker, f_string: &as
             continue;
         };
         let arg = match conversion {
-            // Handles the cases: `f"{str(object=arg)}"` and `f"{str(arg)}"`
             Conversion::Str if call.arguments.len() == 1 => {
                 let Some(arg) = call.arguments.find_argument_value("object", 0) else {
                     continue;
@@ -99,12 +97,10 @@ pub(crate) fn explicit_f_string_type_conversion(checker: &Checker, f_string: &as
                 arg
             }
             Conversion::Str | Conversion::Repr | Conversion::Ascii => {
-                // Can't be a conversion otherwise.
                 if !call.arguments.keywords.is_empty() {
                     continue;
                 }
 
-                // Can't be a conversion otherwise.
                 let [arg] = call.arguments.args.as_ref() else {
                     continue;
                 };
@@ -112,12 +108,10 @@ pub(crate) fn explicit_f_string_type_conversion(checker: &Checker, f_string: &as
             }
         };
 
-        // Suppress lint for starred expressions.
         if arg.is_starred_expr() {
             return;
         }
 
-        // Don't report diagnostic for f-string with debug text.
         if element
             .as_interpolation()
             .is_some_and(|interpolation| interpolation.debug_text.is_some())
@@ -146,7 +140,6 @@ fn convert_call_to_conversion_flag(
     let source_code = checker.locator().slice(f_string);
     let output = transform_expression(source_code, checker.stylist(), |mut expression| {
         let formatted_string = match_formatted_string(&mut expression)?;
-        // Replace the formatted call expression at `index` with a conversion flag.
         let formatted_string_expression =
             match_formatted_string_expression(&mut formatted_string.parts[index])?;
         let call_cst = match_call_mut(&mut formatted_string_expression.expression)?;
@@ -169,16 +162,8 @@ fn convert_call_to_conversion_flag(
         Ok(expression)
     })?;
 
-    // Determine applicability: mark the fix as unsafe if there are comments in the
-    // call expression that fall outside the effective argument range (i.e., comments
-    // that would be deleted by replacing the call with a conversion flag).
-    //
-    // Extra parentheses wrapping the argument are preserved by the libcst transformation
-    // (e.g., `ascii((arg))` → `(arg)!a`), so comments inside them are not deleted.
     let comment_ranges = checker.comment_ranges();
     let call_range = call.range();
-    // Use the parenthesized range of the arg (within call.arguments) to account for
-    // any extra parens that wrap the argument and whose content will be preserved.
     let effective_arg_range =
         parenthesized_range(arg.into(), (&call.arguments).into(), checker.tokens())
             .unwrap_or_else(|| arg.range());
@@ -204,7 +189,6 @@ fn starts_with_brace(checker: &Checker, arg: &Expr) -> bool {
         .tokens()
         .in_range(arg.range())
         .iter()
-        // Skip the trivia tokens
         .find(|token| !token.kind().is_trivia())
         .is_some_and(|token| matches!(token.kind(), TokenKind::Lbrace))
 }
@@ -214,12 +198,10 @@ fn needs_paren(precedence: OperatorPrecedence) -> bool {
 }
 
 fn needs_paren_expr(arg: &Expr) -> bool {
-    // Generator expressions need to be parenthesized in f-string expressions
     if let Some(generator) = arg.as_generator_expr() {
         return !generator.parenthesized;
     }
 
-    // Check precedence for other expressions
     needs_paren(OperatorPrecedence::from_expr(arg))
 }
 

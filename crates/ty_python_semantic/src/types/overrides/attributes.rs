@@ -158,14 +158,10 @@ fn unbound_member_contract<'db>(
     name: &str,
     kind: AttributeContractKind,
 ) -> Option<MemberContract<'db, UnboundAttribute<'db>>> {
-    // `object.__class__` is specialized by member lookup, so its synthetic `Self` is
-    // not an override contract. Likewise, not every object is hashable or has a
-    // writable instance dictionary, despite the broad declarations in typeshed.
     if owner.is_object(db) && matches!(name, "__class__" | "__hash__" | "__dict__") {
         return None;
     }
     let (literal, _) = owner.static_class_literal(db)?;
-    // NamedTuple fields have a dedicated override rule, including synthesized properties.
     if CodeGeneratorKind::NamedTuple.matches(db, literal.into())
         && literal
             .own_fields(db, None, CodeGeneratorKind::NamedTuple)
@@ -182,24 +178,6 @@ fn unbound_member_contract<'db>(
         class_member.ignore_possibly_undefined(),
         Some(Type::SlotDescriptor(_))
     ) {
-        // A slot provides storage without replacing an inherited annotation:
-        //
-        // ```python
-        // class Base:
-        //     value: int
-        //
-        // class Slotted(Base):
-        //     __slots__ = ("value",)
-        //
-        //     def set_value(self, value):
-        //         self.value = value
-        //
-        // class Child(Slotted):
-        //     value: str  # Incompatible with Base.value.
-        // ```
-        //
-        // For `owner = Slotted`, looking only at its own assignments would infer `Unknown`
-        // for `value`. Full instance lookup preserves the inherited `int` annotation.
         owner.instance_member(db, env, name)
     } else {
         owner.own_instance_member(db, env, name).inner
@@ -209,8 +187,6 @@ fn unbound_member_contract<'db>(
         Place::Defined(DefinedPlace { origin: TypeOrigin::Declared, provenance, .. })
             if provenance.definition().is_some_and(|definition| definition.place(db).is_member())
     );
-    // An annotation such as `type[Any]` permits values that act as descriptors, but it
-    // still declares a writable attribute unless its type supplies a descriptor method.
     let has_descriptor_method = !class_member.is_class_var()
         && class_member.ignore_possibly_undefined().is_some_and(|ty| {
             !ty.class_member_with_policy(db, env, "__get__", MemberLookupPolicy::REQUIRE_CONCRETE)
@@ -222,8 +198,6 @@ fn unbound_member_contract<'db>(
         && !class_member.is_class_var()
         && !has_descriptor_method
     {
-        // An unannotated default may inherit an ancestor's type. It must not hide the
-        // receiver declaration when this class is compared with its own subclasses.
         class_member = Place::Undefined.into();
     }
     let own_place = match (class_member.place, instance_member.place) {
@@ -239,13 +213,10 @@ fn unbound_member_contract<'db>(
     let ty = if own_place.origin.is_declared() || is_descriptor {
         own_place.ty
     } else if is_class_var && !qualifiers.contains(TypeQualifiers::FINAL) {
-        // A bare mutable `ClassVar` promises the public type inferred from its initializer.
         own_place.public_type(db, env)
     } else {
         return Some(MemberContract::Inferred(own_place.ty));
     };
-    // A decorator can turn a function into a property, in which case its exposed
-    // value must be checked instead of the original function's signature.
     Some(MemberContract::Attribute(UnboundAttribute {
         literal,
         ty,
@@ -277,8 +248,6 @@ fn bind_attribute<'db>(
     let is_class_var = qualifiers.contains(TypeQualifiers::CLASS_VAR);
     let is_method_wrapper = matches!(ty, Type::KnownInstance(KnownInstanceType::MethodWrapper(_)));
     let (instance_read, class_read, write) = if is_class_var {
-        // A class variable has no instance storage. Both reads bind its descriptor, but
-        // assignment through the class replaces the stored value without calling its setter.
         let stored = ty.bind_self_typevars(db, env, receiver);
         let owner = receiver.to_meta_type(db, env);
         let read = |instance| stored.class_variable_read_type(db, env, instance, owner);
@@ -301,8 +270,6 @@ fn bind_attribute<'db>(
         let read = if member.qualifiers.contains(TypeQualifiers::NESTED_CLASS) {
             read.promote_class_literals(db, env)
         } else if is_method || is_method_wrapper {
-            // Explicit `staticmethod(f)` and `classmethod(f)` assignments expose method
-            // signatures, just like decorated definitions; the function's identity can change.
             read.try_upcast_to_callable(db, env)?.to_type(db, env)
         } else {
             read
@@ -325,8 +292,6 @@ fn bind_attribute<'db>(
         };
         (Some(read), None, write)
     } else {
-        // The selected declaration defines the contract, including inherited annotations.
-        // Inferred instance assignments do not narrow a class-body declaration.
         let read = ty.bind_self_typevars(db, env, receiver);
         let read = if is_nested_class {
             read.promote_class_literals(db, env)
@@ -350,10 +315,6 @@ fn bind_attribute<'db>(
     Some(AttributeContract {
         instance_read,
         class_read,
-        // Attributes on `object` are included here because typeshed declares attributes such as
-        // `__module__: str` on `object`, which normally implies writable instance attributes. But
-        // `object()` provides no instance-attribute storage, so it does not actually guarantee
-        // writability of these attributes.
         write: if owner.is_object(db)
             || qualifiers.contains(TypeQualifiers::FINAL)
             || is_nested_class && !ty.is_data_descriptor(db, env)
@@ -463,8 +424,6 @@ fn attribute_violation<'db>(
     source: &AttributeContract<'db>,
     target: &AttributeContract<'db>,
 ) -> Option<AttributeViolation<'db>> {
-    // Django encourages a pattern where nested `Meta` classes are used for model configuration
-    // that would lead to invalid override errors. We suppress errors for that exact pattern.
     if name == "Meta"
         && receiver
             .nominal_class(db, env)
@@ -503,19 +462,8 @@ fn attribute_violation<'db>(
         }
     }
     if target.method_kind != AttributeMethodKind::Other {
-        // ty allows methods to be shadowed with instance attributes. For example, it allows
-        // `def method(self) -> object` on `Base` to be shadowed via `base.method = lambda: 1`
-        // (where `base: Base` could also be an instance of a subclass of `Base`).
-        //
-        // We also allow overrides where the return type is covariantly narrowed because
-        // that's what users expect. We skip the write check to preserve that behavior.
-        //
-        // These two rules are unsound together. The assignment above is valid through a
-        // `Base` reference, but it would break a subclass with a return type of `str`.
         return None;
     }
-    // Nested class declarations also constrain class access. A property returning a compatible
-    // value on instances does not necessarily preserve the class-side operation.
     let class_read = |instance: Type<'db>| {
         instance
             .to_meta_type(db, env)
@@ -531,9 +479,6 @@ fn attribute_violation<'db>(
         return Some(AttributeViolation::Read { source, target });
     }
     let write = target.write?;
-    // A neutral dataclass-transform base explicitly permits frozen subclasses. Its
-    // fields can become read-only there, even though writes to the base are allowed.
-    // Preserve this permission when that frozen field is inherited by another subclass.
     if !target.is_property
         && target_receiver
             .nominal_class(db, env)
@@ -558,8 +503,6 @@ fn attribute_violation<'db>(
         .is_some_and(|source_write| write.is_assignable_to(db, env, source_write))
         || !receiver.is_attribute_writable_with(db, env, name, write)
     {
-        // Do not require a write that the superclass itself cannot perform, for example
-        // when a descriptor or custom `__setattr__` rejects the declared value type.
         if !target_receiver.is_attribute_writable_with(db, env, name, write) {
             return None;
         }
@@ -671,10 +614,6 @@ pub(super) fn check_override<'db>(
     name: &Name,
     definition: Definition<'db>,
 ) -> OverrideCheck<'db> {
-    // Classify methods before constructing attribute contracts: some members, such as
-    // `object.__hash__`, have method signatures but no general attribute contract.
-    // Receiver annotations still describe instance storage even if a method with
-    // the same name exists in the class body.
     if definition.place(db).is_symbol()
         && [class, superclass].into_iter().all(|owner| {
             owner
@@ -693,8 +632,6 @@ pub(super) fn check_override<'db>(
     } else {
         AttributeContractKind::ClassBody
     };
-    // An unannotated class default retains its inherited class-body annotation. Compare
-    // it with the same contracts on the bases, rather than rechecking receiver declarations.
     let inherited_kind = if matches!(
         definition.kind(db),
         DefinitionKind::Assignment(_) | DefinitionKind::AugmentedAssignment(_)
@@ -718,9 +655,6 @@ pub(super) fn check_override<'db>(
         }
         Some(MemberContract::Inferred(_)) | None => return OverrideCheck::Unavailable,
     };
-    // Final attributes are exempt from attribute compatibility checks, but finality
-    // and signature compatibility are independent: suppressing a finality diagnostic
-    // must not hide an incompatible method signature.
     if source.method_kind == AttributeMethodKind::Method
         && target.qualifiers.contains(TypeQualifiers::FINAL)
         && target
@@ -740,9 +674,6 @@ pub(super) fn check_override<'db>(
     ) else {
         return OverrideCheck::Attribute(None);
     };
-    // Suppress only conflicts already present with the parent's own specialization of
-    // this ancestor. An unrelated base, or a newly incompatible specialization in the
-    // child, must still be checked.
     if let Some(parent) = inherited_owner
         && parent != superclass
     {
@@ -813,13 +744,9 @@ pub(super) fn check_instance_overrides<'db>(
         return;
     };
     for name in super::declared_instance_attribute_names(db, literal.body_scope(db)) {
-        // Ordinary assignments introduce no override contract. Do not infer their method
-        // bodies just to discard the inferred type; a lazy cache can depend on its own reads.
         if is_mangled_private(name) || name == "__hash__" {
             continue;
         }
-        // Avoid inferring method bodies for names that do not override anything. Ordinary
-        // assignments in a base do not replace the inherited declaration's owner.
         let Some(inherited_owner) =
             bases
                 .iter()
@@ -847,8 +774,6 @@ pub(super) fn check_instance_overrides<'db>(
             continue;
         };
         if definition.place(db).is_symbol() {
-            // `own_instance_member` can return a class-body declaration, which the
-            // class-member pass has already checked.
             continue;
         }
         for base in bases.iter().filter_map(|base| base.into_class()) {
@@ -1007,8 +932,6 @@ pub(super) fn check_inherited_conflict<'db>(
     let env = &context.program_environment();
     let receiver = Type::instance(db, env, class_type);
     let kind = AttributeContractKind::Inherited;
-    // Most inherited names occur on just one base. Only look up the selected declaration
-    // once we know another base supplies a contract for the same name.
     let declaration = LazyCell::new(|| unbound_member_contract(db, env, owner, name, kind));
     let source = OnceCell::new();
     for target_owner in contracts {
@@ -1020,14 +943,9 @@ pub(super) fn check_inherited_conflict<'db>(
         let Some(MemberContract::Attribute(declaration)) = &*declaration else {
             return;
         };
-        // `attribute_violation` accepts two methods regardless of their read and write types,
-        // so we can skip binding them to the subclass.
         if declaration.is_method && target.is_method {
             continue;
         }
-        // This owner is itself a parent of the child. If its own selected declaration already
-        // conflicts with the target, `already_inherited` would match this same declaration
-        // bound to the child. No comparison on this receiver can introduce a new error.
         if conflicting_parent_member(
             db,
             env.program(db),

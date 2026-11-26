@@ -87,7 +87,6 @@ pub(crate) fn task_implicit_multiple_outputs(checker: &Checker, function_def: &S
         return;
     };
 
-    // If `multiple_outputs` is already specified, nothing to do.
     if decorator_has_multiple_outputs(decorator) {
         return;
     }
@@ -134,7 +133,6 @@ fn is_supported_task_decorator(decorator: &Decorator, semantic: &SemanticModel) 
     }
 
     // `@task.<variant>` or `@task.<variant>()`. `task.sensor` is intentionally
-    // excluded because the sensor decorator hardcodes `multiple_outputs=False`.
     if let Expr::Attribute(ExprAttribute { value, attr, .. }) = expr {
         if !matches!(
             attr.as_str(),
@@ -171,7 +169,6 @@ fn decorator_has_multiple_outputs(decorator: &Decorator) -> bool {
 /// subclass of `collections.abc.Mapping`, mirroring Airflow's
 /// `_infer_multiple_outputs` runtime check.
 fn annotation_resolves_to_mapping(annotation: &Expr, semantic: &SemanticModel) -> bool {
-    // Unwrap subscripts: `dict[str, int]` → `dict`.
     let head = match annotation {
         Expr::Subscript(ast::ExprSubscript { value, .. }) => value.as_ref(),
         other => other,

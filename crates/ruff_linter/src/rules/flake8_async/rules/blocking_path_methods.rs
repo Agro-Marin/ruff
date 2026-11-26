@@ -84,9 +84,6 @@ pub(crate) fn blocking_os_path(checker: &Checker, call: &ExprCall) {
         return;
     }
 
-    // Check if an expression is calling I/O related os.path method.
-    // Just initializing pathlib.Path object is OK, we can return
-    // early in that scenario.
     if let Some(qualified_name) = semantic.resolve_qualified_name(call.func.as_ref()) {
         let segments = qualified_name.segments();
         if !matches!(segments, ["os", "path", _]) {
@@ -116,8 +113,6 @@ pub(crate) fn blocking_os_path(checker: &Checker, call: &ExprCall) {
         return;
     }
 
-    // Check if an expression is a pathlib.Path constructor that directly
-    // calls an I/O method.
     if PathlibPathChecker::match_initializer(value, semantic) {
         checker.report_diagnostic(
             BlockingPathMethodInAsyncFunction {
@@ -128,8 +123,6 @@ pub(crate) fn blocking_os_path(checker: &Checker, call: &ExprCall) {
         return;
     }
 
-    // Lastly, check if a variable is a pathlib.Path instance and it's
-    // calling an I/O method.
     let Some(name) = value.as_name_expr() else {
         return;
     };
@@ -205,8 +198,6 @@ impl TypeChecker for PathlibPathChecker {
 }
 
 fn maybe_calling_io_operation(attr: &str) -> bool {
-    // ".open()" is added to the allow list to let ASYNC 230 handle
-    // that case.
     !matches!(
         attr,
         "ALLOW_MISSING"

@@ -50,7 +50,6 @@ pub fn hints(db: &dyn Db, file: File) -> Vec<Hint> {
 
     let mut hints = unused_bindings(db, file)
         .iter()
-        // Avoid a narrower unused-binding hint inside code that is already reported as unreachable.
         .filter(|binding| {
             unreachable.is_empty()
                 || !unreachable

@@ -118,7 +118,6 @@ pub(super) fn is_django_model_import(name: &str, stmt: &Stmt, semantic: &Semanti
             return false;
         }
 
-        // Match against, e.g., `apps.get_model("zerver", "Attachment")`.
         if let Some(unqualified_name) = UnqualifiedName::from_expr(func.as_ref()) {
             if matches!(unqualified_name.segments(), [.., "get_model"]) {
                 if let Some(argument) = arguments
@@ -135,7 +134,6 @@ pub(super) fn is_django_model_import(name: &str, stmt: &Stmt, semantic: &Semanti
             }
         }
 
-        // Match against, e.g., `import_string("zerver.models.Attachment")`.
         if semantic.matches_qualified_name(
             func,
             &["django", "utils", "module_loading", "import_string"],

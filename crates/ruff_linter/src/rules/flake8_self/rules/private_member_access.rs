@@ -98,14 +98,12 @@ pub(crate) fn private_member_access(checker: &Checker, expr: &Expr) {
         return;
     }
 
-    // Ignore accesses on instances within special methods (e.g., `__eq__`).
     if let ScopeKind::Function(ast::StmtFunctionDef { name, .. }) = current_scope.kind {
         if is_dunder_operator_method(name) {
             return;
         }
     }
 
-    // Allow some public functions whose names start with an underscore, like `os._exit()`.
     if let Some(qualified_name) = semantic.resolve_qualified_name(expr) {
         if is_underscore_prefixed_public_member(&qualified_name) {
             return;
@@ -113,7 +111,6 @@ pub(crate) fn private_member_access(checker: &Checker, expr: &Expr) {
     }
 
     if let Expr::Call(ast::ExprCall { func, .. }) = value.as_ref() {
-        // Ignore `super()` calls.
         if let Some(name) = UnqualifiedName::from_expr(func) {
             if matches!(name.segments(), ["super"]) {
                 return;
@@ -122,14 +119,12 @@ pub(crate) fn private_member_access(checker: &Checker, expr: &Expr) {
     }
 
     if let Some(name) = UnqualifiedName::from_expr(value) {
-        // Ignore `self` and `cls` accesses.
         if matches!(name.segments(), ["self" | "cls" | "mcs"]) {
             return;
         }
     }
 
     if let Expr::Name(name) = value.as_ref() {
-        // Ignore accesses on class members from _within_ the class.
         if semantic
             .resolve_name(name)
             .and_then(|id| {
@@ -297,8 +292,6 @@ impl TypeChecker for SameClassInstanceChecker {
 
     /// `cls()`, `C()`, `C[T]()`, `super().__new__()`, `object.__new__()`, `self`
     fn match_initializer(initializer: &Expr, semantic: &SemanticModel) -> bool {
-        // `this = self` — a direct assignment from `self`, but only when
-        // `self` is actually a function parameter (not a local rebinding).
         if let Expr::Name(name) = initializer
             && name.id == "self"
             && semantic
@@ -325,14 +318,12 @@ impl TypeChecker for SameClassInstanceChecker {
                 }
 
                 match &**value {
-                    // `super().__new__()`, `object().__new__()`
                     Expr::Call(ast::ExprCall {
                         func, arguments, ..
                     }) => {
                         matches!(&**func, Expr::Name(ast::ExprName { id, .. }) if id == "super")
                             || (arguments.is_empty() && semantic.match_builtin_expr(func, "object"))
                     }
-                    // `object.__new__()`
                     value => semantic.match_builtin_expr(value, "object"),
                 }
             }

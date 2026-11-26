@@ -37,10 +37,8 @@ if TYPE_CHECKING:
         Project,
     )
 
-# Matches lines that are summaries rather than diagnostics
 CHECK_SUMMARY_LINE_RE = re.compile(r"^(Found \d+ error.*)|(.* fixable with .*)$")
 
-# Parses a diagnostic line (in a diff) to retrieve path and line number
 CHECK_DIFF_LINE_RE = re.compile(
     r"^(?P<pre>[+-]) (?P<inner>(?P<path>[^:]+):(?P<lnum>\d+):\d+:) (?P<post>.*)$",
 )
@@ -53,7 +51,7 @@ PANIC_DIAGNOSTIC_LINE_RE = re.compile(r"^[^:]+: panic: Panicked at ")
 
 CHECK_VIOLATION_FIX_INDICATOR = " [*]"
 
-GITHUB_MAX_COMMENT_LENGTH = 65536  # characters
+GITHUB_MAX_COMMENT_LENGTH = 65536
 
 
 def markdown_check_result(result: Result) -> str:
@@ -62,7 +60,6 @@ def markdown_check_result(result: Result) -> str:
     """
     projects_with_changes = 0
 
-    # Calculate the total number of rule changes
     all_rule_changes = RuleChanges()
     project_diffs = {
         project: CheckDiff.from_simple_diff(comparison.diff)
@@ -90,9 +87,7 @@ def markdown_check_result(result: Result) -> str:
     if total_affected_rules == 0 and error_count == 0:
         return "\u2705 ecosystem check detected no linter changes."
 
-    # Summarize the total changes
     if total_affected_rules == 0:
-        # Only errors
         s = "s" if error_count != 1 else ""
         lines.append(
             f"\u2139\ufe0f ecosystem check **encountered linter errors**. (no lint changes; {error_count} project error{s})"
@@ -117,10 +112,7 @@ def markdown_check_result(result: Result) -> str:
         )
     lines.append("")
 
-    # Display per project changes
     for project, comparison in result.completed:
-        # TODO: This is not a performant way to check the length but the whole
-        #       GitHub comment length issue needs to be addressed anyway
         if len(" ".join(lines)) > GITHUB_MAX_COMMENT_LENGTH // 3:
             lines.append("")
             lines.append(
@@ -130,7 +122,7 @@ def markdown_check_result(result: Result) -> str:
             break
 
         if not comparison.diff:
-            continue  # Skip empty diffs
+            continue
 
         diff = project_diffs[project]
         rule_changes = project_rule_changes[project]
@@ -145,46 +137,28 @@ def markdown_check_result(result: Result) -> str:
             + project_removed_fixes
         )
 
-        # Limit the number of items displayed per project to between 10 and 50
-        # based on the proportion of total changes present in this project
         max_display_per_project = max(
             10,
             int(
                 (
-                    # TODO(zanieb): We take the `max` here to avoid division by zero errors where
-                    # `total_changes` is zero but `total_affected_rules` is non-zero so we did not
-                    # skip display. This shouldn't really happen and indicates a problem in the
-                    # calculation of these values. Instead of skipping entirely when `total_changes`
-                    # is zero, we'll attempt to report the results to help diagnose the problem.
-                    #
-                    # There's similar issues with the `max_display_per_rule` calculation immediately
-                    # below as well.
                     project_changes / max(total_changes, 1)
                 )
                 * 50
             ),
         )
 
-        # Limit the number of items displayed per rule to between 5 and the max for
-        # the project based on the number of rules affected (less rules, more per rule)
         max_display_per_rule = max(
             5,
-            # TODO: remove the need for the max() call here,
-            # which is a workaround for if `len(rule_changes.rule_codes()) == 0`
-            # (see comment in the assignment of `max_display_per_project` immediately above)
             max_display_per_project // max(len(rule_changes.rule_codes()), 1),
         )
 
-        # Display the diff
         displayed_changes_per_rule = Counter()
         displayed_changes = 0
 
-        # Wrap with `<pre>` for code-styling with support for links
         diff_lines = ["<pre>"]
         for line in diff.parsed_lines:
             rule_code = line.rule_code
 
-            # Limit the number of changes we'll show per rule code
             if displayed_changes_per_rule[rule_code] > max_display_per_rule:
                 continue
 
@@ -195,7 +169,6 @@ def markdown_check_result(result: Result) -> str:
             displayed_changes_per_rule[rule_code] += 1
             displayed_changes += 1
 
-            # If we just reached the maximum... display an omission line
             if displayed_changes_per_rule[rule_code] > max_display_per_rule:
                 hidden_count = (
                     rule_changes.added_violations[rule_code]
@@ -245,7 +218,6 @@ def markdown_check_result(result: Result) -> str:
             )
         )
 
-    # Display a summary table of changed rules
     if all_rule_changes:
         table_lines = []
         table_lines.append(
@@ -254,7 +226,7 @@ def markdown_check_result(result: Result) -> str:
         table_lines.append("| ---- | ------- | --------- | -------- | ----- | ---- |")
         for rule, total in sorted(
             all_rule_changes.total_changes_by_rule(),
-            key=lambda item: item[1],  # Sort by the total changes
+            key=lambda item: item[1],
             reverse=True,
         ):
             added_violations, removed_violations, added_fixes, removed_fixes = (
@@ -419,9 +391,6 @@ class DiagnosticLine:
         match = CHECK_DIAGNOSTIC_LINE_RE.match(line)
 
         if match is None:
-            # Handle case where there are no regex match e.g.
-            # +                 "?application=AIRFLOW&authenticator=TEST_AUTH&role=TEST_ROLE&warehouse=TEST_WAREHOUSE"
-            # Which was found in local testing
             return None
 
         match_items = match.groupdict()
@@ -456,13 +425,10 @@ class CheckDiff(Diff):
         """
         Parse a simple diff to include check-specific analyses.
         """
-        # Drop unchanged lines
         diff = diff.without_unchanged_lines()
 
-        # Sort without account for the leading + / -
         sorted_lines = sorted(diff, key=lambda line: line[2:])
 
-        # Parse the lines, drop lines that cannot be parsed
         parsed_lines: list[DiagnosticLine] = list(
             filter(
                 None,
@@ -470,12 +436,8 @@ class CheckDiff(Diff):
             )
         )
 
-        # Calculate which lines only changed fix availability
         fix_only: set[DiagnosticLine] = set()
 
-        # TODO(zanieb): There has to be a cleaner way to express this logic
-        # We check if each added line is available in the removed set with fix
-        # availability toggled and vice-versa
         for line in parsed_lines:
             other_set = diff.removed if line.is_added else diff.added
             toggled = (
@@ -567,8 +529,6 @@ async def ruff_check(
     if proc.returncode != 0:
         raise ToolError(err.decode("utf8"))
 
-    # Strip summary lines so the diff is only diagnostic lines. Also sort the lines so that
-    # reordering isn't presented as an addition/deletion pair.
     return sorted(
         line
         for line in result.decode("utf8").splitlines()

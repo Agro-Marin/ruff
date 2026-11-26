@@ -286,20 +286,16 @@ fn semantic_tokens_for_cell_do_not_leak_stringified_annotations() -> anyhow::Res
 
     let mut builder = NotebookBuilder::virtual_file("src/test.ipynb");
 
-    // Create a first cell that contains semantic tokens.
     builder.add_python_cell(
         r#"from typing import cast
 
 x = cast("list[str]", [])"#,
     );
 
-    // Create a second, empty cell that does not contain any semantic tokens.
     let second_cell = builder.add_python_cell("");
 
     builder.open(&mut server);
 
-    // Assert that we didn't receive any semantic tokens for the empty cell.
-    // This proves that none were leaked from the first cell.
     let response = semantic_tokens_full_for_cell(&mut server, &second_cell);
     if let Some(tokens) = response {
         assert!(tokens.data.is_empty());
@@ -362,7 +358,6 @@ fn swap_cells() -> anyhow::Result<()> {
     }
     "#);
 
-    // Re-order the cells from `b`, `a`, `c` to `a`, `b`, `c` (swapping cell 1 and 2)
     server.send_notification::<lsp_types::DidChangeNotebookDocumentNotification>(
         lsp_types::DidChangeNotebookDocumentParams {
             notebook_document: lsp_types::VersionedNotebookDocumentIdentifier {
@@ -649,7 +644,6 @@ fn inlay_hints_range_past_end_of_cell() -> anyhow::Result<()> {
 
     let range = Range::new(Position::new(0, 0), Position::new(10, 0));
 
-    // The second cell has hints of its own.
     let second_cell_hints = inlay_hints_for_cell(&mut server, &second_cell, range);
     assert!(!second_cell_hints.is_empty());
 
@@ -745,7 +739,6 @@ fn invalid_syntax_with_syntax_errors_disabled() -> anyhow::Result<()> {
 
     let diagnostics = server.collect_publish_diagnostic_notifications(2);
 
-    // We still publish unused-bindings for both cells, even when syntax-error reporting is disabled.
     assert_eq!(diagnostics.len(), 2);
     assert!(
         diagnostics
@@ -793,7 +786,6 @@ fn semantic_tokens_full_for_cell(
 #[derive(Debug)]
 pub(crate) struct NotebookBuilder {
     notebook_uri: lsp_types::Uri,
-    // The cells: (cell_metadata, content, language_id, version)
     cells: Vec<(lsp_types::NotebookCell, String, String, i32)>,
 }
 
@@ -878,9 +870,6 @@ fn literal_completions(
     position: Position,
 ) -> Vec<lsp_types::CompletionItem> {
     let mut items = server.completion_request(cell, position);
-    // There are a ton of imports we don't care about in here...
-    // The import bit is that an edit is always restricted to the current cell. That means,
-    // we can't add `Literal` to the `from typing import TYPE_CHECKING` import in cell 1
     items.retain(|item| item.label.starts_with("Litera"));
     items
 }

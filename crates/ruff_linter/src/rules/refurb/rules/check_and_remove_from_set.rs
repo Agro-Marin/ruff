@@ -70,39 +70,32 @@ impl AlwaysFixableViolation for CheckAndRemoveFromSet {
 
 /// FURB132
 pub(crate) fn check_and_remove_from_set(checker: &Checker, if_stmt: &ast::StmtIf) {
-    // In order to fit the profile, we need if without else clauses and with only one statement in its body.
     if if_stmt.body.len() != 1 || !if_stmt.elif_else_clauses.is_empty() {
         return;
     }
 
-    // The `if` test should be `element in set`.
     let Some((check_element, check_set)) = match_check(if_stmt) else {
         return;
     };
 
-    // The `if` body should be `set.remove(element)`.
     let Some((remove_element, remove_set)) = match_remove(if_stmt) else {
         return;
     };
 
-    // `set` in the check should be the same as `set` in the body
     if check_set.id != remove_set.id {
         return;
     }
 
-    // `element` in the check should be the same as `element` in the body
     if !compare(&check_element.into(), &remove_element.into()) {
         return;
     }
 
-    // `element` shouldn't have a side effect, otherwise we might change the semantics of the program.
     if contains_effect(check_element, |id| {
         checker.semantic().has_builtin_binding(id)
     }) {
         return;
     }
 
-    // Check if what we assume is set is indeed a set.
     if !checker
         .semantic()
         .only_binding(check_set)
@@ -174,9 +167,6 @@ fn match_remove(if_stmt: &ast::StmtIf) -> Option<(&Expr, &ast::ExprName)> {
 
 /// Construct the fix suggestion, ie `set.discard(element)`.
 fn make_suggestion(set: &ast::ExprName, element: &Expr, generator: Generator) -> String {
-    // Here we construct `set.discard(element)`
-    //
-    // Let's make `set.discard`.
     let attr = ast::ExprAttribute {
         value: Box::new(set.clone().into()),
         attr: ast::Identifier::new("discard".to_string(), TextRange::default()),
@@ -184,7 +174,6 @@ fn make_suggestion(set: &ast::ExprName, element: &Expr, generator: Generator) ->
         range: TextRange::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
     };
-    // Make the actual call `set.discard(element)`
     let call = ast::ExprCall {
         func: Box::new(attr.into()),
         arguments: ast::Arguments {
@@ -196,7 +185,6 @@ fn make_suggestion(set: &ast::ExprName, element: &Expr, generator: Generator) ->
         range_start: ruff_text_size::TextSize::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,
     };
-    // And finally, turn it into a statement.
     let stmt = ast::StmtExpr {
         value: Box::new(call.into()),
         range: TextRange::default(),

@@ -17,7 +17,6 @@ pub(crate) fn is_underscore_prefixed_public_member(qualified_name: &QualifiedNam
 
 /// Returns the value of the `name` parameter to, e.g., a `TypeVar` constructor.
 pub(super) fn type_param_name(arguments: &Arguments) -> Option<&str> {
-    // Handle both `TypeVar("T")` and `TypeVar(name="T")`.
     let name_param = arguments.find_argument_value("name", 0)?;
     if let Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) = &name_param {
         Some(value.to_str())
@@ -96,8 +95,6 @@ impl<'a> SequenceIndexVisitor<'a> {
 
 impl SequenceIndexVisitor<'_> {
     fn is_assignment(&self, expr: &Expr) -> bool {
-        // If we see the sequence, a subscript, or the index being modified, we'll stop emitting
-        // diagnostics.
         match expr {
             Expr::Name(ast::ExprName { id, .. }) => {
                 id == self.sequence_name || id == self.index_name || id == self.value_name
@@ -317,8 +314,6 @@ pub(super) fn is_known_dunder_method(method: &str) -> bool {
         | "__trunc__"
         | "__weakref__" => true,
 
-        // Overridable sunder names from the `Enum` class.
-        // See: https://docs.python.org/3/library/enum.html#supported-sunder-names
         "_add_alias_"
         | "_add_value_alias_"
         | "_name_"
@@ -377,7 +372,6 @@ pub(super) fn num_statements(stmts: &[Stmt]) -> usize {
                     count += 1 + num_statements(orelse);
                 }
                 if !finalbody.is_empty() {
-                    // Unclear why, but follow Pylint's convention.
                     count += 2 + num_statements(finalbody);
                 }
                 if handlers.len() > 1 {

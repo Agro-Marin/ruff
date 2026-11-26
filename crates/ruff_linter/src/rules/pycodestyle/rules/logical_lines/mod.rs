@@ -305,7 +305,6 @@ impl Whitespace {
 
         for c in content.chars() {
             if c == '#' {
-                // Ignore leading whitespace between a token and an end-of-line comment
                 return (Whitespace::None, TextSize::default());
             } else if c == '\t' {
                 has_tabs = true;
@@ -341,7 +340,6 @@ impl Whitespace {
                 has_tabs = true;
                 len += c.text_len();
             } else if matches!(c, '\n' | '\r') {
-                // Indent
                 return (Self::None, TextSize::default());
             } else if is_python_whitespace(c) {
                 count += 1;
@@ -352,7 +350,6 @@ impl Whitespace {
         }
 
         if len == content.text_len() {
-            // All whitespace up to the start of the line -> Indent
             (Self::None, TextSize::default())
         } else if has_tabs {
             (Self::Tab, len)

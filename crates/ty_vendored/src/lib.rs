@@ -11,8 +11,6 @@ pub const SOURCE_COMMIT: &str =
 
 static_assertions::const_assert_eq!(SOURCE_COMMIT.len(), 40);
 
-// The file path here is hardcoded in this crate's `build.rs` script.
-// Luckily this crate will fail to build if this file isn't available at build time.
 static TYPESHED_ZIP_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/zipped_typeshed.zip"));
 
 pub fn file_system() -> &'static VendoredFileSystem {

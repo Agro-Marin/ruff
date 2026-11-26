@@ -106,11 +106,6 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
     };
 
     let (stmt, if_test) = match &*for_stmt.body {
-        // ```python
-        // for x in y:
-        //     if z:
-        //         filtered.append(x)
-        // ```
         [
             ast::Stmt::If(ast::StmtIf {
                 body,
@@ -127,10 +122,6 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
             };
             (stmt, Some(test))
         }
-        // ```python
-        // for x in y:
-        //     filtered.append(f(x))
-        // ```
         [stmt] => (stmt, None),
         _ => return,
     };
@@ -172,13 +163,10 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         return;
     }
 
-    // Avoid non-list values.
     let Some(list_name) = value.as_name_expr() else {
         return;
     };
 
-    // Ignore direct list copies (e.g., `for x in y: filtered.append(x)`), unless it's async, which
-    // `manual-list-copy` doesn't cover.
     if !for_stmt.is_async {
         if if_test.is_none() {
             if arg
@@ -190,13 +178,10 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         }
     }
 
-    // An assignment expression is a syntax error anywhere in a comprehension's iterable, even
-    // when parenthesized (e.g., `[x for x in (y := z)]`), so the loop can't be converted.
     if any_over_expr(&for_stmt.iter, &Expr::is_named_expr) {
         return;
     }
 
-    // Avoid, e.g., `for x in y: filtered.append(filtered[-1] * 2)`.
     if any_over_expr(arg, |expr| {
         expr.as_name_expr()
             .is_some_and(|expr| expr.id == list_name.id)
@@ -216,20 +201,6 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         return;
     }
 
-    // Avoid if the list is used in the conditional test, e.g.,
-    //
-    // ```python
-    // for x in y:
-    //    if x in filtered:
-    //        filtered.append(x)
-    // ```
-    //
-    // Converting this to a list comprehension would raise a `NameError` as
-    // `filtered` is not defined yet:
-    //
-    // ```python
-    // filtered = [x for x in y if x in filtered]
-    // ```
     if if_test.is_some_and(|test| {
         any_over_expr(test, |expr| {
             expr.as_name_expr()
@@ -239,33 +210,15 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         return;
     }
 
-    // Avoid if the for-loop target is used outside the for loop, e.g.,
-    //
-    // ```python
-    // for x in y:
-    //     filtered.append(x)
-    // print(x)
-    // ```
-    //
-    // If this were a comprehension, x would no longer have the correct scope:
-    //
-    // ```python
-    // filtered = [x for x in y]
-    // print(x)
-    // ```
     let target_binding = checker
         .semantic()
         .bindings
         .iter()
         .find(|binding| for_stmt.target.range() == binding.range)
         .unwrap();
-    // If the target variable is global (e.g., `global INDEX`) or nonlocal (e.g., `nonlocal INDEX`),
-    // then it is intended to be used elsewhere outside the for loop.
     if target_binding.is_global() || target_binding.is_nonlocal() {
         return;
     }
-    // If any references to the loop target variable are after the loop,
-    // then converting it into a comprehension would cause a NameError
     if target_binding
         .references()
         .map(|reference| checker.semantic().reference(reference))
@@ -281,14 +234,9 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         _ => None,
     });
 
-    // If the variable is an empty list literal, then we might be able to replace it with a full list comprehension
-    // otherwise, it has to be replaced with a `list.extend`.
     let binding_is_empty_list =
         list_binding_value.is_some_and(|binding_value| match binding_value {
-            // `value = []`
             Expr::List(list_expr) => list_expr.is_empty(),
-            // `value = list()`
-            // This might be linted against, but turning it into a list comprehension will also remove it
             Expr::Call(call) => {
                 checker
                     .semantic()
@@ -299,8 +247,6 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
             _ => false,
         });
 
-    // If the for loop does not have the same parent element as the binding, then it cannot always be
-    // deleted and replaced with a list comprehension. This does not apply when using `extend`.
     let assignment_in_same_statement = {
         list_binding.source.is_some_and(|binding_source| {
             let for_loop_parent = checker.semantic().current_statement_parent_id();
@@ -309,30 +255,22 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         })
     };
 
-    // If the binding is not a single name expression, it could be replaced with a list comprehension,
-    // but not necessarily, so this needs to be manually fixed. This does not apply when using an extend.
     let binding_has_one_target = list_binding_stmt.is_some_and(|binding_stmt| match binding_stmt {
         ast::Stmt::AnnAssign(_) => true,
         ast::Stmt::Assign(assign) => assign.targets.len() == 1,
         _ => false,
     });
 
-    // If the binding gets used in between the assignment and the for loop, a list comprehension is no longer safe
 
-    // If the binding is after the for loop, then it can't be fixed, and this check would panic,
-    // so we check that they are in the same statement first
     let binding_unused_between = assignment_in_same_statement
         && list_binding_stmt.is_some_and(|binding_stmt| {
             let from_assign_to_loop = TextRange::new(binding_stmt.end(), for_stmt.start());
-            // Test if there's any reference to the list symbol between its definition and the for loop.
-            // if there's at least one, then it's been accessed in the middle somewhere, so it's not safe to change into a list comprehension
             !list_binding
                 .references()
                 .map(|ref_id| checker.semantic().reference(ref_id).range())
                 .any(|text_range| from_assign_to_loop.contains_range(text_range))
         });
 
-    // A list extend works in every context, while a list comprehension only works when all the criteria are true
     let comprehension_type = if binding_is_empty_list
         && assignment_in_same_statement
         && binding_has_one_target
@@ -351,7 +289,6 @@ pub(crate) fn manual_list_comprehension(checker: &Checker, for_stmt: &ast::StmtF
         call_range,
     );
 
-    // TODO: once this fix is stabilized, change the rule to always fixable
     if is_fix_manual_list_comprehension_enabled(checker.settings()) {
         diagnostic.try_set_fix(|| {
             convert_to_list_extend(
@@ -378,14 +315,6 @@ fn convert_to_list_extend(
     let locator = checker.locator();
     let if_str = match if_test {
         Some(test) => {
-            // If the test is an assignment expression,
-            // we must parenthesize it when it appears
-            // inside the comprehension to avoid a syntax error.
-            //
-            // Notice that we do not need `any_over_expr` here,
-            // since if the assignment expression appears
-            // internally (e.g. as an operand in a boolean
-            // operation) then it will already be parenthesized.
             match test {
                 Expr::Named(_) | Expr::If(_) | Expr::Lambda(_) => {
                     format!(" if ({})", locator.slice(test.range()))
@@ -433,7 +362,6 @@ fn convert_to_list_extend(
     match fix_type {
         ComprehensionType::Extend => {
             let generator_str = if for_stmt.is_async {
-                // generators do not implement __iter__, so `async for` requires the generator to be a list
                 format!("[{generator_str}]")
             } else {
                 generator_str
@@ -467,8 +395,6 @@ fn convert_to_list_extend(
                     "Binding must have a statement to convert into a list comprehension"
                 ))?;
 
-            // If there are multiple binding statements in one line, we don't want to accidentally delete them
-            // Instead, we just delete the binding statement and leave any comments where they are
             let (binding_stmt_deletion_range, binding_is_multiple_stmts) =
                 statement_deletion_range(checker, binding_stmt_range);
 

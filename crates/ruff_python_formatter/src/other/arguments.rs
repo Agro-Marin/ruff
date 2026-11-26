@@ -21,13 +21,6 @@ impl FormatNodeRule<Arguments> for FormatArguments {
             keywords,
             node_index: _,
         } = item;
-        // We have a case with `f()` without any argument, which is a special case because we can
-        // have a comment with no node attachment inside:
-        // ```python
-        // f(
-        //      # This call has a dangling comment.
-        // )
-        // ```
         if args.is_empty() && keywords.is_empty() {
             let comments = f.context().comments().clone();
             let dangling = comments.dangling(item);
@@ -51,9 +44,6 @@ impl FormatNodeRule<Arguments> for FormatArguments {
                                 if is_single_argument_parenthesized(arg, range.end(), source) {
                                     Parentheses::Always
                                 } else {
-                                    // Note: no need to handle opening-parenthesis comments, since
-                                    // an opening-parenthesis comment implies that the argument is
-                                    // parenthesized.
                                     Parentheses::Never
                                 };
                             joiner.entry(other, &other.format().with_options(parentheses))
@@ -77,35 +67,12 @@ impl FormatNodeRule<Arguments> for FormatArguments {
             joiner.finish()
         });
 
-        // If the arguments are non-empty, then a dangling comment indicates a comment on the
-        // same line as the opening parenthesis, e.g.:
-        // ```python
-        // f(  # This call has a dangling comment.
-        //     a,
-        //     b,
-        //     c,
-        // )
         let comments = f.context().comments().clone();
         let dangling_comments = comments.dangling(item);
 
         write!(
             f,
             [
-                // The outer group is for things like:
-                // ```python
-                // get_collection(
-                //     hey_this_is_a_very_long_call,
-                //     it_has_funny_attributes_asdf_asdf,
-                //     too_long_for_the_line,
-                //     really=True,
-                // )
-                // ```
-                // The inner group is for things like:
-                // ```python
-                // get_collection(
-                //     hey_this_is_a_very_long_call, it_has_funny_attributes_asdf_asdf, really=True
-                // )
-                // ```
                 parenthesized("(", &group(&all_arguments), ")")
                     .with_hugging(is_arguments_huggable(item, f.context()))
                     .with_dangling_comments(dangling_comments)
@@ -127,10 +94,8 @@ fn is_single_argument_parenthesized(argument: &Expr, call_end: TextSize, source:
                 }
                 has_seen_r_paren = true;
             }
-            // Skip over any trailing comma
             SimpleTokenKind::Comma => continue,
             _ => {
-                // Passed the arguments
                 break;
             }
         }
@@ -170,7 +135,6 @@ fn is_single_argument_parenthesized(argument: &Expr, call_end: TextSize, source:
 /// Hugging should only be applied to single-argument collections, like lists, or starred versions
 /// of those collections.
 fn is_arguments_huggable(arguments: &Arguments, context: &PyFormatContext) -> bool {
-    // Find the lone argument or `**kwargs` keyword.
     let arg = match (arguments.args.as_ref(), arguments.keywords.as_ref()) {
         ([arg], []) => arg,
         ([], [keyword]) if keyword.arg.is_none() && !context.comments().has(keyword) => {
@@ -179,7 +143,6 @@ fn is_arguments_huggable(arguments: &Arguments, context: &PyFormatContext) -> bo
         _ => return false,
     };
 
-    // If the expression itself isn't huggable, then we can't hug it.
     if !(is_expression_huggable(arg, context)
         || StringLike::try_from(arg)
             .is_ok_and(|string| is_huggable_string_argument(string, arguments, context)))
@@ -187,7 +150,6 @@ fn is_arguments_huggable(arguments: &Arguments, context: &PyFormatContext) -> bo
         return false;
     }
 
-    // If the expression has leading or trailing comments, then we can't hug it.
     let comments = context.comments().leading_dangling_trailing(arg);
     if comments.has_leading() || comments.has_trailing() {
         return false;
@@ -195,7 +157,6 @@ fn is_arguments_huggable(arguments: &Arguments, context: &PyFormatContext) -> bo
 
     let options = context.options();
 
-    // If the expression has a trailing comma, then we can't hug it.
     !(options.magic_trailing_comma().is_respect()
         && commas::has_magic_trailing_comma(TextRange::new(arg.end(), arguments.end()), context))
 }

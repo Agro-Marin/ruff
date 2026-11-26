@@ -123,9 +123,6 @@ pub(crate) fn post_init_default(checker: &Checker, function_def: &ast::StmtFunct
             diagnostic.try_set_fix(|| {
                 use_initvar(current_scope, function_def, parameter, default, checker)
             });
-            // Need to stop fixes as soon as there is a parameter we cannot fix.
-            // Otherwise, we risk a syntax error (a parameter without a default
-            // following parameter with a default).
             stopped_fixes |= diagnostic.fix().is_none();
         }
     }
@@ -148,8 +145,6 @@ fn use_initvar(
         ));
     }
 
-    // If the annotation references a type variable scoped to `__post_init__`
-    // (PEP 695), moving it to the class body would produce a `NameError`.
     if let Some(annotation) = parameter.annotation() {
         if let Some(type_params) = &post_init_def.type_params {
             if any_over_expr(annotation, |expr| {
@@ -163,8 +158,6 @@ fn use_initvar(
         }
     }
 
-    // Ensure that `dataclasses.InitVar` is accessible. For example,
-    // + `from dataclasses import InitVar`
     let (import_edit, initvar_binding) = checker.importer().get_or_import_symbol(
         &ImportRequest::import("dataclasses", "InitVar"),
         default.start(),
@@ -180,12 +173,8 @@ fn use_initvar(
     )
     .unwrap_or(default.range());
 
-    // Delete the default value. For example,
-    // - def __post_init__(self, foo: int = 0) -> None: ...
-    // + def __post_init__(self, foo: int) -> None: ...
     let default_edit = Edit::deletion(parameter.end(), default_loc.end());
 
-    // Add `dataclasses.InitVar` field to class body.
     let content = {
         let default = locator.slice(default_loc);
         let parameter_name = locator.slice(&parameter.name);

@@ -82,12 +82,8 @@ pub(crate) fn isinstance_type_none(checker: &Checker, call: &ast::ExprCall) {
 fn is_none(expr: &Expr, semantic: &SemanticModel) -> bool {
     fn inner(expr: &Expr, in_union_context: bool, semantic: &SemanticModel) -> bool {
         match expr {
-            // Ex) `None`
-            // Note: `isinstance` only accepts `None` as a type when used with
-            // the union operator, so we need to check if we're in a union.
             Expr::NoneLiteral(_) if in_union_context => true,
 
-            // Ex) `type(None)`
             Expr::Call(ast::ExprCall {
                 func, arguments, ..
             }) => {
@@ -102,19 +98,16 @@ fn is_none(expr: &Expr, semantic: &SemanticModel) -> bool {
                 matches!(arguments.args.as_ref(), [Expr::NoneLiteral(_)])
             }
 
-            // Ex) `(type(None),)`
             Expr::Tuple(tuple) => {
                 !tuple.is_empty() && tuple.iter().all(|element| inner(element, false, semantic))
             }
 
-            // Ex) `type(None) | type(None)`
             Expr::BinOp(ast::ExprBinOp {
                 left,
                 op: Operator::BitOr,
                 right,
                 ..
             }) => {
-                // `None | None` is a `TypeError` at runtime
                 if left.is_none_literal_expr() && right.is_none_literal_expr() {
                     return false;
                 }
@@ -122,7 +115,6 @@ fn is_none(expr: &Expr, semantic: &SemanticModel) -> bool {
                 inner(left, true, semantic) && inner(right, true, semantic)
             }
 
-            // Ex) `Union[None, ...]`
             Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => {
                 if !semantic.match_typing_expr(value, "Union") {
                     return false;
@@ -137,7 +129,6 @@ fn is_none(expr: &Expr, semantic: &SemanticModel) -> bool {
                 }
             }
 
-            // Otherwise, return false.
             _ => false,
         }
     }

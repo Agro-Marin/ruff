@@ -41,17 +41,14 @@ impl fmt::Display for VersionInfo {
 
 /// Returns information about Ruff's version.
 pub(crate) fn version() -> VersionInfo {
-    // Environment variables are only read at compile-time
     macro_rules! option_env_str {
         ($name:expr) => {
             option_env!($name).map(|s| s.to_string())
         };
     }
 
-    // This version is pulled from Cargo.toml and set by Cargo
     let version = option_env_str!("CARGO_PKG_VERSION").unwrap();
 
-    // Commit info is pulled from git and set by `build.rs`
     let commit_info = option_env_str!("RUFF_COMMIT_HASH").map(|commit_hash| CommitInfo {
         short_commit_hash: option_env_str!("RUFF_COMMIT_SHORT_HASH").unwrap(),
         commit_hash,

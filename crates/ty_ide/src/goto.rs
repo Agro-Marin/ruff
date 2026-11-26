@@ -291,14 +291,6 @@ impl<'db> Definitions<'db> {
     ) -> Option<Definitions<'db>> {
         let mut definitions = self.0;
 
-        // When our target is a class constructor, we want to exclude
-        // navigation targets to its `__init__` or `__new__` methods.
-        //
-        // ... unless the cursor is on the parenthesis of the call,
-        // in which case we want to prefer the constructor methods
-        // if available.
-        //
-        // See: https://github.com/astral-sh/ty/issues/2218
         if let GotoTarget::Call { on_parenthesis, .. } = *goto_target
             && goto_target
                 .inferred_type(model)
@@ -317,10 +309,6 @@ impl<'db> Definitions<'db> {
                 };
 
             if on_parenthesis {
-                // Only limit to constructor methods if we have at least one.
-                // Otherwise we could end up removing all navigation targets.
-                // e.g., See `goto_definition_dynamic_namedtuple_literal_parenthesis`
-                // test.
                 if definitions.iter().any(is_constructor_method) {
                     definitions.retain(|resolved_def| is_constructor_method(resolved_def));
                 }
@@ -440,18 +428,13 @@ impl<'db> Definitions<'db> {
     /// and return the first one found.
     pub(crate) fn docstring(self, db: &'db dyn SemanticDb) -> Option<Docstring> {
         for definition in &self {
-            // If we got a docstring from the original definition, use it
             if let Some(docstring) = definition.docstring(db) {
                 return Some(Docstring::new(docstring));
             }
         }
 
-        // If the definition is located within a stub file and no docstring
-        // is present, try to map the symbol to an implementation file and extract
-        // the docstring from that location.
         let stub_mapper = StubMapper::new(db);
 
-        // Try to find the corresponding implementation definition
         for definition in stub_mapper.map_definitions(self.0) {
             if let Some(docstring) = definition.docstring(db) {
                 return Some(Docstring::new(docstring));
@@ -532,8 +515,6 @@ impl GotoTarget<'_> {
             | GotoTarget::ImportExportedName { alias, .. } => alias.inferred_type(model),
             GotoTarget::ExceptVariable(except) => except.inferred_type(model),
             GotoTarget::KeywordArgument { keyword, .. } => keyword.value.inferred_type(model),
-            // When asking the type of a callable, usually you want the callable itself?
-            // (i.e. the type of `MyClass` in `MyClass()` is `<class MyClass>` and not `() -> MyClass`)
             GotoTarget::Call { callable, .. } => callable.inferred_type(model),
             GotoTarget::TypeParamTypeVarName(typevar) => typevar.inferred_type(model),
             GotoTarget::TypeParamParamSpecName(typevar) => typevar.inferred_type(model),
@@ -543,7 +524,6 @@ impl GotoTarget<'_> {
                 level,
                 ..
             } => {
-                // We don't currently support hovering the bare `.` so there is always a name
                 let module = import_name(module_name, *component_index);
                 model.resolve_module_type(Some(module), *level)
             }
@@ -557,7 +537,6 @@ impl GotoTarget<'_> {
                 let expr_to_use;
                 let subsubast;
                 let (subast, submodel) = model.enter_string_annotation(string_expr)?;
-                // Must filter to exprs to get ExprStringLiteral over StringLiteral
                 let subexpr = covering_node(subast.syntax().into(), *subrange)
                     .find_first(AnyNodeRef::is_expression)
                     .ok()?
@@ -566,7 +545,6 @@ impl GotoTarget<'_> {
                 if *levels == 2
                     && let ExprRef::StringLiteral(string_expr) = subexpr
                 {
-                    // Do it again if we're a nested string annotation!
                     let (new_subast, subsubmodel) =
                         submodel.enter_string_annotation(string_expr)?;
                     subsubast = new_subast;
@@ -593,7 +571,6 @@ impl GotoTarget<'_> {
             GotoTarget::SubscriptStringLiteralKey { subscript, .. } => {
                 subscript.inferred_type(model)
             }
-            // TODO: Support identifier targets
             GotoTarget::PatternMatchRest(_)
             | GotoTarget::PatternKeywordArgument(_)
             | GotoTarget::PatternMatchStarName(_)
@@ -655,9 +632,6 @@ impl GotoTarget<'_> {
             GotoTarget::Expression(expression) => {
                 definitions_for_expression(model, *expression, alias_resolution)
             }
-            // For already-defined symbols, they are their own definitions.
-            // For property setters/deleters, the getter is a co-definition of
-            // the same logical symbol.
             GotoTarget::FunctionDef(function) => {
                 let mut defs = definitions_and_overloads_for_function(model, function);
                 defs.extend(
@@ -676,7 +650,6 @@ impl GotoTarget<'_> {
                 parameter.definition(model),
             )]),
 
-            // For import aliases (offset within 'y' or 'z' in "from x import y as z")
             GotoTarget::ImportSymbolAlias { asname, .. } => Some(definitions_for_name(
                 model,
                 asname.as_str(),
@@ -700,12 +673,10 @@ impl GotoTarget<'_> {
                 level,
                 ..
             } => {
-                // We don't currently support hovering the bare `.` so there is always a name
                 let module = import_name(module_name, *component_index);
                 definitions_for_module(model, Some(module), *level)
             }
 
-            // Handle import aliases (offset within 'z' in "import x.y as z")
             GotoTarget::ImportModuleAlias { asname, .. } => Some(definitions_for_name(
                 model,
                 asname.as_str(),
@@ -713,7 +684,6 @@ impl GotoTarget<'_> {
                 alias_resolution,
             )),
 
-            // Handle keyword arguments in call expressions
             GotoTarget::KeywordArgument {
                 keyword,
                 call_expression,
@@ -723,7 +693,6 @@ impl GotoTarget<'_> {
                 call_expression,
             )),
 
-            // Exception handler names are bindings but not expressions, so look them up by ident.
             GotoTarget::ExceptVariable(except_handler) => {
                 except_handler.name.as_ref().map(|name| {
                     definitions_for_name(
@@ -735,8 +704,6 @@ impl GotoTarget<'_> {
                 })
             }
 
-            // Patterns are glorified assignments but we have to look them up by ident
-            // because they're not expressions
             GotoTarget::PatternMatchRest(pattern_mapping) => {
                 pattern_mapping.rest.as_ref().map(|name| {
                     definitions_for_name(
@@ -778,15 +745,9 @@ impl GotoTarget<'_> {
                 })
             }
 
-            // For callables, both the definition of the callable and the actual function impl are relevant.
-            //
-            // Prefer the function impl over the callable so that its docstrings win if defined.
             GotoTarget::Call { callable, call, .. } => {
                 let mut definitions = Vec::new();
 
-                // We prefer the specific overload for hover, go-to-def etc. However,
-                // `definitions_for_callable` always resolves import aliases. That's why we
-                // skip it in cases import alias resolution is turned of (rename, highlight references).
                 if alias_resolution == ImportAliasResolution::ResolveAliases {
                     definitions.extend(definitions_for_callable(model, call));
                 }
@@ -817,7 +778,6 @@ impl GotoTarget<'_> {
                 Some(definitions)
             }
 
-            // String annotations sub-expressions require us to recurse into the sub-AST
             GotoTarget::StringAnnotationSubexpr {
                 string_expr,
                 subrange,
@@ -828,7 +788,6 @@ impl GotoTarget<'_> {
                 let expr_to_use;
                 let subsubast;
                 let (subast, submodel) = model.enter_string_annotation(string_expr)?;
-                // Must filter to exprs to get ExprStringLiteral over StringLiteral
                 let subexpr = covering_node(subast.syntax().into(), *subrange)
                     .find_first(AnyNodeRef::is_expression)
                     .ok()?
@@ -837,7 +796,6 @@ impl GotoTarget<'_> {
                 if *levels == 2
                     && let ExprRef::StringLiteral(string_expr) = subexpr
                 {
-                    // Do it again if we're a nested string annotation!
                     let (new_subast, subsubmodel) =
                         submodel.enter_string_annotation(string_expr)?;
                     subsubast = new_subast;
@@ -855,7 +813,6 @@ impl GotoTarget<'_> {
             }
 
             // nonlocal and global are essentially loads, but again they're statements,
-            // so we need to look them up by ident
             GotoTarget::NonLocal { identifier } | GotoTarget::Globals { identifier } => {
                 Some(definitions_for_name(
                     model,
@@ -865,7 +822,6 @@ impl GotoTarget<'_> {
                 ))
             }
 
-            // These are declarations of sorts, but they're stmts and not exprs, so look up by ident.
             GotoTarget::TypeParamTypeVarName(type_var) => {
                 let name = &type_var.name;
                 Some(definitions_for_name(
@@ -989,11 +945,6 @@ impl GotoTarget<'_> {
             _ => None,
         };
 
-        // Special-case subscripts: if the cursor lands on a literal index/key, slice bound, or
-        // slice inside `value[...]`, retarget to the parent `ExprSubscript` (or a string-literal
-        // key target). Non-literal subscripts (e.g. `value[a<CURSOR>b]`) still hover the
-        // identifier itself. This avoids "no hover" on literals and lets hover/goto show the
-        // subscript result type.
         if let Some(expr) = node.as_expr_ref()
             && string_annotation.is_none()
         {
@@ -1007,17 +958,12 @@ impl GotoTarget<'_> {
                     })
                 };
 
-            // 1. Cursor on the `ExprSlice` itself (e.g. `values[<CURSOR>:2]`,
-            // `values[:<CURSOR>2]`).
             if expr.is_slice_expr()
                 && let Some(subscript) = enclosing_subscript_with_slice_range(expr.range())
             {
                 return Some(GotoTarget::Expression(subscript.into()));
             }
 
-            // 2. Cursor on a literal or signed-literal `ExprSubscript.slice` (e.g. `values[0]`,
-            // `person["name"]`, `values[-1]` where the covering node is the bracketed
-            // expression).
             let slice_expr_range = if expr.is_literal_expr() {
                 Some(expr.range())
             } else if let Some(unary_op) = expr.unary_op_expr()
@@ -1042,8 +988,6 @@ impl GotoTarget<'_> {
                 return Some(GotoTarget::Expression(subscript.into()));
             }
 
-            // 3. Cursor on the unary-op operand for `values[-1]` (e.g. `values[-<CURSOR>1]`,
-            // covering node is the inner literal and parent is `ExprUnaryOp`).
             if expr.is_literal_expr()
                 && let Some(AnyNodeRef::ExprUnaryOp(unary_op)) = covering_node.parent()
                 && matches!(unary_op.op, ast::UnaryOp::USub | ast::UnaryOp::UAdd)
@@ -1054,8 +998,6 @@ impl GotoTarget<'_> {
                 return Some(GotoTarget::Expression(subscript.into()));
             }
 
-            // 4. Cursor on a literal or signed-literal `ExprSlice` bound (e.g. `values[1:<CURSOR>2]`,
-            // `values[:-<CURSOR>1]`).
             if slice_expr_range.is_some()
                 && let Some(slice) = covering_node.ancestors().find_map(|node| match node {
                     AnyNodeRef::ExprSlice(slice) => Some(slice),
@@ -1066,8 +1008,6 @@ impl GotoTarget<'_> {
                 return Some(GotoTarget::Expression(subscript.into()));
             }
 
-            // 5. Cursor immediately before the `[` (e.g. `values<CURSOR>[0]` or
-            // `values<CURSOR>[1:]`).
             if let Some(AnyNodeRef::ExprSubscript(subscript)) = covering_node.parent()
                 && subscript.value.range() == expr.range()
                 && expr.range().end() == offset
@@ -1084,7 +1024,6 @@ impl GotoTarget<'_> {
                 Some(AnyNodeRef::StmtClassDef(class)) => Some(GotoTarget::ClassDef(class)),
                 Some(AnyNodeRef::Parameter(parameter)) => Some(GotoTarget::Parameter(parameter)),
                 Some(AnyNodeRef::Alias(alias)) => {
-                    // Find the containing import statement to determine the type
                     let import_stmt = covering_node.ancestors().find(|node| {
                         matches!(
                             node,
@@ -1094,16 +1033,13 @@ impl GotoTarget<'_> {
 
                     match import_stmt {
                         Some(AnyNodeRef::StmtImport(_)) => {
-                            // Regular import statement like "import x.y as z"
 
-                            // Is the offset within the alias name (asname) part?
                             if let Some(asname) = &alias.asname {
                                 if asname.range.contains_inclusive(offset) {
                                     return Some(GotoTarget::ImportModuleAlias { alias, asname });
                                 }
                             }
 
-                            // Is the offset in the module name part?
                             if alias.name.range.contains_inclusive(offset) {
                                 let full_name = alias.name.as_str();
 
@@ -1126,16 +1062,13 @@ impl GotoTarget<'_> {
                             None
                         }
                         Some(AnyNodeRef::StmtImportFrom(import_from)) => {
-                            // From import statement like "from x import y as z"
 
-                            // Is the offset within the alias name (asname) part?
                             if let Some(asname) = &alias.asname {
                                 if asname.range.contains_inclusive(offset) {
                                     return Some(GotoTarget::ImportSymbolAlias { alias, asname });
                                 }
                             }
 
-                            // Is the offset in the original name part?
                             if alias.name.range.contains_inclusive(offset) {
                                 return Some(GotoTarget::ImportExportedName { alias, import_from });
                             }
@@ -1146,7 +1079,6 @@ impl GotoTarget<'_> {
                     }
                 }
                 Some(AnyNodeRef::StmtImportFrom(from)) => {
-                    // Handle offset within module name in from import statements
                     if let Some(module_expr) = &from.module {
                         let full_module_name = module_expr.to_string();
                         if let Some((component_index, component_range)) =
@@ -1168,7 +1100,6 @@ impl GotoTarget<'_> {
                     .is_some()
                     .then_some(GotoTarget::ExceptVariable(handler)),
                 Some(AnyNodeRef::Keyword(keyword)) => {
-                    // Find the containing call expression from the ancestor chain
                     let call_expression = covering_node
                         .ancestors()
                         .find_map(ruff_python_ast::AnyNodeRef::expr_call)?;
@@ -1199,7 +1130,6 @@ impl GotoTarget<'_> {
                     Some(GotoTarget::TypeParamTypeVarTupleName(var_tuple))
                 }
                 Some(AnyNodeRef::ExprAttribute(attribute)) => {
-                    // Check if this is seemingly a callable being invoked (the `y` in `x.y(...)`)
                     let grandparent_expr = covering_node.ancestors().nth(2);
                     let attribute_expr = attribute.into();
                     if let Some(AnyNodeRef::ExprCall(call)) = grandparent_expr {
@@ -1264,7 +1194,6 @@ impl GotoTarget<'_> {
             }
 
             node @ AnyNodeRef::ExprStringLiteral(string_expr) => {
-                // Check if we've clicked on a sub-GotoTarget inside a string annotation's sub-AST
                 if let Some((subast, submodel)) = string_annotation
                     && let Some(sub_goto_target) = find_goto_target_impl(
                         &submodel,
@@ -1274,7 +1203,6 @@ impl GotoTarget<'_> {
                     )
                 {
                     match sub_goto_target {
-                        // Regrettably, nested string annotations are supported
                         GotoTarget::StringAnnotationSubexpr {
                             string_expr: _,
                             subrange,
@@ -1307,11 +1235,6 @@ impl GotoTarget<'_> {
             }
 
             node => {
-                // Check if this is seemingly a callable being invoked (the `x` in `x(...)`).
-                //
-                // Note that `node` might be the `foo()` call itself or
-                // the name `foo` inside of `foo()`. So we check both the
-                // parent and the current node for a callable target.
                 for node in covering_node
                     .parent()
                     .into_iter()
@@ -1422,7 +1345,6 @@ fn definitions_for_callable<'db>(
     model: &SemanticModel<'db>,
     call: &ast::ExprCall,
 ) -> Vec<ResolvedDefinition<'db>> {
-    // Attempt to refine to a specific call
     let signature_info = call_signature_details(model, call);
     signature_info
         .into_iter()
@@ -1456,8 +1378,6 @@ pub(crate) fn find_goto_target_impl<'a>(
 
                 TokenKind::Comment => -1,
 
-                // if we have a<CURSOR>+b`, prefer the `+` token (by respecting the token ordering)
-                // This matches VS Code's behavior where it sends the start of the clicked token as offset.
                 kind if kind.as_binary_operator().is_some()
                     || kind.as_unary_operator().is_some() =>
                 {
@@ -1500,13 +1420,11 @@ fn find_module_component(
     let pos_in_module = offset - module_start;
     let pos_in_module = pos_in_module.to_usize();
 
-    // Split the module name into components and find which one contains the offset
     let mut current_pos = 0;
     for (i, component) in full_module_name.split('.').enumerate() {
         let component_start = current_pos;
         let component_end = current_pos + component.len();
 
-        // Check if the offset is within this component or at its right boundary
         if pos_in_module >= component_start && pos_in_module <= component_end {
             let component_range = TextRange::new(
                 module_start + TextSize::from(u32::try_from(component_start).ok()?),
@@ -1515,8 +1433,7 @@ fn find_module_component(
             return Some((i, component_range));
         }
 
-        // Move past this component and the dot
-        current_pos = component_end + 1; // +1 for the dot
+        current_pos = component_end + 1;
     }
 
     None
@@ -1524,8 +1441,6 @@ fn find_module_component(
 
 /// Helper to get the module name up to the given component index
 fn import_name(module_name: &str, component_index: usize) -> &str {
-    // We want everything to the left of the nth `.`
-    // If there's no nth `.` then we want the whole thing.
     let idx = module_name
         .match_indices('.')
         .nth(component_index)
@@ -1544,16 +1459,6 @@ fn parenthesis_token(tokens: &Tokens, offset: TextSize) -> Option<Token> {
                 return Some(tok);
             }
         }
-        // Note that we specifically only look for a opening parenthesis
-        // here. Matching on a closing parenthesis seems ambiguous. e.g.,
-        // what do you do in the case of `func(a<CURSOR>)`? Arguably the
-        // cursor is "inside" the function call. In any case, when AG tried
-        // to match on a closing parenthesis here, a bunch of tests failed
-        // in an undesirable way.
-        //
-        // ... Except, we allow a closing parenthesis when the left token
-        // is an opening parenthesis. i.e., There's no ambiguity with
-        // `foo(<CURSOR>)`.
         TokenAt::Between(left, right) => match (left.kind(), right.kind()) {
             (_, TokenKind::Lpar) | (TokenKind::Lpar, TokenKind::Rpar) => return Some(left),
             _ => {}

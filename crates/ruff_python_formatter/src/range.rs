@@ -54,7 +54,6 @@ pub fn format_range(
     range: TextRange,
     options: PyFormatOptions,
 ) -> Result<PrintedRange, FormatModuleError> {
-    // Error if the specified range lies outside of the source file.
     if source.text_len() < range.end() {
         return Err(FormatModuleError::FormatError(FormatError::RangeError {
             input: range,
@@ -62,7 +61,6 @@ pub fn format_range(
         }));
     }
 
-    // Formatting an empty string always yields an empty string. Return directly.
     if range.is_empty() {
         return Ok(PrintedRange::empty());
     }
@@ -91,7 +89,6 @@ pub fn format_range(
         match find_enclosing_node(range, AnyNodeRef::from(parsed.syntax()), &context) {
             EnclosingNode::Node { node, indent_level } => (node, indent_level),
             EnclosingNode::Suppressed => {
-                // The entire range falls into a suppressed range. There's nothing to format.
                 return Ok(PrintedRange::empty());
             }
         };
@@ -99,11 +96,9 @@ pub fn format_range(
     let narrowed_range = narrow_range(range, enclosing_node, &context);
     assert_valid_char_boundaries(narrowed_range, source);
 
-    // Correctly initialize the node level for the blank line rules.
     if !enclosing_node.is_mod_module() {
         context.set_node_level(NodeLevel::CompoundStatement);
         context.set_indent_level(
-            // Plus 1 because `IndentLevel=0` equals the module level.
             IndentLevel::new(base_indent.saturating_add(1)),
         );
     }
@@ -194,7 +189,6 @@ impl<'ast> SourceOrderVisitor<'ast> for FindEnclosingNode<'_, 'ast> {
             return TraversalSignal::Skip;
         }
 
-        // Handle `fmt: off` suppression comments for statements.
         if node.is_statement() {
             let leading_comments = self.context.comments().leading(node);
             self.suppressed = Suppressed::from(match self.suppressed {
@@ -212,9 +206,6 @@ impl<'ast> SourceOrderVisitor<'ast> for FindEnclosingNode<'_, 'ast> {
             return TraversalSignal::Skip;
         }
 
-        // Don't pick potential docstrings as the closest enclosing node because `suite.rs` than fails to identify them as
-        // docstrings and docstring formatting won't kick in.
-        // Format the enclosing node instead and slice the formatted docstring from the result.
         let is_maybe_docstring = node
             .as_stmt_expr()
             .is_some_and(|stmt| DocstringStmt::is_docstring_statement(stmt, self.context));
@@ -223,12 +214,9 @@ impl<'ast> SourceOrderVisitor<'ast> for FindEnclosingNode<'_, 'ast> {
             return TraversalSignal::Skip;
         }
 
-        // Only computing the count here is sufficient because each enclosing node ensures that it has the necessary indent
-        // or we don't traverse otherwise.
         let Some(indent_level) =
             indent_level(node.start(), self.context.source(), self.context.options())
         else {
-            // Non standard indent or a simple-statement body of a compound statement, format the enclosing node
             return TraversalSignal::Skip;
         };
 
@@ -240,7 +228,6 @@ impl<'ast> SourceOrderVisitor<'ast> for FindEnclosingNode<'_, 'ast> {
     fn leave_node(&mut self, node: AnyNodeRef<'ast>) {
         if node.is_statement() {
             let trailing_comments = self.context.comments().trailing(node);
-            // Update the suppressed state for the next statement.
             self.suppressed = Suppressed::from(match self.suppressed {
                 Suppressed::No => starts_suppression(trailing_comments, self.context.source()),
                 Suppressed::Yes => !ends_suppression(trailing_comments, self.context.source()),
@@ -249,25 +236,12 @@ impl<'ast> SourceOrderVisitor<'ast> for FindEnclosingNode<'_, 'ast> {
     }
 
     fn visit_body(&mut self, body: &'ast [Stmt]) {
-        // We only visit statements that aren't suppressed that's why we don't need to track the suppression
-        // state in a stack. Assert that this assumption is safe.
         debug_assert!(self.suppressed.is_no());
 
         let mut iter = body.iter();
 
         while let Some(stmt) = iter.next() {
-            // If the range intersects a skip range then we need to
-            // format the entire suite to properly handle the case
-            // where a `fmt: skip` affects multiple statements.
-            //
-            // For example, in the case
-            //
-            // ```
             // <RANGE_START>x=1<RANGE_END>;x=2 # fmt: skip
-            // ```
-            //
-            // the statement `x=1` does not "know" that it is
-            // suppressed, but the suite does.
             if let Some(verbatim_range) = skip_range(stmt, iter.as_slice(), self.context)
                 && verbatim_range.intersect(self.range).is_some()
             {
@@ -354,14 +328,11 @@ fn narrow_range(
 struct NarrowRange<'a> {
     context: &'a PyFormatContext<'a>,
 
-    // The range to format
     range: TextRange,
 
-    // The narrowed range
     narrowed_start: TextSize,
     narrowed_end: TextSize,
 
-    // Stated tracked by the visitor
     enclosing_indent: &'a str,
     level: usize,
 }
@@ -372,27 +343,16 @@ impl SourceOrderVisitor<'_> for NarrowRange<'_> {
             return TraversalSignal::Skip;
         }
 
-        // Find the start offset of the node that starts the closest to (and before) the start offset of the formatting range.
-        // We do this by iterating over known positions that emit source map entries and pick the start point that ends closest
-        // to the searched range's start.
         let leading_comments = self.context.comments().leading(node);
         self.narrow(leading_comments);
         self.narrow([node]);
 
-        // Avoid traversing when it's known to not be able to narrow the range further to avoid traversing the entire tree (entire file in the worst case).
-        // If the node's range is entirely before the searched range, don't traverse because non of its children
-        // can be closer to `narrow_start` than the node itself (which we already narrowed).
-        //
-        // Don't traverse if the current node is passed the narrowed range (it's impossible to refine it further).
         if node.end() < self.range.start()
             || (self.narrowed_start > node.start() && self.narrowed_end <= node.end())
         {
             return TraversalSignal::Skip;
         }
 
-        // Handle nodes that have indented child-nodes that aren't a `Body` (which is handled by `visit_body`).
-        // Ideally, this would be handled as part of `visit_stmt` but `visit_stmt` doesn't get called for the `enclosing_node`
-        // because it's not possible to convert` AnyNodeRef` to `&Stmt` :(
         match node {
             AnyNodeRef::StmtMatch(StmtMatch {
                 subject: _,
@@ -407,7 +367,6 @@ impl SourceOrderVisitor<'_> for NarrowRange<'_> {
                     self.leave_level(saved_state);
                 }
 
-                // Already traversed as part of `enter_node`.
                 TraversalSignal::Skip
             }
             AnyNodeRef::StmtTry(StmtTry {
@@ -431,7 +390,6 @@ impl SourceOrderVisitor<'_> for NarrowRange<'_> {
                 self.visit_body(orelse);
                 self.visit_body(finalbody);
 
-                // Already traversed as part of `enter_node`.
                 TraversalSignal::Skip
             }
             _ => TraversalSignal::Traverse,
@@ -443,9 +401,6 @@ impl SourceOrderVisitor<'_> for NarrowRange<'_> {
             return;
         }
 
-        // Find the end offset of the closest node to the end offset of the formatting range.
-        // We do this by iterating over end positions that we know generate source map entries end pick the end
-        // that ends closest or after the searched range's end.
         self.narrow(
             self.context
                 .comments()
@@ -494,13 +449,6 @@ impl NarrowRange<'_> {
 
     fn enter_level(&mut self, first_child: Option<AnyNodeRef>) -> Option<SavedLevel> {
         if let Some(first_child) = first_child {
-            // If this is a clause header and the `range` ends within the clause header, then avoid formatting the body.
-            // This prevents that we format an entire function definition when the selected range is fully enclosed by the parameters.
-            // ```python
-            // 1| def foo(<RANGE_START>a, b, c<RANGE_END>):
-            // 2|    pass
-            // ```
-            // We don't want to format the body of the function.
             if let Some(SimpleToken {
                 kind: SimpleTokenKind::Colon,
                 range: colon_range,
@@ -515,39 +463,10 @@ impl NarrowRange<'_> {
                 self.narrow_offset(colon_range.end());
             }
 
-            // It is necessary to format all statements if the statement or any of its parents don't use the configured indentation.
-            // ```python
-            // 0| def foo():
-            // 1|     if True:
-            // 2|       print("Hello")
-            // 3|       print("More")
-            // 4|       a = 10
-            // ```
-            // Here, the `if` statement uses the correct 4 spaces indentation, but the two `print` statements use a 2 spaces indentation.
-            // The formatter output uses 8 space indentation for the `print` statement which doesn't match the indentation of the statement on line 4 when
-            // replacing the source with the formatted code. That's why we expand the range in this case to cover the entire if-body range.
-            //
-            // I explored the alternative of using `indent(dedent(formatted))` to retain the correct indentation. It works pretty well except that it can change the
-            // content of multiline strings:
-            // ```python
-            // def test  ():
-            //   pass
-            //   <RANGE_START>1 + 2
-            //   """A Multiline string
-            //     that uses the same indentation as the formatted code will. This should not be dedented."""
-            //
-            //   print("Done")<RANGE_END>
-            // ```
-            // The challenge here is that the second line of the multiline string uses a 4 space indentation. Using `dedent` would
-            // dedent the second line to 0 spaces and the `indent` then adds a 2 space indentation to match the indentation in the source.
-            // This is incorrect because the leading whitespace is the content of the string and not indentation, resulting in changed string content.
-            // Missing indentation indicates a simple-statement body of a compound statement (not a suite body).
-            // Don't narrow the range because the formatter must run `FormatClauseBody` to determine if the body should be collapsed or not.
             let indentation = indentation_at_offset(first_child.start(), self.context.source())?;
             let relative_indent = indentation.strip_prefix(self.enclosing_indent).unwrap();
             let expected_indents = self.level;
 
-            // Each level must always add one level of indent. That's why an empty relative indent to the parent node tells us that the enclosing node is the Module.
             let has_expected_indentation = match self.context.options().indent_style() {
                 IndentStyle::Tab => {
                     relative_indent.len() == expected_indents
@@ -578,7 +497,6 @@ impl NarrowRange<'_> {
 }
 
 pub(crate) const fn is_logical_line(node: AnyNodeRef) -> bool {
-    // Make sure to update [`FormatEnclosingNode`] when changing this.
     node.is_statement()
         || node.is_decorator()
         || node.is_except_handler()
@@ -632,8 +550,6 @@ struct FormatEnclosingNode<'a> {
 
 impl Format<PyFormatContext<'_>> for FormatEnclosingNode<'_> {
     fn fmt(&self, f: &mut Formatter<PyFormatContext<'_>>) -> FormatResult<()> {
-        // Note: It's important that this supports formatting all nodes for which `is_logical_line`
-        // returns + the root `Mod` nodes.
         match self.root {
             AnyNodeRef::ModModule(node) => node.format().fmt(f),
             AnyNodeRef::ModExpression(node) => node.format().fmt(f),

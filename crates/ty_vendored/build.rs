@@ -39,10 +39,6 @@ const TYPESHED_ZIP_LOCATION: &str = "/zipped_typeshed.zip";
 fn write_zipped_typeshed_to(writer: File) -> ZipResult<File> {
     let mut zip = ZipWriter::new(writer);
 
-    // Use deflated compression for WASM builds because compiling `zstd-sys` requires clang
-    // [source](https://github.com/gyscos/zstd-rs/wiki/Compile-for-WASM) which complicates the build
-    // by a lot. Deflated compression is slower but it shouldn't matter much for the WASM use case
-    // (WASM itself is already slower than a native build for a specific platform).
     #[cfg(feature = "zstd")]
     let method = CompressionMethod::Zstd;
     #[cfg(all(not(feature = "zstd"), feature = "deflate"))]
@@ -63,27 +59,21 @@ fn write_zipped_typeshed_to(writer: File) -> ZipResult<File> {
             .to_slash()
             .expect("Unexpected non-utf8 typeshed path!");
 
-        // Write file or directory explicitly
-        // Some unzip tools unzip files with directory paths correctly, some do not!
         if absolute_path.is_file() {
             println!("adding file {absolute_path:?} as {normalized_relative_path:?} ...");
             zip.start_file(&*normalized_relative_path, options)?;
             let mut f = File::open(absolute_path)?;
             std::io::copy(&mut f, &mut zip).unwrap();
 
-            // Patch the VERSIONS file to make `ty_extensions` available
             if normalized_relative_path == "stdlib/VERSIONS" {
                 writeln!(&mut zip, "ty_extensions: 3.0-")?;
             }
         } else if !normalized_relative_path.is_empty() {
-            // Only if not root! Avoids path spec / warning
-            // and mapname conversion failed error on unzip
             println!("adding dir {absolute_path:?} as {normalized_relative_path:?} ...");
             zip.add_directory(normalized_relative_path, options)?;
         }
     }
 
-    // Patch typeshed and add the stubs for the `ty_extensions` package.
     zip.add_directory("stdlib/ty_extensions/", options)?;
     for (source, destination) in TY_EXTENSIONS_STUBS {
         println!("adding file {source} as {destination} ...");
@@ -102,12 +92,6 @@ fn main() {
     );
     let out_dir = std::env::var("OUT_DIR").unwrap();
 
-    // N.B. Deliberately using `format!()` instead of `Path::join()` here,
-    // so that we use `/` as a path separator on all platforms.
-    // That enables us to load the typeshed zip at compile time in `module.rs`
-    // (otherwise we'd have to dynamically determine the exact path to the typeshed zip
-    // based on the default path separator for the specific platform we're on,
-    // which can't be done at compile time.)
     let zipped_typeshed_location = format!("{out_dir}{TYPESHED_ZIP_LOCATION}");
 
     let zipped_typeshed_file = File::create(zipped_typeshed_location).unwrap();

@@ -53,7 +53,6 @@ pub(crate) enum SectionKind {
 
 impl SectionKind {
     fn from_str(s: &str) -> Option<Self> {
-        // Avoid allocating a lowercase copy of lines longer than the longest section name.
         if s.len() > Self::KeywordArguments.as_str().len() {
             return None;
         }
@@ -161,12 +160,8 @@ impl<'a> SectionContexts<'a> {
 
         let mut lines = contents.universal_newlines().peekable();
 
-        // Skip the first line, which is the summary.
         let mut previous_line = lines.next();
 
-        // Track only the outermost RST directive. Nested directives remain in its body
-        // until a non-blank line dedents to the outermost indentation.
-        // See: https://github.com/astral-sh/ruff/issues/23562
         let mut directive_indent = None;
 
         while let Some(line) = lines.next() {
@@ -458,7 +453,6 @@ fn is_docstring_section(
     next_line: Option<&Line>,
     definition: &Definition<'_>,
 ) -> bool {
-    // Determine whether the next line is an underline, e.g., "-----".
     let next_line_is_underline = next_line.is_some_and(|next_line| {
         let next_line = next_line.trim();
         if next_line.is_empty() {
@@ -471,7 +465,6 @@ fn is_docstring_section(
         return true;
     }
 
-    // Determine whether the previous line looks like the end of a paragraph.
     let previous_line_looks_like_end_of_paragraph = previous_line.is_none_or(|previous_line| {
         let previous_line = previous_line.trim();
         let previous_line_ends_with_punctuation = [',', ';', '.', '-', '\\', '/', ']', '}', ')']
@@ -483,51 +476,9 @@ fn is_docstring_section(
         return false;
     }
 
-    // Determine if this is a sub-section within another section, like `args` in:
-    // ```python
-    // def func(args: tuple[int]):
-    //     """Toggle the gizmo.
-    //
-    //     Args:
-    //         args: The arguments to the function.
-    //     """
-    // ```
-    // Or `parameters` in:
-    // ```python
-    // def func(parameters: tuple[int]):
-    //     """Toggle the gizmo.
-    //
-    //     Parameters:
-    //     -----
-    //     parameters:
-    //         The arguments to the function.
-    //     """
-    // ```
-    // However, if the header is an _exact_ match (like `Returns:`, as opposed to `returns:`), then
-    // continue to treat it as a section header.
     if let Some(previous_section) = previous_section {
         let verbatim = &line[TextRange::at(indent_size, section_name_size)];
 
-        // If the section is more deeply indented, assume it's a subsection, as in:
-        // ```python
-        // def func(args: tuple[int]):
-        //     """Toggle the gizmo.
-        //
-        //     Args:
-        //         args: The arguments to the function.
-        //     """
-        // ```
-        // As noted above, an exact match for a section name (like the inner `Args:` below) is
-        // treated as a section header, unless the enclosing `Definition` is a function and contains
-        // a parameter with the same name, as in:
-        // ```python
-        // def func(Args: tuple[int]):
-        //     """Toggle the gizmo.
-        //
-        //     Args:
-        //         Args: The arguments to the function.
-        //     """
-        // ```
         if previous_section.indent_size < indent_size {
             let section_name = section_kind.as_str();
             if section_name != verbatim || has_parameter(definition, section_name) {
@@ -535,34 +486,10 @@ fn is_docstring_section(
             }
         }
 
-        // If the section has a preceding empty line, assume it's _not_ a subsection, as in:
-        // ```python
-        // def func(args: tuple[int]):
-        //     """Toggle the gizmo.
-        //
-        //     Args:
-        //         args: The arguments to the function.
-        //
-        //     returns:
-        //         The return value of the function.
-        //     """
-        // ```
         if previous_line.is_some_and(|line| line.trim().is_empty()) {
             return true;
         }
 
-        // If the section isn't underlined, and isn't title-cased, assume it's a subsection,
-        // as in:
-        // ```python
-        // def func(parameters: tuple[int]):
-        //     """Toggle the gizmo.
-        //
-        //     Parameters:
-        //     -----
-        //     parameters:
-        //         The arguments to the function.
-        //     """
-        // ```
         if !next_line_is_underline && verbatim.chars().next().is_some_and(char::is_lowercase) {
             if section_kind.as_str() != verbatim {
                 return false;

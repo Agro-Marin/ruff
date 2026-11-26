@@ -12,7 +12,6 @@ fn respect_type_ignore_comments_is_turned_off() -> anyhow::Result<()> {
             "#,
     )?;
 
-    // Assert that there's an `unresolved-reference` diagnostic (error).
     assert_cmd_snapshot!(case.command(), @"
     success: true
     exit_code: 0

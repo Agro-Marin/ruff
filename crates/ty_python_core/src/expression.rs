@@ -160,7 +160,6 @@ pub struct Expression<'db> {
     pub kind: ExpressionKind,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for Expression<'_> {}
 
 impl<'db> Expression<'db> {

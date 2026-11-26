@@ -22,10 +22,6 @@ fn containment_behavior<'db>(
 
     match ty {
         Type::Union(union) => {
-            // Combine element containment for `not in`, ordinary `in` unions, and unions reached
-            // through wrappers such as type variables. Positive unions that contain string
-            // literals are distributed in `evaluate_expr_in` instead because substring semantics
-            // depend on the value of each literal haystack.
             let mut builder = UnionBuilder::new(db, env);
             let mut has_unknown_behavior = false;
             for element in union.elements(db) {
@@ -53,15 +49,6 @@ fn containment_behavior<'db>(
             containment_behavior(db, env, newtype.concrete_base_type(db))
         }
         Type::Intersection(intersection) => {
-            // Preserve the narrowing already supported on main for unsimplified intersections
-            // such as `Iterable[T] & tuple[object, ...]`. Replacing the component that establishes
-            // containment with its stored iteration type while retaining the unknown component
-            // lets `try_iterate` recover `T`. This is a temporary workaround for the intersection
-            // not simplifying to `tuple[T, ...]`; remove this arm once that simplification is
-            // implemented:
-            // https://github.com/astral-sh/ty/issues/3890
-            // The generic intersection work in the following PR is intended to support that fix:
-            // https://github.com/astral-sh/ruff/pull/26365
             let mut has_elements_of = false;
             let mut has_custom_behavior = false;
             let elements_of = intersection.map_positive(db, env, |element| {
@@ -87,8 +74,6 @@ fn containment_behavior<'db>(
         }
         Type::TypedDict(_) => ContainmentBehavior::ElementsOf(ty),
         Type::NominalInstance(instance) => {
-            // Walk the MRO until we find either a visible override or a supported built-in
-            // implementation.
             for base in instance.class(db, env).iter_mro(db) {
                 let class = match base {
                     ClassBase::Class(class) => class,
@@ -109,16 +94,6 @@ fn containment_behavior<'db>(
                             | KnownClass::Range
                     )
                 ) {
-                    // For built-ins with a known containment behavior, we always store the
-                    // built-in base (not `self`), even if `self` is a subclass of the built-in. At
-                    // runtime, a custom `__iter__` on a subclass of a built-in container does not
-                    // change the `__contains__` behavior of the built-in; storing the built-in
-                    // instead of the subclass ensures we model that correctly. We end up calling
-                    // `try_iterate` on the stored type, so otherwise we would wrongly prefer the
-                    // `__iter__` annotation. (It is always true for all types that `__contains__`
-                    // takes precedence over `__iter__` for containment checks, but this is only
-                    // relevant to us for built-ins, since user types with `__contains__` have
-                    // containment behavior that we can't understand and don't try to model.)
                     return ContainmentBehavior::ElementsOf(Type::instance(db, env, class));
                 }
                 if !class

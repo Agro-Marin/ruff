@@ -119,19 +119,14 @@ impl<'a> Iterator for InlineMarkupScanner<'a> {
         }
 
         let span = loop {
-            // Without another backtick run, the remaining source is all plain text.
             let Some(opening) = self.scanner.next() else {
                 return self.take_remaining_text();
             };
 
-            // Escaped runs are literal source text, so continue looking for the next possible
-            // opening without emitting a token boundary.
             if opening.is_escaped() {
                 continue;
             }
 
-            // Without a closing delimiter, callers cannot treat the opening or any later runs as
-            // structured markup. Emit the remainder as one text token.
             let Some(span) = self.scanner.eat_span(opening) else {
                 return self.take_remaining_text();
             };
@@ -254,7 +249,6 @@ fn split_trailing_rest_prefix_role(text: &str) -> Option<(&str, &str)> {
     let mut role_start = without_closing_colon.len();
     let mut expects_alphanumeric = true;
 
-    // Walk `before :py:class` backwards; separators must be between alphanumeric components.
     for (index, character) in without_closing_colon.char_indices().rev() {
         if character.is_alphanumeric() {
             expects_alphanumeric = false;
@@ -590,8 +584,6 @@ pub(super) fn split_trailing_parenthetical(value: &str) -> Option<(&str, &str)> 
                 let mut scanner = BacktickScanner::starts_at(start, value);
                 let opening = scanner.next()?;
                 if opening.is_escaped() {
-                    // The loop has consumed only the first, escaped backtick. Leave the rest of
-                    // the run for the next iteration, where it may open a shorter span.
                     continue;
                 }
 

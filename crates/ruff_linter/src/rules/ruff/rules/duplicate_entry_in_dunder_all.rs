@@ -139,7 +139,6 @@ fn duplicate_entry_in_dunder_all(checker: &Checker, target: &ast::Expr, value: &
         _ => return,
     };
 
-    // It's impossible to have duplicates if there is one or no element
     if elts.len() <= 1 {
         return;
     }
@@ -149,8 +148,6 @@ fn duplicate_entry_in_dunder_all(checker: &Checker, target: &ast::Expr, value: &
 
     for (index, expr) in elts.iter().enumerate() {
         let Some(string_value) = expr.as_string_literal_expr() else {
-            // In the example below we're ignoring `foo`:
-            // __all__ = [foo, "bar", "bar"]
             continue;
         };
 

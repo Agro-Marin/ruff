@@ -1504,7 +1504,6 @@ fn blanks_and_section_underline(
                         dashed_line,
                     );
 
-                    // Delete any blank lines between the header and the underline.
                     diagnostic.set_fix(Fix::safe_edit(Edit::deletion(
                         context.following_range().start(),
                         blank_lines_end,
@@ -1521,7 +1520,6 @@ fn blanks_and_section_underline(
                         dashed_line,
                     );
 
-                    // Replace the existing underline with a line of the appropriate length.
                     diagnostic.set_fix(Fix::safe_edit(Edit::range_replacement(
                         "-".repeat(context.section_name().len()),
                         dashed_line,
@@ -1540,7 +1538,6 @@ fn blanks_and_section_underline(
                         dashed_line,
                     );
 
-                    // Replace the existing indentation with whitespace of the appropriate length.
                     let range = TextRange::at(
                         blank_lines_end,
                         leading_space.text_len() + TextSize::from(1),
@@ -1576,21 +1573,6 @@ fn blanks_and_section_underline(
                             context.section_name_range(),
                         );
                     } else if checker.is_rule_enabled(Rule::BlankLinesBetweenHeaderAndContent) {
-                        // If the section is followed by exactly one line, and then a
-                        // reStructuredText directive, the blank lines should be preserved, as in:
-                        //
-                        // ```python
-                        // """
-                        // Example
-                        // -------
-                        //
-                        // .. code-block:: python
-                        //
-                        //     import foo
-                        // """
-                        // ```
-                        //
-                        // Otherwise, documentation generators will not recognize the directive.
                         let is_sphinx = checker
                             .locator()
                             .line_str(blank_lines_after_dashes_end)
@@ -1605,7 +1587,6 @@ fn blanks_and_section_underline(
                                     },
                                     context.section_name_range(),
                                 );
-                                // Preserve a single blank line between the header and content.
                                 diagnostic.set_fix(Fix::safe_edit(Edit::replacement(
                                     checker.stylist().line_ending().to_string(),
                                     line_after_dashes.start(),
@@ -1619,7 +1600,6 @@ fn blanks_and_section_underline(
                                 },
                                 context.section_name_range(),
                             );
-                            // Delete any blank lines between the header and content.
                             diagnostic.set_fix(Fix::safe_edit(Edit::deletion(
                                 line_after_dashes.start(),
                                 blank_lines_after_dashes_end,
@@ -1646,8 +1626,6 @@ fn blanks_and_section_underline(
                         equal_line,
                     );
 
-                    // If an existing underline is an equal sign line of the appropriate length,
-                    // replace it with a dashed line.
                     diagnostic.set_fix(Fix::safe_edit(Edit::range_replacement(
                         "-".repeat(context.section_name().len()),
                         equal_line,
@@ -1660,7 +1638,6 @@ fn blanks_and_section_underline(
                         context.section_name_range(),
                     );
 
-                    // Add a dashed line (of the appropriate length) under the section header.
                     let content = format!(
                         "{}{}{}",
                         checker.stylist().line_ending().as_str(),
@@ -1675,20 +1652,6 @@ fn blanks_and_section_underline(
             }
             if num_blank_lines_after_header > 0 {
                 if checker.is_rule_enabled(Rule::BlankLinesBetweenHeaderAndContent) {
-                    // If the section is followed by exactly one line, and then a
-                    // reStructuredText directive, the blank lines should be preserved, as in:
-                    //
-                    // ```python
-                    // """
-                    // Example:
-                    //
-                    // .. code-block:: python
-                    //
-                    //     import foo
-                    // """
-                    // ```
-                    //
-                    // Otherwise, documentation generators will not recognize the directive.
                     let is_sphinx = checker
                         .locator()
                         .line_str(blank_lines_end)
@@ -1704,7 +1667,6 @@ fn blanks_and_section_underline(
                                 context.section_name_range(),
                             );
 
-                            // Preserve a single blank line between the header and content.
                             diagnostic.set_fix(Fix::safe_edit(Edit::replacement(
                                 checker.stylist().line_ending().to_string(),
                                 context.following_range().start(),
@@ -1721,14 +1683,12 @@ fn blanks_and_section_underline(
 
                         let range =
                             TextRange::new(context.following_range().start(), blank_lines_end);
-                        // Delete any blank lines between the header and content.
                         diagnostic.set_fix(Fix::safe_edit(Edit::range_deletion(range)));
                     }
                 }
             }
         }
     } else {
-        // Nothing but blank lines after the section header.
         if style.is_numpy() && checker.is_rule_enabled(Rule::MissingDashedUnderlineAfterSection) {
             let mut diagnostic = checker.report_diagnostic(
                 MissingDashedUnderlineAfterSection {
@@ -1737,7 +1697,6 @@ fn blanks_and_section_underline(
                 context.section_name_range(),
             );
 
-            // Add a dashed line (of the appropriate length) under the section header.
             let content = format!(
                 "{}{}{}",
                 checker.stylist().line_ending().as_str(),
@@ -1775,8 +1734,6 @@ fn common_section(
                 },
                 section_range,
             );
-            // Replace the section title with the capitalized variant. This requires
-            // locating the start and end of the section name.
             diagnostic.set_fix(Fix::safe_edit(Edit::range_replacement(
                 capitalized_section_name.to_string(),
                 section_range,
@@ -1796,7 +1753,6 @@ fn common_section(
                 section_range,
             );
 
-            // Replace the existing indentation with whitespace of the appropriate length.
             let content = clean_space(docstring_indentation);
             let fix_range = TextRange::at(context.start(), leading_space.text_len());
             diagnostic.set_fix(Fix::safe_edit(if content.is_empty() {
@@ -1824,7 +1780,6 @@ fn common_section(
                     },
                     section_range,
                 );
-                // Add a newline at the beginning of the next section.
                 diagnostic.set_fix(Fix::safe_edit(Edit::insertion(
                     line_end.to_string(),
                     next.start(),
@@ -1832,8 +1787,6 @@ fn common_section(
             }
         }
     } else {
-        // The first blank line is the line containing the closing triple quotes, so we need at
-        // least two.
         if checker.is_rule_enabled(Rule::MissingBlankLineAfterLastSection) {
             let num_blank_lines = context
                 .following_lines()
@@ -1882,7 +1835,6 @@ fn common_section(
                 },
                 section_range,
             );
-            // Add a blank line before the section.
             diagnostic.set_fix(Fix::safe_edit(Edit::insertion(
                 line_end.to_string(),
                 context.start(),
@@ -1898,10 +1850,8 @@ fn missing_args(checker: &Checker, docstring: &Docstring, docstrings_args: &FxHa
         return;
     };
 
-    // Look for arguments that weren't included in the docstring.
     let mut missing_arg_names: FxHashSet<String> = FxHashSet::default();
 
-    // If this is a non-static method, skip `cls` or `self`.
     for parameter in function
         .parameters
         .iter_non_variadic_params()
@@ -1916,8 +1866,6 @@ fn missing_args(checker: &Checker, docstring: &Docstring, docstrings_args: &FxHa
         }
     }
 
-    // Check specifically for `vararg` and `kwarg`, which can be prefixed with a
-    // single or double star, respectively.
     if !checker.settings().pydocstyle.ignore_var_parameters() {
         if let Some(arg) = function.parameters.vararg.as_ref() {
             let arg_name = arg.name.as_str();
@@ -1966,7 +1914,6 @@ fn has_unpack_annotation(checker: &Checker, parameter: &Parameter) -> bool {
     })
 }
 
-// See: `GOOGLE_ARGS_REGEX` in `pydocstyle/checker.py`.
 static GOOGLE_ARGS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\s*((?:\\*\*){0,2}\w+)\s*(\(.*?\))?\s*:(\r\n|\n)?\s*.+").unwrap()
 });
@@ -1983,8 +1930,6 @@ fn args_section(context: &SectionContext) -> FxHashSet<String> {
         return FxHashSet::default();
     };
 
-    // Normalize leading whitespace, by removing any lines with less indentation
-    // than the first.
     let leading_space = leading_space(first_line.as_str());
     let relevant_lines = std::iter::once(first_line)
         .chain(following_lines)
@@ -1996,26 +1941,20 @@ fn args_section(context: &SectionContext) -> FxHashSet<String> {
         .join("\n");
     let args_content = dedent(&relevant_lines);
 
-    // Reformat each section.
     let mut args_sections: Vec<String> = vec![];
     for line in args_content.trim().lines() {
         if line.chars().next().is_none_or(char::is_whitespace) {
-            // This is a continuation of the documentation for the previous parameter,
-            // because it starts with whitespace.
             if let Some(last) = args_sections.last_mut() {
                 last.push_str(line);
                 last.push('\n');
             }
         } else {
-            // This line is the start of documentation for the next parameter, because it
-            // doesn't start with any whitespace.
             let mut line = line.to_string();
             line.push('\n');
             args_sections.push(line);
         }
     }
 
-    // Extract the argument name from each section.
     let mut matches = Vec::new();
     for section in &args_sections {
         if let Some(captures) = GOOGLE_ARGS_REGEX.captures(section) {
@@ -2034,11 +1973,9 @@ fn args_section(context: &SectionContext) -> FxHashSet<String> {
 }
 
 fn parameters_section(checker: &Checker, docstring: &Docstring, context: &SectionContext) {
-    // Collect the list of arguments documented in the docstring.
     let mut docstring_args: FxHashSet<String> = FxHashSet::default();
     let section_level_indent = leading_space(context.summary_line());
 
-    // Join line continuations, then resplit by line.
     let adjusted_following_lines = context
         .following_lines()
         .map(|l| l.as_str())
@@ -2053,14 +1990,10 @@ fn parameters_section(checker: &Checker, docstring: &Docstring, context: &Sectio
                 && !next_line.trim().is_empty()
             {
                 let parameters = if let Some(semi_index) = current_line.find(':') {
-                    // If the parameter has a type annotation, exclude it.
                     &current_line.as_str()[..semi_index]
                 } else {
-                    // Otherwise, it's just a list of parameters on the current line.
                     current_line.as_str().trim()
                 };
-                // Notably, NumPy lets you put multiple parameters of the same type on the same
-                // line.
                 for parameter in parameters.split(',') {
                     docstring_args.insert(unescape_parameter_name(parameter.trim()));
                 }
@@ -2070,7 +2003,6 @@ fn parameters_section(checker: &Checker, docstring: &Docstring, context: &Sectio
         }
     }
 
-    // Validate that all arguments were documented.
     missing_args(checker, docstring, &docstring_args);
 }
 
@@ -2124,7 +2056,6 @@ fn google_section(
                 },
                 context.section_name_range(),
             );
-            // Replace the suffix.
             let section_name_range = context.section_name_range();
             diagnostic.set_fix(Fix::safe_edit(Edit::range_replacement(
                 ":".to_string(),
@@ -2159,9 +2090,6 @@ fn parse_google_sections(
         let mut has_args = false;
         let mut documented_args: FxHashSet<String> = FxHashSet::default();
         for section_context in section_contexts {
-            // Checks occur at the section level. Since two sections (args/keyword args and their
-            // variants) can list arguments, we need to unify the sets of arguments mentioned in both
-            // then check for missing arguments at the end of the section check.
             if matches!(
                 section_context.kind(),
                 SectionKind::Args
@@ -2284,9 +2212,6 @@ fn check_section_order<P: PartialOrd>(
                 },
                 context.section_name_range(),
             );
-            // Don't update max_order: keep tracking against the highest-seen
-            // position so that subsequent sections are compared against the
-            // same out-of-place section.
             continue;
         }
 

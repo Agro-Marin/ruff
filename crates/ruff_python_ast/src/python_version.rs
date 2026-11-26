@@ -72,7 +72,6 @@ impl PythonVersion {
     }
 
     pub const fn latest_ty() -> Self {
-        // Make sure to update the default value for `EnvironmentOptions::python_version` when bumping this version.
         Self::PY315
     }
 
@@ -163,7 +162,6 @@ impl FromStr for PythonVersion {
             .ok_or_else(|| PythonVersionDeserializationError::WrongPeriodNumber(Box::from(s)))?;
 
         Self::try_from((major, minor)).map_err(|err| {
-            // Give a better error message for something like `3.8.5` or `3..8`
             if matches!(
                 err,
                 PythonVersionDeserializationError::InvalidMinorVersion(_, _)

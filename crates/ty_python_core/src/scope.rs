@@ -19,7 +19,6 @@ pub struct ScopeId<'db> {
     pub file_scope_id: FileScopeId,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for ScopeId<'_> {}
 
 impl<'db> ScopeId<'db> {
@@ -250,8 +249,6 @@ impl ScopeKind {
     }
 
     pub const fn is_function_like(self) -> bool {
-        // Type parameter scopes behave like function scopes in terms of name resolution; CPython
-        // symbol table also uses the term "function-like" for these scopes.
         matches!(
             self,
             ScopeKind::TypeParams

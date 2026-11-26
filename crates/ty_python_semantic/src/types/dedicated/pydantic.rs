@@ -120,7 +120,6 @@ impl<'db> ModelMetadata<'db> {
             ),
         );
         // Pydantic replaces a disabled, default, or previously generated hash. It leaves
-        // a user-defined hash alone, even if the subclass disables it by defining __eq__.
         (inherited.is_none(db)
             || inherited == generated
             || Some(inherited)
@@ -170,8 +169,6 @@ impl<'db> FieldMetadata<'db> {
     fn collect_from_rhs_type(&mut self, db: &'db dyn Db, rhs_type: Option<Type<'db>>) {
         match rhs_type {
             Some(Type::KnownInstance(KnownInstanceType::Field(field))) => {
-                // `own_fields_inner` has already specialized the right-hand side, including
-                // the default value inside a field specifier.
                 self.merge_field(db, field, None);
             }
             Some(rhs_type) => self.default_ty = Some(rhs_type),
@@ -204,8 +201,6 @@ impl<'db> FieldMetadata<'db> {
             DefinitionKind::TypeAlias(alias) => &alias.node(&module).value,
             _ => return,
         };
-        // Capture the scope before unwrapping quotes. A `type` alias evaluates its value
-        // in its own scope, which also applies to names inside a quoted annotation.
         let file = definition.program_file(db);
         let scope = semantic_index(db, file)
             .expression_scope_id(annotation)
@@ -250,10 +245,6 @@ impl<'db> FieldMetadata<'db> {
             _ => return,
         };
 
-        // The following part is unfortunate. Pydantic defines `StrictInt` and the other aliases
-        // using `StrictInt = Annotated[int, Strict()]`. Since we don't retain the `Annotated`
-        // metadata, we need to follow the alias back to its definition and parse the metadata
-        // from there.
         let Some(alias_definition) = definitions_for_name(
             db,
             scope,
@@ -513,15 +504,11 @@ impl ModelConfig {
         let mut validate_by_alias = self.validate_by_alias;
         let mut validate_by_name = self.validate_by_name;
 
-        // `populate_by_name` enables validation by both alias and field name. The newer
-        // `validate_by_name` setting takes precedence when both are specified.
         if validate_by_name.is_unspecified() && self.populate_by_name.is_specified() {
             validate_by_alias = ConfigBoolean::Enabled;
             validate_by_name = self.populate_by_name;
         }
 
-        // If `validate_by_alias=False` is set without specifying `validate_by_name`, Pydantic
-        // implicitly enables validation by name.
         if validate_by_alias.is_disabled() && validate_by_name.is_unspecified() {
             validate_by_name = ConfigBoolean::Enabled;
         }
@@ -648,9 +635,6 @@ pub(in crate::types) fn setattr_behavior(
         return Some(SetAttrBehavior::CustomSetAttr);
     }
 
-    // Pydantic only checks the field's own `frozen` setting if the model is not frozen,
-    // so `Field(frozen=False)` cannot make a field of a frozen model mutable. Private
-    // attributes are not model fields, so their assignments are never checked.
     let is_frozen = metadata.is_frozen(db)
         || !is_private_attribute(attribute)
             && class
@@ -673,8 +657,6 @@ pub(in crate::types) fn uses_base_model_setattr<'db>(
     env: &ProgramEnvironment<'db>,
     class: StaticClassLiteral<'db>,
 ) -> Option<bool> {
-    // Pydantic checks the receiver's effective config in `BaseModel.__setattr__` rather than
-    // generating a setter on each frozen model. A custom setter can replace that behavior.
     for base in class.iter_mro(db, None) {
         if matches!(base, ClassBase::Generic | ClassBase::Protocol) {
             continue;
@@ -791,8 +773,6 @@ pub(in crate::types) fn extend_settings_constructor_parameters<'db>(
 fn model_config<'db>(db: &'db dyn Db, class: StaticClassLiteral<'db>) -> ModelConfig {
     let mut config = ModelConfig::default();
 
-    // Pydantic merges the effective config from each direct base from left to right. A later base
-    // therefore takes precedence over an earlier base.
     for base in class.explicit_bases(db) {
         if matches!(
             base,
@@ -899,8 +879,6 @@ fn own_model_config(db: &dyn Db, class: StaticClassLiteral<'_>) -> Option<ModelC
         return Some(ModelConfig::unknown());
     }
 
-    // Keep this list of recognized options in sync with `model_config_from_dict` and
-    // `class_keyword_config`.
     let extra = call.arguments.find_keyword("extra").map(|extra| {
         let extra = definition_expression_type(db, definition, &extra.value)
             .as_string_literal()
@@ -950,14 +928,10 @@ fn model_config_from_dict(db: &dyn Db, definition: Definition<'_>, dict: &ExprDi
             .as_ref()
             .and_then(|key| key.as_string_literal_expr())
         else {
-            // A dynamic key or dictionary unpacking can override any recognized option. Ignoring
-            // it could incorrectly preserve a lower-precedence configuration value.
             return ModelConfig::unknown();
         };
         let value = definition_expression_type(db, definition, &item.value);
 
-        // Keep this match in sync with the options recognized for `ConfigDict` calls in
-        // `own_model_config` and for class keywords in `class_keyword_config`.
         match key.value.to_str() {
             "extra" => {
                 config.extra = Some(ExtraBehavior::from_value(
@@ -995,8 +969,6 @@ fn class_keyword_config(db: &dyn Db, class: StaticClassLiteral<'_>) -> ModelConf
     {
         return ModelConfig::unknown();
     }
-    // Keep this list of recognized options in sync with `own_model_config` and
-    // `model_config_from_dict`.
     let extra = arguments.find_keyword("extra").map(|extra| {
         let extra = definition_expression_type(db, definition, &extra.value)
             .as_string_literal()
@@ -1060,7 +1032,6 @@ pub(in crate::types) fn has_before_or_plain_field_validator<'db>(
 ) -> bool {
     let field_name = CharStr::from(field_name);
 
-    // Pydantic inherits validators unless a subclass defines a symbol with the same method name.
     let mut shadowed_symbols = FxHashSet::default();
 
     for base in class.iter_mro(db, None).filter_map(ClassBase::into_class) {
@@ -1175,7 +1146,6 @@ fn lax_input_type_impl<'db>(
     }
 
     if let Type::Recursive(recursive) = field_type {
-        // Guard the constructor: recursive arguments can grow without repeating a specialization.
         let constructor = Type::Recursive(recursive.constructor(db));
         if !expanding_types.insert(constructor) {
             return Type::any();
@@ -1348,9 +1318,6 @@ fn root_model_input_type<'db>(
     let root_input_type = lax_input_type_impl(db, env, root_field.declared_ty, expanding_types);
 
     expanding_types.remove(&field_type);
-    // In lax mode, Pydantic accepts a Box[str] when a Box[int] is expected, so we widen
-    // to a gradual specialization here. Widening to `Box[LaxStr]` would only work for
-    // covariant generics.
     let model_instance = Type::instance(db, env, class.unknown_specialization(db));
     Some(UnionType::from_two_elements(
         db,
@@ -1377,14 +1344,10 @@ fn model_input_type<'db>(
         return None;
     }
 
-    // Attribute-based validation can accept arbitrary objects that do not implement `Mapping`.
     if model_config(db, class).from_attributes.enabled_or(false) {
         return Some(Type::any());
     }
 
-    // In lax mode, Pydantic accepts a Box[str] when a Box[int] is expected, so we widen
-    // to a gradual specialization here. Widening to `Box[LaxStr]` would only work for
-    // covariant generics.
     let model_instance = Type::instance(db, env, class.unknown_specialization(db));
     let mapping = KnownClass::Mapping.to_specialized_instance(
         db,
@@ -1454,7 +1417,6 @@ fn model_init_behavior(db: &dyn Db, class: StaticClassLiteral<'_>) -> ModelInitB
             return ModelInitBehavior::BaseSettings;
         }
 
-        // Root models use variadic keywords for specialized inputs, not arbitrary extras.
         if base.is_known(db, KnownClass::PydanticRootModel) {
             return ModelInitBehavior::Other;
         }

@@ -43,6 +43,5 @@ pub(super) fn dict_literal_key_value_types<'db>(
     extend(db, env, dict, &mut expression_type, &mut keys, &mut values)?;
     let keys = keys.build();
     let values = values.build();
-    // Keep the ordinary inference fallback for an empty dictionary.
     (!keys.is_never()).then_some((keys, values))
 }

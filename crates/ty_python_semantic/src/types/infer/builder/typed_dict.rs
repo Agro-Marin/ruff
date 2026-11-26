@@ -90,16 +90,12 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let double_starred_arguments: SmallVec<[&ast::Keyword; 1]> =
             keywords.iter().filter(|kw| kw.arg.is_none()).collect();
 
-        // The fallback type reflects the fact that if the call were successful,
-        // it would return a class that is a subclass of `Mapping[str, object]`
-        // with an unknown set of fields.
         let fallback = || {
             let spec = &[KnownClass::Str.to_instance(db, env), Type::object()];
             let str_object_map = KnownClass::Mapping.to_specialized_subclass_of(db, env, spec);
             IntersectionType::from_two_elements(db, env, str_object_map, Type::unknown())
         };
 
-        // Emit diagnostic for unsupported variadic arguments.
         match (&*starred_arguments, &*double_starred_arguments) {
             ([], []) => {}
             (starred, []) => {
@@ -533,8 +529,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let env = self.program_environment();
         let class_literal = class.class_literal(db);
 
-        // An inner `Node(value=1)` must retain `Node[Unknown]` when its enclosing
-        // `Node(child=...)` cannot infer through the recursive field.
         let has_gradual_class_context = class_literal
             .as_static()
             .zip(call_expression_tcx.expected_type())

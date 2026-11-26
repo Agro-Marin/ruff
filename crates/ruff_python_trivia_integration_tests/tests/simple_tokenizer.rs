@@ -15,7 +15,6 @@ impl TokenizationTestCase {
     fn assert_reverse_tokenization(&self) {
         let mut backwards = self.tokenize_reverse();
 
-        // Re-reverse to get the tokens in forward order.
         backwards.reverse();
 
         assert_eq!(&backwards, &self.tokens);
@@ -78,8 +77,6 @@ fn tokenize_comma() {
 
 #[test]
 fn tokenize_eq() {
-    // Should tokenize as `==`, then `=`, regardless of whether we're lexing forwards or
-    // backwards.
     let source = "===";
 
     let test_case = tokenize(source);
@@ -90,8 +87,6 @@ fn tokenize_eq() {
 
 #[test]
 fn tokenize_not_eq() {
-    // Should tokenize as `!=`, then `=`, regardless of whether we're lexing forwards or
-    // backwards.
     let source = "!==";
 
     let test_case = tokenize(source);
@@ -128,7 +123,6 @@ fn tokenize_invalid_operators() {
 
     assert_debug_snapshot!(test_case.tokens());
 
-    // note: not reversible: [other, bogus, bogus] vs [bogus, bogus, other]
 }
 
 #[test]
@@ -156,7 +150,6 @@ fn string_with_kind() {
     let test_case = tokenize(source);
     assert_debug_snapshot!(test_case.tokens());
 
-    // note: not reversible: [other, bogus] vs [bogus, other]
 }
 
 #[test]
@@ -166,7 +159,6 @@ fn string_with_byte_kind() {
     let test_case = tokenize(source);
     assert_debug_snapshot!(test_case.tokens());
 
-    // note: not reversible: [other, bogus] vs [bogus, other]
 }
 
 #[test]
@@ -192,7 +184,6 @@ fn string_with_invalid_kind() {
     let test_case = tokenize(source);
     assert_debug_snapshot!(test_case.tokens());
 
-    // note: not reversible: [other, bogus] vs [bogus, other]
 }
 
 #[test]
@@ -211,7 +202,6 @@ fn ignore_word_with_only_id_continuing_chars() {
     let test_case = tokenize(source);
     assert_debug_snapshot!(test_case.tokens());
 
-    // note: not reversible: [other, bogus, bogus] vs [bogus, bogus, other]
 }
 
 #[test]

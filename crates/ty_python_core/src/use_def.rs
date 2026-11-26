@@ -349,10 +349,8 @@ struct PlaceStateInterner {
     interned_ids_by_bindings: hashbrown::HashTable<InternedBindingsId>,
     interned_declarations: RetainedDeclarationsBuilder,
     interned_ids_by_declarations: FxHashMap<Declarations, InternedDeclarationsId>,
-    // Undeclared states are common and can be interned by their dense constraint IDs.
     undeclared_declarations_by_constraint:
         IndexVec<ScopedReachabilityConstraintId, Option<InternedDeclarationsId>>,
-    // These values are extremely common, so avoid repeatedly hashing their small vectors.
     always_unbound_bindings: Option<InternedBindingsId>,
     always_undeclared_declarations: Option<InternedDeclarationsId>,
 }
@@ -384,8 +382,6 @@ impl PlaceStateInterner {
             return interned_id;
         }
 
-        // The retained representation discards the unbound narrowing constraint, so it isn't
-        // part of the interned identity.
         let hash = Self::hash_bindings(bindings.as_slice());
         let interned_bindings = &mut self.interned_bindings;
         let entry = self.interned_ids_by_bindings.entry(
@@ -465,8 +461,6 @@ impl PlaceStateInterner {
         bindings: &Bindings,
         declarations: Declarations,
     ) -> InternedPlaceStateId {
-        // Other retained declarations rarely repeat. Keep the compact IDs without hashing every
-        // declaration vector to find the occasional duplicate.
         let declarations_id = if declarations.undeclared_reachability_constraint().is_some() {
             self.intern_declarations(declarations)
         } else {
@@ -501,8 +495,6 @@ impl RetainedBindingsBuilder {
     }
 
     fn push(&mut self, bindings: &Bindings) -> InternedBindingsId {
-        // Definition IDs are also 32-bit and a single scope cannot practically approach this
-        // limit. Keeping one cumulative end offset per state halves the retained range metadata.
         self.live_bindings.extend_from_slice(bindings.as_slice());
         let end = u32::try_from(self.live_bindings.len())
             .expect("Expected live-bindings length to fit into a u32");
@@ -1278,7 +1270,6 @@ impl<'db> UseDefMap<'db> {
         let boundness_analysis = if nested_laziness.is_eager() {
             BoundnessAnalysis::BasedOnUnboundVisibility
         } else {
-            // TODO: We haven't implemented proper boundness analysis for nonlocal symbols, so we assume the boundness is bound for now.
             BoundnessAnalysis::AssumeBound
         };
 
@@ -2048,8 +2039,6 @@ impl PendingReachability {
             self.narrowing_constraint_between(branch_ancestor, branch, narrowing_constraints);
         let merged_narrowing =
             narrowing_constraints.add_or_constraint(current_narrowing, branch_narrowing);
-        // Consecutive places often share their last applied reachability node, so their
-        // merged path constraint can be reused even when they have distinct place states.
         let mut last_merged_reachability = None;
         let mut last_singleton_merge = None;
         let mut branch_states = branch_states.into_iter();
@@ -2069,9 +2058,6 @@ impl PendingReachability {
                 continue;
             };
 
-            // If neither branch changed the place itself, merge just the path constraints. The
-            // common case is a truthy/falsy pair whose constraints cancel to `ALWAYS_TRUE`, leaving
-            // the shared state untouched.
             if current.reachability == branch_state.reachability
                 && current.narrowing == branch_state.narrowing
                 && Rc::ptr_eq(&current.state, &branch_state.state)
@@ -2080,9 +2066,6 @@ impl PendingReachability {
                     continue;
                 }
 
-                // Preserve gates that precede the branch, then merge gates introduced on the
-                // individual branch paths. If either path has no gate, the merged gate simplifies
-                // to `ALWAYS_TRUE` and can be discarded.
                 self.materialize_narrowing(current, branch_ancestor, narrowing_constraints);
                 if merged_narrowing != ScopedNarrowingConstraint::ALWAYS_TRUE {
                     Rc::make_mut(&mut current.state)
@@ -2119,9 +2102,6 @@ impl PendingReachability {
                 continue;
             }
 
-            // Distinct definitions can carry the same path constraints. When both branches
-            // retain the same binding and declaration for a place, only these constraints
-            // change. Reuse an earlier eager merge with identical inputs and pending paths.
             let inputs = current
                 .state
                 .singleton_merge_inputs(&branch_state.state)
@@ -2310,7 +2290,6 @@ impl<'db> UseDefMapBuilder<'db> {
     }
 
     fn push_definition(&mut self, entry: DefinitionEntry<'db>) -> ScopedDefinitionId {
-        // Declaration-only entries also change the type visible to an exception handler.
         self.checkpoint_state.record_binding_change();
         self.all_definitions.push(entry)
     }
@@ -2324,8 +2303,6 @@ impl<'db> UseDefMapBuilder<'db> {
     }
 
     pub(super) fn add_place(&mut self, place: ScopedPlaceId) {
-        // Earlier snapshots restore new places as undefined. The first definition
-        // changes the bindings visible to an exception handler.
         match place {
             ScopedPlaceId::Symbol(symbol) => {
                 let new_place = self.symbol_states.push(PendingPlaceState::new(
@@ -2384,8 +2361,6 @@ impl<'db> UseDefMapBuilder<'db> {
             &mut self.narrowing_constraints,
             &mut self.reachability_constraints,
         );
-        // The retained map uses implicit start-of-scope defaults for missing entries.
-        // Avoid cloning and storing those states for the common first binding.
         if place_state.bindings().is_always_unbound()
             && place_state.declarations().is_always_undeclared()
         {
@@ -2465,7 +2440,6 @@ impl<'db> UseDefMapBuilder<'db> {
         if predicate == ScopedPredicateId::ALWAYS_TRUE
             || predicate == ScopedPredicateId::ALWAYS_FALSE
         {
-            // No need to record a narrowing constraint for `True` or `False`.
             return;
         }
 
@@ -2708,7 +2682,6 @@ impl<'db> UseDefMapBuilder<'db> {
             &mut self.reachability_constraints,
         );
 
-        // And similarly for all associated members:
         #[expect(
             clippy::iter_over_hash_type,
             reason = "associated member states are merged independently"
@@ -2833,8 +2806,6 @@ impl<'db> UseDefMapBuilder<'db> {
         definition: Definition<'db>,
         part: DefinitionCategory,
     ) {
-        // We don't need to store prior state for a definition that is both a declaration and a
-        // binding.
         let entry = if part.is_binding() {
             DefinitionEntry::Unused(definition)
         } else {
@@ -2971,7 +2942,6 @@ impl<'db> UseDefMapBuilder<'db> {
                 .push(bindings);
         }
 
-        // Record a placeholder use of the parent expression to preserve the indices of `bindings_by_use`.
         self.record_use_bindings(Bindings::default())
     }
 
@@ -2979,8 +2949,6 @@ impl<'db> UseDefMapBuilder<'db> {
         let binding_definition_ids = bindings.iter().map(LiveBinding::binding);
         self.mark_definition_ids_used(binding_definition_ids);
 
-        // We have a use of a place; clone the current bindings for that place, and record them
-        // as the live bindings for this use.
         self.bindings_by_use.push(bindings)
     }
 
@@ -3043,9 +3011,6 @@ impl<'db> UseDefMapBuilder<'db> {
             in_type_checking_block: is_type_checking_block,
         };
 
-        // If the last entry has the same reachability constraint and the same
-        // "in-TYPE_CHECKING" status, extend it to cover this range too, collapsing
-        // consecutive statements in a contiguous range into a single entry.
         if let Some((last_range, last_range_info)) = self.range_reachability.last_mut()
             && *last_range_info == this_range_info
         {
@@ -3092,12 +3057,6 @@ impl<'db> UseDefMapBuilder<'db> {
             && bindings
                 .iter()
                 .any(|binding| !binding.binding().is_unbound());
-        // Member bindings can be visible even when the enclosing scope's names are hidden
-        // (e.g. a comprehension in a class body). Likewise, unbound `global` and
-        // `nonlocal` symbols in the enclosing scope are forwarding declarations, so nested scopes
-        // should continue walking outward instead of treating any bindings here as owned by this
-        // scope. However, if the enclosing scope actually rebound the forwarded name, that visible
-        // state needs to be snapshotted so nested scopes can see the rebound type.
         if (enclosing_place.is_symbol() && !snapshot_symbol_bindings)
             || !enclosing_place_expr.is_bound()
             || (is_forwarding_symbol && !stores_visible_bindings)
@@ -3206,23 +3165,16 @@ impl<'db> UseDefMapBuilder<'db> {
     /// Restore the current builder places state to the given snapshot.
     pub(super) fn restore(&mut self, snapshot: FlowSnapshot) {
         self.checkpoint_state.restore(snapshot.checkpoint_state);
-        // We never remove places from `place_states` (it's an IndexVec, and the place
-        // IDs must line up), so the current number of known places must always be equal to or
-        // greater than the number of known places in a previously-taken snapshot.
         let num_symbols = self.symbol_states.len();
         let num_members = self.member_states.len();
         debug_assert!(num_symbols >= snapshot.symbol_states.len());
 
-        // Restore the current visible-definitions state to the given snapshot.
         self.symbol_states = snapshot.symbol_states;
         self.member_states = snapshot.member_states;
         self.reachability = snapshot.reachability;
         self.checkpoint_flow = snapshot.checkpoint_flow;
         self.pending_reachability.current = snapshot.pending_reachability;
 
-        // If the snapshot we are restoring is missing some places we've recorded since, we need
-        // to fill them in so the place IDs continue to line up. Since they don't exist in the
-        // snapshot, the correct state to fill them in with is "undefined".
         let undefined = PendingPlaceState::new(
             PlaceState::undefined(self.reachability),
             self.pending_reachability.current,
@@ -3235,13 +3187,6 @@ impl<'db> UseDefMapBuilder<'db> {
     /// path to get here. The new state for each place should include definitions from both the
     /// prior state and the snapshot.
     pub(super) fn merge(&mut self, snapshot: FlowSnapshot) {
-        // As an optimization, if we know statically that either of the snapshots is always
-        // unreachable, we can leave it out of the merged result entirely. Note that we cannot
-        // perform any type inference at this point, so this is largely limited to unreachability
-        // via terminal statements. If a flow's reachability depends on an expression in the code,
-        // we will include the flow in the merged result; the reachability constraints of its
-        // bindings will include this reachability condition, so that later during type inference,
-        // we can determine whether any particular binding is non-visible due to unreachability.
         if snapshot.reachability == ScopedReachabilityConstraintId::ALWAYS_FALSE {
             return;
         }
@@ -3252,9 +3197,6 @@ impl<'db> UseDefMapBuilder<'db> {
 
         self.checkpoint_state.merge(snapshot.checkpoint_state);
 
-        // We never remove places from `place_states` (it's an IndexVec, and the place
-        // IDs must line up), so the current number of known places must always be equal to or
-        // greater than the number of known places in a previously-taken snapshot.
         debug_assert!(self.symbol_states.len() >= snapshot.symbol_states.len());
         debug_assert!(self.member_states.len() >= snapshot.member_states.len());
 
@@ -3333,8 +3275,6 @@ impl<'db> UseDefMapBuilder<'db> {
             .iter_mut()
             .chain(self.member_states.iter_mut())
         {
-            // No later place change or merge can require the path correlation represented by
-            // pending narrowing gates, so only reachability needs to be finalized here.
             self.pending_reachability.materialize_reachability(
                 state,
                 pending,
@@ -3365,7 +3305,6 @@ impl<'db> UseDefMapBuilder<'db> {
             interned_ids_by_declarations_capacity,
             interned_declarations_capacity,
         );
-        // These fields are manually interned because they have a statistically high duplication rate (>50%).
         let definitions_by_definition = Self::intern_definitions_by_definition(
             self.definitions_by_definition,
             &mut place_state_interner,
@@ -3420,8 +3359,6 @@ impl<'db> UseDefMapBuilder<'db> {
             ..
         } = place_state_interner;
 
-        // We only walk the fields that are copied through to the UseDefMap when we finish building
-        // it.
         let interned_bindings = interned_bindings.finish(
             &mut self.narrowing_constraints,
             &mut self.reachability_constraints,
@@ -3438,7 +3375,6 @@ impl<'db> UseDefMapBuilder<'db> {
             self.reachability_constraints.mark_used(reachability);
         }
         for enclosing_snapshot in &enclosing_snapshots {
-            // Bindings are already marked above.
             if let InternedEnclosingSnapshotId::Constraint(constraint) = enclosing_snapshot {
                 self.narrowing_constraints.mark_used(*constraint);
             }
@@ -3447,8 +3383,6 @@ impl<'db> UseDefMapBuilder<'db> {
         let multi_bindings_by_use = MultiBindingsByUse::from_map(self.multi_bindings_by_use);
         let loop_headers = self.loop_headers;
         let mut boolean_test_roots = self.boolean_test_roots;
-        // In `body if test else other`, we visit `test` before `body`, but node indices follow
-        // source order. Sort the recorded IDs so root membership can use binary search.
         boolean_test_roots.sort_unstable();
         let extra = (has_uses
             || !member_states.is_empty()
@@ -3514,13 +3448,8 @@ impl<'db> UseDefMapBuilder<'db> {
                     bindings,
                     declarations,
                 } = definitions;
-                // The implicit entries are reconstructed by iterators, so their constraint does
-                // not appear in the binding/declaration tables visited during compaction.
                 reachability_constraints.mark_used(initial_reachability);
 
-                // A place with one declaration commonly has identical end-of-scope and reachable
-                // declarations after removing the initial undeclared entry. Compare this pair
-                // directly because end-of-scope declarations are not all interned.
                 let declarations_id = if place_state_interner
                     .interned_declarations
                     .get(end_of_scope.declarations_id())
@@ -3554,7 +3483,6 @@ impl<'db> UseDefMapBuilder<'db> {
     > {
         let mut interned_ids_by_definition = Vec::with_capacity(definitions_by_definition.len());
 
-        // Keep the builder map hash-based because it is updated for every definition. We only need
         // stable iteration here, where insertion order determines the generated interned IDs.
         let mut definitions_by_definition =
             definitions_by_definition.into_iter().collect::<Vec<_>>();

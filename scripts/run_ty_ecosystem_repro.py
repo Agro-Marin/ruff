@@ -73,7 +73,6 @@ def main() -> None:
                 "stderr": completed.stderr,
             }
         except subprocess.TimeoutExpired:
-            # The analyzer discards partial diagnostics and stderr on a timeout.
             result = {
                 "timed_out": True,
                 "return_code": None,

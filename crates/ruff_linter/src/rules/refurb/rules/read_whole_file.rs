@@ -83,18 +83,15 @@ impl Violation for ReadWholeFile<'_> {
 
 /// FURB101
 pub(crate) fn read_whole_file(checker: &Checker, with: &ast::StmtWith) {
-    // `async` check here is more of a precaution.
     if with.is_async {
         return;
     }
 
-    // First we go through all the items in the statement and find all `open` operations.
     let candidates = find_file_opens(with, checker.semantic(), true, checker.target_version());
     if candidates.is_empty() {
         return;
     }
 
-    // Then we need to match each `open` operation with exactly one `read` call.
     let mut matcher = ReadMatcher::new(checker, candidates, with);
     visitor::walk_body(&mut matcher, &with.body);
 }
@@ -212,9 +209,6 @@ fn generate_fix(
         )
         .ok()?;
 
-    // Only replace context managers with a single assignment or annotated assignment in the body.
-    // The assignment's RHS must also be the same as the `read` call in `expr`, otherwise this fix
-    // would remove the rest of the expression.
     let replacement = match with_stmt.body.as_slice() {
         [Stmt::Assign(ast::StmtAssign { targets, value, .. })] if value.range() == expr.range() => {
             match targets.as_slice() {

@@ -99,11 +99,6 @@ struct RecursiveTypeNormalizationKey {
     nested: bool,
 }
 
-// Keep this detector thread-local rather than threading it through every recursive
-// normalization helper. Passing an explicit visitor would model the recursion state more
-// directly, but it would touch a wide slice of the type-normalization plumbing for no current
-// behavioral benefit. This works because recursive normalization currently stays on a single
-// thread/query stack; if that ever changes, revisit this and prefer explicit visitor propagation.
 std::thread_local! {
     static ACTIVE_RECURSIVE_TYPE_NORMALIZATIONS: ActiveRecursionDetector<RecursiveTypeNormalizationKey> =
         ActiveRecursionDetector::default();
@@ -297,7 +292,6 @@ pub struct OverloadLiteral<'db> {
     pub(crate) has_explicit_return_annotation: bool,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for OverloadLiteral<'_> {}
 
 #[salsa::tracked]
@@ -337,8 +331,6 @@ impl<'db> OverloadLiteral<'db> {
     }
 
     fn file(self, db: &'db dyn Db) -> File {
-        // NOTE: Do not use `self.definition(db).file(db)` here, as that could create a
-        // cross-module dependency on the full AST.
         self.body_scope(db).file(db)
     }
 
@@ -478,15 +470,11 @@ impl<'db> OverloadLiteral<'db> {
     /// Returns the overload immediately before this one in the AST. Returns `None` if there is no
     /// previous overload.
     fn previous_overload(self, db: &'db dyn Db) -> Option<FunctionLiteral<'db>> {
-        // The semantic model records a use for each function on the name node. This is used
-        // here to get the previous function definition with the same name.
         let scope = self.definition(db).scope(db);
         let module = parsed_module(db, self.python_file(db)).load(db);
         let index = semantic_index(db, scope.program_file(db));
         let local_scope = scope.file_scope_id(db);
         let node = self.body_scope(db).node(db).expect_function().node(&module);
-        // A loop can reach this same def from a previous iteration. An undecorated
-        // def cannot be its own overload, and there is no other local binding.
         if node.decorator_list.is_empty()
             && index.scope(local_scope).kind().is_function_like()
             && index
@@ -525,8 +513,6 @@ impl<'db> OverloadLiteral<'db> {
             return None;
         }
 
-        // These can both happen in edge cases where a definition created with a `def`
-        // statement shadows a non-`def` symbol with the same name.
         if previous_overload.name(db) != self.name(db) {
             return None;
         }
@@ -652,8 +638,6 @@ impl<'db> OverloadLiteral<'db> {
                 return false;
             };
 
-            // `self` and `cls` are always positional-only if the next parameter uses the
-            // PEP-484 convention.
             if parameters
                 .args
                 .get(1)
@@ -662,10 +646,6 @@ impl<'db> OverloadLiteral<'db> {
                 return true;
             }
 
-            // If there isn't any parameter other than `self`/`cls`,
-            // or there is but it isn't using the PEP-484 convention,
-            // then `self`/`cls` are only implicitly positional-only if
-            // it is a protocol class.
             original_class_type(db, class_definition)
                 .map(|class_literal| class_literal.default_specialization(db))
                 .is_some_and(|class| class.is_protocol(db))
@@ -712,9 +692,6 @@ impl<'db> OverloadLiteral<'db> {
                 return None;
             }
 
-            // We have not yet added an implicit annotation to the `self` parameter, so any
-            // typevars that currently appear in the method's generic context come from explicit
-            // annotations.
             let method_has_explicit_self = generic_context
                 .is_some_and(|context| context.variables(db).any(|v| v.typevar(db).is_self(db)));
 
@@ -728,26 +705,6 @@ impl<'db> OverloadLiteral<'db> {
                 .known(db)
                 .is_some_and(KnownClass::is_fallback_class);
 
-            // Normally we implicitly annotate `self` or `cls` with `Self` or `type[Self]`, and
-            // create a `Self` typevar that we then have to solve for whenever this method is
-            // called. As an optimization, we can skip creating that typevar in certain situations:
-            //
-            //   - The method cannot use explicit `Self` in any other parameter annotations,
-            //     or in its return type. If it does, then we really do need specialization
-            //     inference at each call site to see which specific instance type should be
-            //     used in those other parameters / return type.
-            //
-            //   - The class cannot be generic. If it is, then we might need an actual `Self`
-            //     typevar to help carry through constraints that relate the instance type to
-            //     other typevars in the method signature.
-            //
-            //   - The class cannot be a "fallback class". A fallback class is used like a mixin,
-            //     and so we need specialization inference to determine the "real" class that the
-            //     fallback is augmenting. (See KnownClass::is_fallback_class for more details.)
-            //
-            // We cannot skip creating `Self` if return type inference is active. Otherwise, a function
-            // like `def method(self): return self`, that has an inferred return type of `Self`, would
-            // not be generic.
             let return_type_inference_is_active = function_stmt_node.returns.is_none()
                 && db
                     .analysis_settings(self.file(db))
@@ -781,8 +738,6 @@ impl<'db> OverloadLiteral<'db> {
                     Some(Type::TypeVar(typing_self))
                 }
             } else {
-                // If skip creating the typevar, we use "instance of class" or "subclass of
-                // class" as the implicit annotation instead.
                 if self.is_classmethod(db) || is_dunder_new {
                     Some(SubclassOfType::from(
                         db,
@@ -890,13 +845,10 @@ impl<'db> FunctionLiteral<'db> {
     }
 
     fn name(self, db: &'db dyn Db) -> &'db ast::name::Name {
-        // All of the overloads of a function literal should have the same name.
         self.last_definition.name(db)
     }
 
     fn known(self, db: &'db dyn Db) -> Option<KnownFunction> {
-        // Whether a function is known is based on its name (and its containing module's name), so
-        // all overloads should be known (or not) equivalently.
         self.last_definition.known(db)
     }
 
@@ -946,7 +898,6 @@ impl<'db> FunctionLiteral<'db> {
                 current = previous;
             }
 
-            // Overloads are inserted in reverse order, from bottom to top.
             overloads.reverse();
 
             let implementation = if self_overload.is_overload(db) {
@@ -993,7 +944,6 @@ impl<'db> FunctionLiteral<'db> {
     /// over-invalidation.
     fn signature(self, db: &'db dyn Db) -> CallableSignature<'db> {
         // We only include an implementation (i.e. a definition not decorated with `@overload`) if
-        // it's the only definition.
         let (overloads, implementation) = self.overloads_and_implementation(db);
         if let Some(implementation) = implementation
             && overloads.is_empty()
@@ -1003,7 +953,6 @@ impl<'db> FunctionLiteral<'db> {
 
         CallableSignature::from_overloads(overloads.iter().enumerate().flat_map(
             |(source_overload_index, overload)| {
-                // The last overload may still be inferred, so querying its binding would create a cycle.
                 if *overload == self.last_definition {
                     Either::Left(std::iter::once(
                         overload
@@ -1227,7 +1176,6 @@ pub struct FunctionType<'db> {
     descriptor_kind: Option<CallableTypeKind>,
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for FunctionType<'_> {}
 
 pub(super) fn walk_function_type<'db, V: super::visitor::TypeVisitor<'db> + ?Sized>(
@@ -1269,8 +1217,6 @@ impl<'db> FunctionType<'db> {
     }
 
     pub(super) fn with_descriptor_kind(self, db: &'db dyn Db, kind: CallableTypeKind) -> Self {
-        // Keep the original representation when wrapping and unwrapping returns to
-        // the declaration's kind, so the same function retains a single identity.
         let declared = Self::new_internal(db, self.literal(db), self.updated_signatures(db), None);
         if declared.callable_type_kind(db) == kind {
             return declared;
@@ -1398,8 +1344,6 @@ impl<'db> FunctionType<'db> {
         tcx: TypeContext<'db>,
         visitor: &ApplyTypeMappingVisitor<'_, 'db>,
     ) -> Self {
-        // Returned-callable rescoping and type-alias specialization should not rebuild signatures from the
-        // function literal; doing so can re-enter recursive `TypeOf` evaluation.
         let literal = self.literal(db);
         let (updated_signature, updated_implementation_callables) = if type_mapping.is_structural()
             || matches!(
@@ -1453,18 +1397,6 @@ impl<'db> FunctionType<'db> {
                         && !self.file(db).is_stub(db)
                         && !self.has_explicit_return_annotation(db) =>
                 {
-                    // When we call an unannotated method on a type like `Box[int]`, where `Box[T]`
-                    // is a generic type, we might later need to specialize the inferred return type
-                    // of `method`, which might refer to the class-scoped type variable `T`. For
-                    // example:
-                    //
-                    //     class Box[T]:
-                    //         value: T
-                    //         def get(self): return self.value
-                    //
-                    // When calling `Box[int]().get()`, the inferred return type (naively inferred as `T`)
-                    // should be specialized to `int`. We therefore retain the specialization here, as it
-                    // cannot be recovered from the specialized signature in all cases (e.g. static methods).
                     specialization.as_specialization(db)
                 }
                 _ => None,
@@ -1495,8 +1427,6 @@ impl<'db> FunctionType<'db> {
         db: &'db dyn Db,
         params: DataclassTransformerParams<'db>,
     ) -> Self {
-        // A decorator only applies to the specific overload that it is attached to, not to all
-        // previous overloads.
         let literal = self.literal(db);
         let literal = FunctionLiteral {
             last_definition: literal
@@ -1517,8 +1447,6 @@ impl<'db> FunctionType<'db> {
         db: &'db dyn Db,
         deprecated: DeprecatedInstance<'db>,
     ) -> Self {
-        // A decorator only applies to the specific overload that it is attached to, not to all
-        // previous overloads.
         let literal = self.literal(db);
         let literal = FunctionLiteral {
             last_definition: literal.last_definition.with_deprecated(db, deprecated),
@@ -1587,7 +1515,6 @@ impl<'db> FunctionType<'db> {
             return kind == CallableTypeKind::ClassMethodLike;
         }
         let mut overloads = self.iter_overloads_and_implementation(db);
-        // Overload discovery can return no definitions during cycle recovery.
         overloads
             .next()
             .is_some_and(|overload| overload.is_classmethod(db))
@@ -1607,7 +1534,6 @@ impl<'db> FunctionType<'db> {
     /// already exposed the ordinary function. Diagnostics can still use its declaration kind.
     pub(super) fn has_staticmethod_declaration(self, db: &'db dyn Db) -> bool {
         let mut overloads = self.iter_overloads_and_implementation(db);
-        // Overload discovery can return no definitions during cycle recovery.
         overloads
             .next()
             .is_some_and(|overload| overload.is_staticmethod(db))
@@ -1773,16 +1699,13 @@ impl<'db> FunctionType<'db> {
         db: &'db dyn Db,
     ) -> Cow<'db, CallableSignature<'db>> {
         let signature = self.signature(db);
-        // Never infer return types for functions with multiple overloads.
         let [overload] = signature.overloads.as_slice() else {
             return Cow::Borrowed(signature);
         };
 
-        // Decorators and signature transformations can supply a return type without an annotation.
         if !overload.return_ty.is_unknown()
             || !db.analysis_settings(self.file(db)).return_type_inference.is_active()
             || self.has_explicit_return_annotation(db)
-            // We never infer return types in stubs
             || self.file(db).is_stub(db)
             // An (invalid) function with a single `@overload` could still fall through the filter above.
             // We should not replace the `@overload`'s return type with the inferred type from the implementation.
@@ -1791,9 +1714,6 @@ impl<'db> FunctionType<'db> {
             return Cow::Borrowed(signature);
         }
         let mut overload = overload.clone();
-        // The body refers to the declaration's method typevars. Rename them to this
-        // signature's binders before substituting class arguments, which may themselves
-        // refer to the original occurrences.
         let method_renaming = overload.generic_context.and_then(|context| {
             let definition = self.definition(db);
             let fresh = context.variables(db).filter(|var| {
@@ -1833,28 +1753,21 @@ impl<'db> FunctionType<'db> {
         let module = parsed_module(db, self.python_file(db)).load(db);
         let function = scope.node(db).expect_function();
 
-        // Do not perform return type inference for functions in `if TYPE_CHECKING` blocks.
         if index.is_in_type_checking_block(scope.file_scope_id(db), function.node(&module).range())
         {
             return Type::unknown();
         }
 
-        // TODO: Infer return types for async functions and generator functions
         if function.node(&module).is_async || scope.file_scope_id(db).is_generator_function(index) {
             return Type::unknown();
         }
 
-        // Abstract methods often have a no-op body, and even if they contain an implementation,
-        // we treat their return type as unknown, based on the assumption that these default
-        // implementations are often not a reliable indicator of the actual contract that subclass
-        // methods are expected to fulfill.
         if self.has_known_decorator(db, FunctionDecorators::ABSTRACT_METHOD) {
             return Type::unknown();
         }
 
         let Some(class_definition) = index.class_definition_of_method(scope.file_scope_id(db))
         else {
-            // For free functions, we simply use the type inferred from the function body.
             return infer_complete_scope_types(db, scope)
                 .return_type()
                 .apply_type_mapping(
@@ -1873,12 +1786,10 @@ impl<'db> FunctionType<'db> {
         }
         let class = original_class_type(db, class_definition);
 
-        // Protocol methods follow the same logic as abstract methods (see reasoning above).
         if class.is_some_and(|class| class.is_protocol(db)) {
             return Type::unknown();
         }
 
-        // We currently skip return type inference for the `__call__` method of metaclasses.
         if self.name(db) == "__call__"
             && class.is_some_and(|class| {
                 class.iter_mro(db).any(|base| {
@@ -1896,8 +1807,6 @@ impl<'db> FunctionType<'db> {
         } else if !self.has_known_decorator(db, FunctionDecorators::FINAL)
             && !class.is_some_and(|class| class.is_final(db))
         {
-            // For non-final methods on non-final classes, we include `Unknown` in the return type
-            // to allow subclasses to widen the return type if necessary.
             return_type = UnionType::from_two_elements(db, &env, return_type, Type::unknown());
         }
 
@@ -1943,17 +1852,6 @@ impl<'db> FunctionType<'db> {
             };
 
             return Some(
-                // TODO: specialization here is important for a case like
-                //
-                // class Base:
-                //     def method[T](self, x: T) -> list[T]: ...
-                // class Derived(Base):
-                //     def method(self, x): ...
-                //
-                // The inherited return type `list[T]` cannot be used as the return type of
-                // `Derived.method`, which is not generic itself. We currently use the default
-                // specialization of the base class's return type, but we should investigate
-                // this more carefully. Maybe we should instead return `None` for such cases.
                 signature.return_ty.apply_optional_specialization(
                     db,
                     signature
@@ -2117,7 +2015,6 @@ impl<'db> FunctionType<'db> {
             || None,
             || {
                 let mut literal = self.literal(db);
-                // A field specifier may refer back to this function or its result.
                 if let Some(params) = literal.last_definition.dataclass_transformer_params(db) {
                     let params = params.recursive_type_normalized_impl(db, env, div, nested)?;
                     literal.last_definition = literal
@@ -2212,7 +2109,6 @@ pub(super) fn function_body_kind<'db>(
     node: &ast::StmtFunctionDef,
     infer_type: impl Fn(&ast::Expr) -> Type<'db>,
 ) -> FunctionBodyKind {
-    // Allow docstrings, but only as the first statement.
     let suite = ast::helpers::body_without_leading_docstring(&node.body);
 
     if function_has_stub_body(node) {
@@ -2407,10 +2303,6 @@ impl KnownFunction {
         definition: Definition<'db>,
         name: &str,
     ) -> Option<Self> {
-        // Special case: `__dataclass_transform__` is recognized as `DataclassTransform`
-        // regardless of module, for backwards compatibility with earlier versions of the
-        // `dataclass_transform` specification. This matches pyright's behavior:
-        // https://github.com/microsoft/pyright/blob/1.1.396/packages/pyright-internal/src/analyzer/dataClasses.ts#L1024-L1033
         if name == "__dataclass_transform__" {
             return Some(Self::DataclassTransform);
         }

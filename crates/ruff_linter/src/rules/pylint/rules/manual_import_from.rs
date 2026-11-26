@@ -67,7 +67,6 @@ pub(crate) fn manual_from_import(checker: &Checker, stmt: &Stmt, alias: &Alias, 
         return;
     }
 
-    // Skip if this import is required by isort to prevent infinite loops with I002
     if is_import_required_by_isort(
         &checker.settings().isort.required_imports,
         stmt.into(),

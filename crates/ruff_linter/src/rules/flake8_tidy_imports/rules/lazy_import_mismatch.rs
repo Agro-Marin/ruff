@@ -155,7 +155,6 @@ fn report_lazy_import_policy(
         Stmt::ImportFrom(import) => &import.names,
         _ => return,
     };
-    // Changing the entire statement could violate another imported name's policy.
     if names.len() != 1 || checker.semantic().lazy_modules.is_some() {
         return;
     }

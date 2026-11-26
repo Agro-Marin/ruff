@@ -109,13 +109,10 @@ enum InferredMemberType {
 
 impl InferredMemberType {
     fn of(value: &str) -> Self {
-        // E.g. `CONSTANT`
         if value.len() > 1 && is_cased_uppercase(value) {
             Self::Constant
-        // E.g. `Class`
         } else if value.starts_with(char::is_uppercase) {
             Self::Class
-        // E.g. `some_variable` or `some_function`
         } else {
             Self::Other
         }
@@ -143,9 +140,6 @@ pub(super) enum SequenceKind {
 }
 
 impl SequenceKind {
-    // N.B. We only need the source code for the Tuple variant here,
-    // but if you already have a `Locator` instance handy,
-    // getting the source code is very cheap.
     fn surrounding_brackets(self) -> (&'static str, &'static str) {
         match self {
             Self::List => ("[", "]"),
@@ -198,8 +192,6 @@ impl<'a> SequenceElements<'a> {
     }
 
     fn last_item_index(&self) -> usize {
-        // Safe from underflow, as the constructor guarantees
-        // that the underlying vector has length >= 2
         self.0.len() - 1
     }
 
@@ -228,10 +220,6 @@ pub(super) fn sort_single_line_elements_sequence(
     let last_item_index = element_pairs.last_item_index();
     let (opening_paren, closing_paren) = kind.surrounding_brackets();
     let mut result = String::from(opening_paren);
-    // We grab the original source-code ranges using `locator.slice()`
-    // rather than using the expression generator, as this approach allows
-    // us to easily preserve stylistic choices in the original source code
-    // such as whether double or single quotes were used.
     for (i, elt) in element_pairs.into_sorted_elts(sorting_style).enumerate() {
         result.push_str(locator.slice(elt));
         if i < last_item_index {
@@ -263,14 +251,10 @@ pub(super) enum SortClassification<'a> {
 
 impl<'a> SortClassification<'a> {
     pub(super) fn of_elements(elements: &'a [ast::Expr], sorting_style: SortingStyle) -> Self {
-        // If it's of length less than 2, it has to be sorted already
         let Some((first, rest @ [_, ..])) = elements.split_first() else {
             return Self::Sorted;
         };
 
-        // If any elt we encounter is not an ExprStringLiteral AST node,
-        // that indicates at least one item in the sequence is not a string literal,
-        // which means the sequence is out of scope for RUF022/RUF023/etc.
         let Some(string_node) = first.as_string_literal_expr() else {
             return Self::NotAListOfStringLiterals;
         };
@@ -282,18 +266,6 @@ impl<'a> SortClassification<'a> {
             };
             let next = string_node.value.to_str();
             if sorting_style.compare(next, current).is_lt() {
-                // Looks like the sequence was not in fact already sorted!
-                //
-                // Now we need to gather the necessary information we'd need
-                // to create an autofix. We need to know three things for this:
-                //
-                // 1. Are all items in the sequence string literals?
-                //    (If not, we won't even be emitting the violation, let alone
-                //    trying to fix it.)
-                // 2. Are any items in the sequence implicitly concatenated?
-                //    (If so, we might be *emitting* the violation, but we definitely
-                //    won't be trying to fix it.)
-                // 3. What is the value of each elt in the sequence?
                 let mut items = Vec::with_capacity(elements.len());
                 let mut any_implicit_concatenation = false;
                 for expr in elements {
@@ -312,8 +284,6 @@ impl<'a> SortClassification<'a> {
             }
             current = next;
         }
-        // Looks like the sequence was already sorted -- hooray!
-        // We won't be emitting a violation this time.
         Self::Sorted
     }
 }
@@ -364,7 +334,6 @@ impl CommentComplexity {
     }
 }
 
-// An instance of this struct encapsulates an analysis
 /// of a multiline Python tuple/list that represents an
 /// `__all__`/`__slots__`/etc. definition or augmentation.
 pub(super) struct MultilineStringSequenceValue<'a> {
@@ -406,21 +375,9 @@ impl<'a> MultilineStringSequenceValue<'a> {
         tokens: &Tokens,
         string_items: &[&'a str],
     ) -> Option<MultilineStringSequenceValue<'a>> {
-        // Parse the multiline string sequence using the raw tokens.
-        // See the docs for `collect_string_sequence_lines()` for why we have to
-        // use the raw tokens, rather than just the AST, to do this parsing.
-        //
-        // Step (1). Start by collecting information on each line individually:
         let (lines, ends_with_trailing_comma) =
             collect_string_sequence_lines(range, kind, tokens, string_items)?;
 
-        // Step (2). Group lines together into sortable "items":
-        //   - Any "item" contains a single element of the list/tuple
-        //   - Assume that any comments on their own line are meant to be grouped
-        //     with the element immediately below them: if the element moves,
-        //     the comments above the element move with it.
-        //   - The same goes for any comments on the same line as an element:
-        //     if the element moves, the comment moves with it.
         let items = collect_string_sequence_items(lines, range, locator);
 
         Some(MultilineStringSequenceValue {
@@ -451,42 +408,11 @@ impl<'a> MultilineStringSequenceValue<'a> {
             ),
         };
 
-        // As well as the "items" in a multiline string sequence,
-        // there is also a "prelude" and a "postlude":
         //  - Prelude == the region of source code from the opening parenthesis,
-        //    up to the start of the first item in `__all__`/`__slots__`/etc.
         //  - Postlude == the region of source code from the end of the last
-        //    item in `__all__`/`__slots__`/etc. up to and including the closing
-        //    parenthesis.
-        //
-        // For example:
-        //
-        // ```python
-        // __all__ = [  # comment0
-        //   # comment1
-        //   "first item",
-        //   "last item"  # comment2
-        //   # comment3
-        // ]  # comment4
-        // ```
-        //
         // - The prelude in the above example is the source code region
-        //   starting just before the opening `[` and ending just after `# comment0`.
-        //   `comment0` here counts as part of the prelude because it is on
-        //   the same line as the opening paren, and because we haven't encountered
-        //   any elements of `__all__` yet, but `comment1` counts as part of the first item,
-        //   as it's on its own line, and all comments on their own line are grouped
-        //   with the next element below them to make "items",
         //   (an "item" being a region of source code that all moves as one unit
-        //   when `__all__` is sorted).
         // - The postlude in the above example is the source code region starting
-        //   just after `# comment2` and ending just after the closing paren.
-        //   `# comment2` is part of the last item, as it's an inline comment on the
-        //   same line as an element, but `# comment3` becomes part of the postlude
-        //   because there are no items below it. `# comment4` is not part of the
-        //   postlude: it's outside of the source-code range considered by this rule,
-        //   and should therefore be untouched.
-        //
         let newline = stylist.line_ending().as_str();
         let start_offset = self.start();
         let leading_indent = leading_indentation(locator.full_line_str(start_offset));
@@ -503,14 +429,6 @@ impl<'a> MultilineStringSequenceValue<'a> {
             locator,
         );
 
-        // We only add a trailing comma to the last item in the sequence
-        // as part of `join_multiline_string_sequence_items()`
-        // if both the following are true:
-        //
-        // (1) The last item in the original sequence had a trailing comma; AND,
-        // (2) The first "semantically significant" token in the postlude is not a comma
-        //     (if the first semantically significant token *is* a comma, and we add another comma,
-        //     we'll end up with two commas after the final item, which would be invalid syntax)
         let needs_trailing_comma = self.ends_with_trailing_comma
             && first_non_trivia_token(TextSize::new(0), &postlude)
                 .is_none_or(|tok| tok.kind() != SimpleTokenKind::Comma);
@@ -559,14 +477,9 @@ fn collect_string_sequence_lines<'a>(
     tokens: &Tokens,
     string_items: &[&'a str],
 ) -> Option<(Vec<StringSequenceLine<'a>>, bool)> {
-    // These first two variables are used for keeping track of state
-    // regarding the entirety of the string sequence...
     let mut ends_with_trailing_comma = false;
     let mut lines = vec![];
-    // ... all state regarding a single line of a string sequence
-    // is encapsulated in this variable
     let mut line_state = LineState::default();
-    // An iterator over the string values in the sequence.
     let mut string_items_iter = string_items.iter();
 
     let mut token_iter = tokens.in_range(range).iter();
@@ -700,12 +613,8 @@ struct LineWithJustAComment(TextRange);
 /// sequence, and may also have a trailing comment after the element(s).
 #[derive(Debug)]
 struct LineWithItems<'a> {
-    // For elements in the list, we keep track of the value of the
-    // value of the element as well as the source-code range of the element.
-    // (We need to know the actual value so that we can sort the items.)
     first_item: (&'a str, TextRange),
     following_items: Vec<(&'a str, TextRange)>,
-    // For comments, we only need to keep track of the source-code range.
     trailing_comment_range: Option<TextRange>,
 }
 
@@ -753,16 +662,10 @@ fn collect_string_sequence_items<'a>(
     for line in lines {
         match line {
             StringSequenceLine::JustAComment(LineWithJustAComment(comment_range)) => {
-                // Comments on the same line as the opening paren and before any elements
-                // count as part of the "prelude"; these are not grouped into any item...
                 if first_item_encountered
                     || locator.line_start(comment_range.start())
                         != locator.line_start(dunder_all_range.start())
                 {
-                    // ...but for all other comments that precede an element,
-                    // group the comment with the element following that comment
-                    // into an "item", so that the comment moves as one with the element
-                    // when the list/tuple/set is sorted
                     preceding_comment_ranges.push(comment_range);
                 }
             }
@@ -782,7 +685,7 @@ fn collect_string_sequence_items<'a>(
                     all_items.push(StringSequenceItem::with_no_comments(value, range));
                 }
             }
-            StringSequenceLine::Empty => continue, // discard empty lines
+            StringSequenceLine::Empty => continue,
         }
     }
     all_items
@@ -828,10 +731,6 @@ struct StringSequenceItem<'a> {
     value: &'a str,
     preceding_comment_ranges: Vec<TextRange>,
     element_range: TextRange,
-    // total_range incorporates the ranges of preceding comments
-    // (which must be contiguous with the element),
-    // but doesn't incorporate any trailing comments
-    // (which might be contiguous, but also might not be)
     total_range: TextRange,
     end_of_line_comments: Option<TextRange>,
 }
@@ -971,13 +870,6 @@ fn multiline_string_sequence_postlude<'a>(
     };
     let postlude = locator.slice(TextRange::new(postlude_start, dunder_all_range_end));
 
-    // If the postlude consists solely of a closing parenthesis
-    // (not preceded by any whitespace/newlines),
-    // plus possibly a single trailing comma prior to the parenthesis,
-    // fixup the postlude so that the parenthesis appears on its own line,
-    // and so that the final item has a trailing comma.
-    // This produces formatting more similar
-    // to that which the formatter would produce.
     if postlude.len() <= 2 {
         let mut reversed_postlude_chars = postlude.chars().rev();
         if let Some(closing_paren @ (')' | '}' | ']')) = reversed_postlude_chars.next() {
@@ -992,31 +884,6 @@ fn multiline_string_sequence_postlude<'a>(
         return Cow::Borrowed(postlude);
     }
 
-    // The rest of this function uses heuristics to
-    // avoid very long indents for the closing paren
-    // that don't match the style for the rest of the
-    // fixed-up multiline string sequence.
-    //
-    // For example, we want to avoid something like this
-    // (not uncommon in code that hasn't been
-    // autoformatted)...
-    //
-    // ```python
-    // __all__ = ["xxxxxx", "yyyyyy",
-    //            "aaaaaa", "bbbbbb",
-    //            ]
-    // ```
-    //
-    // ...getting autofixed to this:
-    //
-    // ```python
-    // __all__ = [
-    //     "a",
-    //     "b",
-    //     "x",
-    //     "y",
-    //            ]
-    // ```
     if TextSize::of(leading_indentation(
         postlude.trim_start_matches(newline_chars),
     )) <= TextSize::of(item_indent)

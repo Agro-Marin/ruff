@@ -115,7 +115,6 @@ pub(super) trait CallStack {
                 kind: StackFrameKind::Tag(actual_kind),
                 args,
             }) if actual_kind == kind => Ok(args),
-            // Start / End kind don't match
             Some(StackFrame {
                 kind: StackFrameKind::Tag(expected_kind),
                 ..
@@ -123,21 +122,18 @@ pub(super) trait CallStack {
                 kind,
                 Some(expected_kind),
             ))),
-            // Tried to pop the outer most stack frame, which is not valid
             Some(
                 frame @ StackFrame {
                     kind: StackFrameKind::Root,
                     ..
                 },
             ) => {
-                // Put it back in to guarantee that the stack is never empty
                 self.stack_mut().push(frame);
                 Err(PrintError::InvalidDocument(Self::invalid_document_error(
                     kind, None,
                 )))
             }
 
-            // This should be unreachable but having it for completeness. Happens if the stack is empty.
             None => Err(PrintError::InvalidDocument(Self::invalid_document_error(
                 kind, None,
             ))),

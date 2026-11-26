@@ -241,7 +241,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
 
     #[rustfmt::skip]
     Some(match (linter, code) {
-        // pycodestyle errors
         (Pycodestyle, "E101") => rules::pycodestyle::rules::MixedSpacesAndTabs,
         (Pycodestyle, "E111") => rules::pycodestyle::rules::logical_lines::IndentationWithInvalidMultiple,
         (Pycodestyle, "E112") => rules::pycodestyle::rules::logical_lines::NoIndentedBlock,
@@ -304,7 +303,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         #[allow(deprecated)]
         (Pycodestyle, "E999") => rules::pycodestyle::rules::SyntaxError,
 
-        // pycodestyle warnings
         (Pycodestyle, "W191") => rules::pycodestyle::rules::TabIndentation,
         (Pycodestyle, "W291") => rules::pycodestyle::rules::TrailingWhitespace,
         (Pycodestyle, "W292") => rules::pycodestyle::rules::MissingNewlineAtEndOfFile,
@@ -313,7 +311,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Pycodestyle, "W505") => rules::pycodestyle::rules::DocLineTooLong,
         (Pycodestyle, "W605") => rules::pycodestyle::rules::InvalidEscapeSequence,
 
-        // pyflakes
         (Pyflakes, "401") => rules::pyflakes::rules::UnusedImport,
         (Pyflakes, "402") => rules::pyflakes::rules::ImportShadowedByLoopVar,
         (Pyflakes, "403") => rules::pyflakes::rules::UndefinedLocalWithImportStar,
@@ -358,7 +355,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Pyflakes, "842") => rules::pyflakes::rules::UnusedAnnotation,
         (Pyflakes, "901") => rules::pyflakes::rules::RaiseNotImplemented,
 
-        // pylint
         (Pylint, "C0105") => rules::pylint::rules::TypeNameIncorrectVariance,
         (Pylint, "C0131") => rules::pylint::rules::TypeBivariance,
         (Pylint, "C0132") => rules::pylint::rules::TypeParamNameMismatch,
@@ -479,7 +475,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Pylint, "W3201") => rules::pylint::rules::BadDunderMethodName,
         (Pylint, "W3301") => rules::pylint::rules::NestedMinMax,
 
-        // flake8-async
         (Flake8Async, "100") => rules::flake8_async::rules::CancelScopeNoCheckpoint,
         (Flake8Async, "105") => rules::flake8_async::rules::TrioSyncCall,
         (Flake8Async, "109") => rules::flake8_async::rules::AsyncFunctionWithTimeout,
@@ -498,7 +493,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Async, "251") => rules::flake8_async::rules::BlockingSleepInAsyncFunction,
         (Flake8Async, "401") => rules::flake8_async::rules::PytestRaisesExceptionGroup,
 
-        // flake8-builtins
         (Flake8Builtins, "001") => rules::flake8_builtins::rules::BuiltinVariableShadowing,
         (Flake8Builtins, "002") => rules::flake8_builtins::rules::BuiltinArgumentShadowing,
         (Flake8Builtins, "003") => rules::flake8_builtins::rules::BuiltinAttributeShadowing,
@@ -506,7 +500,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Builtins, "005") => rules::flake8_builtins::rules::StdlibModuleShadowing,
         (Flake8Builtins, "006") => rules::flake8_builtins::rules::BuiltinLambdaArgumentShadowing,
 
-        // flake8-bugbear
         (Flake8Bugbear, "002") => rules::flake8_bugbear::rules::UnaryPrefixIncrementDecrement,
         (Flake8Bugbear, "003") => rules::flake8_bugbear::rules::AssignmentToOsEnviron,
         (Flake8Bugbear, "004") => rules::flake8_bugbear::rules::UnreliableCallableCheck,
@@ -551,10 +544,8 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Bugbear, "911") => rules::flake8_bugbear::rules::BatchedWithoutExplicitStrict,
         (Flake8Bugbear, "912") => rules::flake8_bugbear::rules::MapWithoutExplicitStrict,
 
-        // flake8-blind-except
         (Flake8BlindExcept, "001") => rules::flake8_blind_except::rules::BlindExcept,
 
-        // flake8-comprehensions
         (Flake8Comprehensions, "00") => rules::flake8_comprehensions::rules::UnnecessaryGeneratorList,
         (Flake8Comprehensions, "01") => rules::flake8_comprehensions::rules::UnnecessaryGeneratorSet,
         (Flake8Comprehensions, "02") => rules::flake8_comprehensions::rules::UnnecessaryGeneratorDict,
@@ -575,20 +566,16 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Comprehensions, "19") => rules::flake8_comprehensions::rules::UnnecessaryComprehensionInCall,
         (Flake8Comprehensions, "20") => rules::flake8_comprehensions::rules::UnnecessaryDictComprehensionForIterable,
 
-        // flake8-debugger
         (Flake8Debugger, "0") => rules::flake8_debugger::rules::Debugger,
 
-        // mccabe
         (McCabe, "1") => rules::mccabe::rules::ComplexStructure,
 
-        // flake8-tidy-imports
         (Flake8TidyImports, "251") => rules::flake8_tidy_imports::rules::BannedApi,
         (Flake8TidyImports, "252") => rules::flake8_tidy_imports::rules::RelativeImports,
         (Flake8TidyImports, "253") => rules::flake8_tidy_imports::rules::BannedModuleLevelImports,
         (Flake8TidyImports, "254") => rules::flake8_tidy_imports::rules::LazyImportMismatch,
         (Flake8TidyImports, "255") => rules::flake8_tidy_imports::rules::LazyImportImmediatelyResolved,
 
-        // flake8-return
         (Flake8Return, "501") => rules::flake8_return::rules::UnnecessaryReturnNone,
         (Flake8Return, "502") => rules::flake8_return::rules::ImplicitReturnValue,
         (Flake8Return, "503") => rules::flake8_return::rules::ImplicitReturn,
@@ -598,29 +585,24 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Return, "507") => rules::flake8_return::rules::SuperfluousElseContinue,
         (Flake8Return, "508") => rules::flake8_return::rules::SuperfluousElseBreak,
 
-        // flake8-gettext
         (Flake8GetText, "001") => rules::flake8_gettext::rules::FStringInGetTextFuncCall,
         (Flake8GetText, "002") => rules::flake8_gettext::rules::FormatInGetTextFuncCall,
         (Flake8GetText, "003") => rules::flake8_gettext::rules::PrintfInGetTextFuncCall,
 
-        // flake8-implicit-str-concat
         (Flake8ImplicitStrConcat, "001") => rules::flake8_implicit_str_concat::rules::SingleLineImplicitStringConcatenation,
         (Flake8ImplicitStrConcat, "002") => rules::flake8_implicit_str_concat::rules::MultiLineImplicitStringConcatenation,
         (Flake8ImplicitStrConcat, "003") => rules::flake8_implicit_str_concat::rules::ExplicitStringConcatenation,
         (Flake8ImplicitStrConcat, "004") => rules::flake8_implicit_str_concat::rules::ImplicitStringConcatenationInCollectionLiteral,
 
-        // flake8-print
         (Flake8Print, "1") => rules::flake8_print::rules::Print,
         (Flake8Print, "3") => rules::flake8_print::rules::PPrint,
 
-        // flake8-quotes
         (Flake8Quotes, "000") => rules::flake8_quotes::rules::BadQuotesInlineString,
         (Flake8Quotes, "001") => rules::flake8_quotes::rules::BadQuotesMultilineString,
         (Flake8Quotes, "002") => rules::flake8_quotes::rules::BadQuotesDocstring,
         (Flake8Quotes, "003") => rules::flake8_quotes::rules::AvoidableEscapedQuote,
         (Flake8Quotes, "004") => rules::flake8_quotes::rules::UnnecessaryEscapedQuote,
 
-        // flake8-annotations
         (Flake8Annotations, "001") => rules::flake8_annotations::rules::MissingTypeFunctionArgument,
         (Flake8Annotations, "002") => rules::flake8_annotations::rules::MissingTypeArgs,
         (Flake8Annotations, "003") => rules::flake8_annotations::rules::MissingTypeKwargs,
@@ -635,11 +617,9 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Annotations, "206") => rules::flake8_annotations::rules::MissingReturnTypeClassMethod,
         (Flake8Annotations, "401") => rules::flake8_annotations::rules::AnyType,
 
-        // flake8-future-annotations
         (Flake8FutureAnnotations, "100") => rules::flake8_future_annotations::rules::FutureRewritableTypeAnnotation,
         (Flake8FutureAnnotations, "102") => rules::flake8_future_annotations::rules::FutureRequiredTypeAnnotation,
 
-        // flake8-2020
         (Flake82020, "101") => rules::flake8_2020::rules::SysVersionSlice3,
         (Flake82020, "102") => rules::flake8_2020::rules::SysVersion2,
         (Flake82020, "103") => rules::flake8_2020::rules::SysVersionCmpStr3,
@@ -651,7 +631,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake82020, "302") => rules::flake8_2020::rules::SysVersionCmpStr10,
         (Flake82020, "303") => rules::flake8_2020::rules::SysVersionSlice1,
 
-        // flake8-simplify
         (Flake8Simplify, "101") => rules::flake8_simplify::rules::DuplicateIsinstanceCall,
         (Flake8Simplify, "102") => rules::flake8_simplify::rules::CollapsibleIf,
         (Flake8Simplify, "103") => rules::flake8_simplify::rules::NeedlessBool,
@@ -686,7 +665,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         // flake8-copyright
         (Flake8Copyright, "001") => rules::flake8_copyright::rules::MissingCopyrightNotice,
 
-        // pyupgrade
         (Pyupgrade, "001") => rules::pyupgrade::rules::UselessMetaclassType,
         (Pyupgrade, "003") => rules::pyupgrade::rules::TypeOfPrimitive,
         (Pyupgrade, "004") => rules::pyupgrade::rules::UselessObjectInheritance,
@@ -738,7 +716,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Pyupgrade, "051") => rules::pyupgrade::rules::DeprecatedAbcDecorator,
         (Pyupgrade, "052") => rules::pyupgrade::rules::ContextManagerIterator,
 
-        // pydocstyle
         (Pydocstyle, "100") => rules::pydocstyle::rules::UndocumentedPublicModule,
         (Pydocstyle, "101") => rules::pydocstyle::rules::UndocumentedPublicClass,
         (Pydocstyle, "102") => rules::pydocstyle::rules::UndocumentedPublicMethod,
@@ -788,7 +765,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Pydocstyle, "420") => rules::pydocstyle::rules::IncorrectSectionOrder,
         (Pydocstyle, "421") => rules::pydocstyle::rules::PropertyDocstringStartsWithVerb,
 
-        // pep8-naming
         (PEP8Naming, "801") => rules::pep8_naming::rules::InvalidClassName,
         (PEP8Naming, "802") => rules::pep8_naming::rules::InvalidFunctionName,
         (PEP8Naming, "803") => rules::pep8_naming::rules::InvalidArgumentName,
@@ -806,14 +782,11 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (PEP8Naming, "818") => rules::pep8_naming::rules::ErrorSuffixOnExceptionName,
         (PEP8Naming, "999") => rules::pep8_naming::rules::InvalidModuleName,
 
-        // isort
         (Isort, "001") => rules::isort::rules::UnsortedImports,
         (Isort, "002") => rules::isort::rules::MissingRequiredImport,
 
-        // eradicate
         (Eradicate, "001") => rules::eradicate::rules::CommentedOutCode,
 
-        // flake8-bandit
         (Flake8Bandit, "101") => rules::flake8_bandit::rules::Assert,
         (Flake8Bandit, "102") => rules::flake8_bandit::rules::ExecBuiltin,
         (Flake8Bandit, "103") => rules::flake8_bandit::rules::BadFilePermissions,
@@ -888,24 +861,20 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Bandit, "702") => rules::flake8_bandit::rules::MakoTemplates,
         (Flake8Bandit, "704") => rules::flake8_bandit::rules::UnsafeMarkupUse,
 
-        // flake8-boolean-trap
         (Flake8BooleanTrap, "001") => rules::flake8_boolean_trap::rules::BooleanTypeHintPositionalArgument,
         (Flake8BooleanTrap, "002") => rules::flake8_boolean_trap::rules::BooleanDefaultValuePositionalArgument,
         (Flake8BooleanTrap, "003") => rules::flake8_boolean_trap::rules::BooleanPositionalValueInCall,
 
-        // flake8-unused-arguments
         (Flake8UnusedArguments, "001") => rules::flake8_unused_arguments::rules::UnusedFunctionArgument,
         (Flake8UnusedArguments, "002") => rules::flake8_unused_arguments::rules::UnusedMethodArgument,
         (Flake8UnusedArguments, "003") => rules::flake8_unused_arguments::rules::UnusedClassMethodArgument,
         (Flake8UnusedArguments, "004") => rules::flake8_unused_arguments::rules::UnusedStaticMethodArgument,
         (Flake8UnusedArguments, "005") => rules::flake8_unused_arguments::rules::UnusedLambdaArgument,
 
-        // flake8-import-conventions
         (Flake8ImportConventions, "001") => rules::flake8_import_conventions::rules::UnconventionalImportAlias,
         (Flake8ImportConventions, "002") => rules::flake8_import_conventions::rules::BannedImportAlias,
         (Flake8ImportConventions, "003") => rules::flake8_import_conventions::rules::BannedImportFrom,
 
-        // flake8-datetimez
         (Flake8Datetimez, "001") => rules::flake8_datetimez::rules::CallDatetimeWithoutTzinfo,
         (Flake8Datetimez, "002") => rules::flake8_datetimez::rules::CallDatetimeToday,
         (Flake8Datetimez, "003") => rules::flake8_datetimez::rules::CallDatetimeUtcnow,
@@ -917,14 +886,12 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Datetimez, "012") => rules::flake8_datetimez::rules::CallDateFromtimestamp,
         (Flake8Datetimez, "901") => rules::flake8_datetimez::rules::DatetimeMinMax,
 
-        // pygrep-hooks
         (PygrepHooks, "001") => rules::pygrep_hooks::rules::Eval,
         (PygrepHooks, "002") => rules::pygrep_hooks::rules::DeprecatedLogWarn,
         (PygrepHooks, "003") => rules::pygrep_hooks::rules::BlanketTypeIgnore,
         (PygrepHooks, "004") => rules::pygrep_hooks::rules::BlanketNOQA,
         (PygrepHooks, "005") => rules::pygrep_hooks::rules::InvalidMockAccess,
 
-        // pandas-vet
         (PandasVet, "002") => rules::pandas_vet::rules::PandasUseOfInplaceArgument,
         (PandasVet, "003") => rules::pandas_vet::rules::PandasUseOfDotIsNull,
         (PandasVet, "004") => rules::pandas_vet::rules::PandasUseOfDotNotNull,
@@ -939,12 +906,10 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (PandasVet, "101") => rules::pandas_vet::rules::PandasNuniqueConstantSeriesCheck,
         (PandasVet, "901") => rules::pandas_vet::rules::PandasDfVariableName,
 
-        // flake8-errmsg
         (Flake8ErrMsg, "101") => rules::flake8_errmsg::rules::RawStringInException,
         (Flake8ErrMsg, "102") => rules::flake8_errmsg::rules::FStringInException,
         (Flake8ErrMsg, "103") => rules::flake8_errmsg::rules::DotFormatInException,
 
-        // flake8-pyi
         (Flake8Pyi, "001") => rules::flake8_pyi::rules::UnprefixedTypeParam,
         (Flake8Pyi, "002") => rules::flake8_pyi::rules::ComplexIfStatementInStub,
         (Flake8Pyi, "003") => rules::flake8_pyi::rules::UnrecognizedVersionInfoCheck,
@@ -1001,7 +966,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Pyi, "064") => rules::flake8_pyi::rules::RedundantFinalLiteral,
         (Flake8Pyi, "066") => rules::flake8_pyi::rules::BadVersionInfoOrder,
 
-        // flake8-pytest-style
         (Flake8PytestStyle, "001") => rules::flake8_pytest_style::rules::PytestFixtureIncorrectParenthesesStyle,
         (Flake8PytestStyle, "002") => rules::flake8_pytest_style::rules::PytestFixturePositionalArgs,
         (Flake8PytestStyle, "003") => rules::flake8_pytest_style::rules::PytestExtraneousScopeFunction,
@@ -1036,7 +1000,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8PytestStyle, "030") => rules::flake8_pytest_style::rules::PytestWarnsTooBroad,
         (Flake8PytestStyle, "031") => rules::flake8_pytest_style::rules::PytestWarnsWithMultipleStatements,
 
-        // flake8-pie
         (Flake8Pie, "790") => rules::flake8_pie::rules::UnnecessaryPlaceholder,
         (Flake8Pie, "794") => rules::flake8_pie::rules::DuplicateClassFieldDefinition,
         (Flake8Pie, "796") => rules::flake8_pie::rules::NonUniqueEnums,
@@ -1046,22 +1009,18 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Pie, "808") => rules::flake8_pie::rules::UnnecessaryRangeStart,
         (Flake8Pie, "810") => rules::flake8_pie::rules::MultipleStartsEndsWith,
 
-        // flake8-commas
         (Flake8Commas, "812") => rules::flake8_commas::rules::MissingTrailingComma,
         (Flake8Commas, "818") => rules::flake8_commas::rules::TrailingCommaOnBareTuple,
         (Flake8Commas, "819") => rules::flake8_commas::rules::ProhibitedTrailingComma,
 
-        // flake8-no-pep420
         (Flake8NoPep420, "001") => rules::flake8_no_pep420::rules::ImplicitNamespacePackage,
 
-        // flake8-executable
         (Flake8Executable, "001") => rules::flake8_executable::rules::ShebangNotExecutable,
         (Flake8Executable, "002") => rules::flake8_executable::rules::ShebangMissingExecutableFile,
         (Flake8Executable, "003") => rules::flake8_executable::rules::ShebangMissingPython,
         (Flake8Executable, "004") => rules::flake8_executable::rules::ShebangLeadingWhitespace,
         (Flake8Executable, "005") => rules::flake8_executable::rules::ShebangNotFirstLine,
 
-        // flake8-type-checking
         (Flake8TypeChecking, "001") => rules::flake8_type_checking::rules::TypingOnlyFirstPartyImport,
         (Flake8TypeChecking, "002") => rules::flake8_type_checking::rules::TypingOnlyThirdPartyImport,
         (Flake8TypeChecking, "003") => rules::flake8_type_checking::rules::TypingOnlyStandardLibraryImport,
@@ -1072,7 +1031,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8TypeChecking, "008") => rules::flake8_type_checking::rules::QuotedTypeAlias,
         (Flake8TypeChecking, "010") => rules::flake8_type_checking::rules::RuntimeStringUnion,
 
-        // tryceratops
         (Tryceratops, "002") => rules::tryceratops::rules::RaiseVanillaClass,
         (Tryceratops, "003") => rules::tryceratops::rules::RaiseVanillaArgs,
         (Tryceratops, "004") => rules::tryceratops::rules::TypeCheckWithoutTypeError,
@@ -1084,7 +1042,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Tryceratops, "400") => rules::tryceratops::rules::ErrorInsteadOfException,
         (Tryceratops, "401") => rules::tryceratops::rules::VerboseLogMessage,
 
-        // flake8-use-pathlib
         (Flake8UsePathlib, "100") => rules::flake8_use_pathlib::rules::OsPathAbspath,
         (Flake8UsePathlib, "101") => rules::flake8_use_pathlib::rules::OsChmod,
         (Flake8UsePathlib, "102") => rules::flake8_use_pathlib::rules::OsMkdir,
@@ -1121,7 +1078,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8UsePathlib, "210") => rules::flake8_use_pathlib::rules::InvalidPathlibWithSuffix,
         (Flake8UsePathlib, "211") => rules::flake8_use_pathlib::rules::OsSymlink,
 
-        // flake8-logging-format
         (Flake8LoggingFormat, "001") => rules::flake8_logging_format::violations::LoggingStringFormat,
         (Flake8LoggingFormat, "002") => rules::flake8_logging_format::violations::LoggingPercentFormat,
         (Flake8LoggingFormat, "003") => rules::flake8_logging_format::violations::LoggingStringConcat,
@@ -1131,24 +1087,19 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8LoggingFormat, "201") => rules::flake8_logging_format::violations::LoggingExcInfo,
         (Flake8LoggingFormat, "202") => rules::flake8_logging_format::violations::LoggingRedundantExcInfo,
 
-        // flake8-raise
         (Flake8Raise, "102") => rules::flake8_raise::rules::UnnecessaryParenOnRaiseException,
 
-        // flake8-self
         (Flake8Self, "001") => rules::flake8_self::rules::PrivateMemberAccess,
 
-        // numpy
         (Numpy, "001") => rules::numpy::rules::NumpyDeprecatedTypeAlias,
         (Numpy, "002") => rules::numpy::rules::NumpyLegacyRandom,
         (Numpy, "003") => rules::numpy::rules::NumpyDeprecatedFunction,
         (Numpy, "201") => rules::numpy::rules::Numpy2Deprecation,
 
-        // fastapi
         (FastApi, "001") => rules::fastapi::rules::FastApiRedundantResponseModel,
         (FastApi, "002") => rules::fastapi::rules::FastApiNonAnnotatedDependency,
         (FastApi, "003") => rules::fastapi::rules::FastApiUnusedPathParameter,
 
-        // pydoclint
         (Pydoclint, "102") => rules::pydoclint::rules::DocstringExtraneousParameter,
         (Pydoclint, "201") => rules::pydoclint::rules::DocstringMissingReturns,
         (Pydoclint, "202") => rules::pydoclint::rules::DocstringExtraneousReturns,
@@ -1157,7 +1108,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Pydoclint, "501") => rules::pydoclint::rules::DocstringMissingException,
         (Pydoclint, "502") => rules::pydoclint::rules::DocstringExtraneousException,
 
-        // ruff
         (Ruff, "001") => rules::ruff::rules::AmbiguousUnicodeCharacterString,
         (Ruff, "002") => rules::ruff::rules::AmbiguousUnicodeCharacterDocstring,
         (Ruff, "003") => rules::ruff::rules::AmbiguousUnicodeCharacterComment,
@@ -1269,7 +1219,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Ruff, "990") => rules::ruff::rules::PanicyTestRule,
 
 
-        // odoo (Agro-Marin fork)
         (Odoo, "01") => rules::odoo::rules::SqlInjection,
         (Odoo, "02") => rules::odoo::rules::GettextVariable,
         (Odoo, "03") => rules::odoo::rules::GettextPlaceholders,
@@ -1314,7 +1263,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Odoo, "44") => rules::odoo::rules::NoqaRationale,
         (Odoo, "45") => rules::odoo::rules::IsdigitGuardsInt,
 
-        // flake8-django
         (Flake8Django, "001") => rules::flake8_django::rules::DjangoNullableModelStringField,
         (Flake8Django, "003") => rules::flake8_django::rules::DjangoLocalsInRenderFunction,
         (Flake8Django, "006") => rules::flake8_django::rules::DjangoExcludeWithModelForm,
@@ -1323,11 +1271,8 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Django, "012") => rules::flake8_django::rules::DjangoUnorderedBodyContentInModel,
         (Flake8Django, "013") => rules::flake8_django::rules::DjangoNonLeadingReceiverDecorator,
 
-        // flynt
-        // Reserved: (Flynt, "001") => Rule: :StringConcatenationToFString,
         (Flynt, "002") => rules::flynt::rules::StaticJoinToFString,
 
-        // flake8-todos
         (Flake8Todos, "001") => rules::flake8_todos::rules::InvalidTodoTag,
         (Flake8Todos, "002") => rules::flake8_todos::rules::MissingTodoAuthor,
         (Flake8Todos, "003") => rules::flake8_todos::rules::MissingTodoLink,
@@ -1336,7 +1281,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Todos, "006") => rules::flake8_todos::rules::InvalidTodoCapitalization,
         (Flake8Todos, "007") => rules::flake8_todos::rules::MissingSpaceAfterTodoColon,
 
-        // airflow
         (Airflow, "001") => rules::airflow::rules::AirflowVariableNameTaskIdMismatch,
         (Airflow, "002") => rules::airflow::rules::AirflowDagNoScheduleArgument,
         (Airflow, "003") => rules::airflow::rules::AirflowVariableGetOutsideTask,
@@ -1351,7 +1295,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Airflow, "312") => rules::airflow::rules::Airflow3SuggestedToMoveToProvider,
         (Airflow, "321") => rules::airflow::rules::Airflow31Moved,
 
-        // perflint
         (Perflint, "101") => rules::perflint::rules::UnnecessaryListCast,
         (Perflint, "102") => rules::perflint::rules::IncorrectDictIterator,
         (Perflint, "203") => rules::perflint::rules::TryExceptInLoop,
@@ -1359,18 +1302,15 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Perflint, "402") => rules::perflint::rules::ManualListCopy,
         (Perflint, "403") => rules::perflint::rules::ManualDictComprehension,
 
-        // flake8-fixme
         (Flake8Fixme, "001") => rules::flake8_fixme::rules::LineContainsFixme,
         (Flake8Fixme, "002") => rules::flake8_fixme::rules::LineContainsTodo,
         (Flake8Fixme, "003") => rules::flake8_fixme::rules::LineContainsXxx,
         (Flake8Fixme, "004") => rules::flake8_fixme::rules::LineContainsHack,
 
-        // flake8-slots
         (Flake8Slots, "000") => rules::flake8_slots::rules::NoSlotsInStrSubclass,
         (Flake8Slots, "001") => rules::flake8_slots::rules::NoSlotsInTupleSubclass,
         (Flake8Slots, "002") => rules::flake8_slots::rules::NoSlotsInNamedtupleSubclass,
 
-        // refurb
         (Refurb, "101") => rules::refurb::rules::ReadWholeFile,
         (Refurb, "103") => rules::refurb::rules::WriteWholeFile,
         (Refurb, "105") => rules::refurb::rules::PrintEmptyString,
@@ -1408,7 +1348,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Refurb, "189") => rules::refurb::rules::SubclassBuiltin,
         (Refurb, "192") => rules::refurb::rules::SortedMinMax,
 
-        // flake8-logging
         (Flake8Logging, "001") => rules::flake8_logging::rules::DirectLoggerInstantiation,
         (Flake8Logging, "002") => rules::flake8_logging::rules::InvalidGetLoggerArgument,
         (Flake8Logging, "004") => rules::flake8_logging::rules::LogExceptionOutsideExceptHandler,
@@ -1417,7 +1356,6 @@ pub fn code_to_rule(linter: Linter, code: &str) -> Option<(RuleStatus, Rule)> {
         (Flake8Logging, "014") => rules::flake8_logging::rules::ExcInfoOutsideExceptHandler,
         (Flake8Logging, "015") => rules::flake8_logging::rules::RootLoggerCall,
 
-        // Rules that belong only to categories, without linter groups or codes.
         () => rules::ruff::rules::PytestFixtureAutouse,
         () => rules::ruff::rules::SharedClockMock,
         () => rules::ruff::rules::TarfileIgnoreZerosTrue,

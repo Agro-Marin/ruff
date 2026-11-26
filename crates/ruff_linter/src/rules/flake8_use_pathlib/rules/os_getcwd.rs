@@ -88,7 +88,6 @@ pub(crate) fn os_getcwd(checker: &Checker, call: &ExprCall, segments: &[&str]) {
                 checker.semantic(),
             )?;
 
-            // Unsafe when the fix would delete comments or change a used return value
             let applicability = if checker.comment_ranges().intersects(range)
                 || !is_top_level_expression_in_statement(checker)
             {

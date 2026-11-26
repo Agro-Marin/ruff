@@ -87,7 +87,6 @@ pub(crate) fn useless_finally(checker: &Checker, try_stmt: &StmtTry) {
     let source = checker.source();
     let tokens = checker.tokens();
 
-    // `is_stub_body` guarantees at least one statement in finalbody
     let last_finalbody_stmt = finalbody.last().unwrap();
     let (preceding_end, preceding_stmt) = preceding_clause_info(try_stmt);
 
@@ -119,7 +118,6 @@ pub(crate) fn useless_finally(checker: &Checker, try_stmt: &StmtTry) {
     let is_bare_try_finally = try_stmt.handlers.is_empty() && try_stmt.orelse.is_empty();
 
     if is_bare_try_finally {
-        // bare `try/finally: pass` — unwrap the try body
         let (Some(first_body_stmt), Some(last_body_stmt)) =
             (try_stmt.body.first(), try_stmt.body.last())
         else {
@@ -130,9 +128,6 @@ pub(crate) fn useless_finally(checker: &Checker, try_stmt: &StmtTry) {
         let finally_full_end = source.full_line_end(last_finalbody_stmt.end());
 
         let edit = if indentation(source, first_body_stmt).is_none() {
-            // The body starts on the same line as `try:`, as in `try: foo()`. Replace
-            // everything from the `try` keyword onwards with the body, which keeps the
-            // indentation of the `try` statement.
             Edit::replacement(
                 source[TextRange::new(first_body_stmt.start(), body_full_end)].to_string(),
                 try_stmt.start(),
@@ -156,7 +151,6 @@ pub(crate) fn useless_finally(checker: &Checker, try_stmt: &StmtTry) {
         };
         diagnostic.set_fix(Fix::safe_edit(edit));
     } else {
-        // `try/except/finally: pass` — remove the finally clause
         let finally_line_start = source.line_start(finally_start);
         let finally_full_end = source.full_line_end(last_finalbody_stmt.end());
         let edit = Edit::range_deletion(TextRange::new(finally_line_start, finally_full_end));
@@ -191,7 +185,6 @@ fn finally_contains_comments(
     let finally_full_end = source.full_line_end(finally_range.end());
     let commentable_range = TextRange::new(finally_range.start(), finally_full_end);
 
-    // A comment after the `finally` keyword or after the dummy statement
     if checker.comment_ranges().intersects(commentable_range) {
         return true;
     }

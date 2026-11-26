@@ -340,10 +340,6 @@ impl<'db> SemanticModel<'db> {
             );
         }
 
-        // Add implicit module globals (like `__file__`, `__name__`, etc.) with their
-        // correct types. These are added before builtins so that the deduplication
-        // keeps the correct types (e.g., `__file__` is `str` for the current module,
-        // not `str | None`).
         completions.extend(
             all_implicit_module_globals(self.db, self.file).map(|(name, ty)| Completion {
                 name: CompactString::new(name),
@@ -353,7 +349,6 @@ impl<'db> SemanticModel<'db> {
             }),
         );
 
-        // Project-level builtins take precedence over the standard builtins.
         let project_builtins = ModuleName::new_static("__builtins__").unwrap();
         let importing_file =
             ImportingFile::File(self.file(), self.file.resolver_environment(self.db));
@@ -369,7 +364,6 @@ impl<'db> SemanticModel<'db> {
             );
         }
 
-        // Builtins are available in all scopes.
         let builtins = KnownModule::Builtins.name();
         completions.extend(
             self.module_completions(&builtins)
@@ -377,7 +371,6 @@ impl<'db> SemanticModel<'db> {
                 .filter(|completion| !completion.is_type_check_only),
         );
 
-        // The above can sometimes result in duplicates. Get rid of them.
         completions.sort_by(|c1, c2| c1.name.cmp(&c2.name));
         completions.dedup_by(|c1, c2| c1.name == c2.name);
 
@@ -401,7 +394,6 @@ impl<'db> SemanticModel<'db> {
         match self.node_in_ast(node) {
             ast::AnyNodeRef::Identifier(identifier) => index.try_expression_scope_id(identifier),
 
-            // Nodes implementing `HasDefinition`
             ast::AnyNodeRef::StmtFunctionDef(function) => Some(
                 function
                     .definition(self)
@@ -432,10 +424,7 @@ impl<'db> SemanticModel<'db> {
                 Some(var.definition(self).scope(self.db).file_scope_id(self.db))
             }
 
-            // Fallback
             node => match node.as_expr_ref() {
-                // If we couldn't identify a specific
-                // expression that we're in, then just
                 // fall back to the global scope.
                 None => Some(FileScopeId::global()),
                 Some(expr) => index.try_expression_scope_id(&expr),
@@ -472,8 +461,6 @@ impl<'db> SemanticModel<'db> {
         let index = semantic_index(self.db, self.file);
         let expression = ast::ExprRef::Name(name);
 
-        // Require an expression use ID to exclude plain stores. Names in parsed string annotations
-        // have no use IDs, so check them after inference instead.
         if self.in_string_annotation_expr.is_none() {
             index.try_expression_use_id(expression)?;
         }
@@ -483,7 +470,6 @@ impl<'db> SemanticModel<'db> {
         let place_expr = PlaceExpr::from_expr_name(name);
         let scope_inference = infer_complete_scope_types(self.db, scope);
 
-        // Exclude names in scopes that inference skipped, such as lambda bodies.
         if self.in_string_annotation_expr.is_some() {
             scope_inference.try_expression_type(expression)?;
         }
@@ -593,31 +579,20 @@ impl<'db> SemanticModel<'db> {
         &self,
         string_expr: &ExprStringLiteral,
     ) -> Option<(Parsed<ModExpression>, Self)> {
-        // Ask the inference engine whether this is actually a string annotation
         let expr = ExprRef::StringLiteral(string_expr);
         let index = semantic_index(self.db, self.program_file());
-        // When looking up scopes, use the expr in the top-level AST
-        // (we might be trying to enter a sub-sub-AST, so this isn't silly)
         let file_scope = index.expression_scope_id(&self.expr_ref_in_ast(expr));
         let scope = file_scope.to_scope_id(self.db, self.program_file());
-        // When querying whether the expr is a string annotation, we do however use the actual expr
-        // (the inference engine should record this information even for sub-nodes)
         if !infer_complete_scope_types(self.db, scope).is_string_annotation(expr) {
             return None;
         }
 
-        // Parse the sub-AST and create a semantic model that knows it's in a sub-AST
-        //
-        // The string_annotation will be used as the expr/node for any query that needs
-        // to look up a node in the AST to prevent panics, because these sub-AST nodes
-        // are not in the File's AST!
         let source = source_text(self.db, self.file());
         let string_literal = string_expr.as_single_part_string()?;
         let ast = parsed_string_annotation(source.as_str(), string_literal).ok()?;
         let model = Self {
             db: self.db,
             file: self.file,
-            // Use expr_in_ast here because we might be entering a sub-sub-AST
             in_string_annotation_expr: Some(Box::new(
                 self.expr_in_ast(&Expr::StringLiteral(string_expr.clone()))
                     .clone(),
@@ -751,8 +726,6 @@ impl<'db> SemanticModel<'db> {
         let mut candidates = expected_ty.map_or_default(|expected_ty| {
             collect(db, expected_ty, &StringLiteralCandidatesVisitor::default())
         });
-        // Finite choices from the expected type take precedence. A string used as the complete
-        // subscript key can fall back to initializer keys that fit any known expected type.
         if candidates.is_empty()
             && self.in_string_annotation_expr.is_none()
             && let Some(subscript) = subscript
@@ -947,12 +920,6 @@ pub enum NameKind {
 
 impl NameKind {
     pub fn classify(name: &str) -> NameKind {
-        // Dunder needs a prefix and suffix double underscore.
-        // When there's only a prefix double underscore, this
-        // results in explicit name mangling. We let that be
-        // classified as-if they were single underscore names.
-        //
-        // Ref: <https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers>
         if name.starts_with("__") && name.ends_with("__") {
             NameKind::Dunder
         } else if name.starts_with('_') {
@@ -1021,10 +988,6 @@ impl HasType for ast::ExprRef<'_> {
     fn inferred_type<'db>(&self, model: &SemanticModel<'db>) -> Option<Type<'db>> {
         let file = model.program_file();
         let index = semantic_index(model.db, file);
-        // TODO(#1637): semantic tokens is making this crash even with
-        // `try_expr_ref_in_ast` guarding this, for now just use `try_expression_scope_id`.
-        // The problematic input is `x: "float` (with a dangling quote). I imagine the issue
-        // is we're too eagerly setting `is_string_annotation` in inference.
         let file_scope = index.try_expression_scope_id(&model.expr_ref_in_ast(*self))?;
         let scope = file_scope.to_scope_id(model.db, file);
 
@@ -1413,8 +1376,6 @@ mod tests {
 
     #[test]
     fn reaching_definitions_skip_unsupported_scopes_in_string_annotations() {
-        // Lambdas and comprehensions inside string annotations have no indexed scopes. Resolving
-        // names in their bodies against the enclosing scope could return unrelated bindings.
         let source = "
             from typing import Annotated
 
@@ -1715,7 +1676,6 @@ mod tests {
         names.resolutions.sort_by_key(|(range, _)| range.start());
         let line_index = LineIndex::from_source_text(source);
 
-        // Formatting into a String cannot fail.
         let mut output = String::new();
         for (line_number, line) in source.lines().enumerate() {
             let space = if line.is_empty() { "" } else { " " };
@@ -1743,7 +1703,6 @@ mod tests {
                         output.push_str(", ");
                     }
                     let definition = definition.full_range(&db, &module).range();
-                    // Keep multiline definitions on one line.
                     let first_line = source[definition].lines().next().unwrap_or_default();
                     let _ = write!(
                         output,

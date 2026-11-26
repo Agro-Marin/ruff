@@ -61,7 +61,6 @@ pub(crate) fn if_with_same_arms(checker: &Checker, stmt_if: &ast::StmtIf) {
             continue;
         };
 
-        // The bodies must have the same code ...
         if current_branch.body.len() != following_branch.body.len() {
             continue;
         }
@@ -74,7 +73,6 @@ pub(crate) fn if_with_same_arms(checker: &Checker, stmt_if: &ast::StmtIf) {
             continue;
         }
 
-        // ...and the same comments
         let first_comments = checker
             .comment_ranges()
             .comments_in_range(body_range(&current_branch, checker.locator()))
@@ -114,7 +112,6 @@ fn merge_branches(
     locator: &Locator,
     tokens: &ruff_python_ast::token::Tokens,
 ) -> Result<Fix> {
-    // Identify the colon (`:`) at the end of the current branch's test.
     let Some(current_branch_colon) =
         SimpleTokenizer::starts_at(current_branch.test.end(), locator.contents())
             .find(|token| token.kind == SimpleTokenKind::Colon)
@@ -127,7 +124,6 @@ fn merge_branches(
         locator.full_line_end(following_branch.end()),
     );
 
-    // If the following test isn't parenthesized, consider parenthesizing it.
     let following_branch_test = if let Some(range) =
         parenthesized_range(following_branch.test.into(), stmt_if.into(), tokens)
     {
@@ -136,7 +132,6 @@ fn merge_branches(
         following_branch.test,
         Expr::Lambda(_) | Expr::Named(_) | Expr::If(_)
     ) {
-        // If the following expressions binds more tightly than `or`, parenthesize it.
         Cow::Owned(format!("({})", locator.slice(following_branch.test)))
     } else {
         Cow::Borrowed(locator.slice(following_branch.test))
@@ -147,10 +142,6 @@ fn merge_branches(
         current_branch_colon.start(),
     );
 
-    // If the current test isn't parenthesized, consider parenthesizing it.
-    //
-    // For example, if the current test is `x if x else y`, we should parenthesize it to
-    // `(x if x else y) or ...`.
     let parenthesize_edit =
         if matches!(
             current_branch.test,

@@ -18,7 +18,6 @@ impl FormatNodeRule<ExprTString> for FormatExprTString {
         if let Some(t_string) = item.as_single_part_tstring() {
             t_string.format().fmt(f)
         } else {
-            // Always join tstrings that aren't parenthesized and thus, are always on a single line.
             if !f.context().node_level().is_parenthesized() {
                 if let Some(format_flat) =
                     FormatImplicitConcatenatedStringFlat::new(item.into(), f.context())
@@ -39,7 +38,6 @@ impl NeedsParentheses for ExprTString {
         context: &PyFormatContext,
     ) -> OptionalParentheses {
         if let Some(tstring_part) = self.as_single_part_tstring() {
-            // The t-string is not implicitly concatenated
             if StringLike::TString(self).is_multiline(context)
                 || InterpolatedStringLayout::from_interpolated_string_elements(
                     &tstring_part.elements,
@@ -52,7 +50,6 @@ impl NeedsParentheses for ExprTString {
                 OptionalParentheses::BestFit
             }
         } else {
-            // The t-string is implicitly concatenated
             OptionalParentheses::Multiline
         }
     }

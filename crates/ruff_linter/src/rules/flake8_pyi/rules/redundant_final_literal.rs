@@ -73,7 +73,6 @@ pub(crate) fn redundant_final_literal(checker: &Checker, ann_assign: &ast::StmtA
         return;
     };
 
-    // Ensure it is `Final[Literal[...]]`.
     let ast::Expr::Subscript(ast::ExprSubscript {
         value,
         slice: literal,
@@ -86,7 +85,6 @@ pub(crate) fn redundant_final_literal(checker: &Checker, ann_assign: &ast::StmtA
         return;
     }
 
-    // Discards tuples like `Literal[1, 2, 3]` and complex literals like `Literal[{1, 2}]`.
     if !matches!(
         &**literal,
         ast::Expr::StringLiteral(_)
@@ -106,8 +104,6 @@ pub(crate) fn redundant_final_literal(checker: &Checker, ann_assign: &ast::StmtA
         ann_assign.range(),
     );
 
-    // The literal value and the assignment value being different doesn't make sense, so we skip
-    // fixing in that case.
     if let Some(assign_value) = assign_value.as_ref() {
         if ComparableExpr::from(assign_value) == ComparableExpr::from(literal) {
             diagnostic.set_fix(generate_fix(annotation, None, checker.locator()));
@@ -123,7 +119,6 @@ fn generate_fix(
     literal: Option<&ast::Expr>,
     locator: &Locator,
 ) -> Fix {
-    // Remove the `Literal[...]` part from `Final[Literal[...]]`.
     let deletion = Edit::range_deletion(
         annotation
             .slice
@@ -132,9 +127,6 @@ fn generate_fix(
             .add_end(TextSize::new(1)),
     );
 
-    // If a literal was provided, insert an assignment.
-    //
-    // For example, change `x: Final[Literal[42]]` to `x: Final = 42`.
     if let Some(literal) = literal {
         let assignment = Edit::insertion(
             format!(

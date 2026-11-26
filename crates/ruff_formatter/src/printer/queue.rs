@@ -44,7 +44,6 @@ pub(super) trait Queue<'a> {
         let iter = self.iter_content(kind);
 
         for _ in iter {
-            // consume whole iterator until end
         }
     }
 

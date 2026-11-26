@@ -29,16 +29,12 @@ from subprocess import check_call, check_output
 from tempfile import TemporaryDirectory
 from typing import NamedTuple, assert_never
 
-# The remote URL for the `ruff` repository.
 RUFF_REPO = "https://github.com/astral-sh/ruff"
 
-# The path to the root of the `ruff` repository.
 RUFF_ROOT = Path(__file__).parent.parent
 
-# The path to the JSON schema in the `ruff` repository.
 RUFF_SCHEMA = RUFF_ROOT / "ruff.schema.json"
 
-# The path to the JSON schema in the `schemastore` repository.
 RUFF_JSON = Path("schemas/json/ruff.json")
 
 
@@ -84,8 +80,6 @@ def update_schemastore(
             ],
             cwd=schemastore_path,
         )
-    # Create a new branch tagged with the current ruff commit up to date with the latest
-    # upstream schemastore
     check_call(["git", "fetch", "upstream"], cwd=schemastore_path)
     current_sha = check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     branch = f"update-ruff-{current_sha}"
@@ -98,11 +92,9 @@ def update_schemastore(
         cwd=schemastore_path,
     )
 
-    # Run npm ci
     src = schemastore_path / "src"
     check_call(["npm", "ci", "--ignore-scripts"], cwd=schemastore_path)
 
-    # Update the schema and format appropriately
     schema = json.loads(RUFF_SCHEMA.read_text())
     schema["$id"] = "https://json.schemastore.org/ruff.json"
     (src / RUFF_JSON).write_text(
@@ -119,15 +111,11 @@ def update_schemastore(
         cwd=src,
     )
 
-    # Check if the schema has changed
-    # https://stackoverflow.com/a/9393642/3549270
     if check_output(["git", "status", "-s"], cwd=schemastore_path).strip():
-        # Schema has changed, commit and push
         commit_url = f"{RUFF_REPO}/commit/{current_sha}"
         commit_body = (
             f"This updates ruff's JSON schema to [{current_sha}]({commit_url})"
         )
-        # https://stackoverflow.com/a/22909204/3549270
         check_call(["git", "add", (src / RUFF_JSON).as_posix()], cwd=schemastore_path)
         check_call(
             [
@@ -140,7 +128,6 @@ def update_schemastore(
             ],
             cwd=schemastore_path,
         )
-        # This should show the link to create a PR
         check_call(
             ["git", "push", "--set-upstream", "origin", branch, "--force"],
             cwd=schemastore_path,

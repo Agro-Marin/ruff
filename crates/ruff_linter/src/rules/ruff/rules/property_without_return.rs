@@ -94,9 +94,6 @@ struct PropertyVisitor {
     found: bool,
 }
 
-// NOTE: We are actually searching for the presence of
-// `yield`/`yield from`/`raise`/`return` statement/expression,
-// as having one of those indicates that there's likely no implementation mistake
 impl Visitor<'_> for PropertyVisitor {
     fn visit_expr(&mut self, expr: &Expr) {
         if self.found {
@@ -117,7 +114,6 @@ impl Visitor<'_> for PropertyVisitor {
         match stmt {
             Stmt::Return(_) | Stmt::Raise(_) => self.found = true,
             Stmt::FunctionDef(_) => {
-                // Do not recurse into nested functions; they're evaluated separately.
             }
             _ => walk_stmt(self, stmt),
         }

@@ -73,7 +73,6 @@ impl SideEffect {
     /// Classify a single expression node's side effect.
     fn from_expr(expr: &Expr, is_builtin: &dyn Fn(&str) -> bool) -> Self {
         match expr {
-            // Empty initializers for known builtins are side-effect-free.
             Expr::Call(ast::ExprCall {
                 func, arguments, ..
             }) if arguments.is_empty() => {
@@ -85,7 +84,6 @@ impl SideEffect {
                 Self::Present
             }
 
-            // Overloaded operators: only side-effect-free if both sides are literals.
             Expr::BinOp(ast::ExprBinOp { left, right, .. }) => {
                 if is_known_safe_binop_operand(left) && is_known_safe_binop_operand(right) {
                     Self::Absent
@@ -94,7 +92,6 @@ impl SideEffect {
                 }
             }
 
-            // Non-literal f-string interpolation may invoke `__format__`/`__str__`.
             Expr::FString(ast::ExprFString { value, .. }) => {
                 if value.elements().any(has_uncertain_interpolation) {
                     Self::Possible
@@ -110,10 +107,8 @@ impl SideEffect {
                 }
             }
 
-            // Named expressions (walrus operator) are assignments.
             Expr::Named(_) => Self::Present,
 
-            // Complex expressions that are assumed to have side effects.
             Expr::Await(_)
             | Expr::Call(_)
             | Expr::DictComp(_)
@@ -125,7 +120,6 @@ impl SideEffect {
             | Expr::YieldFrom(_)
             | Expr::IpyEscapeCommand(_) => Self::Present,
 
-            // Side-effect-free expressions — continue walking child nodes.
             Expr::BoolOp(_)
             | Expr::Compare(_)
             | Expr::Dict(_)
@@ -398,8 +392,6 @@ where
                 range_start: _,
                 node_index: _,
             }) => {
-                // Note that this is the evaluation order but not necessarily the declaration order
-                // (e.g. for `f(*args, a=2, *args2, **kwargs)` it's not)
                 any_over_expr(call_func, &mut *func)
                     || arguments
                         .args
@@ -570,8 +562,6 @@ where
                 decorator_list,
                 ..
             }) => {
-                // Note that e.g. `class A(*args, a=2, *args2, **kwargs): pass` is a valid class
-                // definition
                 arguments
                     .as_deref()
                     .is_some_and(|Arguments { args, keywords, .. }| {
@@ -790,8 +780,6 @@ pub fn is_sunder(id: &str) -> bool {
 
 /// Return `true` if the [`Stmt`] is an assignment to a dunder (like `__all__`).
 pub fn is_assignment_to_a_dunder(stmt: &Stmt) -> bool {
-    // Check whether it's an assignment to a dunder, with or without a type
-    // annotation. This is what pycodestyle (as of 2.9.1) does.
     match stmt {
         Stmt::Assign(ast::StmtAssign { targets, .. }) => {
             if let [Expr::Name(ast::ExprName { id, .. })] = targets.as_slice() {
@@ -901,10 +889,8 @@ pub fn map_callable(decorator: &Expr) -> &Expr {
 /// (like an annotation that may be generic or not), return the underlying expr.
 pub fn map_subscript(expr: &Expr) -> &Expr {
     if let Expr::Subscript(ast::ExprSubscript { value, .. }) = expr {
-        // Ex) `Iterable[T]`  => return `Iterable`
         value
     } else {
-        // Ex) `Iterable`  => return `Iterable`
         expr
     }
 }
@@ -912,10 +898,8 @@ pub fn map_subscript(expr: &Expr) -> &Expr {
 /// Given an [`Expr`] that can be starred, return the underlying starred expression.
 pub fn map_starred(expr: &Expr) -> &Expr {
     if let Expr::Starred(ast::ExprStarred { value, .. }) = expr {
-        // Ex) `*args`
         value
     } else {
-        // Ex) `args`
         expr
     }
 }
@@ -1030,19 +1014,16 @@ pub fn collect_import_from_member<'a>(
         level as usize + module.map_or_default(|module| module.split('.').count()) + 1,
     );
 
-    // Include the dots as standalone segments.
     if level > 0 {
         for _ in 0..level {
             qualified_name_builder.push(".");
         }
     }
 
-    // Add the remaining segments.
     if let Some(module) = module {
         qualified_name_builder.extend(module.split('.'));
     }
 
-    // Add the member.
     qualified_name_builder.push(member);
 
     qualified_name_builder.build()
@@ -1051,20 +1032,15 @@ pub fn collect_import_from_member<'a>(
 /// Format the call path for a relative import, or `None` if the relative import extends beyond
 /// the root module.
 pub fn from_relative_import<'a>(
-    // The path from which the import is relative.
     module: &'a [String],
-    // The path of the import itself (e.g., given `from ..foo import bar`, `[".", ".", "foo", "bar]`).
     import: &[&'a str],
-    // The remaining segments to the call path (e.g., given `bar.baz`, `["baz"]`).
     tail: &[&'a str],
 ) -> Option<QualifiedName<'a>> {
     let mut qualified_name_builder =
         QualifiedNameBuilder::with_capacity(module.len() + import.len() + tail.len());
 
-    // Start with the module path.
     qualified_name_builder.extend(module.iter().map(String::as_str));
 
-    // Remove segments based on the number of dots.
     for segment in import {
         if *segment == "." {
             if qualified_name_builder.is_empty() {
@@ -1076,7 +1052,6 @@ pub fn from_relative_import<'a>(
         }
     }
 
-    // Add the remaining segments.
     qualified_name_builder.extend_from_slice(tail);
 
     Some(qualified_name_builder.build())
@@ -1153,7 +1128,6 @@ impl<'a> StatementVisitor<'a> for ReturnStatementVisitor<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
-                // Don't recurse.
             }
             Stmt::Return(stmt) => self.returns.push(stmt),
             _ => crate::statement_visitor::walk_stmt(self, stmt),
@@ -1320,42 +1294,27 @@ pub fn is_unpacking_assignment(parent: &Stmt, child: &Expr) -> bool {
             false
         }),
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
-            // In `(a, b) = (1, 2)`, `(1, 2)` is the target, and it is a tuple.
             let value_is_tuple = matches!(
                 value.as_ref(),
                 Expr::Set(_) | Expr::List(_) | Expr::Tuple(_)
             );
-            // In `(a, b) = coords = (1, 2)`, `(a, b)` and `coords` are the targets, and
-            // `(a, b)` is a tuple. (We use "tuple" as a placeholder for any
-            // unpackable expression.)
             let targets_are_tuples = targets
                 .iter()
                 .all(|item| matches!(item, Expr::Set(_) | Expr::List(_) | Expr::Tuple(_)));
-            // If we're looking at `a` in `(a, b) = coords = (1, 2)`, then we should
-            // identify that the current expression is in a tuple.
             let child_in_tuple = targets_are_tuples
                 || targets.iter().any(|item| {
                     matches!(item, Expr::Set(_) | Expr::List(_) | Expr::Tuple(_))
                         && any_over_expr(item, |expr| expr == child)
                 });
 
-            // If our child is a tuple, and value is not, it's always an unpacking
-            // expression. Ex) `x, y = tup`
             if child_in_tuple && !value_is_tuple {
                 return true;
             }
 
-            // If our child isn't a tuple, but value is, it's never an unpacking expression.
-            // Ex) `coords = (1, 2)`
             if !child_in_tuple && value_is_tuple {
                 return false;
             }
 
-            // If our target and the value are both tuples, then it's an unpacking
-            // expression assuming there's at least one non-tuple child.
-            // Ex) Given `(x, y) = coords = 1, 2`, `(x, y)` is considered an unpacking
-            // expression. Ex) Given `(x, y) = (a, b) = 1, 2`, `(x, y)` isn't
-            // considered an unpacking expression.
             if child_in_tuple && value_is_tuple {
                 return !targets_are_tuples;
             }
@@ -1455,7 +1414,6 @@ impl Truthiness {
                 }
 
                 if elts.iter().all(Expr::is_starred_expr) {
-                    // [*foo] / [*foo, *bar]
                     Self::Unknown
                 } else {
                     Self::Truthy
@@ -1466,15 +1424,11 @@ impl Truthiness {
                     return Self::Falsey;
                 }
 
-                // If the dict consists only of double-starred items (e.g., {**x, **y}),
-                // consider its truthiness unknown. This matches lists/sets/tuples containing
-                // only starred elements, which are also Unknown.
                 if dict
                     .items
                     .iter()
                     .all(|item| matches!(item, DictItem { key: None, .. }))
                 {
-                    // {**foo} / {**foo, **bar}
                     Self::Unknown
                 } else {
                     Self::Truthy
@@ -1486,17 +1440,11 @@ impl Truthiness {
                 if let Expr::Name(ast::ExprName { id, .. }) = func.as_ref() {
                     if is_iterable_initializer(id.as_str(), |id| is_builtin(id)) {
                         if arguments.is_empty() {
-                            // Ex) `list()`
                             Self::Falsey
                         } else if let [argument] = &*arguments.args
                             && arguments.keywords.is_empty()
                         {
-                            // Ex) `list([1, 2, 3])`
                             match argument {
-                                // Return Unknown for types with definite truthiness that might
-                                // result in empty iterables (t-strings and generators) or will
-                                // raise a type error (non-iterable types like numbers, booleans,
-                                // None, etc.).
                                 Expr::NumberLiteral(_)
                                 | Expr::BooleanLiteral(_)
                                 | Expr::NoneLiteral(_)
@@ -1504,9 +1452,6 @@ impl Truthiness {
                                 | Expr::TString(_)
                                 | Expr::Lambda(_)
                                 | Expr::Generator(_) => Self::Unknown,
-                                // Recurse for all other types - collections, comprehensions, variables, etc.
-                                // StringLiteral, FString, and BytesLiteral recurse because Self::from_expr
-                                // correctly handles their truthiness (checking if empty or not).
                                 _ => Self::from_expr(argument, is_builtin),
                             }
                         } else {
@@ -1538,7 +1483,6 @@ impl Truthiness {
 fn is_non_empty_f_string(expr: &ast::ExprFString) -> bool {
     fn inner(expr: &Expr) -> bool {
         match expr {
-            // When stringified, these expressions are always non-empty.
             Expr::Lambda(_) => true,
             Expr::Dict(_) => true,
             Expr::Set(_) => true,
@@ -1553,15 +1497,12 @@ fn is_non_empty_f_string(expr: &ast::ExprFString) -> bool {
             Expr::Tuple(_) => true,
             Expr::TString(_) => true,
 
-            // These expressions must resolve to the inner expression.
             Expr::If(ast::ExprIf { body, orelse, .. }) => inner(body) && inner(orelse),
             Expr::Named(ast::ExprNamed { value, .. }) => inner(value),
 
-            // These expressions are complex. We can't determine whether they're empty or not.
             Expr::BoolOp(ast::ExprBoolOp { .. }) => false,
             Expr::BinOp(ast::ExprBinOp { .. }) => false,
             Expr::UnaryOp(ast::ExprUnaryOp { .. }) => false,
-            // Rich comparison methods can return arbitrary objects.
             Expr::Compare(_) => false,
             Expr::Generator(_) => false,
             Expr::Await(_) => false,
@@ -1575,12 +1516,8 @@ fn is_non_empty_f_string(expr: &ast::ExprFString) -> bool {
             Expr::Slice(_) => false,
             Expr::IpyEscapeCommand(_) => false,
 
-            // These literals may or may not be empty.
             Expr::FString(f_string) => is_non_empty_f_string(f_string),
-            // These literals may or may not be empty.
             Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => !value.is_empty(),
-            // Confusingly, f"{b""}" renders as the string 'b""', which is non-empty.
-            // Therefore, any bytes interpolation is guaranteed non-empty when stringified.
             Expr::BytesLiteral(_) => true,
         }
     }
@@ -1588,7 +1525,6 @@ fn is_non_empty_f_string(expr: &ast::ExprFString) -> bool {
     expr.value.iter().any(|part| match part {
         ast::FStringPartRef::Literal(string_literal) => !string_literal.is_empty(),
         ast::FStringPartRef::FString(f_string) => {
-            // The part is a concatenation of elements, so it's guaranteed non-empty if any element is
             f_string.elements.iter().any(|element| match element {
                 InterpolatedStringElement::Literal(string_literal) => !string_literal.is_empty(),
                 InterpolatedStringElement::Interpolation(f_string) => {
@@ -1606,9 +1542,6 @@ pub fn is_empty_f_string(expr: &ast::ExprFString) -> bool {
     fn inner(expr: &Expr) -> bool {
         match expr {
             Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => value.is_empty(),
-            // Confusingly, `bool(f"{b""}") == True` even though
-            // `bool(b"") == False`. This is because `f"{b""}"`
-            // evaluates as the string `'b""'` of length 3.
             Expr::BytesLiteral(_) => false,
             Expr::FString(ast::ExprFString { value, .. }) => {
                 is_empty_interpolated_elements(value.elements())
@@ -1654,13 +1587,11 @@ pub fn generate_comparison(
     let end = comparators.last().map_or_else(|| left.end(), Ranged::end);
     let mut contents = String::with_capacity(usize::from(end - start));
 
-    // Add the left side of the comparison.
     contents.push_str(
         &source[parenthesized_range(left.into(), parent, tokens).unwrap_or(left.range())],
     );
 
     for (op, comparator) in ops.iter().zip(comparators) {
-        // Add the operator.
         contents.push_str(match op {
             CmpOp::Eq => " == ",
             CmpOp::NotEq => " != ",
@@ -1674,7 +1605,6 @@ pub fn generate_comparison(
             CmpOp::IsNot => " is not ",
         });
 
-        // Add the right side of the comparison.
         contents.push_str(
             &source[parenthesized_range(comparator.into(), parent, tokens)
                 .unwrap_or(comparator.range())],
@@ -1858,13 +1788,11 @@ mod tests {
 
     #[test]
     fn resolve_import() {
-        // Return the module directly.
         assert_eq!(
             resolve_imported_module_path(0, Some("foo"), None),
             Some(Cow::Borrowed("foo"))
         );
 
-        // Construct the module path from the calling module's path.
         assert_eq!(
             resolve_imported_module_path(
                 1,
@@ -1874,12 +1802,8 @@ mod tests {
             Some(Cow::Owned("bar.foo".to_string()))
         );
 
-        // We can't return the module if it's a relative import, and we don't know the calling
-        // module's path.
         assert_eq!(resolve_imported_module_path(1, Some("foo"), None), None);
 
-        // We can't return the module if it's a relative import, and the path goes beyond the
-        // calling module's path.
         assert_eq!(
             resolve_imported_module_path(1, Some("foo"), Some(&["bar".to_string()])),
             None,

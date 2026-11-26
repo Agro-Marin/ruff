@@ -123,19 +123,15 @@ impl Violation for LineContainsHack {
 pub(crate) fn todos(context: &LintContext, directive_ranges: &[TodoComment]) {
     for TodoComment { directive, .. } in directive_ranges {
         match directive.kind {
-            // FIX001
             TodoDirectiveKind::Fixme => {
                 context.report_diagnostic_if_enabled(LineContainsFixme, directive.range);
             }
-            // FIX002
             TodoDirectiveKind::Hack => {
                 context.report_diagnostic_if_enabled(LineContainsHack, directive.range);
             }
-            // FIX003
             TodoDirectiveKind::Todo => {
                 context.report_diagnostic_if_enabled(LineContainsTodo, directive.range);
             }
-            // FIX004
             TodoDirectiveKind::Xxx => {
                 context.report_diagnostic_if_enabled(LineContainsXxx, directive.range);
             }

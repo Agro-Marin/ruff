@@ -161,7 +161,6 @@ impl PositionExt for lsp_types::Position {
                 index.source_location(cell_range.start(), source.as_str(), encoding.into());
             assert_eq!(cell_start_location.character_offset, OneIndexed::MIN);
 
-            // Absolute position into the concatenated notebook source text.
             let absolute_position = SourceLocation {
                 line: cell_start_location
                     .line
@@ -170,12 +169,6 @@ impl PositionExt for lsp_types::Position {
             };
             let offset = index.offset(absolute_position, &source, encoding.into());
 
-            // A position beyond the end of the cell (past the end of its last line, or on a line
-            // after it) would otherwise resolve to the cell separator or into the next cell.
-            // Clients can send such positions, e.g., a completion request using the position from
-            // before the user deleted the last character in the cell. Clamp it to the end of the
-            // cell, like an out-of-range position in a regular file is clamped to the end of the
-            // file.
             return Some(offset.min(cell_range.end()));
         }
 

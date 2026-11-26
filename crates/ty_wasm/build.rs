@@ -5,8 +5,6 @@ use std::{
 };
 
 fn main() {
-    // The workspace root directory is not available without walking up the tree
-    // https://github.com/rust-lang/cargo/issues/3946
     let workspace_root = Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap())
         .join("..")
         .join("..");
@@ -16,7 +14,6 @@ fn main() {
 
 /// Retrieve commit information from the Git repository.
 fn commit_info(workspace_root: &Path) {
-    // If not in a git repository, do not attempt to retrieve commit information
     let git_dir = workspace_root.join(".git");
     if !git_dir.exists() {
         return;
@@ -27,11 +24,6 @@ fn commit_info(workspace_root: &Path) {
 
         let git_head_contents = fs::read_to_string(&git_head_path);
         if let Ok(git_head_contents) = git_head_contents {
-            // The contents are either a commit or a reference in the following formats
-            // - "<commit>" when the head is detached
-            // - "ref: <ref>" when working on a branch
-            // If a commit, checking if the HEAD file has changed is sufficient
-            // If a ref, we also need to watch where Git stores its current commit
             let mut git_ref_parts = git_head_contents.split_whitespace();
             git_ref_parts.next();
             if let Some(git_ref) = git_ref_parts.next() {
@@ -62,7 +54,6 @@ fn commit_info(workspace_root: &Path) {
 }
 
 fn git_head(git_dir: &Path) -> Option<PathBuf> {
-    // The typical case is a standard git repository.
     if git_dir.is_dir() {
         return Some(git_dir.join("HEAD"));
     }
@@ -70,22 +61,12 @@ fn git_head(git_dir: &Path) -> Option<PathBuf> {
         return None;
     }
 
-    // Watch the pointer in case the worktree's Git directory changes.
     println!("cargo:rerun-if-changed={}", git_dir.display());
-    // A linked worktree has a `.git` file instead of a `.git` directory.
-    // Its contents point to the worktree-specific Git directory, e.g.:
-    //
-    //     gitdir: /home/andrew/astral/ruff/main/.git/worktrees/pr2
-    //
-    // And the HEAD file we want to watch will be at:
-    //
-    //     /home/andrew/astral/ruff/main/.git/worktrees/pr2/HEAD
     let contents = fs::read_to_string(git_dir).ok()?;
     let (label, worktree_path) = contents.split_once(':')?;
     if label != "gitdir" {
         return None;
     }
-    // Relative `gitdir:` paths are relative to the directory containing `.git`.
     let worktree_path = PathBuf::from(worktree_path.trim());
     let worktree_path = if worktree_path.is_absolute() {
         worktree_path
@@ -101,8 +82,6 @@ fn watch_git_ref(git_head_path: &Path, git_ref: &str) {
         return;
     };
 
-    // Worktrees have their own HEAD, but branch refs live in the shared Git directory. Their
-    // `commondir` file points to that directory, either absolutely or relative to this Git directory.
     let common_dir_path = worktree_git_dir.join("commondir");
     let common_git_dir = if let Ok(common_dir) = fs::read_to_string(&common_dir_path) {
         println!("cargo:rerun-if-changed={}", common_dir_path.display());
@@ -120,15 +99,10 @@ fn watch_git_ref(git_head_path: &Path, git_ref: &str) {
     if git_ref_path.exists() {
         println!("cargo:rerun-if-changed={}", git_ref_path.display());
     } else {
-        // A packed branch ref has no loose ref file. Watch `packed-refs` instead of the missing
-        // loose ref, since Cargo would rebuild on every invocation for a nonexistent watched path.
         let packed_refs = common_git_dir.join("packed-refs");
         if packed_refs.exists() {
             println!("cargo:rerun-if-changed={}", packed_refs.display());
         }
-        // A later commit can recreate the loose ref, even when its parent directories do not exist
-        // yet. Watch the nearest existing ancestor so Cargo notices that transition. This can
-        // also rebuild when another ref in that directory changes.
         if let Some(parent) = git_ref_path.ancestors().find(|parent| parent.is_dir()) {
             println!("cargo:rerun-if-changed={}", parent.display());
         }

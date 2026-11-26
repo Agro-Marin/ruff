@@ -58,12 +58,10 @@ pub(crate) fn shebang_leading_whitespace(
     range: TextRange,
     locator: &Locator,
 ) {
-    // If the shebang is at the beginning of the file, abort.
     if range.start() == TextSize::from(0) {
         return;
     }
 
-    // If the entire prefix _isn't_ whitespace, abort (this is handled by EXE005).
     if !locator
         .up_to(range.start())
         .chars()

@@ -63,7 +63,6 @@ impl Support {
             .find(|(_, chunk)| **chunk != 0)?;
         let first_set_bit_in_chunk = first_nonempty_chunk.lowest_one()? as usize;
 
-        // Clear out the bit we just found, and then return it
         *first_nonempty_chunk ^= 1 << first_set_bit_in_chunk;
         Some(TypeVarId::from_usize(
             CHUNK_SIZE * idx + first_set_bit_in_chunk,
@@ -76,22 +75,16 @@ impl Support {
 
     /// Returns an iterator of all of the typevars in this support.
     pub(super) fn iter(&self) -> impl Iterator<Item = TypeVarId> + '_ {
-        // Iterate through all of the chunks
         let mut next_chunk_start = 0;
         self.iter_chunks().flat_map(move |mut chunk| {
-            // Figure out the starting index of this chunk
             let chunk_start = next_chunk_start;
             next_chunk_start += CHUNK_SIZE;
 
-            // Iterate through the set bits in this chunk
             std::iter::from_fn(move || {
-                // Find the lowest set bit, if there is one
                 let index = chunk.lowest_one()? as usize;
 
-                // Clear out the bit we just found.
                 chunk ^= 1 << index;
 
-                // And then return it, converted into a TypeVarId
                 Some(TypeVarId::from_usize(chunk_start + index))
             })
         })

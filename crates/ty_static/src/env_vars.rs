@@ -99,7 +99,6 @@ impl EnvVars {
     /// Used to determine the root install path of Conda.
     pub const CONDA_ROOT: &'static str = "_CONDA_ROOT";
 
-    // Externally defined environment variables
 
     /// Controls color in `ty check` diagnostics when stdout is a terminal.
     ///

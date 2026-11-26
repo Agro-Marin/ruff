@@ -17,7 +17,6 @@ pub(crate) use text_document::{DocumentVersion, LanguageId};
 use crate::{fix::Fixes, session::ResolvedClientCapabilities};
 
 /// A convenient enumeration for supported text encodings. Can be converted to [`lsp_types::PositionEncodingKind`].
-// Please maintain the order from least to greatest priority for the derived `Ord` impl.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PositionEncoding {
     /// UTF 16 is the encoding supported by all LSP clients.
@@ -150,7 +149,6 @@ impl WorkspaceEditTracker {
                 document_edits.push(lsp_types::TextDocumentEdit {
                     text_document: lsp_types::OptionalVersionedTextDocumentIdentifier {
                         text_document_identifier: TextDocumentIdentifier { uri },
-                        // TODO(jane): Re-enable versioned edits after investigating whether it could work with notebook cells
                         version: None,
                     },
                     edits: edits.into_iter().map(lsp_types::Edit::TextEdit).collect(),

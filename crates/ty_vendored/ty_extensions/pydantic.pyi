@@ -1,5 +1,3 @@
-# Input types accepted by Pydantic validation in lax mode. These aliases model Python inputs from
-# Pydantic's conversion table: https://docs.pydantic.dev/latest/concepts/conversion_table/
 
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal

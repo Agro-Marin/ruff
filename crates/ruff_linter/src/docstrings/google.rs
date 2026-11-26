@@ -14,7 +14,6 @@ pub(crate) static GOOGLE_SECTIONS: &[SectionKind] = &[
     SectionKind::Warnings,
     SectionKind::Warns,
     SectionKind::Yields,
-    // Google-only
     SectionKind::Args,
     SectionKind::Arguments,
     SectionKind::Attention,

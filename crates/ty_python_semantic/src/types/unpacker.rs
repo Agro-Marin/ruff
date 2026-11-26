@@ -200,9 +200,6 @@ impl<'db, 'ast> Unpacker<'db, 'ast> {
             ast::Expr::List(ast::ExprList { elts, .. })
             | ast::Expr::Tuple(ast::ExprTuple { elts, .. }) => elts,
             _ => {
-                // Recovered syntax can still create assignment definitions for descendants of
-                // malformed targets. Give the whole subtree an unknown type so later lookups
-                // don't panic.
                 self.record_unknown_target_subtree(target);
                 return;
             }
@@ -221,9 +218,6 @@ impl<'db, 'ast> Unpacker<'db, 'ast> {
                     }
                 },
                 &|expression, promote, known_length| {
-                    // The starred expression's inference has already reported iteration errors.
-                    // For `a, *rest = [1, *items]`, retain the shape of `items`' iterator even
-                    // though the enclosing list's type has erased positions and length.
                     let ty = value_inference.expression_type(expression);
                     let ty = if promote { ty.promote(db, env) } else { ty };
                     let mut tuple = ty.iterate(db, env);
@@ -240,11 +234,6 @@ impl<'db, 'ast> Unpacker<'db, 'ast> {
         let sequences = if let Some(literal) = literal {
             vec![literal]
         } else {
-            // N.B. `Type::try_iterate` internally handles unions, but in a lossy way.
-            // For our purposes here, we get better error messages and more precise inference
-            // if we manually map over the union and call `try_iterate` on each union element.
-            // See <https://github.com/astral-sh/ruff/pull/20377#issuecomment-3401380305>
-            // for more discussion.
             let unpack_types = match value.ty {
                 Type::Union(union_ty) => union_ty.elements(db),
                 _ => std::slice::from_ref(&value.ty),
@@ -298,16 +287,11 @@ impl<'db, 'ast> Unpacker<'db, 'ast> {
                             }
                         };
                         inferred.add_in_place(element.ty);
-                        // Literal sources contribute exactly one sequence. Only the type-based
-                        // path combines multiple union arms, and those have no source expressions.
                         *expression = element.expression;
                         *promote_literals = element.promote_literals;
                     }
                 }
                 Err(err) => {
-                    // A length mismatch has no valid correspondence, e.g. `a, *b, c = [1]`.
-                    // Recover every target at this level, without discarding sibling literals
-                    // handled by the enclosing recursive call.
                     for (target, (inferred, _, _)) in targets.iter().zip(&mut inferred_targets) {
                         inferred.add_in_place(if target.is_starred_expr() {
                             KnownClass::List.to_specialized_instance(db, env, &[Type::unknown()])
@@ -604,7 +588,6 @@ pub(super) fn collected_list_type<'db, 'ast>(
             TupleSizePromotionConstraints::allows_expression(db, env, expression, ty);
         elements.add_in_place(ty);
     }
-    // `first, *rest = (1,)` constructs an empty list, just as `rest = []` does.
     let ty = if is_empty {
         Type::unknown()
     } else {
@@ -631,8 +614,6 @@ fn literal_sequence<'ast, T: Clone>(
         spread,
         &|builder, unpacked| {
             builder.concat_with(unpacked, |suffix, left, right, prefix| {
-                // For `[*a, *b, *c, ...]`, retain the accumulated elements instead of copying
-                // them again for every expansion. Positions within this segment are unknown.
                 left.extend(suffix.iter().chain(prefix).chain(right).cloned());
             })
         },
@@ -643,7 +624,6 @@ fn literal_sequence_elements(
     expression: &ast::Expr,
     promote: bool,
 ) -> Option<(&[ast::Expr], bool)> {
-    // `a, *rest = (items := [1, "two"])` has the same elements as the list itself.
     let expression = expression.expression_value();
     let values = sequence_elts(expression)?;
     let promote = promote || (expression.is_tuple_expr() && tuple_literal_needs_promotion(values));

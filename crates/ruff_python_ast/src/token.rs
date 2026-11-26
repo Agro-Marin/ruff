@@ -275,10 +275,7 @@ pub enum TokenKind {
     /// Token kind for ellipsis `...`.
     Ellipsis,
 
-    // The keywords should be sorted in alphabetical order. If the boundary tokens for the
-    // "Keywords" and "Soft keywords" group change, update the related methods on `TokenKind`.
 
-    // Keywords
     And,
     As,
     Assert,
@@ -315,7 +312,6 @@ pub enum TokenKind {
     With,
     Yield,
 
-    // Soft keywords
     Case,
     Lazy,
     Match,

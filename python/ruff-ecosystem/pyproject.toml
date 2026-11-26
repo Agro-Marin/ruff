@@ -13,7 +13,6 @@ ruff-ecosystem = "ruff_ecosystem.cli:entrypoint"
 
 [tool.ruff.lint]
 ignore = [
-    # We're not worried enough about briefly blocking the event loop to add more dependencies.
     "blocking-path-method-in-async-function",
     "debugger",
     "repeated-append",
@@ -24,7 +23,6 @@ preview = true
 no-build = true
 require-build-hashes = true
 no-binary-package = ["ruff-ecosystem"]
-# Pin the isolated build environment for source-build exceptions.
 build-constraint-dependencies = [
     { requirement = "uv-build==0.12.3", hashes = [
         "sha256:322d634f2fbf8c7965dde52106db8040b0cc23dbc07b6508d900f217843bd129",

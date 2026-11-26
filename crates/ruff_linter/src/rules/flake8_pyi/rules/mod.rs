@@ -95,8 +95,6 @@ mod unrecognized_version_info;
 mod unsupported_method_call_on_all;
 mod unused_private_type_definition;
 
-// TODO(charlie): Replace this with a common utility for selecting the appropriate source
-// module for a given `typing` member.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TypingModule {
     Typing,
@@ -130,7 +128,6 @@ fn generate_union_fix(
 
     let (import_edit, binding) = importer.import(annotation.start())?;
 
-    // Construct the expression as `Subscript[typing.Union, Tuple[expr, [expr, ...]]]`
     let new_expr = Expr::Subscript(ExprSubscript {
         range: TextRange::default(),
         node_index: ruff_python_ast::AtomicNodeIndex::NONE,

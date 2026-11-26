@@ -112,8 +112,6 @@ fn create_remove_argument_fix(
     mode_arg: &Expr,
     tokens: &Tokens,
 ) -> Result<Edit> {
-    // Find the last comma before mode_arg and create a deletion fix
-    // starting from the comma and ending after mode_arg.
     let mut fix_start: Option<TextSize> = None;
     let mut fix_end: Option<TextSize> = None;
     let mut is_first_arg: bool = false;

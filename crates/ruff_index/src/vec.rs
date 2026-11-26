@@ -177,8 +177,6 @@ impl<I: Idx, T, const N: usize> From<[T; N]> for IndexVec<I, T> {
     }
 }
 
-// Whether `IndexVec` is `Send` depends only on the data,
-// not the phantom data.
 #[expect(unsafe_code)]
 unsafe impl<I: Idx, T> Send for IndexVec<I, T> where T: Send {}
 

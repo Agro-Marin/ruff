@@ -72,13 +72,6 @@ pub(crate) fn no_explicit_stacklevel(
         return;
     }
 
-    // When prefixes are supplied, stacklevel is implicitly overridden to be `max(2, stacklevel)`.
-    //
-    // Signature as of Python 3.13 (https://docs.python.org/3/library/warnings.html#warnings.warn)
-    // ```text
-    //                  0       1               2            3                  4
-    // warnings.warn(message, category=None, stacklevel=1, source=None, *, skip_file_prefixes=())
-    // ```
     if call
         .arguments
         .find_argument_value("stacklevel", 2)

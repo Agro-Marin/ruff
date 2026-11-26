@@ -19,7 +19,6 @@ from ruff_ecosystem.projects import RuffCommand
 
 def excepthook(type, value, tb):
     if hasattr(sys, "ps1") or not sys.stderr.isatty():
-        # we are in interactive mode or we don't have a tty so call the default
         sys.__excepthook__(type, value, tb)
     else:
         import pdb
@@ -41,7 +40,6 @@ def entrypoint():
     else:
         logging.basicConfig(level=logging.INFO)
 
-    # Use a temporary directory for caching if no cache is specified
     cache_context = (
         tempfile.TemporaryDirectory() if not args.cache else nullcontext(args.cache)
     )
@@ -103,7 +101,6 @@ def entrypoint():
                 html_title=f"{'Linter' if args.ruff_command == 'check' else 'Formatter'} ({'preview' if args.force_preview else 'stable'})",
             )
         )
-        # https://stackoverflow.com/a/58840987/3549270
         for signal in [SIGINT, SIGTERM]:
             loop.add_signal_handler(signal, main_task.cancel)
         try:
@@ -117,15 +114,6 @@ def parse_args() -> argparse.Namespace:
         description="Check two versions of ruff against a corpus of open-source code.",
     )
 
-    # TODO: Support non-default `--targets`
-    # parser.add_argument(
-    #     "--targets",
-    #     type=Path,
-    #     help=(
-    #         "Optional JSON files to use over the default repositories. "
-    #         "Supports both github_search_*.jsonl and known-github-tomls.jsonl."
-    #     ),
-    # )
     parser.add_argument(
         "--cache",
         type=Path,
@@ -182,12 +170,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def get_executable_path(name: str) -> Path | None:
-    # Add suffix for Windows executables
     name += ".exe" if sys.platform == "win32" and not name.endswith(".exe") else ""
 
     path = os.path.join(sysconfig.get_path("scripts"), name)
 
-    # The executable in the current interpreter's scripts directory.
     if os.path.exists(path):
         return Path(path)
 

@@ -70,7 +70,6 @@ fn async_generator_stub_declaration<'db>(
     if !node.is_async || !function_has_stub_body(node) {
         return None;
     }
-    // Start at `async`, excluding any decorators from the declaration's range.
     let start = module
         .tokens()
         .in_range(TextRange::new(node.start(), node.name.start()))
@@ -248,10 +247,6 @@ impl<'db> Type<'db> {
             env: &ProgramEnvironment<'db>,
             ty: Type<'db>,
         ) -> Option<Cow<'db, TupleSpec<'db>>> {
-            // We will not infer precise heterogeneous tuple specs for literals with lengths above this threshold.
-            // The threshold here is somewhat arbitrary and conservative; it could be increased if needed.
-            // However, it's probably very rare to need heterogeneous unpacking inference for long string literals
-            // or bytes literals, and creating long heterogeneous tuple specs has a performance cost.
             const MAX_TUPLE_LENGTH: usize = 128;
 
             match ty {
@@ -292,18 +287,12 @@ impl<'db> Type<'db> {
                         };
                         Some(Cow::Owned(spec))
                     }
-                    // N.B. This special case isn't strictly necessary, it's just an obvious optimization
                     LiteralValueTypeKind::LiteralString => {
                         Some(Cow::Owned(TupleSpec::homogeneous(ty)))
                     }
                     _ => None,
                 },
                 Type::Never => {
-                    // The dunder logic below would have us return `tuple[Never, ...]`, which eagerly
-                    // simplifies to `tuple[()]`. That will will cause us to emit false positives if we
-                    // index into the tuple. Using `tuple[Unknown, ...]` avoids these false positives.
-                    // TODO: Consider removing this special case, and instead hide the indexing
-                    // diagnostic in unreachable code.
                     Some(Cow::Owned(TupleSpec::homogeneous(Type::unknown())))
                 }
                 Type::TypeAlias(alias) => non_async_special_case(db, env, alias.value_type(db)),
@@ -342,22 +331,8 @@ impl<'db> Type<'db> {
                     }
                 }
                 Type::Intersection(intersection) => {
-                    // For intersections containing TypeVars with union bounds, we need to
-                    // flatten the TypeVars first. This distributes the intersection over
-                    // the union and simplifies, e.g.:
-                    // `T & tuple[object, ...]` where `T: tuple[int, ...] | list[str]`
-                    // becomes `(tuple[int, ...] & tuple[object, ...]) | (list[str] & tuple[object, ...])`
-                    // which simplifies to `tuple[int, ...] | Never` = `tuple[int, ...]`
-                    //
-                    // After flattening, the result may be:
-                    // - An intersection (if no union-bound typevars, or they didn't simplify).
-                    // - A union of intersections (if distribution happened).
-                    // - A simpler type (if it fully simplified).
-                    //
-                    // We then iterate over the flattened type.
                     let flattened = ty.flatten_typevars(db, env);
 
-                    // If flattening didn't change anything, iterate the intersection directly.
                     if flattened == ty {
                         let mut specs_iter = intersection
                             .positive_elements_or_object(db)
@@ -369,9 +344,6 @@ impl<'db> Type<'db> {
                         let first_spec = specs_iter.next()?;
                         let mut builder = TupleSpecBuilder::from(&*first_spec);
                         for spec in specs_iter {
-                            // Two tuples cannot have incompatible specs unless the tuples themselves
-                            // are disjoint. `IntersectionBuilder` eagerly simplifies such
-                            // intersections to `Never`, so this should always return `Some`.
                             let Some(intersected) = builder.intersect(db, env, &spec) else {
                                 return Some(Cow::Owned(TupleSpec::homogeneous(Type::unknown())));
                             };
@@ -380,13 +352,11 @@ impl<'db> Type<'db> {
                         return Some(Cow::Owned(builder.build()));
                     }
 
-                    // Flattening changed the type; recursively iterate the flattened result.
                     flattened.try_iterate(db, env).ok()
                 }
                 Type::EnumComplement(complement) => {
                     non_async_special_case(db, env, complement.remaining_literal_union(db, env))
                 }
-                // N.B. This special case isn't strictly necessary, it's just an obvious optimization
                 Type::Dynamic(_) => Some(Cow::Owned(TupleSpec::homogeneous(ty))),
                 Type::Divergent(_) => Some(Cow::Owned(TupleSpec::homogeneous(ty))),
 
@@ -413,10 +383,6 @@ impl<'db> Type<'db> {
                 | Type::TypeForm(_)
                 | Type::TypedDict(_) => None,
 
-                // We could infer a precise tuple spec for enum classes with members,
-                // but it's not clear whether that's worth the added complexity:
-                // you'd have to check that `EnumMeta.__iter__` is not overridden for it to be sound
-                // (enums can have `EnumMeta` subclasses as their metaclasses).
                 Type::ClassLiteral(_) => None,
             }
         }
@@ -459,7 +425,7 @@ impl<'db> Type<'db> {
                         Ok(Ok(result)) => Ok(Cow::Owned(TupleSpec::homogeneous(result))),
                         Ok(Err(AwaitError::InvalidReturnType(..))) => {
                             Err(IterationError::UnboundAiterError)
-                        } // TODO: __anext__ is bound, but is not properly awaitable
+                        }
                         Err(dunder_anext_error) | Ok(Err(AwaitError::Call(dunder_anext_error))) => {
                             Err(IterationError::IterReturnsInvalidIterator {
                                 iterator,
@@ -539,8 +505,6 @@ impl<'db> Type<'db> {
 
         match dunder_iter_result {
             Ok(iterator) => {
-                // `__iter__` is definitely bound and calling it succeeds.
-                // See what calling `__next__` on the object returned by `__iter__` gives us...
                 try_call_dunder_next_on_iterator(iterator)
                     .map(|ty| Cow::Owned(TupleSpec::homogeneous(ty)))
                     .map_err(
@@ -552,7 +516,6 @@ impl<'db> Type<'db> {
                     )
             }
 
-            // `__iter__` is possibly unbound...
             Err(CallDunderError::PossiblyUnbound {
                 bindings: dunder_iter_outcome,
                 unbound_on: unbound_on_iter,
@@ -563,13 +526,6 @@ impl<'db> Type<'db> {
                     Ok(dunder_next_return) => {
                         try_call_dunder_getitem()
                             .map(|dunder_getitem_return_type| {
-                                // If `__iter__` is possibly unbound,
-                                // but it returns an object that has a bound and valid `__next__` method,
-                                // *and* the object has a bound and valid `__getitem__` method,
-                                // we infer a union of the type returned by the `__next__` method
-                                // and the type returned by the `__getitem__` method.
-                                //
-                                // No diagnostic is emitted; iteration will always succeed!
                                 Cow::Owned(TupleSpec::homogeneous(UnionType::from_two_elements(
                                     db,
                                     env,
@@ -594,7 +550,6 @@ impl<'db> Type<'db> {
                 }
             }
 
-            // `__iter__` is definitely bound but it can't be called with the expected arguments
             Err(CallDunderError::CallError(kind, bindings, _)) => {
                 Err(IterationError::IterCallError {
                     kind,
@@ -603,7 +558,6 @@ impl<'db> Type<'db> {
                 })
             }
 
-            // There's no `__iter__` method. Try `__getitem__` instead...
             Err(CallDunderError::MethodNotAvailable) => try_call_dunder_getitem()
                 .map(|ty| Cow::Owned(TupleSpec::homogeneous(ty)))
                 .map_err(
@@ -870,9 +824,6 @@ impl<'db> IterationError<'db> {
             mode,
         };
 
-        // TODO: for all of these error variants, the "explanation" for the diagnostic
-        // (everything after the "because") should really be presented as a "help:", "note",
-        // or similar, rather than as part of the same sentence as the error message.
         match self {
             Self::IterCallError {
                 kind,

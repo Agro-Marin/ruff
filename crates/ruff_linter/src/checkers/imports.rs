@@ -31,7 +31,6 @@ pub(crate) fn check_imports(
     target_version: TargetVersion,
     context: &LintContext,
 ) {
-    // Extract all import blocks from the AST.
     let tracker = {
         let mut tracker =
             BlockBuilder::new(locator, directives, source_type.is_stub(), cell_offsets);
@@ -41,7 +40,6 @@ pub(crate) fn check_imports(
 
     let blocks: Vec<&Block> = tracker.iter().collect();
 
-    // Enforce import rules.
     if context.is_rule_enabled(Rule::UnsortedImports) {
         for block in &blocks {
             if !block.imports.is_empty() {

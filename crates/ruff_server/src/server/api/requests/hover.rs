@@ -69,7 +69,6 @@ fn hover(
 
     let line = &document.contents()[line_range];
 
-    // Avoid parsing the document if the hovered line doesn't contain a comment.
     memchr::memchr(b'#', line.as_bytes())?;
 
     let cursor = types::Range::new(position.position, position.position)
@@ -83,7 +82,6 @@ fn hover(
     let identifier_range =
         rule_identifier_range_at_offset(document.contents(), comment.range(), cursor)?;
 
-    // Get the rule for the identifier under the cursor.
     let identifier = &document.contents()[identifier_range];
     let rule = Rule::from_code(identifier)
         .ok()

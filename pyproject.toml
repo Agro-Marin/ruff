@@ -95,18 +95,8 @@ typeshed-formatting = [
 [tool.uv]
 no-build = true
 require-build-hashes = true
-# By default, uv records all `exclude-newer-package` exemptions in the lockfile for
-# every script in the repo, even when the corresponding package is not in the
-# lockfile for that script. This preview feature omits those entries, so changes
-# to unrelated exemptions don't cause script lockfiles to be updated when refreshed.
-# https://docs.astral.sh/uv/concepts/preview/#missing-exclude-newer-package-lock
 preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
-# The `missing-exclude-newer-package-lock` preview feature requires uv 0.12.10 or later.
-# Before uv 0.12.10, adding an unrelated `exclude-newer-package` exemption could
-# also cause uv to update a script's lockfile the next time the script was run,
-# leading to unexpected lockfile changes in PRs.
 required-version = ">=0.13.0"
-# CI installs the local ecosystem runner and tools pinned to Git revisions.
 no-binary-package = [
     "docstring-adder",
     "ecosystem-analyzer",
@@ -114,7 +104,6 @@ no-binary-package = [
     "ruff-ecosystem",
     "typeshed-client",
 ]
-# Pin and verify build dependencies for the project and source-build exceptions.
 build-constraint-dependencies = [
     { requirement = "flit-core==4.0.2", hashes = [
         "sha256:8d80717e28d982b41594ed5b14d4e89fbc5bad55473fde27994a3101db18a94e",
@@ -246,8 +235,6 @@ typeshed-formatting = { requires-python = ">=3.10" }
 
 [tool.uv.sources]
 docstring-adder = { git = "https://github.com/astral-sh/docstring-adder.git" }
-# Keep scripts/setup_primer_project.py and its lockfile synchronized with
-# ecosystem-analyzer's mypy-primer pin when updating its locked revision.
 ecosystem-analyzer = { git = "https://github.com/astral-sh/ecosystem-analyzer" }
 
 [tool.ruff]
@@ -264,14 +251,12 @@ extend-exclude = [
 [tool.ruff.lint]
 preview = true
 select = [
-    # Categories
     "correctness",
     "suspicious",
     "complexity",
     "performance",
     "style",
 
-    # E # pycodestyle (error)
     "ambiguous-class-name",
     "ambiguous-function-name",
     "ambiguous-variable-name",
@@ -287,12 +272,10 @@ select = [
     "type-comparison",
     "unexpected-indentation",
 
-    # F # pyflakes
     "forward-annotation-syntax-error",
     "undefined-local-with-import-star",
     "undefined-local-with-import-star-usage",
 
-    # B # bugbear
     "batched-without-explicit-strict",
     "class-as-data-structure",
     "map-without-explicit-strict",
@@ -302,10 +285,8 @@ select = [
     "unused-loop-control-variable",
     "zip-without-explicit-strict",
 
-    # C4 # flake8-comprehensions
     "unnecessary-comprehension",
 
-    # SIM # flake8-simplify
     "compare-with-tuple",
     "dict-get-with-none-default",
     "if-else-block-instead-of-dict-lookup",
@@ -315,18 +296,14 @@ select = [
     "uncapitalized-environment-variables",
     "yoda-conditions",
 
-    # I # isort
     "missing-required-import",
 
-    # UP # pyupgrade
     "convert-typed-dict-functional-to-class",
     "redundant-open-modes",
 
-    # PGH # pygrep-hooks
     "blanket-noqa",
     "blanket-type-ignore",
 
-    # PYI # flake8-pyi
     "argument-default-in-stub",
     "collections-named-tuple",
     "docstring-in-stub",
@@ -336,7 +313,6 @@ select = [
     "typed-argument-default-in-stub",
     "unsupported-method-call-on-all",
 
-    # RUF
     "ambiguous-unicode-character-comment",
     "ambiguous-unicode-character-docstring",
     "ambiguous-unicode-character-string",
@@ -352,27 +328,18 @@ select = [
     "unused-async",
     "used-dummy-variable",
 
-    # S
     "subprocess-popen-with-shell-equals-true",
 ]
 
 ignore = [
-    # only relevant if you run a script with `python -0`,
-    # which seems unlikely for any of the scripts in this repo
     "assert-false",
-    # Leave it to the formatter to split long lines and
-    # the judgement of all of us.
     "line-too-long",
-    # This is often more readable in our scripts.
     "repeated-append",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "crates/ty_vendored/ty_extensions/*.pyi" = [
-    # Import newer typing features from typing_extensions so ty can resolve them
-    # when checking code that targets Python 3.8.
     "deprecated-import",
-    # Allow stub docstrings so IDEs can show them on hover.
     "docstring-in-stub",
 ]
 
@@ -425,8 +392,8 @@ force-exclude = '''
 '''
 
 [tool.rooster]
-major_labels = []  # Ruff never uses the major version number
-minor_labels = ["breaking"]   # Bump the minor version on breaking changes
+major_labels = []
+minor_labels = ["breaking"]
 
 ignore_labels = [
     "internal",
@@ -440,15 +407,12 @@ ignore_labels = [
 version_files = [
     "README.md",
     "pyproject.toml",
-    # Might become unneeded once Markdown formatting is stabilized.
     "docs/formatter.md",
     "docs/installation.md",
     "docs/integrations.md",
     "docs/tutorial.md",
     "crates/ruff/Cargo.toml",
     "crates/ruff_linter/Cargo.toml",
-    # Note that the value being replaced here needs to be kept in sync with the
-    # validation regex in the `violation_metadata` macro.
     { target = "crates/ruff_linter/src/rules/**/*.rs", replace = "NEXT_RUFF_VERSION" },
     "crates/ruff_wasm/Cargo.toml",
     "scripts/benchmarks/pyproject.toml",

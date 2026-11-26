@@ -99,19 +99,16 @@ pub(crate) fn manual_list_copy(checker: &Checker, for_stmt: &ast::StmtFor) {
         return;
     }
 
-    // Only flag direct list copies (e.g., `for x in y: filtered.append(x)`).
     if arg.as_name_expr().is_none_or(|arg| arg.id != *id) {
         return;
     }
 
-    // Avoid, e.g., `for x in y: filtered[x].append(x)`.
     if any_over_expr(value, |expr| {
         expr.as_name_expr().is_some_and(|expr| expr.id == *id)
     }) {
         return;
     }
 
-    // Avoid non-list values.
     let Some(name) = value.as_name_expr() else {
         return;
     };

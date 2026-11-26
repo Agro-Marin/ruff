@@ -1,5 +1,4 @@
 #!/usr/bin/env -S uv run --script
-#
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
@@ -29,7 +28,6 @@ from pathlib import Path
 from pathspec import GitIgnoreSpec
 
 ROOT = Path(__file__).resolve().parent.parent
-# Crate resources and completion fixtures are inputs, not project scripts.
 COMPLETION_FIXTURES = Path("crates/ty_completion_eval/truth")
 
 
@@ -44,12 +42,6 @@ def scripts() -> Iterator[Path]:
 
     gitignore = GitIgnoreSpec.from_lines((ROOT / ".gitignore").read_text().splitlines())
 
-    # uv's script listing skips invalid metadata, so find candidates before
-    # asking uv to validate and lock them.
-    #
-    # We use `.walk()` here rather than `.rglob()` because some of our ignored directories are
-    # huge; `.walk()` allows us to lazily inspect whether they're gitignored before recursively
-    # descending into them.
     for directory, dirnames, filenames in ROOT.walk():
         dirnames[:] = [
             dirname

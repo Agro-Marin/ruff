@@ -34,8 +34,6 @@ pub fn assert_const_function_query_was_not_run<Db, Q, QDb, R>(
     Db: salsa::Database,
     Q: Fn(QDb) -> R,
 {
-    // Salsa now interns singleton ingredients. But we know that it is a singleton, so we can just search for
-    // any event of that ingredient.
     let query_name = query_name(&query);
 
     let event = find_will_execute_event_by_name(db, query_name, None, events);
@@ -250,7 +248,6 @@ fn query_was_not_run() {
     assert_eq!(len(&db, hello), 13);
     assert_eq!(len(&db, goodbye), 8);
 
-    // Change the input of one query
     goodbye.set_text(&mut db).to("Bye".to_string());
     db.clear_salsa_events();
 
@@ -284,7 +281,6 @@ fn query_was_not_run_fails_if_query_was_run() {
 
     assert_eq!(len(&db, hello), 13);
 
-    // Change the input
     hello.set_text(&mut db).to("Hy".to_string());
     db.clear_salsa_events();
 
@@ -316,7 +312,6 @@ fn const_query_was_not_run_fails_if_query_was_run() {
     let hello = Input::new(&db, "Hello, world!".to_string());
     assert_eq!(len(&db), 5);
 
-    // Create a new revision
     db.clear_salsa_events();
     hello.set_text(&mut db).to("Hy".to_string());
 
@@ -351,7 +346,6 @@ fn query_was_run_fails_if_query_was_not_run() {
     assert_eq!(len(&db, hello), 13);
     assert_eq!(len(&db, goodbye), 8);
 
-    // Change the input of one query
     goodbye.set_text(&mut db).to("Bye".to_string());
     db.clear_salsa_events();
 

@@ -82,7 +82,6 @@ pub(crate) fn verbose_decimal_constructor(
         return;
     }
 
-    // Decimal accepts arguments of the form: `Decimal(value='0', context=None)`
     let Some(value) = call.arguments.find_argument_value("value", 0) else {
         return;
     };
@@ -91,17 +90,8 @@ pub(crate) fn verbose_decimal_constructor(
         Expr::StringLiteral(ast::ExprStringLiteral {
             value: str_literal, ..
         }) => {
-            // Parse the inner string as an integer.
-            //
-            // For reference, a string argument to `Decimal` is parsed in CPython
-            // using this regex:
-            // https://github.com/python/cpython/blob/ac556a2ad1213b8bb81372fe6fb762f5fcb076de/Lib/_pydecimal.py#L6060-L6077
-            // _after_ trimming whitespace from the string and removing all occurrences of "_".
             let original_str = str_literal.to_str().trim_whitespace();
-            // Strip leading underscores before extracting the sign, as Python's Decimal parser
-            // removes underscores before parsing the sign.
             let sign_check_str = original_str.trim_start_matches('_');
-            // Extract the unary sign, if any.
             let (unary, sign_check_str) = if let Some(trimmed) = sign_check_str.strip_prefix('+') {
                 ("+", trimmed)
             } else if let Some(trimmed) = sign_check_str.strip_prefix('-') {
@@ -109,7 +99,6 @@ pub(crate) fn verbose_decimal_constructor(
             } else {
                 ("", sign_check_str)
             };
-            // Save the string after the sign for normalization (before removing underscores)
             let str_after_sign_for_normalization = sign_check_str;
             let mut rest = Cow::from(sign_check_str);
             let has_digit_separators = memchr::memchr(b'_', original_str.as_bytes()).is_some();
@@ -117,31 +106,23 @@ pub(crate) fn verbose_decimal_constructor(
                 rest = Cow::from(rest.replace('_', ""));
             }
 
-            // Early return if we now have an empty string
-            // or a very long string:
             if (rest.len() > PYTHONINTMAXSTRDIGITS) || (rest.is_empty()) {
                 return;
             }
 
-            // Skip leading zeros.
             let rest = rest.trim_start_matches('0');
 
-            // Verify that the rest of the string is a valid integer.
             if !rest.bytes().all(|c| c.is_ascii_digit()) {
                 return;
             }
 
-            // If the original string had digit separators, normalize them
             let rest = if has_digit_separators {
                 Cow::from(normalize_digit_separators(str_after_sign_for_normalization))
             } else {
                 Cow::from(rest)
             };
 
-            // If all the characters are zeros, then the value is zero.
             let rest = match (unary, rest.is_empty()) {
-                // `Decimal("-0")` is not the same as `Decimal("0")`
-                // so we return early.
                 ("-", true) => {
                     return;
                 }
@@ -172,12 +153,10 @@ pub(crate) fn verbose_decimal_constructor(
         Expr::Call(ast::ExprCall {
             func, arguments, ..
         }) => {
-            // Must be a call to the `float` builtin.
             if !checker.semantic().match_builtin_expr(func, "float") {
                 return;
             }
 
-            // Must have exactly one argument, which is a string literal.
             if !arguments.keywords.is_empty() {
                 return;
             }
@@ -189,12 +168,7 @@ pub(crate) fn verbose_decimal_constructor(
             };
 
             let mut replacement = checker.locator().slice(float).to_string();
-            // `Decimal(float("-nan")) == Decimal("nan")`
             if float_str == "-nan" {
-                // Here we do not attempt to remove just the '-' character.
-                // It may have been encoded (e.g. as '\N{hyphen-minus}')
-                // in the original source slice, and the added complexity
-                // does not make sense for this edge case.
                 replacement = "\"nan\"".to_string();
             }
             let mut diagnostic = checker.report_diagnostic(
@@ -223,22 +197,14 @@ pub(crate) fn verbose_decimal_constructor(
 /// - Stripping leading and trailing underscores
 /// - Collapsing medial underscore sequences to single underscores
 fn normalize_digit_separators(original_str: &str) -> String {
-    // Strip leading and trailing underscores
     let trimmed = original_str
         .trim_start_matches(['_', '0'])
         .trim_end_matches('_');
 
-    // Collapse medial underscore sequences to single underscores
     trimmed
         .chars()
         .dedup_by(|a, b| *a == '_' && a == b)
         .collect()
 }
 
-// ```console
-// $ python
-// >>> import sys
-// >>> sys.int_info.str_digits_check_threshold
-// 640
-// ```
 const PYTHONINTMAXSTRDIGITS: usize = 640;

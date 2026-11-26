@@ -105,8 +105,6 @@ where
 
 impl<T> Combine for Vec<T> {
     fn combine_with(&mut self, mut other: Self) {
-        // `self` takes precedence over `other` but values with higher precedence must be placed after.
-        // Swap the vectors so that `other` is the one that gets extended, so that the values of `self` come after.
         std::mem::swap(self, &mut other);
         self.extend(other);
     }
@@ -118,8 +116,6 @@ where
     S: BuildHasher,
 {
     fn combine_with(&mut self, mut other: Self) {
-        // `self` takes precedence over `other` but `extend` overrides existing values.
-        // Swap the hash maps so that `self` is the one that gets extended.
         std::mem::swap(self, &mut other);
         self.extend(other);
     }
@@ -131,16 +127,11 @@ where
     S: BuildHasher,
 {
     fn combine_with(&mut self, mut other: Self) {
-        // `self` takes precedence over `other` but values with higher precedence must be placed after.
-        // Swap the vectors so that `other` is the one that gets extended, so that the values of `self` come after.
         std::mem::swap(self, &mut other);
 
         for (k, v) in other {
-            // If there's an existing entry, remove it to ensure `k` (previously self)
-            // comes after any item in `self`.
             self.remove(&k);
 
-            // Append `k` at the end.
             self.insert(k, v);
         }
     }
@@ -164,7 +155,6 @@ macro_rules! impl_noop_combine {
 impl_noop_combine!(SystemPathBuf);
 impl_noop_combine!(PythonVersion);
 
-// std types
 impl_noop_combine!(bool);
 impl_noop_combine!(usize);
 impl_noop_combine!(u8);
@@ -215,7 +205,6 @@ mod tests {
             Some(a).combine(Some(b)),
             Some(HashMap::from_iter([
                 (0, "b"),
-                // The value from `a` takes precedence
                 (1, "a"),
                 (2, "a"),
                 (3, "a"),
@@ -233,7 +222,6 @@ mod tests {
         assert_eq!(Some(a.clone()).combine(None), Some(a.clone()));
         assert_eq!(
             a.combine(b),
-            // The value from `a` takes precedence
             OrderMap::<_, _>::from_iter([(0, "b"), (5, "b"), (1, "a"), (2, "a"), (3, "a"),])
         );
     }

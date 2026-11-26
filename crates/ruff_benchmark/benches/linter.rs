@@ -33,10 +33,6 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-// Disable decay after 10s because it can show up as *random* slow allocations
-// in benchmarks. We don't need purging in benchmarks because it isn't important
-// to give unallocated pages back to the OS.
-// https://jemalloc.net/jemalloc.3.html#opt.dirty_decay_ms
 #[cfg(all(
     not(target_os = "windows"),
     not(target_os = "openbsd"),
@@ -72,14 +68,12 @@ fn benchmark_linter(mut group: BenchmarkGroup, settings: &LinterSettings) {
             BenchmarkId::from_parameter(case.name()),
             &case,
             |b, case| {
-                // Parse the source.
                 let parsed =
                     parse_module(case.code()).expect("Input should be a valid Python code");
 
                 b.iter_batched(
                     || parsed.clone(),
                     |parsed| {
-                        // Assert that file contains no parse errors
                         assert!(parsed.has_valid_syntax());
 
                         let path = case.path();

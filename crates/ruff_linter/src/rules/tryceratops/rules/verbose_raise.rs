@@ -54,7 +54,6 @@ impl AlwaysFixableViolation for VerboseRaise {
 /// TRY201
 pub(crate) fn verbose_raise(checker: &Checker, handlers: &[ExceptHandler]) {
     for handler in handlers {
-        // If the handler assigned a name to the exception...
         if let ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler {
             name: Some(exception_name),
             body,
@@ -71,7 +70,6 @@ pub(crate) fn verbose_raise(checker: &Checker, handlers: &[ExceptHandler]) {
                     continue;
                 }
                 if let Some(exc) = raise.exc.as_ref() {
-                    // ...and the raised object is bound to the same name...
                     if let Expr::Name(ast::ExprName { id, .. }) = exc.as_ref() {
                         if id == exception_name.as_str() {
                             let mut diagnostic =

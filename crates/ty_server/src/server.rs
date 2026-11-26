@@ -116,8 +116,6 @@ impl Server {
             }),
         )?;
 
-        // An edit can wait for database snapshots held by queued jobs. Workers must be
-        // able to return their results while the main loop waits for those snapshots.
         let (main_loop_sender, main_loop_receiver) = crossbeam::channel::unbounded();
         let client = Client::new(main_loop_sender.clone(), connection.sender.clone());
 
@@ -126,7 +124,6 @@ impl Server {
             warn_about_unknown_options(&client, None, unknown_options);
         }
 
-        // Get workspace URLs without settings - settings will come from workspace/configuration
         let workspace_urls = workspace_folders
             .and_then(|folders| {
                 if let WorkspaceFolders::WorkspaceFolderList(folders) = folders
@@ -201,7 +198,7 @@ impl Server {
                 encodings
                     .iter()
                     .filter_map(|encoding| PositionEncoding::try_from(encoding).ok())
-                    .max() // this selects the highest priority position encoding
+                    .max()
             })
             .unwrap_or_default()
     }
@@ -211,7 +208,6 @@ type PanicHook = Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>;
 
 struct ServerPanicHookHandler {
     hook: Option<PanicHook>,
-    // Hold on to the strong reference for as long as the panic hook is set.
     _client: Arc<Client>,
 }
 
@@ -220,20 +216,14 @@ impl ServerPanicHookHandler {
         let hook = std::panic::take_hook();
         let client = Arc::new(client);
 
-        // Use a weak reference to the client because it must be dropped when exiting or the
-        // io-threads join hangs forever (because client has a reference to the connection sender).
         let hook_client = Arc::downgrade(&client);
 
-        // When we panic, try to notify the client.
         std::panic::set_hook(Box::new(move |panic_info| {
             use std::io::Write;
 
             let backtrace = std::backtrace::Backtrace::force_capture();
             tracing::error!("{panic_info}\n{backtrace}");
 
-            // we also need to print to stderr directly for when using `$logTrace` because
-            // the message won't be sent to the client.
-            // But don't use `eprintln` because `eprintln` itself may panic if the pipe is broken.
             let mut stderr = std::io::stderr().lock();
             writeln!(stderr, "{panic_info}\n{backtrace}").ok();
 
@@ -255,7 +245,6 @@ impl ServerPanicHookHandler {
 impl Drop for ServerPanicHookHandler {
     fn drop(&mut self) {
         if std::thread::panicking() {
-            // Calling `std::panic::set_hook` while panicking results in a panic.
             return;
         }
 

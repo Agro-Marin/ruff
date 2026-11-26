@@ -154,7 +154,6 @@ pub(crate) fn unnecessary_list_set_comprehension(
     }
     if is_dict_items(checker, &generator.iter) {
         match (&generator.target, elt) {
-            // [(k, v) for k, v in dict.items()] or [(k, v) for [k, v] in dict.items()]
             (
                 Expr::Tuple(ast::ExprTuple {
                     elts: target_elts, ..
@@ -184,7 +183,6 @@ pub(crate) fn unnecessary_list_set_comprehension(
                     add_diagnostic(checker, expr);
                 }
             }
-            // [x for x in dict.items()]
             (
                 Expr::Name(ast::ExprName {
                     id: target_name, ..
@@ -196,7 +194,6 @@ pub(crate) fn unnecessary_list_set_comprehension(
             _ => {}
         }
     } else {
-        // [x for x in iterable]
         let Expr::Name(ast::ExprName {
             id: target_name, ..
         }) = &generator.target

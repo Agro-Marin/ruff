@@ -96,7 +96,6 @@ fn generate_table(
 
         let message = rule.message_formats()[0];
 
-        // Start and end of style spans
         let mut ss = "";
         let mut se = "";
         if rule.is_removed() {
@@ -121,7 +120,6 @@ fn generate_table(
                     .join(", "),
                 prefix => prefix.to_string(),
             };
-            // The linter names for Ruff and NumPy are suffixed with "-specific rules."
             let name = linter.name().trim_end_matches("-specific rules");
             let slug = format!(
                 "{}-{}",
@@ -136,7 +134,6 @@ fn generate_table(
                 "No originating linter".to_string(),
             )
         };
-        // Preserve links to the old linter headings on their first table row.
         let linter_anchor = if seen_anchors.insert(linter_slug.clone()) {
             linters.insert(
                 linter_label.to_lowercase(),
@@ -149,7 +146,6 @@ fn generate_table(
 
         if let Some(code) = code {
             table_out.push_str("| ");
-            // The former subgroups have separate anchors in addition to each rule's code.
             if let Some(linter) = linter
                 && let Some(category) = rule.upstream_category(&linter)
             {
@@ -168,8 +164,6 @@ fn generate_table(
             let _ = write!(table_out, "| {ss}—{se} {{ .rule-code }} ");
         }
 
-        // Message placeholders can be mistaken for an attribute list on the table cell.
-        // Keep the identity class on an HTML wrapper so messages retain their Markdown.
         let _ = write!(
             table_out,
             "| <span class='rule-identity'>{ss}[`{rule_name}`](rules/{rule_name}.md)<br>{message}{se}</span> \
@@ -182,7 +176,6 @@ fn generate_table(
     }
     table_out.push('\n');
 
-    // Reuse the table's linter labels and slugs for the filter options.
     let category_options = Category::iter()
         .map(|category| {
             format!("<label><input type='checkbox' name='category' value='{category}' checked> {category}</label>")
@@ -205,7 +198,6 @@ fn generate_table(
 }
 
 pub(crate) fn generate() -> String {
-    // Generate the table string.
     let mut table_out = String::new();
 
     table_out.push_str("<details markdown=\"1\">\n<summary>Rule legend</summary>\n\n### Legend");

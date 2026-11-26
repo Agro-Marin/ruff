@@ -72,9 +72,6 @@ export default function Editor({
   );
   const [selection, setSelection] = useState<number | null>(null);
 
-  // Ideally this would be retrieved right from the URL... but routing without a proper
-  // router is hard (there's no location changed event) and pulling in a router
-  // feels overkill.
   const handleSecondaryToolSelected = (tool: SecondaryTool | null) => {
     if (tool === secondaryTool) {
       tool = null;
@@ -333,21 +330,17 @@ function parseSecondaryTool(tool: string): SecondaryTool | null {
 }
 
 function byteOffsetToCharOffset(content: string, byteOffset: number): number {
-  // Create a Uint8Array from the UTF-8 string
   const encoder = new TextEncoder();
   const utf8Bytes = encoder.encode(content);
 
-  // Slice the byte array up to the byteOffset
   const slicedBytes = utf8Bytes.slice(0, byteOffset);
 
-  // Decode the sliced bytes to get a substring
   const decoder = new TextDecoder("utf-8");
   const decodedString = decoder.decode(slicedBytes);
   return decodedString.length;
 }
 
 function charOffsetToByteOffset(content: string, charOffset: number): number {
-  // Create a Uint8Array from the UTF-8 string
   const encoder = new TextEncoder();
   const utf8Bytes = encoder.encode(content.substring(0, charOffset));
 

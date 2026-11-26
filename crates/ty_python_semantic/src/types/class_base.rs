@@ -186,13 +186,6 @@ impl<'db> ClassBase<'db> {
                     return Some(ClassBase::TypedDict(module));
                 }
 
-                // We do not support full unions of MROs (yet). Until we do,
-                // support the cases where one of the types in the union is
-                // a dynamic type such as `Any` or `Unknown`, and all other
-                // types *would be* valid class bases. In this case, we can
-                // "fold" the other potential bases into the dynamic type,
-                // and return `Any`/`Unknown` as the class base to prevent
-                // invalid-base diagnostics and further downstream errors.
                 let Some(Type::Dynamic(dynamic)) = union
                     .elements(db)
                     .iter()
@@ -211,10 +204,8 @@ impl<'db> ClassBase<'db> {
                     None
                 }
             }
-            Type::NominalInstance(_) => None, // TODO -- handle `__mro_entries__`?
+            Type::NominalInstance(_) => None,
 
-            // This likely means that we're in unreachable code,
-            // in which case we want to treat `Never` in a forgiving way and silence diagnostics
             Type::Never => Some(ClassBase::unknown()),
 
             Type::TypeAlias(alias) => Self::try_from_type(db, env, alias.value_type(db), subclass),
@@ -248,9 +239,6 @@ impl<'db> ClassBase<'db> {
             Type::KnownInstance(known_instance) => match known_instance {
                 KnownInstanceType::SubscriptedGeneric(_) => Some(Self::Generic),
                 KnownInstanceType::SubscriptedProtocol(_) => Some(Self::Protocol),
-                // A class inheriting from a newtype would make intuitive sense, but newtype
-                // wrappers are just identity callables at runtime, so this sort of inheritance
-                // doesn't work and isn't allowed.
                 KnownInstanceType::NewType(_) => None,
                 KnownInstanceType::TypeAliasType(_)
                 | KnownInstanceType::TypeVar(_)
@@ -335,7 +323,6 @@ impl<'db> ClassBase<'db> {
                     )
                 }
 
-                // TODO: Classes inheriting from `typing.Type` also have `Generic` in their MRO
                 SpecialFormType::Type => Self::try_from_type(
                     db,
                     env,
@@ -475,10 +462,6 @@ impl<'db> ClassBase<'db> {
         match self {
             ClassBase::Class(class) => {
                 let Some((class_literal, specialization)) = class.static_class_literal(db) else {
-                    // Dynamic classes can't have cyclic MRO since their bases must
-                    // already exist at creation time. Unlike statement classes, we do not
-                    // permit dynamic classes to have forward references in their
-                    // bases list.
                     return false;
                 };
                 class_literal

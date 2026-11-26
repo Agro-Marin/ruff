@@ -85,16 +85,6 @@ pub(crate) fn raise_without_from_inside_except(
     for (range, exc, cause) in raises {
         if cause.is_none() {
             if let Some(exc) = exc {
-                // If the raised object is bound to the same name, it's a re-raise, which is
-                // allowed (but may be flagged by other diagnostics).
-                //
-                // For example:
-                // ```python
-                // try:
-                //     ...
-                // except ValueError as exc:
-                //     raise exc
-                // ```
                 if let Some(name) = name {
                     if exc
                         .as_name_expr()

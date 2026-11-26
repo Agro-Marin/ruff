@@ -72,11 +72,7 @@ where
 
         let enclosing_node = self.parents.last().copied();
 
-        // Process all remaining comments that end before this node's start position.
-        // If the `preceding` node is set, then it process all comments ending after the `preceding` node
-        // and ending before this node's start position
         while let Some(SuppressionComment { range, kind }) = self.comments.peek().copied() {
-            // Exit if the comment is enclosed by this node or comes after it
             if range.end() > node_range.start() {
                 break;
             }
@@ -96,7 +92,6 @@ where
             self.comments.next();
         }
 
-        // From here on, we're inside of `node`, meaning, we're passed the preceding node.
         self.preceding_node = None;
         self.parents.push(node);
 
@@ -112,21 +107,12 @@ where
 
         let node_end = node.end();
 
-        // Process all comments that start after the `preceding` node and end before this node's end.
         while let Some(SuppressionComment { range, kind }) = self.comments.peek().copied() {
             let line_position = CommentLinePosition::for_range(range, self.locator.contents());
             if range.start() >= node_end {
                 let between = TextRange::new(node_end, range.start());
-                // Check if a non-trivial token exists between the end of this node and the start of the comment.
-                // If it doesn't, that means this comment could possibly be a trailing comment that comes after the
-                // end of this node.
-                // For example:
-                // ```
-                // def func(x):
                 //     pass # fmt: skip
-                // ```
                 // We want to make sure that `# fmt: skip` is associated with the `pass` statement,
-                // even though it comes after the end of that node.
                 if SimpleTokenizer::new(self.locator.contents(), between)
                     .skip_trivia()
                     .next()
@@ -134,18 +120,9 @@ where
                 {
                     break;
                 }
-                // If the comment is on its own line, it could still be a trailing comment if it has a greater
-                // level of indentation compared to this node. For example:
-                // ```
-                // def func(x):
                 //     # fmt: off
-                //     pass
                 //     # fmt: on
-                // def func2(y):
-                //     pass
-                // ```
                 // We want `# fmt: on` to be considered a trailing comment of `func(x)` instead of a leading comment
-                // on `func2(y)`.
                 if line_position.is_own_line() {
                     let comment_indent =
                         comment_indentation_after(node, range, self.locator.contents());
@@ -177,16 +154,12 @@ where
     fn visit_body(&mut self, body: &'ast [ruff_python_ast::Stmt]) {
         match body {
             [] => {
-                // no-op
             }
             [only] => {
                 self.visit_stmt(only);
             }
             [first, .., last] => {
                 if self.can_skip(last.end()) {
-                    // Skip traversing the body when there's no comment between the first and last statement.
-                    // It is still necessary to visit the first statement to process all comments between
-                    // the previous node and the first statement.
                     self.visit_stmt(first);
                     self.preceding_node = Some(last.into());
                 } else {
@@ -197,7 +170,6 @@ where
     }
 
     fn visit_identifier(&mut self, _identifier: &'ast ruff_python_ast::Identifier) {
-        // Skip identifiers, matching the formatter comment extraction
     }
 }
 

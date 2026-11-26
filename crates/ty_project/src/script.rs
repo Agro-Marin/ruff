@@ -54,8 +54,6 @@ pub(crate) struct Script<'db> {
 impl<'db> Script<'db> {
     /// Returns the script for `file` without creating a second Salsa memo for ordinary files.
     pub(crate) fn for_file(db: &'db dyn Db, file: File) -> Option<Self> {
-        // Most files are not scripts. Check the existing tag query first so ordinary files
-        // do not also allocate a tracked `script` memo just to cache another `None`.
         script_tag(db, file)?;
         script(db, file)
     }
@@ -87,7 +85,6 @@ impl get_size2::GetSize for Script<'_> {}
 /// Resolve the `Script` for `file` if it has a PEP 723 metadata block or `None` otherwise.
 #[salsa::tracked(returns(copy), heap_size=ruff_memory_usage::heap_size)]
 pub(crate) fn script(db: &dyn Db, file: File) -> Option<Script<'_>> {
-    // Ordinary files must not depend on project membership.
     let tag = script_tag(db, file)?;
     if !crate::is_project_file(db, file) {
         return None;
@@ -99,7 +96,6 @@ pub(crate) fn script(db: &dyn Db, file: File) -> Option<Script<'_>> {
         Ok(metadata) => metadata,
         Err(error) => {
             diagnostics.report_invalid(error.clone());
-            // Build a best-effort program for editor features using empty inline metadata.
             fallback_metadata = ScriptMetadata::default();
             &fallback_metadata
         }
@@ -109,8 +105,6 @@ pub(crate) fn script(db: &dyn Db, file: File) -> Option<Script<'_>> {
 
     let project_metadata = db.project().metadata(db);
     let (mut options, root) = if let Some(inline_options) = inline_script_options(db, file) {
-        // A script with it's own `tool.ty` table uses its own inline settings over the project settings.
-        // Merge and validate the settings (`file_settings` can't report diagnostics).
         let mut script_options = inline_options.clone();
         metadata.apply_requires_python(file, &mut script_options, &mut diagnostics);
         let options = merge_script_options(project_metadata, &script_options);
@@ -122,7 +116,6 @@ pub(crate) fn script(db: &dyn Db, file: File) -> Option<Script<'_>> {
                 .map(|diagnostic| diagnostic.to_diagnostic()),
         );
 
-        // Report diagnostics for other options that need resolving: e.g. invalid globs.
         if let Some(analysis) = &options.analysis {
             let mut errors = Vec::new();
             analysis.to_settings(db, AnalysisOptionsContext::TopLevel, &mut errors);
@@ -131,7 +124,6 @@ pub(crate) fn script(db: &dyn Db, file: File) -> Option<Script<'_>> {
             }
         }
 
-        // Future: Consider reporting a diagnostic for unused tables, e.g. `tool.src`
         let root = file
             .path(db)
             .as_system_path()
@@ -140,17 +132,13 @@ pub(crate) fn script(db: &dyn Db, file: File) -> Option<Script<'_>> {
 
         (options, root)
     } else {
-        // A script without its own `tool.ty` table. Use the project settings instead.
-        // The settings were already validated by the project.
         let mut script_options = Options::default();
         let base_options = if project_metadata.config_file_override().is_some() {
             project_metadata.options()
         } else {
-            // Respect a script's `requires-python` option
             metadata.apply_requires_python(file, &mut script_options, &mut diagnostics);
             script_options.combine_with(project_metadata.options().clone());
             if let Some(environment) = &mut script_options.environment {
-                // Each script is a standalone program with its own first-party roots.
                 environment.root = None;
             }
             &script_options
@@ -181,8 +169,6 @@ pub(crate) fn script(db: &dyn Db, file: File) -> Option<Script<'_>> {
     }
 
     if options.script_uses_uv() == Some(true) {
-        // Isolate the script from the project's Python environment, even before uv provides
-        // the script's own environment.
         options.environment.get_or_insert_default().python = environment
             .and_then(|environment| environment.uv_metadata(db))
             .and_then(UvMetadata::environment)
@@ -235,8 +221,6 @@ pub(crate) fn use_uv_for_script(db: &dyn Db, file: File) -> bool {
 /// Callers can read these unmerged options before indexing the project.
 /// User configuration, LSP, CLI etc. have not been applied.
 pub(crate) fn inline_script_options(db: &dyn Db, file: File) -> Option<&Options> {
-    // Check the tag first so ordinary files skip the project lookup and avoid caching
-    // a second `None` in `script_metadata`.
     script_tag(db, file)?;
 
     if db.project().metadata(db).config_file_override().is_some() {
@@ -256,7 +240,6 @@ pub fn script_tag(db: &dyn SourceDb, file: File) -> Option<Box<ScriptTag>> {
         return None;
     }
 
-    // Notebook outputs can be large, so skip notebooks before reading their contents.
     if is_notebook(db, file) {
         return None;
     }
@@ -304,12 +287,10 @@ fn script_metadata(db: &dyn Db, file: File) -> Option<Box<Result<ScriptMetadata,
 
 fn merge_script_options(project_metadata: &ProjectMetadata, base_options: &Options) -> Options {
     let mut options = Options::default();
-    // Merge the options with CLI, LSP, user configuration, and fallback options
     for layer in project_metadata.options_in_precedence_order(base_options, None) {
         options.combine_with(layer.clone());
     }
 
-    // Unlike projects, standalone scripts default to `root = []`.
     options
         .environment
         .get_or_insert_default()
@@ -370,7 +351,6 @@ fn resolve_script_program_settings(
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, get_size2::GetSize)]
 #[serde(rename_all = "kebab-case")]
 struct ScriptMetadata {
-    // VersionSpecifiers does not expose its heap allocation.
     #[get_size(ignore)]
     requires_python: Option<RangedValue<VersionSpecifiers>>,
     tool: Option<Tool>,
@@ -495,7 +475,6 @@ mod tests {
         db.take_salsa_events();
         source_text(&db, notebook);
         let events = db.take_salsa_events();
-        // This assertion would fail if index already read the full text of notebook.
         assert_function_query_was_run(&db, source_text, notebook, &events);
 
         Ok(())

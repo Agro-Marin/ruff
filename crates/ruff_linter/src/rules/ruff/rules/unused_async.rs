@@ -76,7 +76,6 @@ impl<'a> source_order::SourceOrderVisitor<'a> for AsyncExprVisitor {
             Stmt::For(ast::StmtFor { is_async: true, .. }) => {
                 self.found_await_or_async = true;
             }
-            // avoid counting inner classes' or functions' bodies toward the search
             Stmt::FunctionDef(function_def) => {
                 function_def_visit_preorder_except_body(function_def, self);
             }
@@ -188,7 +187,6 @@ pub(crate) fn unused_async(
         return;
     }
 
-    // Ignore stubs (e.g., `...`).
     if is_stub(function_def, checker.semantic()) {
         return;
     }
@@ -199,8 +197,6 @@ pub(crate) fn unused_async(
         return;
     }
 
-    // Ignore functions decorated with `contextlib.asynccontextmanager`, which are
-    // required to be `async` even if they don't use `await`.
     if is_async_context_manager(function_def, checker.semantic()) {
         return;
     }

@@ -145,13 +145,10 @@ fn reverse_comparison(range: TextRange, locator: &Locator, stylist: &Stylist) ->
 
         let left = (*comparison.left).clone();
 
-        // Copy the right side to the left side.
         *comparison.left = comparison.comparisons[0].comparator.clone();
 
-        // Copy the left side to the right side.
         comparison.comparisons[0].comparator = left;
 
-        // Reverse the operator.
         let op = comparison.comparisons[0].operator.clone();
         comparison.comparisons[0].operator = match op {
             CompOp::LessThan {

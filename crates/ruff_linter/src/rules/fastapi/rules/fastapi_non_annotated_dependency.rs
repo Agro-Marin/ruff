@@ -114,8 +114,6 @@ pub(crate) fn fastapi_non_annotated_dependency(
         return;
     }
 
-    // `create_diagnostic` needs to know if a default argument has been seen to
-    // avoid emitting fixes that would remove defaults and cause a syntax error.
     let mut seen_default = false;
 
     for parameter in function_def
@@ -255,14 +253,7 @@ fn create_diagnostic(
     let try_generate_fix = || {
         let (import_edit, binding) = importer.import(parameter.range.start())?;
 
-        // Each of these classes takes a single, optional default
-        // argument, followed by kw-only arguments
 
-        // Refine the match from `is_fastapi_dependency` to exclude Depends
-        // and Security, which don't have the same argument structure. The
-        // others need to be converted from `q: str = Query("")` to `q:
-        // Annotated[str, Query()] = ""` for example, but Depends and
-        // Security need to stay like `Annotated[str, Depends(callable)]`
         let is_route_param = !matches!(
             parameter.kind,
             FastApiDependency::Depends | FastApiDependency::Security
@@ -277,14 +268,12 @@ fn create_diagnostic(
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                // Check if the default argument is ellipsis (...), which in FastAPI means "required"
                 let is_default_argument_ellipsis = matches!(
                     dependency_call.default_argument.value(),
                     ast::Expr::EllipsisLiteral(_)
                 );
 
                 if is_default_argument_ellipsis && seen_default {
-                    // For ellipsis after a parameter with default, can't remove the default
                     diagnostic.info(
                         "Automatic fix is unavailable because a required parameter \
                         would follow an optional parameter. \
@@ -294,7 +283,6 @@ fn create_diagnostic(
                 }
 
                 if !is_default_argument_ellipsis {
-                    // For actual default values, mark that we've seen a default
                     seen_default = true;
                 }
 
@@ -308,11 +296,8 @@ fn create_diagnostic(
                 );
 
                 if is_default_argument_ellipsis {
-                    // For ellipsis, don't add a default value since the parameter
-                    // should remain required after conversion to Annotated
                     base_format
                 } else {
-                    // For actual default values, preserve them
                     let default_value = checker
                         .locator()
                         .slice(dependency_call.default_argument.value().range());
@@ -340,9 +325,6 @@ fn create_diagnostic(
         Ok(Some(Fix::unsafe_edits(import_edit, [parameter_edit])))
     };
 
-    // make sure we set `seen_default` if we bail out of `try_generate_fix` early. we could
-    // `match` on the result directly, but still calling `try_set_optional_fix` avoids
-    // duplicating the debug logging here
     let fix: anyhow::Result<Option<Fix>> = try_generate_fix();
     if fix.is_err() {
         seen_default = true;

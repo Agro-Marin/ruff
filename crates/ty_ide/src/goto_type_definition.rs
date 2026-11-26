@@ -107,8 +107,6 @@ mod tests {
         ");
     }
 
-    // this is a slightly different case to the one above,
-    // since `Any` is a class in typeshed rather than a variable
     #[test]
     fn goto_type_of_typing_dot_any() {
         let test = cursor_test(
@@ -133,7 +131,6 @@ mod tests {
         ");
     }
 
-    // Similarly, `Generic` is a `type[]` type in typeshed
     #[test]
     fn goto_type_of_typing_dot_generic() {
         let test = cursor_test(
@@ -497,7 +494,6 @@ mod tests {
             .build();
 
         test.write_file("lib/__init__.py", "lib = 1").unwrap();
-        // test.write_file("lib/sub/__init__.py", "sub = 2").unwrap();
         test.write_file("lib/sub/bot/__init__.py", "bot = 3")
             .unwrap();
         test.write_file("lib/sub/submod.py", "submod = 21").unwrap();
@@ -531,7 +527,6 @@ mod tests {
             .build();
 
         test.write_file("lib/__init__.py", "lib = 1").unwrap();
-        // test.write_file("lib/sub/__init__.py", "sub = 2").unwrap();
         test.write_file("lib/sub/bot/__init__.py", "bot = 3")
             .unwrap();
         test.write_file("lib/sub/submod.py", "submod = 21").unwrap();
@@ -565,7 +560,6 @@ mod tests {
             .build();
 
         test.write_file("lib/__init__.py", "lib = 1").unwrap();
-        // test.write_file("lib/sub/__init__.py", "sub = 2").unwrap();
         test.write_file("lib/sub/bot/__init__.py", "bot = 3")
             .unwrap();
         test.write_file("lib/sub/submod.py", "submod = 21").unwrap();
@@ -599,7 +593,6 @@ mod tests {
             .build();
 
         test.write_file("lib/__init__.py", "lib = 1").unwrap();
-        // test.write_file("lib/sub/__init__.py", "sub = 2").unwrap();
         test.write_file("lib/sub/bot/__init__.py", "bot = 3")
             .unwrap();
         test.write_file("lib/sub/submod.py", "submod = 21").unwrap();
@@ -1566,9 +1559,6 @@ mod tests {
             "#,
         );
 
-        // TODO: This should jump to `str` and not `int` because
-        //   the keyword is typed as a string. It's only the passed argument that
-        //   is an int. Navigating to `str` would match pyright's behavior.
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
           --> main.py:LL:6
@@ -1625,7 +1615,6 @@ def outer():
 "#,
         );
 
-        // Should find the variable declaration in the outer scope, not the nonlocal statement
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
           --> main.py:LL:16
@@ -1656,7 +1645,6 @@ def outer():
 "#,
         );
 
-        // Should find the variable declaration in the outer scope, not the nonlocal statement
         assert_snapshot!(test.goto_type_definition(), @"No goto target found");
     }
 
@@ -1851,7 +1839,6 @@ def function():
             )
             .build();
 
-        // The module is the correct type definition
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
          --> mypackage/__init__.py:4:5
@@ -1886,7 +1873,6 @@ def function():
             )
             .build();
 
-        // The module is the correct type definition
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
          --> mypackage/__init__.py:2:7
@@ -1921,7 +1907,6 @@ def function():
             )
             .build();
 
-        // Unknown is correct, `submod` is not in scope
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
           --> mypackage/__init__.py:LL:5
@@ -1956,7 +1941,6 @@ def function():
             )
             .build();
 
-        // The module is correct
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
          --> mypackage/__init__.py:2:14
@@ -1991,7 +1975,6 @@ def function():
             )
             .build();
 
-        // The module is correct
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
          --> mypackage/__init__.py:2:7
@@ -2026,7 +2009,6 @@ def function():
             )
             .build();
 
-        // `int` is correct
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
           --> mypackage/__init__.py:LL:21
@@ -2060,7 +2042,6 @@ def function():
             )
             .build();
 
-        // `int` is correct
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
           --> mypackage/__init__.py:LL:5

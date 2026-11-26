@@ -111,15 +111,12 @@ impl SemanticModel<'_> {
                 let mut current_left = left;
                 let mut current_right = right;
                 loop {
-                    // Process the right side, which should be a "real" value.
                     let (elts, new_flags) = self.extract_dunder_all_elts(current_right);
                     flags |= new_flags;
                     if let Some(elts) = elts {
                         add_to_names(elts, &mut names, &mut flags);
                     }
 
-                    // Process the left side, which can be a "real" value or the "rest" of the
-                    // binary operation.
                     if let Expr::BinOp(ast::ExprBinOp { left, right, .. }) = current_left.as_ref() {
                         current_left = left;
                         current_right = right;
@@ -156,18 +153,14 @@ impl SemanticModel<'_> {
                 return (Some(elts), DunderAllFlags::empty());
             }
             Expr::ListComp(_) => {
-                // Allow comprehensions, even though we can't statically analyze them.
                 return (None, DunderAllFlags::empty());
             }
-            // Ex) `__all__ = __all__ + multiprocessing.__all__`
             Expr::Name(ast::ExprName { id, .. }) if id == "__all__" => {
                 return (None, DunderAllFlags::empty());
             }
-            // Ex) `__all__ = __all__ + multiprocessing.__all__`
             Expr::Attribute(ast::ExprAttribute { attr, .. }) if attr == "__all__" => {
                 return (None, DunderAllFlags::empty());
             }
-            // Allow `tuple()`, `list()`, and their generic forms, like `list[int]()`.
             Expr::Call(ast::ExprCall {
                 func, arguments, ..
             }) if arguments.keywords.is_empty()
@@ -186,15 +179,11 @@ impl SemanticModel<'_> {
                         return (Some(elts), DunderAllFlags::empty());
                     }
                     _ => {
-                        // We can't analyze other expressions, but they must be
-                        // valid, since the `list` or `tuple` call will ultimately
-                        // evaluate to a list or tuple.
                         return (None, DunderAllFlags::empty());
                     }
                 }
             }
             Expr::Named(ast::ExprNamed { value, .. }) => {
-                // Allow, e.g., `__all__ += (value := ["A", "B"])`.
                 return self.extract_dunder_all_elts(value);
             }
             _ => {}

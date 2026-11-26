@@ -48,8 +48,6 @@ pub fn before_main() {
     }
 
     // Salsa uses the `inventory` crate, which registers global constructors that may need to be
-    // called explicitly on WASM. See <https://github.com/dtolnay/inventory/blob/master/src/lib.rs#L105>
-    // for details.
     unsafe {
         __wasm_call_ctors();
     }
@@ -64,12 +62,6 @@ pub fn run() {
 
     ruff_db::set_program_version(version()).unwrap();
 
-    // When the `console_error_panic_hook` feature is enabled, we can call the
-    // `set_panic_hook` function at least once during initialization, and then
-    // we will get better error messages if our code ever panics.
-    //
-    // For more details see
-    // https://github.com/rustwasm/console_error_panic_hook#readme
     #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
 }
@@ -137,8 +129,6 @@ impl Workspace {
 
         let mut db = ProjectDatabase::fallible(project, system.clone()).map_err(into_error)?;
 
-        // By default, it will check all files in the project but we only want to check the open
-        // files in the playground.
         db.set_check_mode(CheckMode::OpenFiles);
 
         Ok(Self {
@@ -245,7 +235,6 @@ impl Workspace {
 
         self.db.project().close_file(&mut self.db, file);
 
-        // Only close system files (vendored files can't be closed/deleted)
         if let Some(system_path) = file_id.path.as_system_path() {
             self.system
                 .fs
@@ -582,7 +571,6 @@ impl Workspace {
             &self.db,
             self.db.program_file(file_id.file),
             range.to_text_range(&index, &source, self.position_encoding)?,
-            // TODO: Provide a way to configure this
             &InlayHintSettings {
                 variable_types: true,
                 call_argument_names: true,
@@ -686,17 +674,11 @@ impl Workspace {
         file_id: &FileHandle,
         diagnostic: &Diagnostic,
     ) -> Option<Vec<CodeAction>> {
-        // If the diagnostic includes fixes, offer those up as options.
         let mut actions = Vec::new();
         if let Some(action) = diagnostic.code_action(self) {
             actions.push(action);
         }
 
-        // Try to find other applicable actions.
-        //
-        // This is only for actions that are messy to compute at the time of the diagnostic.
-        // For instance, suggesting imports requires finding symbols for the entire project,
-        // which is dubious when you're in the middle of resolving symbols.
         if let Some(range) = diagnostic.inner.range() {
             actions.extend(
                 ty_ide::code_actions(
@@ -810,7 +792,6 @@ impl Workspace {
     pub fn get_vendored_file(&self, path: &str) -> Result<FileHandle, Error> {
         let vendored_path = VendoredPath::new(path);
 
-        // Try to get the vendored file as a File
         let file = vendored_path_to_file(&self.db, vendored_path)
             .map_err(|err| Error::new(&format!("Vendored file not found: {path}: {err}")))?;
 
@@ -1635,8 +1616,6 @@ impl System for WasmSystem {
         first: &SystemPath,
         second: &SystemPath,
     ) -> ruff_db::system::Result<bool> {
-        // The in-memory file system does not support hard links, so canonical paths uniquely
-        // identify files.
         Ok(self.canonicalize_path(first)? == self.canonicalize_path(second)?)
     }
 

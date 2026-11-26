@@ -161,9 +161,6 @@ impl Index {
             }
         }
 
-        // VS Code sends a separate `didClose` request for every cell
-        // and they're removed from the metadata (notebook document)
-        // because they get deleted as part of `change.cells.structure.array`
         let _ = did_close;
 
         let notebook = self.document(notebook_key).unwrap().as_notebook().unwrap();

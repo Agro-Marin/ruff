@@ -186,13 +186,10 @@ impl RedundantConditionContext {
         condition: &RedundantCondition<'_, '_>,
     ) -> bool {
         match condition.kind {
-            // These checks should always be considered suspicious.
             ConditionKind::NoneUnion(_) | ConditionKind::Iterable | ConditionKind::Callable(_) => {
                 return false;
             }
 
-            // These checks are exempted if they are clearly part of a "defensive exit"
-            // that asserts that a branch is unreachable
             ConditionKind::Boolean | ConditionKind::ShortCircuit => {
                 let defensive = match self {
                     Self::Assertion => true,
@@ -218,17 +215,6 @@ impl RedundantConditionContext {
         }
 
         match condition.expression {
-            // The inferred types for these will always be the same,
-            // even if a subexpression is defined in terms of `sys.version_info`, `sys.platform`, `os.name`, or
-            // `typing.TYPE_CHECKING`. We don't need to recurse into them *at the top level*, and it's more
-            // accurate not to do so.
-            //
-            // Note that this is only true at the *top level* of the condition!
-            //
-            // We *do* need to recurse into subexpressions of a generator expression, for example, if that
-            // generator is a subexpression of a call expression, e.g.
-            // `any(x for x in range(10) if sys.version_info >= (3, 14))`. Similar concerns apply to lambdas,
-            // which can be eagerly called, etc. etc.
             ast::Expr::StringLiteral(_)
             | ast::Expr::BytesLiteral(_)
             | ast::Expr::NumberLiteral(_)
@@ -245,10 +231,6 @@ impl RedundantConditionContext {
             | ast::Expr::TString(_)
             | ast::Expr::NoneLiteral(_) => false,
 
-            // These expressions can contain subexpressions that are defined in terms of `sys.version_info`,
-            // `sys.platform`, `os.name`, or `typing.TYPE_CHECKING`. We need to recurse into them to check for
-            // those subexpressions, since the type of the overall expression can depend on the types of those
-            // subexpressions.
             ast::Expr::Name(_)
             | ast::Expr::UnaryOp(_)
             | ast::Expr::If(_)
@@ -317,7 +299,6 @@ impl RedundantConditionContext {
     /// do not inherit its [defensive-exit exemptions](Self::DefensiveExit).
     pub(super) const fn nested_test(self) -> Self {
         match self {
-            // Assertions also exempt boolean tests embedded in calls or other value expressions.
             Self::Assertion => self,
             Self::Standalone | Self::DefensiveExit { .. } => Self::Standalone,
         }
@@ -381,7 +362,6 @@ pub(super) fn condition_definition_info<'db>(
     expression: &ast::Expr,
     expression_type: impl FnMut(&ast::Expr) -> Type<'db>,
 ) -> ConditionDefinitionInfo<'db> {
-    // Walking assignment expressions also visits their targets, which have no use-site bindings.
     match expression {
         ast::Expr::Name(name) if name.ctx.is_load() => {}
         ast::Expr::Attribute(attribute) if attribute.ctx.is_load() => {}
@@ -533,19 +513,6 @@ fn definition_reachability<'db>(
     scope: ScopeId<'db>,
     place: ScopedPlaceId,
 ) -> FxHashMap<Definition<'db>, ScopedReachabilityConstraintId> {
-    // A place is a variable or attribute, and several definitions can bind the same place.
-    // Each map entry records the paths from the start of the scope to that binding. For example:
-    //
-    // ```python
-    // if sys.platform == "win32":
-    //     prefix = "\n"
-    // else:
-    //     prefix = ""
-    // ```
-    //
-    // The map for `prefix` has two entries: the `"\n"` binding is guarded by the platform
-    // comparison, and the `""` binding by its negation. The constraint IDs refer to those
-    // formulas in the scope's use-def map, not the conditions' evaluated truthiness.
     let mut reachability: FxHashMap<_, _> = use_def_map(db, scope)
         .reachable_bindings(place)
         .filter_map(|binding| {
@@ -626,8 +593,6 @@ fn owning_scope_condition_definition_info<'db>(
     cycle_initial = |_, _, _, _| ConditionDefinitionInfo::default(),
     heap_size = ruff_memory_usage::heap_size
 )]
-// Salsa copies this attribute to both the query wrapper and its inner function. The wrapper
-// consumes `name`, so `#[expect]` would produce an unfulfilled lint expectation there.
 #[allow(clippy::needless_pass_by_value, reason = "Salsa owns the query key")]
 fn name_condition_definition_info<'db>(
     db: &'db dyn Db,
@@ -650,8 +615,6 @@ fn name_condition_definition_info<'db>(
     cycle_initial = |_, _, _, _, _| ConditionDefinitionInfo::default(),
     heap_size = ruff_memory_usage::heap_size
 )]
-// Salsa copies this attribute to both the query wrapper and its inner function. The wrapper
-// consumes `name`, so `#[expect]` would produce an unfulfilled lint expectation there.
 #[allow(clippy::needless_pass_by_value, reason = "Salsa owns the query key")]
 fn attribute_condition_definition_info<'db>(
     db: &'db dyn Db,
@@ -783,9 +746,6 @@ fn definition_contains_special_cased_condition<'db>(
         return false;
     };
 
-    // A version guard can select a different function signature without changing the fact that
-    // the function object is always truthy. Only definitions with a source expression above
-    // inherit the provenance of their guards.
     let reachability = definition_reachability(db, definition.scope(db), definition.place(db))
         .get(&definition)
         .copied()
@@ -794,9 +754,6 @@ fn definition_contains_special_cased_condition<'db>(
         return true;
     }
 
-    // Binding inference does not always retain the source expression's types: unpacked targets
-    // share a source, and a comprehension's first iterable belongs to the enclosing scope.
-    // Read those types from the standalone expression query, without re-entering scope inference.
     let standalone = semantic_index(db, program_file).try_expression(source_expression);
     let mut expression_inference = None;
     let mut definition_inference = None;
@@ -873,9 +830,6 @@ fn predicate_contains_special_cased_condition<'db>(
         }
         PredicateNode::Pattern(pattern) => pattern.subject(db),
         PredicateNode::SubjectElementPattern(element) => element.pattern.subject(db),
-        // These predicates describe implicit control flow rather than a tested value. In
-        // particular, a statement such as `print(sys.platform)` should not make every later
-        // definition environment-dependent merely because it is reached after that call returns.
         PredicateNode::IsNonTerminalCall(_)
         | PredicateNode::ContextManagerSuppresses { .. }
         | PredicateNode::FinallyNormalPathImpossible { .. }

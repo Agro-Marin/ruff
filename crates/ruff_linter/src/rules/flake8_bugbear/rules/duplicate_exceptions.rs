@@ -146,7 +146,6 @@ fn duplicate_handler_exceptions<'a>(
     }
 
     if checker.is_rule_enabled(Rule::DuplicateHandlerException) {
-        // TODO(charlie): Handle "BaseException" and redundant exception aliases.
         if !duplicates.is_empty() {
             let mut diagnostic = checker.report_diagnostic(
                 DuplicateHandlerException {
@@ -167,8 +166,6 @@ fn duplicate_handler_exceptions<'a>(
 
             diagnostic.set_fix(Fix::applicable_edit(
                 Edit::range_replacement(
-                    // Single exceptions don't require parentheses, but since we're _removing_
-                    // parentheses, insert whitespace as needed.
                     if let [elt] = unique_elts.as_slice() {
                         pad(
                             checker.generator().expr(elt),
@@ -176,8 +173,6 @@ fn duplicate_handler_exceptions<'a>(
                             checker.locator(),
                         )
                     } else {
-                        // Multiple exceptions must always be parenthesized. This is done
-                        // manually as the generator never parenthesizes lone tuples.
                         format!("({})", checker.generator().expr(&type_pattern(unique_elts)))
                     },
                     expr.range(),

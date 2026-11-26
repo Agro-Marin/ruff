@@ -202,15 +202,11 @@ pub fn normalize_newlines<const N: usize>(text: &str, terminators: [char; N]) ->
         result.push('\n');
 
         last_end = start + part.len();
-        // If the current character is \r and the
-        // next is \n, skip over the entire sequence
         if part == "\r" && text[last_end..].starts_with('\n') {
             last_end += 1;
         }
     }
 
-    // If the result is empty no line terminators were matched,
-    // return the entire input text without allocating a new String
     if result.is_empty() {
         Cow::Borrowed(text)
     } else {
@@ -264,8 +260,6 @@ impl FormatElements for FormatElement {
             FormatElement::Text { text_width, .. } => text_width.is_multiline(),
             FormatElement::SourceCodeSlice { text_width, .. } => text_width.is_multiline(),
             FormatElement::Interned(interned) => interned.will_break(),
-            // Traverse into the most flat version because the content is guaranteed to expand when even
-            // the most flat version contains some content that forces a break.
             FormatElement::BestFitting {
                 variants: best_fitting,
                 ..
@@ -594,10 +588,6 @@ mod tests {
 
 #[cfg(target_pointer_width = "64")]
 mod sizes {
-    // Increasing the size of FormatElement has serious consequences on runtime performance and memory footprint.
-    // Is there a more efficient way to encode the data to avoid increasing its size? Can the information
-    // be recomputed at a later point in time?
-    // You reduced the size of a format element? Excellent work!
 
     use super::{BestFittingVariants, Interned, TextWidth};
     use static_assertions::assert_eq_size;

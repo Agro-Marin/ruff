@@ -29,7 +29,6 @@ use crate::{AlwaysFixableViolation, Edit, Fix};
 /// ```
 ///
 /// [PEP 8]: https://peps.python.org/pep-0008/#pet-peeves
-// E225
 #[derive(ViolationMetadata)]
 #[violation_metadata(preview_since = "v0.0.269", category = Category::Formatting)]
 pub(crate) struct MissingWhitespaceAroundOperator;
@@ -69,7 +68,6 @@ impl AlwaysFixableViolation for MissingWhitespaceAroundOperator {
 /// ```
 ///
 /// [PEP 8]: https://peps.python.org/pep-0008/#other-recommendations
-// E226
 #[derive(ViolationMetadata)]
 #[violation_metadata(preview_since = "v0.0.269", category = Category::Formatting)]
 pub(crate) struct MissingWhitespaceAroundArithmeticOperator;
@@ -109,7 +107,6 @@ impl AlwaysFixableViolation for MissingWhitespaceAroundArithmeticOperator {
 /// ```
 ///
 /// [PEP 8]: https://peps.python.org/pep-0008/#other-recommendations
-// E227
 #[derive(ViolationMetadata)]
 #[violation_metadata(preview_since = "v0.0.269", category = Category::Formatting)]
 pub(crate) struct MissingWhitespaceAroundBitwiseOrShiftOperator;
@@ -149,7 +146,6 @@ impl AlwaysFixableViolation for MissingWhitespaceAroundBitwiseOrShiftOperator {
 /// ```
 ///
 /// [PEP 8]: https://peps.python.org/pep-0008/#other-recommendations
-// E228
 #[derive(ViolationMetadata)]
 #[violation_metadata(preview_since = "v0.0.269", category = Category::Formatting)]
 pub(crate) struct MissingWhitespaceAroundModuloOperator;
@@ -201,15 +197,9 @@ pub(crate) fn missing_whitespace_around_operator(line: &LogicalLine, context: &L
         let needs_space = if kind == TokenKind::Equal
             && (parens > 0 || fstrings > 0 || definition_state.in_type_params())
         {
-            // Allow keyword args, defaults: foo(bar=None) and f-strings: f'{foo=}'
-            // Also ignore `foo[T=int]`, which is handled by E251.
             NeedsSpace::No
         } else if kind == TokenKind::Slash {
-            // Tolerate the "/" operator in function definition
-            // For more info see PEP570
 
-            // `def f(a, /, b):` or `def f(a, b, /):` or `f = lambda a, /:`
-            //            ^                       ^                      ^
             let slash_in_func = matches!(
                 tokens.peek().map(|t| t.kind()),
                 Some(TokenKind::Comma | TokenKind::Rpar | TokenKind::Colon)
@@ -222,9 +212,6 @@ pub(crate) fn missing_whitespace_around_operator(line: &LogicalLine, context: &L
             let is_binary = {
                 let prev_kind = prev_token.kind();
 
-                // Check if the operator is used as a binary operator.
-                // Allow unary operators: -123, -x, +1.
-                // Allow argument unpacking: foo(*args, **kwargs)
                 matches!(
                     prev_kind,
                     TokenKind::Rpar | TokenKind::Rsqb | TokenKind::Rbrace
@@ -233,7 +220,6 @@ pub(crate) fn missing_whitespace_around_operator(line: &LogicalLine, context: &L
 
             if is_binary {
                 if kind == TokenKind::DoubleStar {
-                    // Enforce consistent spacing, but don't enforce whitespaces.
                     NeedsSpace::Optional
                 } else {
                     NeedsSpace::Yes
@@ -247,14 +233,6 @@ pub(crate) fn missing_whitespace_around_operator(line: &LogicalLine, context: &L
                 TokenKind::Rpar | TokenKind::Rsqb | TokenKind::Rbrace
             )
         }) {
-            // There should not be a closing bracket directly after a token, as it is a syntax
-            // error. For example:
-            // ```
-            // 1+)
-            // ```
-            //
-            // However, allow it in order to prevent entering an infinite loop in which E225 adds a
-            // space only for E202 to remove it.
             NeedsSpace::No
         } else if is_whitespace_needed(kind) {
             NeedsSpace::Yes
@@ -271,7 +249,6 @@ pub(crate) fn missing_whitespace_around_operator(line: &LogicalLine, context: &L
                 .is_none_or(|next| token.end() < next.start() || is_non_logical_token(next.kind()));
 
             match (has_leading_trivia, has_trailing_trivia) {
-                // Operator with trailing but no leading space, enforce consistent spacing.
                 (false, true) => {
                     if let Some(mut diagnostic) =
                         diagnostic_kind_for_operator(kind, token.range(), context)
@@ -282,7 +259,6 @@ pub(crate) fn missing_whitespace_around_operator(line: &LogicalLine, context: &L
                         )));
                     }
                 }
-                // Operator with leading but no trailing space, enforce consistent spacing.
                 (true, false) => {
                     if let Some(mut diagnostic) =
                         diagnostic_kind_for_operator(kind, token.range(), context)
@@ -293,7 +269,6 @@ pub(crate) fn missing_whitespace_around_operator(line: &LogicalLine, context: &L
                         )));
                     }
                 }
-                // Operator with no space, require spaces if it is required by the operator.
                 (false, false) => {
                     if needs_space == NeedsSpace::Yes {
                         if let Some(mut diagnostic) =
@@ -307,7 +282,6 @@ pub(crate) fn missing_whitespace_around_operator(line: &LogicalLine, context: &L
                     }
                 }
                 (true, true) => {
-                    // Operator has leading and trailing spaces, all good.
                 }
             }
         }
@@ -395,6 +369,5 @@ fn is_whitespace_needed(kind: TokenKind) -> bool {
         return true;
     }
 
-    // As a special-case, pycodestyle seems to ignore whitespace around the tilde.
     kind.is_bitwise_or_shift() && kind != TokenKind::Tilde
 }

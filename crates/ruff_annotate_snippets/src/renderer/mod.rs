@@ -348,29 +348,9 @@ impl DecorStyle {
     }
 
     fn underline(&self, is_primary: bool) -> UnderlineParts {
-        //               X0 Y0
-        // label_start > ┯━━━━ < underline
-        //               │ < vertical_text_line
-        //               text
 
-        //    multiline_start_down ⤷ X0 Y0
-        //            top_left > ┌───╿──┘ < top_right_flat
-        //           top_left > ┏│━━━┙ < top_right
-        // multiline_vertical > ┃│
-        //                      ┃│   X1 Y1
-        //                      ┃│   X2 Y2
-        //                      ┃└────╿──┘ < multiline_end_same_line
-        //        bottom_left > ┗━━━━━┥ < bottom_right_with_text
-        //   multiline_horizontal ^   `X` is a good letter
 
-        // multiline_whole_line > ┏ X0 Y0
-        //                        ┃   X1 Y1
-        //                        ┗━━━━┛ < multiline_end_same_line
 
-        // multiline_whole_line > ┏ X0 Y0
-        //                        ┃ X1 Y1
-        //                        ┃  ╿ < multiline_end_up
-        //                        ┗━━┛ < bottom_right
 
         match (self, is_primary) {
             (DecorStyle::Ascii, true) => UnderlineParts {

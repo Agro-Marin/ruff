@@ -47,14 +47,6 @@ class EcosystemProject:
         return f"https://github.com/{self.repository}.git"
 
 
-# Train on a subset of the pinned ecosystem projects that we already use for
-# linting, formatting, or type checking. The goal is to create a representative
-# corpus that includes scientific computing, synchronous and asynchronous code,
-# applications, libraries, and type stubs.
-#
-# But it wasn't a highly optimized selection process. (For example, during
-# development, we added Zulip and Warehouse, which reduced Ruff's CPU time by
-# 0.35% while increasing its wheel size by 0.44%.)
 CORPUS_PROJECTS = (
     EcosystemProject(
         name="pytest",
@@ -537,7 +529,6 @@ def cargo_command(
         "--",
         "-C",
         "strip=symbols",
-        # Override only the executable's LTO, leaving dependency compilation unchanged.
         *(("-C", "lto=thin") if instrumented and not debug else ()),
     ]
 

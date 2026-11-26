@@ -9,16 +9,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-# Publish workspace crates to crates.io idempotently.
-#
-# `cargo publish --workspace` fails if any selected crate version already exists on crates.io. That
-# makes release re-runs fail after a previous partial publish. This script queries crates.io first,
-# excludes package versions that already exist, then delegates to `cargo publish --workspace` for the
-# remaining packages so Cargo still handles package ordering.
-#
-# Usage:
-#
-#   CARGO_REGISTRY_TOKEN=<tok> python3 scripts/publish-crates.py --no-verify
 
 from __future__ import annotations
 
@@ -38,7 +28,6 @@ USER_AGENT = "ruff-crates-io-publish (github.com/astral-sh/ruff)"
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# Short delay between crates.io API requests to avoid burst rate limits.
 CRATES_IO_REQUEST_DELAY_SECS = 0.2
 
 
@@ -67,7 +56,6 @@ def get_publishable_crates(cargo: list[str]) -> list[Crate]:
     for package in metadata["packages"]:
         if package["id"] not in workspace_member_ids:
             continue
-        # `publish = false` is represented as an empty list in cargo metadata.
         if package.get("publish") == []:
             continue
         crates.append(Crate(name=package["name"], version=package["version"]))

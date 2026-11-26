@@ -241,35 +241,16 @@ pub fn to_pep604_operator(
         }
     }
 
-    // If the typing modules were never imported, we'll never match below.
     if !semantic.seen_typing() {
         return None;
     }
 
-    // If the slice is a forward reference (e.g., `Optional["Foo"]`), it can only be rewritten
-    // if we're in a typing-only context.
-    //
-    // This, for example, is invalid, as Python will evaluate `"Foo" | None` at runtime in order to
-    // populate the function's `__annotations__`:
-    // ```python
-    // def f(x: "Foo" | None): ...
-    // ```
-    //
-    // This, however, is valid:
-    // ```python
-    // def f():
-    //     x: "Foo" | None
-    // ```
     if quoted_annotation(slice) {
         if semantic.execution_context().is_runtime() {
             return None;
         }
     }
 
-    // If any of the elements are starred expressions, we can't rewrite the subscript:
-    // ```python
-    // def f(x: Union[*int, str]): ...
-    // ```
     if starred_annotation(slice) {
         return None;
     }
@@ -439,14 +420,9 @@ pub fn is_type_checking_block(stmt: &ast::StmtIf, semantic: &SemanticModel) -> b
     let ast::StmtIf { test, .. } = stmt;
 
     match test.as_ref() {
-        // As long as the symbol's name is "TYPE_CHECKING" we will treat it like `typing.TYPE_CHECKING`
-        // for this specific check even if it's defined somewhere else, like the current module.
-        // Ex) `if TYPE_CHECKING:`
         Expr::Name(ast::ExprName { id, .. }) => {
-            // Ex) `if TC:` with `from typing import TYPE_CHECKING as TC`
             id == "TYPE_CHECKING" || semantic.match_typing_expr(test, "TYPE_CHECKING")
         }
-        // Ex) `if typing.TYPE_CHECKING:`
         Expr::Attribute(ast::ExprAttribute { attr, .. }) => attr == "TYPE_CHECKING",
         _ => false,
     }
@@ -526,7 +502,6 @@ fn traverse_union_options<'a, F>(
     ) where
         F: FnMut(&'a Expr, &'a Expr),
     {
-        // Ex) `x | y`
         if let Expr::BinOp(ast::ExprBinOp {
             op: Operator::BitOr,
             left,
@@ -535,38 +510,24 @@ fn traverse_union_options<'a, F>(
             node_index: _,
         }) = expr
         {
-            // The union data structure usually looks like this:
-            //  a | b | c -> (a | b) | c
-            //
-            // However, parenthesized expressions can coerce it into any structure:
-            //  a | (b | c)
-            //
-            // So we have to traverse both branches in order (left, then right), to report members
-            // in the order they appear in the source code.
 
-            // Traverse the left then right arms
             inner(func, semantic, left, Some(expr), options);
             inner(func, semantic, right, Some(expr), options);
             return;
         }
 
         if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr {
-            // Ex) `Union[x, y]`
             if semantic.match_typing_expr(value, "Union") {
                 if let Expr::Tuple(tuple) = &**slice {
-                    // Traverse each element of the tuple within the union recursively to handle cases
-                    // such as `Union[..., Union[...]]`
                     tuple
                         .iter()
                         .for_each(|elem| inner(func, semantic, elem, Some(expr), options));
                     return;
                 }
 
-                // Ex) `Union[Union[a, b]]` and `Union[a | b | c]`
                 inner(func, semantic, slice, Some(expr), options);
                 return;
             }
-            // Ex) `Optional[x]`
             if options.traverse_optional && semantic.match_typing_expr(value, "Optional") {
                 inner(func, semantic, value, Some(expr), options);
                 inner(func, semantic, slice, Some(expr), options);
@@ -574,7 +535,6 @@ fn traverse_union_options<'a, F>(
             }
         }
 
-        // Otherwise, call the function on expression, if it's not the top-level expression.
         if let Some(parent) = parent {
             func(expr, parent);
         }
@@ -599,25 +559,20 @@ where
     ) where
         F: FnMut(&'a Expr, &'a Expr),
     {
-        // Ex) `Literal[x, y]`
         if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr {
             if semantic.match_typing_expr(value, "Literal") {
                 match &**slice {
                     Expr::Tuple(tuple) => {
-                        // Traverse each element of the tuple within the literal recursively to handle cases
-                        // such as `Literal[..., Literal[...]]`
                         for element in tuple {
                             inner(func, semantic, element, Some(expr));
                         }
                     }
                     other => {
-                        // Ex) `Literal[Literal[...]]`
                         inner(func, semantic, other, Some(expr));
                     }
                 }
             }
         } else {
-            // Otherwise, call the function on expression, if it's not the top-level expression.
             if let Some(parent) = parent {
                 func(expr, parent);
             }
@@ -643,23 +598,11 @@ pub trait TypeChecker {
 pub fn check_type<T: TypeChecker>(binding: &Binding, semantic: &SemanticModel) -> bool {
     match binding.kind {
         BindingKind::Assignment => match binding.statement(semantic) {
-            // Given:
-            //
-            // ```python
-            // x = init_expr
-            // ```
-            //
-            // The type checker might know how to infer the type based on `init_expr`.
             Some(Stmt::Assign(ast::StmtAssign { targets, value, .. })) => targets
                 .iter()
                 .find_map(|target| match_value(binding, target, value))
                 .is_some_and(|value| T::match_initializer(value, semantic)),
 
-            // ```python
-            // x: annotation = some_expr
-            // ```
-            //
-            // In this situation, we check only the annotation.
             Some(Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. })) => {
                 T::match_annotation(annotation, semantic)
             }
@@ -668,10 +611,6 @@ pub fn check_type<T: TypeChecker>(binding: &Binding, semantic: &SemanticModel) -
         },
 
         BindingKind::NamedExprAssignment => {
-            // ```python
-            // if (x := some_expr) is not None:
-            //     ...
-            // ```
             binding.source.is_some_and(|source| {
                 semantic
                     .expressions(source)
@@ -684,10 +623,6 @@ pub fn check_type<T: TypeChecker>(binding: &Binding, semantic: &SemanticModel) -
         }
 
         BindingKind::WithItemVar => match binding.statement(semantic) {
-            // ```python
-            // with open("file.txt") as x:
-            //     ...
-            // ```
             Some(Stmt::With(ast::StmtWith { items, .. })) => items
                 .iter()
                 .find_map(|item| {
@@ -701,12 +636,6 @@ pub fn check_type<T: TypeChecker>(binding: &Binding, semantic: &SemanticModel) -
         },
 
         BindingKind::Argument => match binding.statement(semantic) {
-            // ```python
-            // def foo(x: annotation):
-            //   ...
-            // ```
-            //
-            // We trust the annotation and see if the type checker matches the annotation.
             Some(Stmt::FunctionDef(ast::StmtFunctionDef { parameters, .. })) => {
                 let Some(parameter) = find_parameter(parameters, binding) else {
                     return false;
@@ -721,11 +650,6 @@ pub fn check_type<T: TypeChecker>(binding: &Binding, semantic: &SemanticModel) -
         },
 
         BindingKind::Annotation => match binding.statement(semantic) {
-            // ```python
-            // x: annotation
-            // ```
-            //
-            // It's a typed declaration, type annotation is the only source of information.
             Some(Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. })) => {
                 T::match_annotation(annotation, semantic)
             }
@@ -733,10 +657,6 @@ pub fn check_type<T: TypeChecker>(binding: &Binding, semantic: &SemanticModel) -
         },
 
         BindingKind::FunctionDefinition(_) => match binding.statement(semantic) {
-            // ```python
-            // def foo() -> int:
-            //   ...
-            // ```
             Some(Stmt::FunctionDef(ast::StmtFunctionDef { returns, .. })) => returns
                 .as_ref()
                 .is_some_and(|return_ann| T::match_annotation(return_ann, semantic)),
@@ -906,7 +826,6 @@ impl TypeChecker for IoBaseChecker {
             return false;
         };
 
-        // Ex) `pathlib.Path("file.txt")`
         if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = func.as_ref() {
             if attr.as_str() == "open" {
                 if let Expr::Call(ast::ExprCall { func, .. }) = value.as_ref() {
@@ -925,7 +844,6 @@ impl TypeChecker for IoBaseChecker {
             }
         }
 
-        // Ex) `open("file.txt")`
         semantic
             .resolve_qualified_name(func)
             .is_some_and(|qualified_name| {
@@ -1051,10 +969,6 @@ pub fn is_list(binding: &Binding, semantic: &SemanticModel) -> bool {
 /// what annotation it has (we consider `dict` and `typing.Dict`), and if it is a variadic keyword
 /// argument parameter.
 pub fn is_dict(binding: &Binding, semantic: &SemanticModel) -> bool {
-    // ```python
-    // def foo(**kwargs):
-    //   ...
-    // ```
     if matches!(binding.kind, BindingKind::Argument) {
         if let Some(Stmt::FunctionDef(ast::StmtFunctionDef { parameters, .. })) =
             binding.statement(semantic)
@@ -1104,10 +1018,6 @@ pub fn is_set(binding: &Binding, semantic: &SemanticModel) -> bool {
 /// annotation it has (we consider `tuple` and `typing.Tuple`), and if it is a variadic positional
 /// argument.
 pub fn is_tuple(binding: &Binding, semantic: &SemanticModel) -> bool {
-    // ```python
-    // def foo(*args):
-    //   ...
-    // ```
     if matches!(binding.kind, BindingKind::Argument) {
         if let Some(Stmt::FunctionDef(ast::StmtFunctionDef { parameters, .. })) =
             binding.statement(semantic)
@@ -1187,7 +1097,6 @@ pub fn resolve_assignment<'a>(
     expr: &'a Expr,
     semantic: &'a SemanticModel<'a>,
 ) -> Option<QualifiedName<'a>> {
-    // Resolve any attribute chain.
     let mut head_expr = expr;
     let mut reversed_tail: SmallVec<[_; 4]> = smallvec![];
     while let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = head_expr {
@@ -1195,8 +1104,6 @@ pub fn resolve_assignment<'a>(
         reversed_tail.push(attr.as_str());
     }
 
-    // Resolve the left-most name, e.g. `foo` in `foo.bar.baz` to a qualified name,
-    // then append the attributes.
     let name = head_expr.as_name_expr()?;
     let binding_id = semantic.resolve_name(name)?;
     let statement = semantic.binding(binding_id).statement(semantic)?;
@@ -1243,7 +1150,6 @@ pub fn find_assigned_value<'a>(symbol: &str, semantic: &'a SemanticModel<'a>) ->
 #[expect(clippy::single_match)]
 pub fn find_binding_value<'a>(binding: &Binding, semantic: &'a SemanticModel) -> Option<&'a Expr> {
     match binding.kind {
-        // Ex) `x := 1`
         BindingKind::NamedExprAssignment => {
             let parent_id = binding.source?;
             let parent = semantic
@@ -1253,7 +1159,6 @@ pub fn find_binding_value<'a>(binding: &Binding, semantic: &'a SemanticModel) ->
                 return match_value(binding, target, value);
             }
         }
-        // Ex) `x = 1`
         BindingKind::Assignment => match binding.statement(semantic) {
             Some(Stmt::Assign(ast::StmtAssign { value, targets, .. })) => {
                 return targets
@@ -1269,7 +1174,6 @@ pub fn find_binding_value<'a>(binding: &Binding, semantic: &'a SemanticModel) ->
             }
             _ => {}
         },
-        // Ex) `with open("file.txt") as f:`
         BindingKind::WithItemVar => match binding.statement(semantic) {
             Some(Stmt::With(ast::StmtWith { items, .. })) => {
                 return items.iter().find_map(|item| {
@@ -1320,7 +1224,6 @@ fn match_target<'a>(binding: &Binding, targets: &[Expr], values: &'a [Expr]) -> 
             | Expr::Set(ast::ExprSet {
                 elts: target_elts, ..
             }) => {
-                // Collection types can be mismatched like in: (a, b, [c, d]) = [1, 2, {3, 4}]
                 match value {
                     Expr::Tuple(ast::ExprTuple {
                         elts: value_elts, ..

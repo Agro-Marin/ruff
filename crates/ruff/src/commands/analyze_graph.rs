@@ -24,8 +24,6 @@ pub(crate) fn analyze_graph(
     args: AnalyzeGraphArgs,
     config_arguments: &ConfigArguments,
 ) -> Result<ExitStatus> {
-    // Construct the "default" settings. These are used when no `pyproject.toml`
-    // files are present, or files are injected from outside the hierarchy.
     let root_settings = resolve(config_arguments, None)?;
     if root_settings
         .resolved
@@ -37,15 +35,12 @@ pub(crate) fn analyze_graph(
         warn_user!("`ruff analyze graph` is experimental and may change without warning");
     }
 
-    // Write all paths relative to the current working directory.
     let root =
         SystemPathBuf::from_path_buf(CWD.clone()).expect("Expected a UTF-8 working directory");
 
-    // Find all Python files.
     let files = resolve_default_files(args.files, false);
     let (mut paths, resolver) = project_files_in_path(&files, &root_settings, config_arguments)?;
 
-    // Filter to only Python files
     paths.retain(|path| {
         if let Ok(ResolvedFile::Root(path) | ResolvedFile::Nested(path)) = path {
             matches!(SourceType::from(path), SourceType::Python(_))
@@ -59,7 +54,6 @@ pub(crate) fn analyze_graph(
         return Ok(ExitStatus::Success);
     }
 
-    // Resolve all package roots.
     let package_roots = resolver
         .package_roots(
             &paths
@@ -77,13 +71,8 @@ pub(crate) fn analyze_graph(
         })
         .collect::<FxHashMap<_, _>>();
 
-    // Create a database from the source roots, combining configured `src` paths with detected
-    // package roots. Configured paths are added first so they take precedence, and duplicates
-    // are removed.
     let mut src_roots: IndexSet<SystemPathBuf, FxBuildHasher> = IndexSet::default();
 
-    // Add configured `src` paths first (for precedence), filtering to only include existing
-    // directories.
     src_roots.extend(
         root_settings
             .resolved
@@ -95,7 +84,6 @@ pub(crate) fn analyze_graph(
             .filter_map(|path| SystemPathBuf::from_path_buf(path.clone()).ok()),
     );
 
-    // Add detected package roots.
     src_roots.extend(
         package_roots
             .values()
@@ -115,10 +103,8 @@ pub(crate) fn analyze_graph(
     search_paths.try_register_static_roots(&db);
 
     let imports = {
-        // Create a cache for resolved globs.
         let glob_resolver = Arc::new(Mutex::new(GlobResolver::default()));
 
-        // Collect and resolve the imports for each file.
         let result = Arc::new(Mutex::new(Vec::new()));
         let inner_result = Arc::clone(&result);
         let db = db.clone();
@@ -136,7 +122,6 @@ pub(crate) fn analyze_graph(
                     .and_then(|parent| package_roots.get(parent))
                     .and_then(Clone::clone);
 
-                // Resolve the per-file settings.
                 let settings = resolver.resolve(path);
                 let string_imports = settings.analyze.string_imports;
                 let include_dependencies = settings.analyze.include_dependencies.get(path).cloned();
@@ -144,7 +129,6 @@ pub(crate) fn analyze_graph(
                 let python_version = settings.analyze.target_version;
                 let source_type = settings.analyze.extension.get_source_type(path);
 
-                // Skip excluded files.
                 if (settings.file_resolver.force_exclude || !resolved_file.is_root())
                     && match_exclusion(
                         resolved_file.path(),
@@ -155,7 +139,6 @@ pub(crate) fn analyze_graph(
                     continue;
                 }
 
-                // Convert to system paths.
                 let Ok(package) = package.map(SystemPathBuf::from_path_buf).transpose() else {
                     warn!("Failed to convert package to system path");
                     continue;
@@ -170,7 +153,6 @@ pub(crate) fn analyze_graph(
                 let root = root.clone();
                 let result = inner_result.clone();
                 scope.spawn(move |_| {
-                    // Extract source code (handles both .py and .ipynb files)
                     let source_kind = match SourceKind::from_path(path.as_std_path(), source_type) {
                         Ok(Some(source_kind)) => source_kind,
                         Ok(None) => {
@@ -185,7 +167,6 @@ pub(crate) fn analyze_graph(
 
                     let environment = ResolverEnvironment::new(&db, python_version, search_paths);
 
-                    // Identify any imports via static analysis.
                     let mut imports = ModuleImports::detect(
                         &db,
                         environment,
@@ -202,13 +183,11 @@ pub(crate) fn analyze_graph(
 
                     debug!("Discovered {} imports for {}", imports.len(), path);
 
-                    // Append any imports that were statically defined in the configuration.
                     if let Some((root, globs)) = include_dependencies {
                         let mut glob_resolver = glob_resolver.lock().unwrap();
                         imports.extend(glob_resolver.resolve(root, globs));
                     }
 
-                    // Convert the path (and imports) to be relative to the working directory.
                     let path = path
                         .strip_prefix(&root)
                         .map(SystemPath::to_path_buf)
@@ -220,17 +199,14 @@ pub(crate) fn analyze_graph(
             }
         });
 
-        // Collect the results.
         Arc::into_inner(result).unwrap().into_inner()?
     };
 
-    // Generate the import map.
     let import_map = match args.direction {
         Direction::Dependencies => ImportMap::dependencies(imports),
         Direction::Dependents => ImportMap::dependents(imports),
     };
 
-    // Print to JSON.
     writeln!(
         std::io::stdout(),
         "{}",

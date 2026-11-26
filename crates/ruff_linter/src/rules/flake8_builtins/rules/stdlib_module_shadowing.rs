@@ -78,14 +78,11 @@ pub(crate) fn stdlib_module_shadowing(
         return;
     }
 
-    // strip src and root prefixes before converting to a fully-qualified module path
     let prefix = get_prefix(settings, path);
     if let Some(Ok(new_path)) = prefix.map(|p| path.strip_prefix(p)) {
         path = new_path;
     }
 
-    // for modules like `modname/__init__.py`, use the parent directory name, otherwise just trim
-    // the `.py` extension
     let path = if is_module_file(path) {
         let Some(parent) = path.parent() else { return };
         Cow::from(parent)
@@ -93,8 +90,6 @@ pub(crate) fn stdlib_module_shadowing(
         Cow::from(path.with_extension(""))
     };
 
-    // convert a filesystem path like `foobar/collections/abc` to a reversed sequence of modules
-    // like `["abc", "collections", "foobar"]`, stripping anything that's not a normal component
     let mut components = path
         .components()
         .filter(|c| matches!(c, Component::Normal(_)))
@@ -109,7 +104,6 @@ pub(crate) fn stdlib_module_shadowing(
         return;
     }
 
-    // not allowed generally, but check for a parent in non-strict mode
     if !settings.flake8_builtins.strict_checking && components.next().is_some() {
         return;
     }
@@ -134,8 +128,6 @@ fn get_prefix<'a>(settings: &'a LinterSettings, path: &Path) -> Option<&'a PathB
 }
 
 fn is_allowed_module(settings: &LinterSettings, version: PythonVersion, module: &str) -> bool {
-    // Shadowing private stdlib modules is okay.
-    // https://github.com/astral-sh/ruff/issues/12949
     if module.starts_with('_') && !module.starts_with("__") {
         return true;
     }

@@ -19,7 +19,6 @@ pub fn all_symbols<'db>(
     importing_from: ProgramFile<'db>,
     query: &QueryPattern,
 ) -> Vec<AllSymbolInfo<'db>> {
-    // If the query is empty, return immediately to avoid expensive file scanning
     if query.will_match_everything() {
         return Vec::new();
     }
@@ -37,8 +36,6 @@ pub fn all_symbols<'db>(
 
             let is_non_first_party = module.search_path(db).is_none_or(|sp| !sp.is_first_party());
 
-            // Filter out non-first-party test and private modules, while retaining private
-            // typeshed packages that are useful when writing type annotations.
             if is_non_first_party
                 && (name.is_test_module()
                     || name.is_private() && !module.is_bundled_typing_stub(db))
@@ -63,8 +60,6 @@ pub fn all_symbols<'db>(
                 symbols.push(AllSymbolInfo::from_module(db, module, file));
             }
             for (_, symbol) in symbols_for_file_global_only(db, program_file).search(query) {
-                // Test functions (starting with `test_`) in third-party
-                // packages are almost never useful to import.
                 if is_non_first_party && symbol.name.starts_with("test_") {
                     continue;
                 }
@@ -248,31 +243,19 @@ mod merge {
             let Some(name) = sym.name_in_file() else {
                 merged.extend(group.merge(db));
                 group.clear();
-                // A symbol without a name in a file is just
-                // a module, and is never a re-export. So add
-                // it as-is without ceremony.
                 merged.push(sym);
                 continue;
             };
-            // If the name matches our current group (when non-empty), then
-            // just add it and keep on collecting other symbols.
             if group.name().is_some_and(|group_name| group_name == name) {
                 group.add(sym);
                 continue;
             }
 
-            // At this point, the symbol either doesn't
-            // match the group or the group is empty. So
-            // we know we're done with the group.
             if !group.is_empty() {
                 merged.extend(group.merge(db));
                 group.clear();
             }
 
-            // As an optimization, if we know there isn't
-            // an adjacent name or doesn't match this
-            // one, then we know this symbol will never
-            // be part of a group with size greater than 1.
             if it
                 .peek()
                 .and_then(|sym| sym.name_in_file())
@@ -283,17 +266,11 @@ mod merge {
                 continue;
             }
 
-            // We know we're going to have a possibly
-            // interesting group to deal with at this point.
             assert!(group.is_empty());
             group.add(sym);
         }
         merged.extend(group.merge(db));
 
-        // The above might change the ordering of the symbols,
-        // so re-sort them. If this ends up being a perf problem,
-        // the above code should be adapted to avoid changing
-        // the order. ---AG
         merged.sort_unstable_by(|s1, s2| cmp(db, s1, s2));
         merged
     }
@@ -392,21 +369,6 @@ mod merge {
                 )]
                 for &reexport_index in &self.all_reexports {
                     let reexport = &mut self.reexport[reexport_index];
-                    // Merge the kind from the original symbol into the
-                    // reexported symbol. We do this unconditionally since
-                    // it is applicable in all cases, even when the symbols
-                    // are in different package hierarchies.
-                    //
-                    // The reason why we do this unconditionally is that
-                    // reexport symbols usually do not have a very specific
-                    // kind, and are typically just assigned a kind of
-                    // "variable." This is because the symbol extraction
-                    // reports these symbols as-is by inspecting import
-                    // statements and doesn't follow them to their original
-                    // definition to discover their "true" kind. But that's
-                    // exactly what we're doing here! We have the original
-                    // definition. So assign the kind from the original,
-                    // even when it crosses package hierarchies.
                     if let (Some(origin_sym), &mut Some(ref mut reexport_sym)) =
                         (&origin.symbol, &mut reexport.symbol)
                     {
@@ -414,11 +376,6 @@ mod merge {
                         reexport_sym.deprecated = origin_sym.deprecated;
                     }
 
-                    // Now we want to find the shortest (in terms of
-                    // module components) len of all the re-exports.
-                    // This is in service of eliminating all re-exports
-                    // with a greater length, so we specifically don't
-                    // consider re-exports that cross a module boundary.
                     let reexport_module_name = reexport.module().name(db);
                     if top != reexport_module_name.first_component() {
                         continue;
@@ -430,16 +387,10 @@ mod merge {
                 }
 
                 let Some(mut min_reexport_len) = min_reexport_len else {
-                    // When we couldn't find *any* other re-exports
-                    // within the same package hierarchy as the original
-                    // definition, then we're done.
                     continue;
                 };
                 let origin_len = origin_module_name.components().count();
                 min_reexport_len = std::cmp::min(min_reexport_len, origin_len);
-                // At this point, we want to keep all symbols that
-                // are equivalent to the minimum length we found. This
-                // may include or exclude the original definition.
                 if origin_len > min_reexport_len {
                     self.origin_keep[origin_index] = false;
                 }
@@ -478,11 +429,7 @@ mod merge {
             self.all_reexports.clear();
             self.stack.clear();
             self.stack.push(self.origin[origin_index].module().name(db));
-            // We specifically do not use recursion here to avoid
-            // stack usage proportional to the size of a re-export
-            // chain in user provided code.
             while let Some(module_name) = self.stack.pop() {
-                // Finds all of the symbols re-exported *directly from* `module_name`.
                 let reexports_for_module_name = self
                     .reexport
                     .iter()
@@ -491,9 +438,6 @@ mod merge {
                         sym.imported_from().unwrap().module_name() == module_name
                     })
                     .map(|(i, _)| i);
-                // Now find, recursively, all symbols that
-                // are re-exports of the re-exports (being
-                // careful not to repeat work).
                 for i in reexports_for_module_name {
                     if self.all_reexports.insert(i) {
                         self.stack.push(self.reexport[i].module().name(db));
@@ -906,9 +850,6 @@ def zqzqzq():
 
     #[test]
     fn all_symbols_multi_file() {
-        // We use odd symbol names here so that we can
-        // write queries that target them specifically
-        // and (hopefully) nothing else.
         let test = CursorTest::builder()
             .source(
                 "utils.py",
@@ -977,8 +918,6 @@ def test_helper_xyzxyzxyz():
             )
             .build();
 
-        // First-party test symbols should still be available
-        // (both test_ prefixed and non-test_ prefixed)
         assert_snapshot!(test.all_symbols("xyzxyzxyz"), @"
         info[all-symbols]: AllSymbolInfo
          --> mypackage/tests/test_utils.py:2:5
@@ -996,18 +935,13 @@ def test_helper_xyzxyzxyz():
         let test = CursorTest::builder()
             .with_site_packages()
             .source("main.py", "<CURSOR>")
-            // Regular third-party module (should be included)
             .site_packages("thirdparty/__init__.py", "def useful_xyzxyzxyz(): pass")
-            // A test module (should be filtered)
             .site_packages("thirdparty/tests/__init__.py", "")
-            // Another test module (should also be filtered).
             .site_packages(
                 "thirdparty/tests/test_core.py",
                 "def check_xyzxyzxyz(): pass",
             )
-            // A conftest module (should be filtered)
             .site_packages("thirdparty/conftest.py", "def fixture_xyzxyzxyz(): pass")
-            // A module with test_ functions (test_ functions should be filtered)
             .site_packages(
                 "thirdparty/utils.py",
                 "def helper_xyzxyzxyz(): pass\ndef test_something_xyzxyzxyz(): pass",

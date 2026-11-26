@@ -46,17 +46,14 @@ pub(crate) fn is_infinite_iterable(arg: &Expr, semantic: &SemanticModel) -> bool
         .is_some_and(|qualified_name| match qualified_name.segments() {
             ["itertools", "cycle" | "count"] => true,
             ["itertools", "repeat"] => {
-                // Ex) `itertools.repeat(1)`
                 if keywords.is_empty() && args.len() == 1 {
                     return true;
                 }
 
-                // Ex) `itertools.repeat(1, None)`
                 if args.len() == 2 && args[1].is_none_literal_expr() {
                     return true;
                 }
 
-                // Ex) `itertools.repeat(1, times=None)`
                 for keyword in keywords {
                     if keyword.arg.as_ref().is_some_and(|name| name == "times")
                         && keyword.value.is_none_literal_expr()

@@ -273,8 +273,6 @@ mod tests {
             "#,
         );
 
-        // `object` has hundreds of subtypes across typeshed,
-        // so we check for specific items rather than snapshotting.
         let subtypes = test.subtypes();
         let names: Vec<_> = subtypes.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"ImplicitChild"));
@@ -300,9 +298,6 @@ mod tests {
             "#,
         );
 
-        // As of 2026-02-25, the default Python version is 3.14, so
-        // `ChildOld` should be a subtype of `Base`, but `ChildFuture`
-        // should not.
         let subtypes = test.subtypes();
         insta::assert_snapshot!(snapshot(&test.db, &subtypes), @"/main.py:76:84 ChildOld :: main");
     }
@@ -411,10 +406,6 @@ mod tests {
     /// current implementation (as of 2026-02-25).
     #[test]
     fn dynamic_class_prepare_and_supertypes_inline() {
-        // This is "fine," but the offsets returned
-        // for `Dynamic` as a supertype will result
-        // in subsequent requests showing the type
-        // hierarchy for `type` instead of `Dynamic`.
         let test = cursor_test(
             r#"
             class Base:
@@ -428,13 +419,6 @@ mod tests {
         let supertypes = test.supertypes();
         insta::assert_snapshot!(snapshot(&test.db, &supertypes), @"/main.py:35:63 Dynamic :: main");
 
-        // We emulate that subsequent request here. This is a
-        // limitation of our current type hierarchy implementation. I
-        // think ideally we'd recognize the `type(...)` idiom and "see
-        // through" it. But what if the user actually wants the type
-        // hierarchy for `type`? Maybe we should only recognize the
-        // idiom when the cursor is on the `"Dynamic"` string literal.
-        // ---AG
         let test = cursor_test(
             r#"
             class Base:
@@ -526,12 +510,6 @@ mod tests {
             @"/main.py:51:84 Dynamic :: main",
         );
 
-        // This fails for a different reason than
-        // `dynamic_class_prepare_and_supertypes_inline` in the
-        // `type` case. Specifically, `namedtuple` is defined
-        // as a function, which our current implementation doesn't
-        // recognize as returning a class. So the prepare request
-        // doesn't return any items.
         let test = cursor_test(
             r#"
             from collections import namedtuple
@@ -574,9 +552,7 @@ mod tests {
 
         let subtypes = test.subtypes();
         let names: Vec<_> = subtypes.iter().map(|s| s.name.as_str()).collect();
-        // `MyTuple` is not found because `namedtuple()` doesn't create a class scope.
         assert!(!names.contains(&"MyTuple"));
-        // But regular class definitions that inherit from `tuple` are found.
         assert!(names.contains(&"struct_time"));
     }
 
@@ -671,8 +647,6 @@ Public = _Internal
             )
             .build();
 
-        // We should only see our own subtype and the only third-party
-        // subtype that isn't treated as private.
         let subtypes = test.subtypes();
         insta::assert_snapshot!(snapshot(&test.db, &subtypes), @"
         /src/foo.py:6:13 MyBytes :: foo
@@ -698,9 +672,6 @@ Public = _Internal
             )
             .build();
 
-        // I think ideally we wouldn't include `OtherBytes2` here.
-        // Note that pylance doesn't seem to respect `__all__` in
-        // this case either.
         let subtypes = test.subtypes();
         insta::assert_snapshot!(snapshot(&test.db, &subtypes), @"
         /src/foo.py:6:13 MyBytes :: foo

@@ -42,14 +42,12 @@ pub(crate) fn missing_copyright_notice(
         return;
     }
 
-    // Only search the first 4096 bytes in the file.
     let contents = locator.up_to(locator.floor_char_boundary(TextSize::new(4096)));
 
     // Locate the copyright notice.
     if let Some(match_) = settings.flake8_copyright.notice_rgx.find(contents) {
         match settings.flake8_copyright.author {
             Some(ref author) => {
-                // Ensure that it's immediately followed by the author.
                 if contents[match_.end()..].trim_start().starts_with(author) {
                     return;
                 }

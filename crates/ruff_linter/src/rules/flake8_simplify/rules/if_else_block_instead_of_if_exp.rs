@@ -107,7 +107,6 @@ pub(crate) fn if_else_block_instead_of_if_exp(checker: &Checker, stmt_if: &ast::
         node_index: _,
     } = stmt_if;
 
-    // `test: None` to only match an `else` clause
     let [
         ElifElseClause {
             body: else_body,
@@ -151,8 +150,6 @@ pub(crate) fn if_else_block_instead_of_if_exp(checker: &Checker, stmt_if: &ast::
         return;
     }
 
-    // Avoid suggesting ternary for `if (yield ...)`-style checks.
-    // TODO(charlie): Fix precedence handling for yields in generator.
     if matches!(
         body_value.as_ref(),
         Expr::Yield(_) | Expr::YieldFrom(_) | Expr::Await(_)
@@ -166,36 +163,14 @@ pub(crate) fn if_else_block_instead_of_if_exp(checker: &Checker, stmt_if: &ast::
         return;
     }
 
-    // Avoid suggesting ternary for `if sys.version_info >= ...`-style checks.
     if is_sys_version_block(stmt_if, checker.semantic()) {
         return;
     }
 
-    // Avoid suggesting ternary for `if TYPE_CHECKING:`-style checks.
     if is_type_checking_block(stmt_if, checker.semantic()) {
         return;
     }
 
-    // In most cases we should now suggest a ternary operator,
-    // but there are three edge cases where a binary operator
-    // is more appropriate.
-    //
-    // For the reader's convenience, here is how
-    // the notation translates to the if-else block:
-    //
-    // ```python
-    // if test:
-    //     target_var = body_value
-    // else:
-    //     target_var = else_value
-    // ```
-    //
-    // The match statement below implements the following
-    // logic:
-    //     - If `test == body_value`, replace with `target_var = test or else_value`
-    //     - If `test == not body_value`, replace with `target_var = body_value and else_value`
-    //     - If `not test == body_value`, replace with `target_var = body_value and else_value`
-    //     - Otherwise, replace with `target_var = body_value if test else else_value`
     let (contents, assignment_kind) = match (test, body_value) {
         (test_node, body_node)
             if ComparableExpr::from(test_node) == ComparableExpr::from(body_node)
@@ -227,7 +202,6 @@ pub(crate) fn if_else_block_instead_of_if_exp(checker: &Checker, stmt_if: &ast::
         }
     };
 
-    // Don't flag if the resulting expression would exceed the maximum line length.
     if !fits(
         &contents,
         stmt_if.into(),

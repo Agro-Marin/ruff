@@ -115,8 +115,6 @@ impl<'db> UnionTypeInstance<'db> {
         let [left, right] = values;
         let env = ProgramEnvironment::from_scope(scope_id);
         let is_union = |ty| matches!(ty, Type::KnownInstance(KnownInstanceType::UnionType(_)));
-        // Equal class objects and generic aliases collapse to the operand itself. Once
-        // either side is a union object, extending it only needs the two operand handles.
         if left == right
             || (!is_union(left) && !is_union(right) && left.is_equivalent_to(db, &env, right))
         {
@@ -173,8 +171,6 @@ impl<'db> UnionTypeInstance<'db> {
             return true;
         }
 
-        // A specialized or legacy union retains a denotation for the whole object. Only
-        // compare through these objects when the same ones appear in both expressions.
         let opaque = |union: Self| match union.kind(db) {
             RuntimeUnion::Evaluated { .. } => Either::Left(std::iter::once(union)),
             RuntimeUnion::Pep604(operands) => {
@@ -187,9 +183,6 @@ impl<'db> UnionTypeInstance<'db> {
         if !opaque(left).eq(opaque(right)) {
             return false;
         }
-        // Extending `Union[int, str]` with `int`, or `list[int | str] | bytes` with
-        // `list[str | int]`, preserves both the runtime operands and their denotation.
-        // Comparing the denotations alone would also discard `bool` from `bool | int`.
         left.value_expression_types(db, env)
             .zip_longest(right.value_expression_types(db, env))
             .all(|pair| match pair {
@@ -213,9 +206,6 @@ impl<'db> UnionTypeInstance<'db> {
             return false;
         }
 
-        // Classes with metaclass `type` compare by identity, so different sets of these classes
-        // imply different unions. For other operands, `typing` can reuse a union object even
-        // when ty inferred different representations for the two expressions.
         let classes = |union: Self| {
             let RuntimeUnion::Pep604(operands) = union.kind(db) else {
                 return None;
@@ -328,8 +318,6 @@ impl<'db> UnionTypeInstance<'db> {
         if type_mapping.is_structural()
             && let RuntimeUnion::Pep604(operands) = self.kind(db)
         {
-            // Structural substitutions can introduce open recursive variables; a builder
-            // must not compare them until the recursive type has been closed.
             let mut changed = false;
             let mapped = Self::leaves(db, operands)
                 .map(|operand| {
@@ -393,7 +381,6 @@ impl<'db> UnionTypeInstance<'db> {
                     continue;
                 }
                 let Type::KnownInstance(KnownInstanceType::UnionType(union)) = value else {
-                    // Group aliases by origin to avoid comparing specializations of unrelated classes.
                     if let Type::GenericAlias(alias) = value {
                         let aliases: &mut Vec<_> =
                             aliases_by_origin.entry(alias.origin(db)).or_default();
@@ -468,10 +455,6 @@ impl<'db> UnionTypeInstance<'db> {
                 ))
             }
             RuntimeUnion::Pep604(operands) => {
-                // A loop such as `alias |= B` can build a deeper tree on every iteration.
-                // Canonicalize by operand identity during cycle recovery. Both the runtime
-                // value and its bound type matter; semantic subtyping would discard `bool`
-                // from `bool | int`.
                 let mut leaves = FxOrderSet::default();
                 for operand in Self::leaves(db, operands) {
                     leaves.insert(match operand {
@@ -489,9 +472,6 @@ impl<'db> UnionTypeInstance<'db> {
                 }
                 let canonical =
                     Self::new_internal(db, RuntimeUnion::Pep604(leaves.into_iter().collect()));
-                // A denoted union can drop a divergent member even if normalizing the raw
-                // operands left that marker in place. Use the recovery builder here because
-                // ordinary union simplification can introduce new query cycles.
                 if let Ok(ty) =
                     self.build_union_type(db, env, UnionBuilder::new(db, env).cycle_recovery(true))
                     && let normalized = normalize(ty)?

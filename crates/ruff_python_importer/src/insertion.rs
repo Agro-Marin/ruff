@@ -69,21 +69,15 @@ impl<'a> Insertion<'a> {
             })
             .unwrap_or(body);
 
-        // Skip over any docstrings.
         let mut location = if let Some(mut location) = match_docstring_end(body) {
-            // If the first token after the docstring is a semicolon, insert after the semicolon as
-            // an inline statement.
             if let Some(offset) = match_semicolon(&contents[location.to_usize()..]) {
                 return Insertion::inline(" ", location.add(offset).add(TextSize::of(';')), ";");
             }
 
-            // While the first token after the docstring is a continuation character (i.e. "\"), advance
-            // additional rows to prevent inserting in the same logical line.
             while match_continuation(&contents[location.to_usize()..]).is_some() {
                 location = contents.full_line_end(location);
             }
 
-            // Otherwise, advance to the next row.
             contents.full_line_end(location)
         } else if let Some(range) = within_range
             && range.start() != TextSize::ZERO
@@ -93,9 +87,6 @@ impl<'a> Insertion<'a> {
             contents.bom_start_offset()
         };
 
-        // Skip over commented lines, with whitespace separation. Track blank
-        // lines after comments so we can preserve them between comments and
-        // the first statement.
         let mut seen_comment = false;
         for line in
             UniversalNewlineIterator::with_offset(&contents[location.to_usize()..], location)
@@ -142,15 +133,10 @@ impl<'a> Insertion<'a> {
     pub fn end_of_statement(stmt: &Stmt, contents: &str, stylist: &Stylist) -> Insertion<'static> {
         let location = stmt.end();
         if let Some(offset) = match_semicolon(&contents[location.to_usize()..]) {
-            // If the first token after the statement is a semicolon, insert after the semicolon as
-            // an inline statement.
             Insertion::inline(" ", location.add(offset).add(TextSize::of(';')), ";")
         } else if match_continuation(&contents[location.to_usize()..]).is_some() {
-            // If the first token after the statement is a continuation, insert after the statement
-            // with a semicolon.
             Insertion::inline("; ", location, "")
         } else {
-            // Otherwise, insert on the next line.
             Insertion::own_line(
                 "",
                 contents.full_line_end(location),
@@ -190,13 +176,6 @@ impl<'a> Insertion<'a> {
         if let Some(at) = import_from.names.last().map(Ranged::end) {
             return Some(Insertion::inline(", ", at, ""));
         }
-        // Our AST can deal with partial `from ... import`
-        // statements, so we might not have any members
-        // yet. In this case, we don't need the comma.
-        //
-        // ... however, unless we can be certain that
-        // inserting this name leads to a valid AST, we
-        // give up.
         let at = import_from.end();
         if !matches!(
             tokens
@@ -239,7 +218,6 @@ impl<'a> Insertion<'a> {
         let mut state = Awaiting::Colon(0);
         for token in tokens.after(location) {
             match state {
-                // Iterate until we find the colon indicating the start of the block body.
                 Awaiting::Colon(depth) => match token.kind() {
                     TokenKind::Colon if depth == 0 => {
                         state = Awaiting::Newline;
@@ -252,8 +230,6 @@ impl<'a> Insertion<'a> {
                     }
                     _ => {}
                 },
-                // Once we've seen the colon, we're looking for a newline; otherwise, there's no
-                // block body (e.g. `if True: pass`).
                 Awaiting::Newline => match token.kind() {
                     TokenKind::Comment => {}
                     TokenKind::Newline => {
@@ -264,17 +240,10 @@ impl<'a> Insertion<'a> {
                         break;
                     }
                 },
-                // Once we've seen the newline, we're looking for the indentation of the block body.
                 Awaiting::Indent => match token.kind() {
                     TokenKind::Comment => {}
                     TokenKind::NonLogicalNewline => {}
                     TokenKind::Indent => {
-                        // This is like:
-                        // ```python
-                        // if True:
-                        //     pass
-                        // ```
-                        // Where `range` is the indentation before the `pass` token.
                         return Insertion::indented(
                             "",
                             token.start(),
@@ -290,7 +259,6 @@ impl<'a> Insertion<'a> {
             }
         }
 
-        // This is like: `if True: pass`, where `location` is the start of the `pass` token.
         Insertion::inline("", location, "; ")
     }
 
@@ -533,8 +501,6 @@ x = 1
             Insertion::inline(" ", TextSize::from(20), ";")
         );
 
-        // Script metadata comments followed by a blank line and imports.
-        // The blank line between the comments and the import should be preserved.
         let contents = r"
 # /// script
 # dependencies = ['anyio']
@@ -548,8 +514,6 @@ import datetime as dt
             Insertion::own_line("", TextSize::from(47), "\n")
         );
 
-        // Comments without a blank line before imports should insert right
-        // after the comments (no blank line to preserve).
         let contents = r"
 # /// script
 # dependencies = ['anyio']
@@ -775,26 +739,6 @@ from collections import \
         ",
         );
 
-        /*
-        from collections import (
-            Collector # comment
-        )
-
-        from collections import (
-            Collector, # comment
-        )
-
-        from collections import (
-            Collector # comment
-            ,
-        )
-
-        from collections import (
-            Collector
-            # comment
-            ,
-        )
-                 */
 
         let source = r#"
 from collections import (

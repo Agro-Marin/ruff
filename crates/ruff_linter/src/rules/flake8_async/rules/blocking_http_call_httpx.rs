@@ -62,12 +62,10 @@ impl TypeChecker for HttpxClientChecker {
         annotation: &ruff_python_ast::Expr,
         semantic: &ruff_python_semantic::SemanticModel,
     ) -> bool {
-        // match base annotation directly
         if semantic.matches_qualified_name(annotation, &["httpx", "Client"]) {
             return true;
         }
 
-        // otherwise traverse any union or optional annotation
         let mut found = false;
         traverse_union_and_optional(
             &mut |inner_expr, _| {

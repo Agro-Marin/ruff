@@ -239,7 +239,6 @@ impl<'db> Type<'db> {
                     .borrow()
                     .get(&ty)
                     .copied()
-                    // A recursive visit returns the original type without an upcast result.
                     .unwrap_or(NegativeRetention::Unstable),
             )
         }
@@ -290,8 +289,6 @@ impl<'db> Type<'db> {
             db: &'db dyn Db,
             partial: FunctoolsPartialInstance<'db>,
         ) -> Option<FunctoolsPartialInstance<'db>> {
-            // A partial's wrapped function is fixed, but its reduced signature can differ between
-            // views. A structural callable does not identify a particular wrapped function.
             let Type::FunctionLiteral(function) =
                 partial.wrapped(db).inner(db).resolve_type_alias(db)
             else {
@@ -572,9 +569,6 @@ impl<'db> Type<'db> {
                     })
         };
 
-        // Two occurrences of the same constrained `TypeVar` require separate handling. Although
-        // different specializations can choose different singleton constraints, every occurrence in
-        // one specialization shares the same selected constraint and therefore the same object.
         if let Type::TypeVar(left) = self.resolve_type_alias(db)
             && let Type::TypeVar(right) = other.resolve_type_alias(db)
             && left.is_same_typevar_as(db, right)
@@ -583,15 +577,9 @@ impl<'db> Type<'db> {
             return Truthiness::AlwaysTrue;
         }
 
-        // Distinct static types can still identify the same object, as with `NewType` tags and
-        // function signature substitutions. Compare the types of their possible runtime objects.
         let left_identity = self.identity_comparison_type(db, env);
         let right_identity = other.identity_comparison_type(db, env);
 
-        // Non-disjoint singleton types do not necessarily identify the same object: disjointness can
-        // be inconclusive, for example when aliases between enum members cannot be determined.
-        // Require one singleton type to be a subtype of the other before concluding that they are
-        // definitely identical.
         if left_identity.is_disjoint_from(db, env, right_identity) {
             Truthiness::AlwaysFalse
         } else if is_singleton_or_intersection_with_singleton(left_identity)
@@ -781,9 +769,6 @@ fn fixed_membership_truthiness<'db>(
     let mut equality = ContainerElementEqualityEvaluator::new(db, env, soundness_policy);
     let mut truthiness = Truthiness::AlwaysFalse;
     for &element in elements {
-        // It's okay to ignore errors here because Python doesn't call `__bool__`
-        // for different union variants. Instead, this is just for us to
-        // evaluate a possibly truthy value to `false` or `true`.
         truthiness = truthiness.or(equality
             .element_truthiness(element, needle)
             .unwrap_or_else(|error| error.fallback_truthiness()));
@@ -898,8 +883,6 @@ fn infer_binary_type_comparison_inner<'db>(
         return Ok(Type::from_truthiness(db, env, truthiness));
     }
 
-    // An intersection can supply a custom comparison even when another component inherits
-    // `object.__eq__`. Check its return type before using boolean-only simplifications.
     if !left.is_intersection() && !right.is_intersection() {
         let comparison_truthiness = op.truthiness(db, env, left, right, soundness_policy);
         if comparison_truthiness != Truthiness::Ambiguous {
@@ -1036,12 +1019,6 @@ fn infer_binary_type_comparison_inner<'db>(
             }))
         }
 
-        // `try_dunder` works for almost all `NewType`s, but not for `NewType`s of `float` and
-        // `complex`, where the concrete base type is a union. In that case it turns out the
-        // `self` types of the dunder methods in typeshed don't match, because they don't get
-        // the same `int | float` and `int | float | complex` special treatment that the
-        // positional arguments get. In those cases we need to explicitly delegate to the base
-        // type, so that it hits the `Type::Union` branches above.
         (Type::NewTypeInstance(newtype), right) => {
             Some(try_dunder(MemberLookupPolicy::default()).or_else(|_| {
                 visitor.visit(db, (left, op, right), || {
@@ -1071,11 +1048,6 @@ fn infer_binary_type_comparison_inner<'db>(
             }))
         }
 
-        // Similar to `NewType`s, `TypeVar`s with union bounds (like `bound=float` which becomes
-        // `int | float`) need to delegate to the bound type.
-        //
-        // When both operands are the same bounded TypeVar, we check the comparison on the bound
-        // type paired with itself.
         (Type::TypeVar(left_tvar), Type::TypeVar(right_tvar))
             if left_tvar.identity(db) == right_tvar.identity(db) =>
         {
@@ -1090,7 +1062,6 @@ fn infer_binary_type_comparison_inner<'db>(
                     }))
                 }
                 Some(TypeVarBoundOrConstraints::Constraints(constraints)) => {
-                    // For constrained TypeVars, check each constraint paired with itself.
                     let mut builder = UnionBuilder::new(db, env);
                     for &constraint in constraints.elements(db) {
                         builder = builder.add(infer_binary_type_comparison_inner(
@@ -1102,7 +1073,6 @@ fn infer_binary_type_comparison_inner<'db>(
                 None => None, // Fall through to default handling
             }
         }
-        // A bounded or constrained TypeVar on either side delegates to its concrete alternatives.
         (Type::TypeVar(typevar), other) | (other, Type::TypeVar(typevar))
             if !other.is_type_var() =>
         {
@@ -1154,7 +1124,6 @@ fn infer_binary_type_comparison_inner<'db>(
                         NonIdentityOperator::Rich(RichCompareOperator::Ge) => {
                             Ok(Type::bool_literal(n >= m))
                         }
-                        // Undefined for (int, int)
                         NonIdentityOperator::Membership(_) => Err(UnsupportedComparisonError {
                             op: op.into(),
                             left_ty: left,
@@ -1162,7 +1131,6 @@ fn infer_binary_type_comparison_inner<'db>(
                         }),
                     })
                 }
-                // Booleans are coded as integers (False = 0, True = 1)
                 (LiteralValueTypeKind::Int(n), LiteralValueTypeKind::Bool(b)) => Some(
                     infer_binary_type_comparison_inner(
                         context,
@@ -1276,10 +1244,6 @@ fn infer_binary_type_comparison_inner<'db>(
                     Some(Ok(result))
                 }
 
-                // Same-kind exact literals and the special relationship between `int` and `bool`
-                // are handled above. Any remaining pair of exact builtin literals compares
-                // unequal. `LiteralString` also compares unequal to non-string literals, but its
-                // comparison with an exact string literal remains ambiguous.
                 (
                     LiteralValueTypeKind::Int(_)
                     | LiteralValueTypeKind::Bool(_)
@@ -1339,7 +1303,6 @@ fn infer_binary_type_comparison_inner<'db>(
         return result;
     }
 
-    // Final generalized fallback: lookup the rich comparison `__dunder__` methods
     try_dunder(MemberLookupPolicy::default())
 }
 
@@ -1353,12 +1316,8 @@ fn infer_binary_intersection_type_comparison<'db>(
     visitor: &BinaryComparisonVisitor<'db>,
 ) -> Result<Type<'db>, UnsupportedComparisonError<'db>> {
     enum State<'db> {
-        // We have not seen any positive elements (yet)
         NoPositiveElements,
-        // The operator was unsupported on all elements that we have seen so far.
-        // Contains the first error we encountered.
         UnsupportedOnAllElements(UnsupportedComparisonError<'db>),
-        // The operator was supported on at least one positive element.
         Supported,
     }
 
@@ -1384,8 +1343,6 @@ fn infer_binary_intersection_type_comparison<'db>(
         op,
         NonIdentityOperator::Rich(RichCompareOperator::Eq | RichCompareOperator::Ne)
     ) {
-        // `Unknown & None` still has only one possible runtime value. Use that fact for
-        // definite equality proofs, but keep the original operands for custom comparisons.
         let [known_left, known_right] = [left, right].map(|ty| match ty {
             Type::Intersection(intersection)
                 if intersection.positive(db).iter().any(|ty| ty.is_none(db)) =>
@@ -1406,15 +1363,10 @@ fn infer_binary_intersection_type_comparison<'db>(
             return Ok(Type::from_truthiness(db, env, truthiness));
         }
     }
-    // Rich comparisons can return arbitrary objects. Use the full receiver to bind `Self`.
-    // A failed call can still succeed via component-specific inference below, such as the
-    // concrete-base fallback for NewTypes of `float`.
     let rich_result = if let NonIdentityOperator::Rich(rich_op) = op
         && let Ok(result) =
             infer_rich_comparison(context, left, right, rich_op, MemberLookupPolicy::default())
     {
-        // Gradual results such as `bool & Any` still permit boolean simplifications.
-        // Preserve narrower results, including boolean literals and `Never`.
         if result.top_materialization(db, env) != KnownClass::Bool.to_instance(db, env) {
             return Ok(result);
         }
@@ -1429,9 +1381,6 @@ fn infer_binary_intersection_type_comparison<'db>(
         None
     };
 
-    // If a comparison yields a definitive true/false answer on a (positive) part
-    // of an intersection type, it will also yield a definitive answer on the full
-    // intersection type, which is even more specific.
     for pos in intersection.positive(db) {
         let result = match intersection_on {
             IntersectionOn::Left => {
@@ -1455,44 +1404,6 @@ fn infer_binary_intersection_type_comparison<'db>(
         return Ok(result);
     }
 
-    // If none of the simplifications above apply, we still need to return *some*
-    // result type for the comparison 'T_inter `op` T_other' (or reversed), where
-    //
-    //    T_inter = P1 & P2 & ... & Pn & ~N1 & ~N2 & ... & ~Nm
-    //
-    // is the intersection type. If f(T) is the function that computes the result
-    // type of a `op`-comparison with `T_other`, we are interested in f(T_inter).
-    // Since we can't compute it exactly, we return the following approximation:
-    //
-    //   f(T_inter) = f(P1) & f(P2) & ... & f(Pn)
-    //
-    // The reason for this is the following: In general, for any function 'f', the
-    // set f(A) & f(B) is *larger than or equal to* the set f(A & B). This means
-    // that we will return a type that is possibly wider than it could be, but
-    // never wrong.
-    //
-    // However, we do have to leave out the negative contributions. If we were to
-    // add a contribution like ~f(N1), we would potentially infer result types
-    // that are too narrow.
-    //
-    // As an example for this, consider the intersection type `int & ~Literal[1]`.
-    // If 'f' would be the `==`-comparison with 2, we obviously can't tell if that
-    // answer would be true or false, so we need to return `bool`. And indeed, we
-    // we have (glossing over notational details):
-    //
-    //   f(int & ~1)
-    //       = f({..., -1, 0, 2, 3, ...})
-    //       = {..., False, False, True, False, ...}
-    //       = bool
-    //
-    // On the other hand, if we were to compute
-    //
-    //   f(int) & ~f(1)
-    //       = bool & ~False
-    //       = True
-    //
-    // we would get a result type `Literal[True]` which is too narrow.
-    //
     let mut builder = IntersectionBuilder::new(db, env);
 
     let mut state = State::NoPositiveElements;
@@ -1515,18 +1426,11 @@ fn infer_binary_intersection_type_comparison<'db>(
             Err(error) => {
                 match state {
                     State::NoPositiveElements => {
-                        // This is the first positive element, but the operation is not supported.
-                        // Store the error and continue.
                         state = State::UnsupportedOnAllElements(error);
                     }
                     State::UnsupportedOnAllElements(_) => {
-                        // We already have an error stored, and continue to see elements on which
-                        // the operator is not supported. Continue with the same state (only keep
-                        // the first error).
                     }
                     State::Supported => {
-                        // We previously saw a positive element that supported the operator,
-                        // so the overall operation is still supported.
                     }
                 }
             }
@@ -1536,7 +1440,6 @@ fn infer_binary_intersection_type_comparison<'db>(
     match state {
         State::Supported => Ok(builder.build()),
         State::NoPositiveElements => {
-            // We didn't see any positive elements, check if the operation is supported on `object`:
             match intersection_on {
                 IntersectionOn::Left => infer_binary_type_comparison_inner(
                     context,
@@ -1583,12 +1486,7 @@ fn infer_rich_comparison<'db>(
         policy,
     )
     .or_else(|| {
-        // When no appropriate method returns any value other than NotImplemented,
-        // the `==` and `!=` operators will fall back to `is` and `is not`, respectively.
-        // refer to `<https://docs.python.org/3/reference/datamodel.html#object.__eq__>`
         if matches!(op, RichCompareOperator::Eq | RichCompareOperator::Ne)
-            // This branch implements specific behavior of the `__eq__` and `__ne__` methods
-            // on `object`, so it does not apply if we skip looking up attributes on `object`.
             && !policy.mro_no_object_fallback()
         {
             Some(KnownClass::Bool.to_instance(db, env))
@@ -1633,15 +1531,11 @@ fn infer_membership_test_comparison<'db>(
         CallArguments::positional([left]),
         TypeContext::default(),
     ) {
-        // If `__contains__` is available, it is used directly for the membership test.
         Ok(bindings) => Some(bindings.return_type(db, env)),
-        // If `__contains__` is not available or possibly unbound,
-        // fall back to iteration-based membership test.
         Err(CallDunderError::MethodNotAvailable | CallDunderError::PossiblyUnbound { .. }) => right
             .try_iterate(db, env)
             .map(|_| KnownClass::Bool.to_instance(db, env))
             .ok(),
-        // `__contains__` exists but can't be called with the given arguments.
         Err(CallDunderError::CallError(..)) => None,
     };
 
@@ -1684,7 +1578,6 @@ fn infer_tuple_rich_comparison<'db>(
     let db = context.db();
     let env = &context.program_environment();
     match (left, right) {
-        // Both fixed-length: perform full lexicographic comparison.
         (TupleSpec::Fixed(left), TupleSpec::Fixed(right)) => {
             let left_iter = left.iter_all_elements();
             let right_iter = right.iter_all_elements();
@@ -1699,24 +1592,13 @@ fn infer_tuple_rich_comparison<'db>(
                 let eq_truthiness = equality
                     .element_truthiness(l_ty, r_ty)
                     .unwrap_or_else(|err| {
-                        // TODO: We should, whenever possible, pass the range of the left and right elements
-                        //   instead of the range of the whole tuple.
                         err.report_diagnostic(context, range);
                         Truthiness::Ambiguous
                     });
 
                 match eq_truthiness {
-                    // Earlier unequal elements can still have completed the comparison.
                     Truthiness::Uninhabited => return Ok(builder.build()),
-                    // - AlwaysTrue : Continue to the next pair for lexicographic comparison
                     Truthiness::AlwaysTrue => continue,
-                    // - AlwaysFalse:
-                    // Lexicographic comparisons will always terminate with this pair.
-                    // Complete the comparison and return the result.
-                    // - Ambiguous:
-                    // Lexicographic comparisons might continue to the next pair (if eq_result is true),
-                    // or terminate here (if eq_result is false).
-                    // To account for cases where the comparison terminates here, add the pairwise comparison result to the union builder.
                     eq_truthiness @ (Truthiness::AlwaysFalse | Truthiness::Ambiguous) => {
                         let pairwise_compare_result = match op {
                             RichCompareOperator::Lt
@@ -1730,10 +1612,6 @@ fn infer_tuple_rich_comparison<'db>(
                                 range,
                                 visitor,
                             )?,
-                            // For `==` and `!=`, the equality evaluator has already determined
-                            // that these elements may differ.
-                            // NOTE: The CPython implementation does not account for non-boolean return types
-                            // or cases where `!=` is not the negation of `==`, we also do not consider these cases.
                             RichCompareOperator::Eq => Type::bool_literal(false),
                             RichCompareOperator::Ne => Type::bool_literal(true),
                         };
@@ -1749,7 +1627,6 @@ fn infer_tuple_rich_comparison<'db>(
                 }
             }
 
-            // if no more items to compare, we just compare sizes
             let (left_len, right_len) = (left.len(), right.len());
 
             builder = builder.add(Type::bool_literal(match op {
@@ -1764,21 +1641,13 @@ fn infer_tuple_rich_comparison<'db>(
             Ok(builder.build())
         }
 
-        // At least one tuple is variable-length. We can make no assumptions about
-        // the relative lengths of the tuples, and therefore neither about how they
-        // compare lexicographically. However, we still need to verify that the
-        // element types are comparable for ordering comparisons.
 
-        // For equality comparisons (==, !=), any two objects can be compared,
-        // and tuple equality always returns bool regardless of element __eq__ return types.
         (TupleSpec::Variable(_), _) | (_, TupleSpec::Variable(_))
             if matches!(op, RichCompareOperator::Eq | RichCompareOperator::Ne) =>
         {
             Ok(KnownClass::Bool.to_instance(db, env))
         }
 
-        // At least one variable-length: check all elements that could potentially be compared.
-        // We use `try_for_each_element_pair` to iterate over all possible pairings.
         (left @ TupleSpec::Variable(_), right) | (left, right @ TupleSpec::Variable(_)) => {
             let mut results = SmallVec::<[Type<'db>; 8]>::new();
             left.try_for_each_element_pair(db, right, |l_ty, r_ty| {
@@ -1797,7 +1666,6 @@ fn infer_tuple_rich_comparison<'db>(
             for result in results {
                 builder = builder.add(result);
             }
-            // Length comparison (when all elements are equal) returns bool.
             builder = builder.add(KnownClass::Bool.to_instance(db, env));
 
             Ok(builder.build())

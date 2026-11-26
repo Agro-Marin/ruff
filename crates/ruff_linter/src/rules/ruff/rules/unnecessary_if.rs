@@ -83,8 +83,6 @@ pub(crate) fn unnecessary_if(checker: &Checker, stmt: &StmtIf) {
         ..
     } = stmt;
 
-    // Only handle bare `if` blocks — `elif`/`else` branches are handled by
-    // RUF047 (needless-else)
     if !elif_else_clauses.is_empty() {
         return;
     }
@@ -93,12 +91,10 @@ pub(crate) fn unnecessary_if(checker: &Checker, stmt: &StmtIf) {
         return;
     }
 
-    // Skip `if TYPE_CHECKING` blocks — handled by TC005
     if typing::is_type_checking_block(stmt, checker.semantic()) {
         return;
     }
 
-    // Skip if the body contains a comment
     if if_contains_comments(stmt, checker) {
         return;
     }
@@ -109,7 +105,6 @@ pub(crate) fn unnecessary_if(checker: &Checker, stmt: &StmtIf) {
     let mut diagnostic = checker.report_diagnostic(UnnecessaryIf, stmt.range());
 
     if has_side_effects {
-        // Replace `if cond: pass` with `cond` as an expression statement.
         let replacement = condition_as_expression_statement(test, stmt, checker);
         let edit = Edit::range_replacement(replacement, stmt.range());
         diagnostic.set_fix(Fix::safe_edit(edit));
@@ -167,9 +162,6 @@ fn has_top_level_line_break(range: TextRange, tokens: &Tokens) -> bool {
 fn if_contains_comments(stmt: &StmtIf, checker: &Checker) -> bool {
     let source = checker.source();
 
-    // Use `line_end` (before the newline) instead of `full_line_end` (after
-    // the newline) to avoid touching the range of a comment on the next line.
-    // `TextRange::intersect` considers touching ranges as intersecting.
     let stmt_line_end = source.line_end(stmt.end());
     let check_range = TextRange::new(stmt.start(), stmt_line_end);
 
@@ -192,8 +184,6 @@ fn if_has_trailing_comment(
 ) -> bool {
     let (tokens, source) = (checker.tokens(), checker.source());
 
-    // Compare against the `if` keyword indentation rather than the body
-    // statement — handles single-line forms like `if True: pass`
     let stmt_indentation = indentation(source, stmt).unwrap_or_default().text_len();
 
     for token in tokens.after(stmt_full_end) {

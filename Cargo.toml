@@ -3,7 +3,6 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
-# Please update rustfmt.toml when bumping the Rust edition
 edition = "2024"
 rust-version = "1.98"
 homepage = "https://docs.astral.sh/ruff"
@@ -156,9 +155,6 @@ lsp-types = { package = "gen-lsp-types", version = "0.11.0", default-features = 
 markdown = { version = "1.0.0", default-features = false }
 matchit = { version = "0.9.0", default-features = false }
 memchr = { version = "2.7.1", default-features = false, features = ["std"] }
-# mimalloc v3.3.2 crashes on Windows CPUs that do not support POPCNT.
-# Fixed in mimalloc v3.4.0: https://github.com/microsoft/mimalloc/issues/1291
-# Keep v2 until an updated Rust crate includes the fix.
 mimalloc = { version = "0.1.52", default-features = false, features = ["v2"] }
 natord = { version = "1.0.9", default-features = false }
 notify = { version = "8.0.0", default-features = false, features = ["macos_fsevent"] }
@@ -190,7 +186,6 @@ regex-automata = { version = "0.4.9", default-features = false, features = [
 regex-syntax = { version = "0.8.8", default-features = false }
 rustc-hash = { version = "2.0.0", default-features = false, features = ["std"] }
 rustc-stable-hash = { version = "0.1.2", default-features = false }
-# When updating salsa, make sure to also update the version in `fuzz/Cargo.toml`
 salsa = { version = "0.28.5", default-features = false, features = [
     "compact_str",
     "macros",
@@ -268,9 +263,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -2 }
-# Enabled at the crate level
 disallowed_methods = "allow"
-# Allowed pedantic lints
 assert_is_empty = "allow"
 char_lit_as_u8 = "allow"
 collapsible_else_if = "allow"
@@ -282,18 +275,15 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
-# Our formatting macros share names with std macros but use square brackets.
 nonstandard_macro_braces = "allow"
 similar_names = "allow"
 single_match_else = "allow"
 too_many_lines = "allow"
-collapsible_match = "allow"  # Not always an improvement in readability, quite opinionated
-needless_continue = "allow" # An explicit continue can be more readable, especially if the alternative is an empty block.
-unnecessary_debug_formatting = "allow" # too many instances, the display also doesn't quote the path which is often desired in logs where we use them the most often.
-# Without the hashes we run into a `rustfmt` bug in some snapshot tests, see #13250
+collapsible_match = "allow"
+needless_continue = "allow"
+unnecessary_debug_formatting = "allow"
 needless_raw_string_hashes = "allow"
-# Disallowed restriction lints
-ignore_without_reason = "allow" # Too many existing instances, and there's no auto fix.
+ignore_without_reason = "allow"
 iter_over_hash_type = "warn"
 print_stdout = "warn"
 print_stderr = "warn"
@@ -305,31 +295,18 @@ get_unwrap = "warn"
 rc_buffer = "warn"
 rc_mutex = "warn"
 rest_pat_in_fully_bound_structs = "warn"
-# nursery rules
 redundant_clone = "warn"
 debug_assert_with_mut_call = "warn"
 unused_peekable = "warn"
-# This lint sometimes flags code whose `if` and `else`
-# bodies could be flipped when a `!` operator is removed.
-# While perhaps sometimes a good idea, it is also often
-# not a good idea due to other factors impacting
-# readability. For example, if flipping the bodies results
-# in the `if` being an order of magnitude bigger than the
-# `else`, then some might consider that harder to read.
 if_not_else = "allow"
 
 [workspace.lints.cargo]
-# This is needed for maturin to generate the correct PyPI metadata, for at least
-# the ruff and ty crates.
 redundant_homepage = "allow"
 
 [profile.release]
 lto = "fat"
 codegen-units = 16
 
-# Some crates don't change as much but benefit more from
-# more expensive optimization passes, so we selectively
-# decrease codegen-units in some cases.
 [profile.release.package.ruff_python_parser]
 codegen-units = 1
 [profile.release.package.ruff_python_ast]
@@ -337,7 +314,6 @@ codegen-units = 1
 [profile.release.package.salsa]
 codegen-units = 1
 
-# Profile to build a minimally sized binary for ruff/ty
 [profile.minimal-size]
 inherits = "release"
 opt-level = "z"
@@ -346,7 +322,6 @@ codegen-units = 1
 [profile.dev]
 opt-level = 1
 debug = "line-tables-only"
-# Avoid the local ThinLTO that Cargo enables at nonzero optimization levels.
 lto = "off"
 
 [profile.dev.package.insta]
@@ -358,44 +333,20 @@ opt-level = 3
 [profile.dev.package.salsa]
 opt-level = 3
 
-# Reduce complexity of a parser function that would trigger a locals limit in a wasm tool.
-# https://github.com/bytecodealliance/wasm-tools/blob/b5c3d98e40590512a3b12470ef358d5c7b983b15/crates/wasmparser/src/limits.rs#L29
 [profile.dev.package.ruff_python_parser]
 opt-level = 1
 
-# This profile is meant to mimic the `release` profile as closely as
-# possible, but using settings that are more beneficial for iterative
-# development. That is, the `release` profile is intended for actually
-# building the release, where as `profiling` is meant for building ty/ruff
-# for running benchmarks.
-#
-# The main differences here are to avoid stripping debug information
-# and disabling fat lto. This does result in a mismatch between our release
-# configuration and our benchmarking configuration, which is unfortunate.
-# But compile times with `lto = fat` are completely untenable.
-#
-# This setup does risk that we are measuring something in benchmarks
-# that we aren't shipping, but in order to make those two the same, we'd
-# either need to make compile times way worse for development, or take
-# a hit to binary size and a slight hit to runtime performance in our
-# release builds.
-#
-# Use the `--profile profiling` flag to show symbols in release mode.
-# e.g. `cargo build --profile profiling`
 [profile.profiling]
 inherits = "release"
 strip = false
 debug = "full"
 lto = false
 
-# Profile for faster iteration: applies minimal optimizations for faster tests.
 [profile.fast-test]
 inherits = "dev"
 opt-level = 1
 debug = "line-tables-only"
-# Avoid the local ThinLTO that Cargo enables at nonzero optimization levels.
 lto = "off"
 
-# The profile that 'cargo dist' will build with.
 [profile.dist]
 inherits = "release"

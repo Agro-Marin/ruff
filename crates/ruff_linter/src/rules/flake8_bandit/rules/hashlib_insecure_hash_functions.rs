@@ -148,8 +148,6 @@ fn detect_insecure_hashlib_calls(
                 return;
             };
 
-            // `hashlib.new` accepts mixed lowercase and uppercase names for hash
-            // functions.
             if matches!(
                 hash_func_name.to_ascii_lowercase().as_str(),
                 "md4" | "md5" | "sha" | "sha1"

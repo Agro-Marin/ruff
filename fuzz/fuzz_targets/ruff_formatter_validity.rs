@@ -18,12 +18,10 @@ use similar::TextDiff;
 static SETTINGS: OnceLock<LinterSettings> = OnceLock::new();
 
 fn do_fuzz(case: &[u8]) -> Corpus {
-    // throw away inputs which aren't utf-8
     let Ok(code) = std::str::from_utf8(case) else {
         return Corpus::Reject;
     };
 
-    // the settings are immutable to test_snippet, so we avoid re-initialising here
     let linter_settings = SETTINGS.get_or_init(LinterSettings::default);
     let format_options = PyFormatOptions::default();
 
@@ -41,7 +39,7 @@ fn do_fuzz(case: &[u8]) -> Corpus {
     );
 
     if linter_result.has_invalid_syntax() {
-        return Corpus::Keep; // keep, but don't continue
+        return Corpus::Keep;
     }
 
     let mut warnings = HashMap::new();
@@ -51,7 +49,6 @@ fn do_fuzz(case: &[u8]) -> Corpus {
         *count += 1;
     }
 
-    // format the code once
     if let Ok(formatted) = format_module_source(code, format_options.clone()) {
         let formatted = formatted.as_code().to_string();
 

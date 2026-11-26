@@ -5,18 +5,15 @@ use crate::keyword::is_keyword;
 /// Returns `true` if a string is a valid Python identifier (e.g., variable
 /// name).
 pub fn is_identifier(name: &str) -> bool {
-    // Is the first character a letter or underscore?
     let mut chars = name.chars();
     if !chars.next().is_some_and(is_identifier_start) {
         return false;
     }
 
-    // Are the rest of the characters letters, digits, or underscores?
     if !chars.all(is_identifier_continuation) {
         return false;
     }
 
-    // Is the identifier a keyword?
     if is_keyword(name) {
         return false;
     }
@@ -24,17 +21,11 @@ pub fn is_identifier(name: &str) -> bool {
     true
 }
 
-// Checks if the character c is a valid starting character as described
-// in https://docs.python.org/3/reference/lexical_analysis.html#identifiers
 fn is_identifier_start(c: char) -> bool {
     matches!(c, 'a'..='z' | 'A'..='Z' | '_') || is_xid_start(c)
 }
 
-// Checks if the character c is a valid continuation character as described
-// in https://docs.python.org/3/reference/lexical_analysis.html#identifiers
 fn is_identifier_continuation(c: char) -> bool {
-    // Arrange things such that ASCII codepoints never
-    // result in the slower `is_xid_continue` getting called.
     if c.is_ascii() {
         matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')
     } else {
@@ -54,7 +45,6 @@ pub fn is_mangled_private(id: &str) -> bool {
 /// Returns `true` if a string is a PEP 8-compliant module name (i.e., consists of lowercase
 /// letters, numbers, underscores, and is not a keyword).
 pub fn is_module_name(name: &str) -> bool {
-    // Is the first character a letter or underscore?
     let mut chars = name.chars();
     if !chars
         .next()
@@ -63,12 +53,10 @@ pub fn is_module_name(name: &str) -> bool {
         return false;
     }
 
-    // Are the rest of the characters letters, digits, or underscores?
     if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
         return false;
     }
 
-    // Is the identifier a keyword?
     if is_keyword(name) {
         return false;
     }
@@ -78,7 +66,6 @@ pub fn is_module_name(name: &str) -> bool {
 
 /// Returns `true` if a string appears to be a valid migration file name (e.g., `0001_initial.py`).
 pub fn is_migration_name(name: &str) -> bool {
-    // Are characters letters, digits, or underscores?
     if !name
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
@@ -86,7 +73,6 @@ pub fn is_migration_name(name: &str) -> bool {
         return false;
     }
 
-    // Is the identifier a keyword?
     if is_keyword(name) {
         return false;
     }

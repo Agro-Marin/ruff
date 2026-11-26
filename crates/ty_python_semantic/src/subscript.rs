@@ -33,9 +33,6 @@ fn from_negative_i32(index: i32) -> usize {
     static_assertions::const_assert!(usize::BITS >= 32);
 
     index.checked_neg().map(from_nonnegative_i32).unwrap_or({
-        // 'checked_neg' only fails for i32::MIN. We cannot
-        // represent -i32::MIN as a i32, but we can represent
-        // it as a usize, since usize is at least 32 bits.
         from_nonnegative_i32(i32::MAX) + 1
     })
 }
@@ -147,8 +144,6 @@ where
 {
     let len = elements.len();
     if len == 0 {
-        // The iterator needs to have the same type as the step>0 case below,
-        // so we need to use `.skip(0)`.
         #[expect(clippy::iter_skip_zero)]
         return Either::Left(elements.iter().skip(0).take(0).step_by(1)).copied();
     }
@@ -301,7 +296,6 @@ mod tests {
         let env = db.program_environment();
         let iter = 0..=u32::MAX;
 
-        // u32::MAX - |i32::MIN| + 1 = 2^32 - 1 - 2^31 + 1 = 2^31
         assert_eq!(iter.clone().py_index(db, &env, i32::MIN), Ok(2u32.pow(31)));
         assert_eq!(iter.clone().py_index(db, &env, -2), Ok(u32::MAX - 2 + 1));
         assert_eq!(iter.clone().py_index(db, &env, -1), Ok(u32::MAX - 1 + 1));
@@ -554,10 +548,8 @@ mod tests {
     #[test]
     fn py_slice_step_forward() {
         let db = setup_db();
-        // indices:   0    1    2    3    4    5    6
         let input = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
 
-        // Step size zero is invalid:
         assert!(matches!(
             input.py_slice(&db, None, None, Some(0)),
             Err(StepSizeZeroError)
@@ -605,7 +597,6 @@ mod tests {
     #[test]
     fn py_slice_step_backward() {
         let db = setup_db();
-        // indices:   0    1    2    3    4    5    6
         let input = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
 
         assert_eq_slice(&db, &input, Some(7), Some(0), Some(-2), &['g', 'e', 'c']);

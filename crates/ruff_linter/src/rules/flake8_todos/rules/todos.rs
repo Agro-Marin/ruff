@@ -241,17 +241,17 @@ impl Violation for MissingSpaceAfterTodoColon {
 
 static ISSUE_LINK_OWN_LINE_REGEX_SET: LazyLock<RegexSet> = LazyLock::new(|| {
     RegexSet::new([
-        r"^#\s*(http|https)://.*", // issue link
-        r"^#\s*\d+$",              // issue code - like "003"
-        r"^#\s*[A-Z]+\-?\d+$",     // issue code - like "TD003"
+        r"^#\s*(http|https)://.*",
+        r"^#\s*\d+$",
+        r"^#\s*[A-Z]+\-?\d+$",
     ])
     .unwrap()
 });
 
 static ISSUE_LINK_TODO_LINE_REGEX_SET: LazyLock<RegexSet> = LazyLock::new(|| {
     RegexSet::new([
-        r"\s*(http|https)://.*", // issue link
-        r"\s*#\d+.*",            // issue code - like "#003"
+        r"\s*(http|https)://.*",
+        r"\s*#\d+.*",
     ])
     .unwrap()
 });
@@ -271,7 +271,6 @@ pub(crate) fn todos(
         } = todo_comment;
         let range = todo_comment.range;
 
-        // flake8-todos doesn't support HACK directives.
         if matches!(directive.kind, TodoDirectiveKind::Hack) {
             continue;
         }
@@ -280,8 +279,6 @@ pub(crate) fn todos(
         static_errors(context, content, range, directive);
 
         let mut has_issue_link = false;
-        // VSCode recommended links on same line are ok:
-        // `# TODO(dylan): #1234`
         if ISSUE_LINK_TODO_LINE_REGEX_SET
             .is_match(locator.slice(TextRange::new(directive.range.end(), range.end())))
         {
@@ -289,8 +286,6 @@ pub(crate) fn todos(
         }
         let mut curr_range = range;
         for next_range in comment_ranges.iter().skip(range_index + 1).copied() {
-            // Ensure that next_comment_range is in the same multiline comment "block" as
-            // comment_range.
             if !locator
                 .slice(TextRange::new(curr_range.end(), next_range.start()))
                 .chars()
@@ -308,14 +303,10 @@ pub(crate) fn todos(
                 has_issue_link = true;
             }
 
-            // If the next_comment isn't a tag or an issue, it's worthless in the context of this
-            // linter. We can increment here instead of waiting for the next iteration of the outer
-            // loop.
             curr_range = next_range;
         }
 
         if !has_issue_link {
-            // TD003
             context.report_diagnostic_if_enabled(MissingTodoLink, directive.range);
         }
     }
@@ -328,7 +319,6 @@ fn directive_errors(context: &LintContext, directive: &TodoDirective) {
     }
 
     if directive.content.to_uppercase() == "TODO" {
-        // TD006
         if let Some(mut diagnostic) = context.report_diagnostic_if_enabled(
             InvalidTodoCapitalization {
                 tag: directive.content.to_string(),
@@ -341,7 +331,6 @@ fn directive_errors(context: &LintContext, directive: &TodoDirective) {
             )));
         }
     } else {
-        // TD001
         context.report_diagnostic_if_enabled(
             InvalidTodoTag {
                 tag: directive.content.to_string(),
@@ -373,13 +362,11 @@ fn static_errors(
             if let Some(end_index) = trimmed.find(|c: char| c.is_whitespace() || c == ':') {
                 TextSize::try_from(end_index).unwrap()
             } else {
-                // TD002
                 context.report_diagnostic_if_enabled(MissingTodoAuthor, directive.range);
 
                 TextSize::new(0)
             }
         } else {
-            // TD002
             context.report_diagnostic_if_enabled(MissingTodoAuthor, directive.range);
 
             TextSize::new(0)
@@ -388,18 +375,14 @@ fn static_errors(
     let after_author = &post_directive[usize::from(author_end)..];
     if let Some(after_colon) = after_author.strip_prefix(':') {
         if after_colon.is_empty() {
-            // TD005
             context.report_diagnostic_if_enabled(MissingTodoDescription, directive.range);
         } else if !after_colon.starts_with(char::is_whitespace) {
-            // TD007
             context.report_diagnostic_if_enabled(MissingSpaceAfterTodoColon, directive.range);
         }
     } else {
-        // TD004
         context.report_diagnostic_if_enabled(MissingTodoColon, directive.range);
 
         if after_author.is_empty() {
-            // TD005
             context.report_diagnostic_if_enabled(MissingTodoDescription, directive.range);
         }
     }

@@ -43,8 +43,6 @@ pub(super) fn generate_newtype_index(item: ItemStruct) -> syn::Result<proc_macro
                 assert!(value <= Self::MAX_VALUE as usize);
 
                 // SAFETY:
-                // * The `value < u32::MAX` guarantees that the add doesn't overflow.
-                // * The `+ 1` guarantees that the index is not zero
                 Self(std::num::NonZeroU32::new((value as u32) + 1).unwrap())
             }
 
@@ -52,8 +50,6 @@ pub(super) fn generate_newtype_index(item: ItemStruct) -> syn::Result<proc_macro
                 assert!(value <= Self::MAX_VALUE);
 
                 // SAFETY:
-                // * The `value < u32::MAX` guarantees that the add doesn't overflow.
-                // * The `+ 1` guarantees that the index is larger than zero.
                 Self(std::num::NonZeroU32::new(value + 1).unwrap())
             }
 

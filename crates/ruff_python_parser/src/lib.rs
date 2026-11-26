@@ -338,8 +338,6 @@ pub fn parse_cells_unchecked(
             assert!(previous_end <= range.start());
         }
 
-        // The cell is lexed from `range.start()`, so the slice must keep the leading text to
-        // preserve absolute offsets into the concatenated source.
         let cell_source = &source[TextRange::up_to(range.end())];
         let Parsed {
             syntax,
@@ -356,10 +354,6 @@ pub fn parse_cells_unchecked(
         errors.extend(cell_errors);
         unsupported_syntax_errors.extend(cell_unsupported_syntax_errors);
 
-        // Each range excludes its trailing `\n` separator (see the doc comment above), leaving a
-        // one-byte gap in the token stream. Cover it with a `NonLogicalNewline` so token-based
-        // checks don't treat the separator as another logical line terminator. The final cell's
-        // separator is the file-final newline and is deliberately left uncovered.
         if let Some(next) = ranges.peek() {
             let separator = TextRange::new(range.end(), next.start());
             assert_eq!(&source[separator], "\n");

@@ -31,8 +31,6 @@ impl Renderer for AzureRenderer<'_> {
                 write!(f, "sourcepath={filename};")?;
                 if let Some(range) = span.range() {
                     let location = if self.resolver.notebook_index(span.file()).is_some() {
-                        // We can't give a reasonable location for the structured formats,
-                        // so we show one that's clearly a fallback
                         LineColumn::default()
                     } else {
                         span.file()

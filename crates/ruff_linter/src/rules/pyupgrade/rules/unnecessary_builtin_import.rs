@@ -73,12 +73,10 @@ pub(crate) fn unnecessary_builtin_import(
     names: &[Alias],
     level: u32,
 ) {
-    // Ignore relative imports (they're importing from local modules, not Python's builtins).
     if level > 0 {
         return;
     }
 
-    // Ignore irrelevant modules.
     if !matches!(
         module,
         "builtins" | "io" | "six" | "six.moves" | "six.moves.builtins"
@@ -88,7 +86,6 @@ pub(crate) fn unnecessary_builtin_import(
 
     let semantic = checker.semantic();
 
-    // Identify unaliased, builtin imports.
     let unused_imports: Vec<&Alias> = names
         .iter()
         .filter(|alias| {
@@ -132,9 +129,7 @@ pub(crate) fn unnecessary_builtin_import(
                     | ("six.moves", "filter" | "input" | "map" | "range" | "zip")
             )
         })
-        // Check that the import isn't shadowing a non-builtin value.
         .filter(|alias| {
-            // Always flag `*` imports.
             if &alias.name == "*" {
                 return true;
             }
@@ -143,7 +138,6 @@ pub(crate) fn unnecessary_builtin_import(
             };
             let binding = semantic.binding(binding_id);
             let scope = &semantic.scopes[binding.scope];
-            // If the import isn't shadowing anything, it's definitely unnecessary.
             let Some(shadowed_binding_id) = scope.shadowed_binding(binding_id) else {
                 return true;
             };

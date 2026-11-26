@@ -194,7 +194,6 @@ pub(crate) fn repeated_keys(checker: &Checker, dict: &ast::ExprDict) {
             _ => continue,
         };
 
-        // Comparing values is only necessary to decide whether a repeated key can be fixed.
         let values = seen_values.entry(first_index).or_insert_with(|| {
             FxHashSet::from_iter([ComparableExpr::from(dict.value(first_index))])
         });

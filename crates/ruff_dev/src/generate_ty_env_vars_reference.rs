@@ -56,7 +56,6 @@ pub(crate) fn main(args: &Args) -> anyhow::Result<()> {
             }
         },
         Mode::Write => {
-            // Ensure the docs directory exists
             if let Some(parent) = reference_path.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -91,7 +90,6 @@ fn generate() -> String {
 
     output.push_str("# Environment variables\n\n");
 
-    // Partition and sort environment variables into TY_ and external variables.
     let (ty_vars, external_vars): (BTreeSet<_>, BTreeSet<_>) = EnvVars::metadata()
         .iter()
         .partition(|(var, _)| var.starts_with("TY_"));

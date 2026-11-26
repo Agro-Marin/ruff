@@ -334,9 +334,7 @@ fn is_valid_default_value_with_annotation(
             node_index: _,
         }) => {
             match operand.as_ref() {
-                // Ex) `-1`, `-3.14`, `2j`
                 Expr::NumberLiteral(_) => return true,
-                // Ex) `-math.inf`, `-math.pi`, etc.
                 Expr::Attribute(_)
                     if semantic
                         .resolve_qualified_name(operand)
@@ -355,13 +353,11 @@ fn is_valid_default_value_with_annotation(
             range: _,
             node_index: _,
         }) => {
-            // Ex) `1 + 2j`, `1 - 2j`, `-1 - 2j`, `-1 + 2j`
             if let Expr::NumberLiteral(ast::ExprNumberLiteral {
                 value: ast::Number::Complex { .. },
                 ..
             }) = right.as_ref()
             {
-                // Ex) `1 + 2j`, `1 - 2j`
                 if let Expr::NumberLiteral(ast::ExprNumberLiteral {
                     value: ast::Number::Int(..) | ast::Number::Float(..),
                     ..
@@ -375,7 +371,6 @@ fn is_valid_default_value_with_annotation(
                     node_index: _,
                 }) = left.as_ref()
                 {
-                    // Ex) `-1 + 2j`, `-1 - 2j`
                     if let Expr::NumberLiteral(ast::ExprNumberLiteral {
                         value: ast::Number::Int(..) | ast::Number::Float(..),
                         ..
@@ -386,7 +381,6 @@ fn is_valid_default_value_with_annotation(
                 }
             }
         }
-        // Ex) `math.inf`, `sys.stdin`, etc.
         Expr::Attribute(_)
             if semantic
                 .resolve_qualified_name(default)
@@ -417,7 +411,6 @@ fn is_valid_pep_604_union(annotation: &Expr) -> bool {
         }
     }
 
-    // The top-level expression must be a bit-or operation.
     let Expr::BinOp(ast::ExprBinOp {
         left,
         op: Operator::BitOr,
@@ -429,7 +422,6 @@ fn is_valid_pep_604_union(annotation: &Expr) -> bool {
         return false;
     };
 
-    // The left and right operands must be valid union members.
     is_valid_pep_604_union_member(left) && is_valid_pep_604_union_member(right)
 }
 

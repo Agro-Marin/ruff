@@ -66,7 +66,6 @@ impl Violation for FormatLiterals {
 
 /// UP030
 pub(crate) fn format_literals(checker: &Checker, call: &ast::ExprCall, summary: &FormatSummary) {
-    // The format we expect is, e.g.: `"{0} {1}".format(...)`
     if summary.has_nested_parts {
         return;
     }
@@ -83,24 +82,17 @@ pub(crate) fn format_literals(checker: &Checker, call: &ast::ExprCall, summary: 
         return;
     }
 
-    // If the positional indices aren't sequential (e.g., `"{1} {0}".format(1, 2)`), then we
-    // need to reorder the function arguments; so we need to ensure that the function
-    // arguments aren't splatted (e.g., `"{1} {0}".format(*foo)`), that there are a sufficient
-    // number of them, etc.
     let arguments = if is_sequential(&summary.indices) {
         Arguments::Preserve
     } else {
-        // Ex) `"{1} {0}".format(foo=1, bar=2)`
         if !call.arguments.keywords.is_empty() {
             return;
         }
 
-        // Ex) `"{1} {0}".format(foo)`
         if call.arguments.args.len() < summary.indices.len() {
             return;
         }
 
-        // Ex) `"{1} {0}".format(*foo)`
         if call
             .arguments
             .args
@@ -178,7 +170,6 @@ fn remove_specifiers<'a>(value: &mut Expression<'a>, arena: &'a typed_arena::Are
 fn generate_arguments<'a>(arguments: &[Arg<'a>], order: &[usize]) -> Result<Vec<Arg<'a>>> {
     let mut new_arguments: Vec<Arg> = Vec::with_capacity(arguments.len());
     for (idx, given) in order.iter().enumerate() {
-        // We need to keep the formatting in the same order but move the values.
         let values = arguments
             .get(*given)
             .ok_or_else(|| anyhow!("Failed to extract argument at: {given}"))?;
@@ -220,13 +211,11 @@ fn generate_call(
     let output = transform_expression_text(source_code, |source_code| {
         let mut expression = match_expression(&source_code)?;
 
-        // Fix the call arguments.
         let call = match_call_mut(&mut expression)?;
         if let Arguments::Reorder(order) = arguments {
             call.args = generate_arguments(&call.args, order)?;
         }
 
-        // Fix the string itself.
         let item = match_attribute(&mut call.func)?;
         let arena = typed_arena::Arena::new();
         remove_specifiers(&mut item.value, &arena);
@@ -234,7 +223,6 @@ fn generate_call(
         Ok(expression.codegen_stylist(stylist))
     })?;
 
-    // Ex) `'{' '0}'.format(1)`
     if output == source_code {
         return Err(anyhow!("Unable to identify format literals"));
     }

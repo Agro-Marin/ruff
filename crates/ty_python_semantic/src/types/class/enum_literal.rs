@@ -287,10 +287,6 @@ impl<'db> DynamicEnumLiteral<'db> {
             .map(|cls| cls.class_member(db, env, name, policy))
             .unwrap_or_else(|| Place::Undefined.into());
 
-        // When members are unknown (e.g. `Enum("E", some_var)`), any name could
-        // still be a member. Only fall back to `Unknown` after exhausting the
-        // mixin and enum-base lookups so inherited attributes like `__members__`
-        // continue to resolve precisely.
         self.with_unknown_member_fallback(db, result)
     }
 

@@ -66,7 +66,6 @@ pub(crate) fn empty_type_checking_block(checker: &Checker, stmt: &ast::StmtIf) {
     }
 
     let mut diagnostic = checker.report_diagnostic(EmptyTypeCheckingBlock, stmt.range());
-    // Delete the entire type-checking block.
     let stmt = checker.semantic().current_statement();
     let parent = checker.semantic().current_statement_parent();
     let edit = fix::edits::delete_stmt(stmt, parent, checker.locator(), checker.indexer());

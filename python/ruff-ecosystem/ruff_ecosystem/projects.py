@@ -31,7 +31,6 @@ class Project(Serializable):
 
     repo: Repository
     # ruff: disable[unnecessary-lambda] False positive on types defined later in the file
-    # See https://github.com/astral-sh/ruff/issues/24704
     check_options: CheckOptions = field(default_factory=lambda: CheckOptions())
     format_options: FormatOptions = field(default_factory=lambda: FormatOptions())
     config_overrides: ConfigOverrides = field(default_factory=lambda: ConfigOverrides())
@@ -46,20 +45,16 @@ class Project(Serializable):
         )
 
     def __post_init__(self):
-        # Convert bare dictionaries for `config_overrides` into the correct type
         if isinstance(self.config_overrides, dict):
-            # Bypass the frozen attribute
             object.__setattr__(
                 self, "config_overrides", ConfigOverrides(always=self.config_overrides)
             )
 
 
 ALWAYS_CONFIG_OVERRIDES = {
-    # Always unset the required version or we'll fail
     "required-version": None
 }
 
-# TODO(brent) Remove selector normalization when human-readable rule names are stabilized.
 RULE_SELECTOR_OPTIONS = (
     "select",
     "extend-select",
@@ -116,8 +111,6 @@ def normalize_rule_selectors(config: dict[str, Any], executable: Path) -> None:
         }
     )
     if unknown_names:
-        # Resolve only unrecognized rule names so code and prefix redirects in
-        # the project's configuration still exercise both Ruff versions.
         fixed = check_output(
             [
                 executable,
@@ -147,7 +140,6 @@ def normalize_rule_selectors(config: dict[str, Any], executable: Path) -> None:
         for selector in selectors:
             if not isinstance(selector, str):
                 normalized.append(selector)
-            # Rules without codes have no selector that works outside preview mode.
             elif (code := rule_names.get(selector, selector)) is not None:
                 normalized.append(code)
         selectors[:] = normalized
@@ -169,8 +161,6 @@ class ConfigOverrides(Serializable):
     when_no_preview: dict[str, Any] = field(default_factory=dict)
 
     def __hash__(self) -> int:
-        # Avoid computing this hash repeatedly since this object is intended
-        # to be immutable and serializing to toml is not necessarily cheap
         @cache
         def as_string():
             return tomli_w.dumps(
@@ -197,7 +187,6 @@ class ConfigOverrides(Serializable):
         ruff_toml = dirpath / "ruff.toml"
         pyproject_toml = dirpath / "pyproject.toml"
 
-        # Prefer `ruff.toml` over `pyproject.toml`
         if dot_ruff_toml.exists():
             path = dot_ruff_toml
             base = []
@@ -218,7 +207,6 @@ class ConfigOverrides(Serializable):
             yield
             return
 
-        # Read the existing content if the file is present
         if path.exists():
             contents = path.read_text()
             toml = tomli.loads(contents)
@@ -226,12 +214,10 @@ class ConfigOverrides(Serializable):
             contents = None
             toml = {}
 
-            # Do not write a toml file if it does not exist and we're just nulling values
             if all(value is None for value in overrides.values()):
                 yield
                 return
 
-        # Update the TOML, using `.` to descend into nested keys
         for key, value in overrides.items():
             if value is not None:
                 logger.debug(f"Setting {key}={value!r} in {path}")
@@ -246,7 +232,6 @@ class ConfigOverrides(Serializable):
                 target = target[name]
 
             if value is None:
-                # Remove null values i.e. restore to default
                 target.pop(names[-1], None)
             else:
                 target[names[-1]] = value
@@ -262,7 +247,6 @@ class ConfigOverrides(Serializable):
         try:
             yield
         finally:
-            # Restore the contents or delete the file
             if contents is None:
                 path.unlink()
             else:
@@ -299,10 +283,8 @@ class CheckOptions(CommandOptions):
     ignore: str = ""
     exclude: str = ""
 
-    # Generating fixes is slow and verbose
     show_fixes: bool = False
 
-    # Limit the number of reported lines per rule
     max_lines_per_rule: int | None = 50
 
     def to_ruff_args(self) -> list[str]:
@@ -310,9 +292,7 @@ class CheckOptions(CommandOptions):
             "check",
             "--no-cache",
             "--exit-zero",
-            # Never apply fixes, as they pollute the comparison results
             "--no-fix",
-            # Use the concise format for comparing violations
             "--output-format",
             "concise",
             f"--{'' if self.preview else 'no-'}preview",
@@ -439,7 +419,6 @@ class Repository(Serializable):
                 f"Failed to clone {self.fullname}: {stderr.decode()}"
             )
 
-        # Configure git user — needed for `self.commit` to work
         await (
             await create_subprocess_exec(
                 *["git", "config", "user.email", "ecosystem@astral.sh"],

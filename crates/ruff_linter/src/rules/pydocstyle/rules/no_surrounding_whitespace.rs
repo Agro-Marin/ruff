@@ -70,8 +70,6 @@ pub(crate) fn no_surrounding_whitespace(checker: &Checker, docstring: &Docstring
     }
     let mut diagnostic = checker.report_diagnostic(SurroundingWhitespace, docstring.range());
     let quote = docstring.quote_style().as_char();
-    // If removing whitespace would lead to an invalid string of quote
-    // characters, avoid applying the fix.
     if !trimmed.ends_with(quote) && !trimmed.starts_with(quote) && !ends_with_backslash(trimmed) {
         diagnostic.set_fix(Fix::safe_edit(Edit::range_replacement(
             trimmed.to_string(),

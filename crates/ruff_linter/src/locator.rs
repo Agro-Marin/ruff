@@ -117,7 +117,6 @@ impl<'a> Locator<'a> {
     }
 }
 
-// Override the `_str` methods from [`LineRanges`] to extend the lifetime to `'a`.
 impl<'a> Locator<'a> {
     /// Returns the text of the `offset`'s line.
     ///
@@ -141,7 +140,6 @@ impl<'a> Locator<'a> {
     }
 }
 
-// Allow calling [`LineRanges`] methods on [`Locator`] directly.
 impl LineRanges for Locator<'_> {
     #[inline]
     fn line_start(&self, offset: TextSize) -> TextSize {

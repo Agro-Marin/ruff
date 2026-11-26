@@ -73,13 +73,6 @@ pub(crate) fn os_rename(checker: &Checker, call: &ExprCall, segments: &[&str]) {
     if segments != ["os", "rename"] {
         return;
     }
-    // `src_dir_fd` and `dst_dir_fd` are not supported by pathlib, so check if they are
-    // set to non-default values.
-    // Signature as of Python 3.13 (https://docs.python.org/3/library/os.html#os.rename)
-    // ```text
-    //            0    1           2                  3
-    // os.rename(src, dst, *, src_dir_fd=None, dst_dir_fd=None)
-    // ```
     if is_keyword_only_argument_non_default(&call.arguments, "src_dir_fd")
         || is_keyword_only_argument_non_default(&call.arguments, "dst_dir_fd")
     {
@@ -92,9 +85,7 @@ pub(crate) fn os_rename(checker: &Checker, call: &ExprCall, segments: &[&str]) {
             &["src", "dst", "src_dir_fd", "dst_dir_fd"],
         );
 
-    // Unsafe when the fix would delete comments or change a used return value
     let applicability = if !is_top_level_expression_in_statement(checker) {
-        // Unsafe because the return type changes (None -> Path)
         Applicability::Unsafe
     } else {
         Applicability::Safe

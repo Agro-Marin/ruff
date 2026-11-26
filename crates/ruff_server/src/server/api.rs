@@ -177,16 +177,12 @@ where
         Box::new(move |client| {
             let _span = tracing::debug_span!("request", %id, method = %R::METHOD).entered();
 
-            // Test again if the request was cancelled since it was scheduled on the background task
-            // and, if so, return early
             if cancellation_token.is_cancelled() {
                 tracing::trace!(
                     "Ignoring request id={id} method={} because it was cancelled",
                     R::METHOD
                 );
 
-                // We don't need to send a response here because the `cancel` notification
-                // handler already responded with a message.
                 return;
             }
 
@@ -396,8 +392,6 @@ impl Error {
     }
 }
 
-// Right now, we treat the error code as invisible data that won't
-// be printed.
 impl std::fmt::Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.error.fmt(f)

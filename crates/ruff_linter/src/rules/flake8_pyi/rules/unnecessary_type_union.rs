@@ -63,12 +63,10 @@ impl Violation for UnnecessaryTypeUnion {
 pub(crate) fn unnecessary_type_union<'a>(checker: &Checker, union: &'a Expr) {
     let semantic = checker.semantic();
 
-    // The `|` operator isn't always safe to allow to runtime-evaluated annotations.
     if semantic.execution_context().is_runtime() {
         return;
     }
 
-    // Check if `union` is a PEP604 union (e.g. `float | int`) or a `typing.Union[float, int]`
     let subscript = union.as_subscript_expr();
     let mut union_kind = match subscript {
         Some(subscript) => {
@@ -84,17 +82,11 @@ pub(crate) fn unnecessary_type_union<'a>(checker: &Checker, union: &'a Expr) {
     let mut other_exprs: Vec<&Expr> = Vec::new();
 
     let mut collect_type_exprs = |expr: &'a Expr, parent: &'a Expr| {
-        // If a PEP604-style union is used within a `typing.Union`, then the fix can
-        // use PEP604-style unions.
         if matches!(parent, Expr::BinOp(_)) {
             union_kind = UnionKind::PEP604;
         }
         match expr {
             Expr::Subscript(ast::ExprSubscript { slice, value, .. }) => {
-                // The annotation `type[a, b]` is not valid since `type` accepts
-                // a single parameter. This likely is a confusion with `type[a | b]` or
-                // `type[Union[a, b]]`. Do not emit a diagnostic for invalid type
-                // annotations.
                 if !matches!(**slice, Expr::Tuple(_)) && semantic.match_builtin_expr(value, "type")
                 {
                     type_exprs.push(slice);
@@ -108,7 +100,6 @@ pub(crate) fn unnecessary_type_union<'a>(checker: &Checker, union: &'a Expr) {
 
     traverse_union(&mut collect_type_exprs, semantic, union);
 
-    // Return if zero or one `type` expressions are found.
     if type_exprs.len() <= 1 {
         return;
     }
@@ -127,7 +118,6 @@ pub(crate) fn unnecessary_type_union<'a>(checker: &Checker, union: &'a Expr) {
     );
 
     if semantic.has_builtin_binding("type") {
-        // Construct the content for the [`Fix`] based on if we encountered a PEP604 union.
         let content = match union_kind {
             UnionKind::PEP604 => {
                 let elts: Vec<Expr> = type_exprs.into_iter().cloned().collect();
@@ -154,7 +144,6 @@ pub(crate) fn unnecessary_type_union<'a>(checker: &Checker, union: &'a Expr) {
                 }
             }
             UnionKind::TypingUnion => {
-                // When subscript is None, it uses the previous match case.
                 let subscript = subscript.unwrap();
                 let types = &Expr::Subscript(ast::ExprSubscript {
                     value: Box::new(Expr::Name(ast::ExprName {
@@ -217,7 +206,6 @@ pub(crate) fn unnecessary_type_union<'a>(checker: &Checker, union: &'a Expr) {
             }
         };
 
-        // Mark [`Fix`] as unsafe when comments are in range.
         let applicability = if checker.comment_ranges().intersects(union.range()) {
             Applicability::Unsafe
         } else {

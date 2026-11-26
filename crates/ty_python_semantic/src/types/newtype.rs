@@ -33,11 +33,6 @@ pub struct NewType<'db> {
     #[returns(copy)]
     pub definition: Definition<'db>,
 
-    // The base type of this NewType, if it's eagerly specified. This is typically `None` when a
-    // `NewType` is first encountered, because the base type is lazy/deferred to avoid panics in
-    // the recursive case. This becomes `Some` when a `NewType` is modified by methods like
-    // `.normalize()`. Callers should use the `base` method instead of accessing this field
-    // directly.
     #[returns(copy)]
     eager_base: Option<NewTypeBase<'db>>,
 }
@@ -62,9 +57,6 @@ impl<'db> NewType<'db> {
         heap_size=ruff_memory_usage::heap_size
     )]
     fn lazy_base(self, db: &'db dyn Db) -> NewTypeBase<'db> {
-        // `TypeInferenceBuilder` emits diagnostics for invalid `NewType` definitions that show up
-        // in assignments, but invalid definitions still get here, and also `NewType` might show up
-        // in places that aren't definitions at all. Fall back to `object` in all error cases.
         let definition = self.definition(db);
         let program_file = definition.program_file(db);
         let python_file = program_file.python_file(db);
@@ -85,10 +77,6 @@ impl<'db> NewType<'db> {
                 NewTypeBase::ClassType(nominal_instance_type.class(db, &env))
             }
             Type::NewTypeInstance(newtype) => NewTypeBase::NewType(newtype),
-            // There are exactly two union types allowed as bases for NewType: `int | float` and
-            // `int | float | complex`. These are allowed because that's what `float` and `complex`
-            // expand into in type position. We don't currently ask whether the union was implicit
-            // or explicit, so the explicit version is also allowed.
             Type::Union(union_type) => match union_type.known(db) {
                 Some(KnownUnion::Float) => NewTypeBase::Float,
                 Some(KnownUnion::Complex) => NewTypeBase::Complex,
@@ -106,8 +94,6 @@ impl<'db> NewType<'db> {
         }
     }
 
-    // Walk the `NewTypeBase` chain to find the underlying non-newtype `Type`. There might not be
-    // one if this `NewType` is cyclical, and we fall back to `object` in that case.
     pub fn concrete_base_type(self, db: &'db dyn Db) -> Type<'db> {
         for base in self.iter_bases(db) {
             match base {
@@ -122,9 +108,6 @@ impl<'db> NewType<'db> {
     }
 
     fn is_equivalent_to(self, db: &'db dyn Db, other: Self) -> bool {
-        // Two instances of the "same" `NewType` won't compare == if one of them has an eagerly
-        // evaluated base (or a normalized base, etc.) and the other doesn't, so we only check for
-        // equality of the `definition`.
         self.definition(db) == other.definition(db)
     }
 
@@ -136,24 +119,12 @@ impl<'db> NewType<'db> {
         db: &'db dyn Db,
         f: impl FnOnce(ClassType<'db>) -> Option<ClassType<'db>>,
     ) -> Option<Self> {
-        // Modifying the base class type requires unwrapping and re-wrapping however many base
-        // newtypes there are between here and there. Normally recursion would be natural for this,
-        // but the bases iterator does cycle detection, and I think using that with a stack is a
-        // little cleaner than conjuring up yet another `CycleDetector` visitor and yet another
-        // layer of "*_impl" nesting. Also if there is no base class type, returning `self`
-        // unmodified seems more correct than injecting some default type like `object` into the
-        // cycle, which is what `CycleDetector` would do if we used it here.
         let mut inner_newtype_stack = Vec::new();
         for base in self.iter_bases(db) {
             match base {
-                // Build up the stack of intermediate newtypes that we'll need to re-wrap after
-                // we've mapped the `ClassType`.
                 NewTypeBase::NewType(base_newtype) => inner_newtype_stack.push(base_newtype),
-                // We've reached the `ClassType`.
                 NewTypeBase::ClassType(base_class_type) => {
-                    // Call `f`.
                     let mut mapped_base = NewTypeBase::ClassType(f(base_class_type)?);
-                    // Re-wrap the mapped base class in however many newtypes we unwrapped.
                     for inner_newtype in inner_newtype_stack.into_iter().rev() {
                         mapped_base = NewTypeBase::NewType(NewType::new(
                             db,
@@ -169,14 +140,9 @@ impl<'db> NewType<'db> {
                         Some(mapped_base),
                     ));
                 }
-                // Mapping base class types is used for normalization and applying type mappings,
-                // neither of which have any effect on `float` or `complex` (which are already
-                // fully normalized and non-generic), so we don't need to bother calling `f`.
                 NewTypeBase::Float | NewTypeBase::Complex => {}
             }
         }
-        // If we get here, there is no `ClassType` (because this newtype is either float/complex or
-        // cyclic), and we don't call `f` at all.
         Some(self)
     }
 
@@ -217,9 +183,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
         source: NewType<'db>,
         target: NewType<'db>,
     ) -> ConstraintSet<'db, 'c> {
-        // Since a regular class can't inherit from a newtype, the only way for one newtype to be a
-        // subtype of another is to have the other in its chain of newtype bases. Once we reach the
-        // base class, we don't have to keep looking.
         if source.is_equivalent_to(db, target) {
             return self.always();
         }
@@ -241,9 +204,6 @@ impl<'c, 'db> DisjointnessChecker<'_, 'c, 'db> {
         left: NewType<'db>,
         right: NewType<'db>,
     ) -> ConstraintSet<'db, 'c> {
-        // Two NewTypes are disjoint if they're not equal and neither inherits from the other.
-        // NewTypes have single inheritance, and a regular class can't inherit from a NewType, so
-        // it's not possible for some third type to multiply-inherit from both.
 
         let relation_checker = self.as_relation_checker(TypeRelation::Subtyping);
         relation_checker
@@ -291,10 +251,6 @@ pub(super) fn walk_newtype_base<'db, V: visitor::TypeVisitor<'db> + ?Sized>(
 pub enum NewTypeBase<'db> {
     ClassType(ClassType<'db>),
     NewType(NewType<'db>),
-    // `float` and `complex` are special-cased in type position, where they refer to `int | float`
-    // and `int | float | complex` respectively. As an extension of that special case, we allow
-    // them in `NewType` bases, even though unions and other typing constructs normally aren't
-    // allowed.
     Float,
     Complex,
 }
@@ -355,10 +311,8 @@ impl<'db> Iterator for NewTypeBaseIter<'db> {
         let current = self.current?;
         match current.base(self.db) {
             NewTypeBase::NewType(base_newtype) => {
-                // Doing the insertion only in this branch avoids allocating in the common case.
                 self.seen_before.insert(current);
                 if self.seen_before.contains(&base_newtype) {
-                    // Cycle detected. Stop iterating.
                     self.current = None;
                     None
                 } else {

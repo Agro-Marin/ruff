@@ -100,12 +100,8 @@ enum Action {
 
 /// TC004
 pub(crate) fn runtime_import_in_type_checking_block(checker: &Checker, scope: &Scope) {
-    // Collect all runtime imports by statement.
     let mut actions: FxHashMap<(NodeId, Action), Vec<ImportBinding>> = FxHashMap::default();
 
-    // If we have a module-level __getattr__ method we don't necessarily know that the
-    // references in __all__ refer to typing-only imports, the __getattr__ might be
-    // able to handle that attribute access and return the correct thing at runtime.
     let ignore_dunder_all_references = checker
         .semantic()
         .lookup_symbol_in_scope("__getattr__", ScopeId::global(), false)
@@ -142,7 +138,7 @@ pub(crate) fn runtime_import_in_type_checking_block(checker: &Checker, scope: &S
                 binding,
                 range: binding.range(),
                 parent_range: binding.parent_range(checker.semantic()),
-                needs_future_import: false, // TODO(brent) See #19359.
+                needs_future_import: false,
                 runtime_reference: Some(runtime_reference),
             };
 
@@ -159,16 +155,6 @@ pub(crate) fn runtime_import_in_type_checking_block(checker: &Checker, scope: &S
                     .or_default()
                     .push(import);
             } else {
-                // Determine whether the member should be fixed by moving the import out of the
-                // type-checking block, or by quoting its references.
-                // TODO: We should check `reference.in_annotated_type_alias()`
-                //       as well to match the behavior of the flake8 plugin
-                //       although maybe the best way forward is to add an
-                //       additional setting to configure whether quoting
-                //       or moving the import is preferred for type aliases
-                //       since some people will consistently use their
-                //       type aliases at runtimes, while others won't, so
-                //       the best solution is unclear.
                 if checker.settings().flake8_type_checking.quote_annotations
                     && binding.references().all(|reference_id| {
                         let reference = checker.semantic().reference(reference_id);
@@ -195,8 +181,6 @@ pub(crate) fn runtime_import_in_type_checking_block(checker: &Checker, scope: &S
     )]
     for ((node_id, action), imports) in actions {
         match action {
-            // Generate a diagnostic for every import, but share a fix across all imports within the same
-            // statement (excluding those that are ignored).
             Action::Move => {
                 let fix = move_imports(checker, node_id, &imports).ok();
 
@@ -227,8 +211,6 @@ pub(crate) fn runtime_import_in_type_checking_block(checker: &Checker, scope: &S
                 }
             }
 
-            // Generate a diagnostic for every import, but share a fix across all imports within the same
-            // statement (excluding those that are ignored).
             Action::Quote => {
                 let fix = quote_imports(checker, node_id, &imports);
 
@@ -257,8 +239,6 @@ pub(crate) fn runtime_import_in_type_checking_block(checker: &Checker, scope: &S
                 }
             }
 
-            // Separately, generate a diagnostic for every _ignored_ import, to ensure that the
-            // suppression comments aren't marked as unused.
             Action::Ignore => {
                 for ImportBinding {
                     import,
@@ -325,7 +305,6 @@ fn move_imports(checker: &Checker, node_id: NodeId, imports: &[ImportBinding]) -
         .map(Imported::member_name)
         .collect();
 
-    // Find the first reference across all imports.
     let at = imports
         .iter()
         .map(|ImportBinding { reference_id, .. }| {
@@ -334,7 +313,6 @@ fn move_imports(checker: &Checker, node_id: NodeId, imports: &[ImportBinding]) -
         .min()
         .expect("Expected at least one import");
 
-    // Step 1) Remove the import.
     let remove_import_edit = fix::edits::remove_unused_imports(
         member_names.iter().map(AsRef::as_ref),
         statement,
@@ -344,7 +322,6 @@ fn move_imports(checker: &Checker, node_id: NodeId, imports: &[ImportBinding]) -
         checker.indexer(),
     )?;
 
-    // Step 2) Add the import to the top-level.
     let add_import_edit = checker.importer().runtime_import_edit(
         &ImportedMembers {
             statement,

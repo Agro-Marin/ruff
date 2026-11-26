@@ -61,8 +61,6 @@ impl Violation for BuiltinVariableShadowing {
 
 /// A001
 pub(crate) fn builtin_variable_shadowing(checker: &Checker, name: &str, range: TextRange) {
-    // These should not report violations as discussed in
-    // https://github.com/astral-sh/ruff/issues/16373
     if matches!(
         name,
         "__doc__" | "__name__" | "__loader__" | "__package__" | "__spec__"
@@ -70,9 +68,6 @@ pub(crate) fn builtin_variable_shadowing(checker: &Checker, name: &str, range: T
         return;
     }
 
-    // In class scope, attribute bindings (e.g., `id = 1`) are covered by
-    // `builtin-attribute-shadowing` (A003), but other bindings (e.g., a `for`
-    // target or `:=`) are not and still shadow the builtin.
     let scope = checker.semantic().current_scope();
     if scope.kind.is_class()
         && scope.get(name).is_none_or(|binding_id| {

@@ -59,7 +59,6 @@ pub(crate) fn format_stdin(
         return Ok(ExitStatus::Success);
     }
 
-    // Format the file.
     match format_source_code(path, cli.range, settings, source_type, mode) {
         Ok(result) => match mode {
             FormatMode::Write => Ok(ExitStatus::Success),
@@ -86,7 +85,6 @@ fn format_source_code(
     source_type: SourceType,
     mode: FormatMode,
 ) -> Result<FormatResult, FormatCommandError> {
-    // Read the source from stdin.
     let source_code = read_from_stdin()
         .map_err(|err| FormatCommandError::Read(path.map(Path::to_path_buf), err.into()))?;
 
@@ -98,7 +96,6 @@ fn format_source_code(
         }
     };
 
-    // Format the source.
     let formatted = format_source(&source_kind, path, settings, range)?;
 
     match &formatted {
@@ -123,7 +120,6 @@ fn format_source_code(
             }
         },
         FormattedSource::Unchanged => {
-            // Write to stdout regardless of whether the source was formatted
             if mode.is_write() {
                 let mut writer = stdout().lock();
                 source_kind

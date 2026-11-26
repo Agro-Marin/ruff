@@ -72,7 +72,6 @@ impl Violation for FStringNumberFormat {
 
 /// FURB116
 pub(crate) fn fstring_number_format(checker: &Checker, subscript: &ast::ExprSubscript) {
-    // The slice must be exactly `[2:]`.
     let Expr::Slice(ast::ExprSlice {
         lower: Some(lower),
         upper: None,
@@ -95,7 +94,6 @@ pub(crate) fn fstring_number_format(checker: &Checker, subscript: &ast::ExprSubs
         return;
     }
 
-    // The call must be exactly `hex(...)`, `bin(...)`, or `oct(...)`.
     let Expr::Call(ExprCall {
         func, arguments, ..
     }) = subscript.value.as_ref()
@@ -119,7 +117,6 @@ pub(crate) fn fstring_number_format(checker: &Checker, subscript: &ast::ExprSubs
         return;
     };
 
-    // float and complex numbers are false positives, ignore them.
     if matches!(
         arg,
         Expr::NumberLiteral(ast::ExprNumberLiteral {
@@ -177,14 +174,10 @@ fn try_create_replacement(checker: &Checker, arg: &Expr, base: Base) -> Option<S
 
     let inner_source = checker.locator().slice(arg);
 
-    // On Python 3.11 and earlier, trying to replace an `arg` that contains a backslash
-    // would create a `SyntaxError` in the f-string.
     if checker.target_version() <= PythonVersion::PY311 && inner_source.contains('\\') {
         return None;
     }
 
-    // On Python 3.11 and earlier, trying to replace an `arg` that spans multiple lines
-    // would create a `SyntaxError` in the f-string.
     if checker.target_version() <= PythonVersion::PY311 && find_newline(inner_source).is_some() {
         return None;
     }
@@ -192,14 +185,10 @@ fn try_create_replacement(checker: &Checker, arg: &Expr, base: Base) -> Option<S
     let quote = checker.stylist().quote();
     let shorthand = base.shorthand();
 
-    // If the `arg` contains double quotes we need to create the f-string with single quotes
-    // to avoid a `SyntaxError` in Python 3.11 and earlier.
     if checker.target_version() <= PythonVersion::PY311 && inner_source.contains(quote.as_str()) {
         return None;
     }
 
-    // If the `arg` contains a brace add an space before it to avoid a `SyntaxError`
-    // in the f-string.
     if inner_source.starts_with('{') {
         Some(format!("f{quote}{{ {inner_source}:{shorthand}}}{quote}"))
     } else {

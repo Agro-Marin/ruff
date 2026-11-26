@@ -74,7 +74,6 @@ impl<'db> Type<'db> {
         instance: Option<Type<'db>>,
         owner: Option<Type<'db>>,
     ) -> Option<Type<'db>> {
-        // ParamSpec specialization can produce a union of function descriptors.
         match self {
             Type::Union(union) => {
                 return union.try_map(db, env, |alternative| {
@@ -139,8 +138,6 @@ impl<'db> Type<'db> {
                 .value_type(db)
                 .method_shadowing_contract(db, env, receiver),
             _ if self.function_like_kind(db).is_some()
-                // When the receiver is a class object (i.e. `C.method = ...` instead of `c_instance.method = ...`),
-                // it would actually overwrite the function on the class, i.e. this would not be shadowing.
                 && !receiver.is_subtype_of(db, env, KnownClass::Type.to_instance(db, env)) =>
             {
                 let bound = self.function_like_dunder_get(db, env, Some(receiver), None)?;
@@ -289,7 +286,6 @@ impl<'db> Type<'db> {
                         context,
                         Some(receiver.unwrap_or(self)),
                     ),
-                // TODO: Preserve `Self` while validating the receiver against each constraint.
                 TypeVarBoundOrConstraints::Constraints(_) => None,
             },
 
@@ -314,8 +310,6 @@ impl<'db> Type<'db> {
                         .try_upcast_to_callable_with_policy_and_context(
                             db, env, policy, context, None,
                         )
-                        // The callable instance itself doesn't inherit the descriptor behavior of
-                        // its `__call__` method.
                         .map(|callables| callables.map(|callable| callable.into_regular(db)))
                 } else {
                     None
@@ -338,14 +332,10 @@ impl<'db> Type<'db> {
                 )))
             }
 
-            // TODO: This is unsound so in future we can consider an opt-in option to disable it.
             Type::SubclassOf(subclass_of_ty) => match subclass_of_ty.subclass_of() {
                 SubclassOfInner::Class(class) => Some(class.into_callable(db)),
                 SubclassOfInner::Protocol(protocol) => protocol.class_origin(db).map(|origin| {
                     if protocol.materialization_kind(db).is_some() {
-                        // The origin supplies the constructor, but the actual receiver retains
-                        // `Top[P]` or `Bottom[P]`. Infer with both so instance-returning overloads
-                        // are materialized without replacing explicit non-instance returns.
                         (*origin).into_callable_with_receiver(db, self)
                     } else {
                         (*origin).into_callable(db)
@@ -479,7 +469,6 @@ impl<'db> Type<'db> {
                 .remaining_literal_union(db, env)
                 .try_upcast_to_callable_with_policy_and_context(db, env, policy, context, receiver),
 
-            // TODO
             Type::DataclassDecorator(_)
             | Type::ModuleLiteral(_)
             | Type::SpecialForm(_)
@@ -776,7 +765,6 @@ pub(super) fn walk_callable_type<'db, V: visitor::TypeVisitor<'db> + ?Sized>(
     }
 }
 
-// The Salsa heap is tracked separately.
 impl get_size2::GetSize for CallableType<'_> {}
 
 impl<'db> CallableType<'db> {
@@ -1110,8 +1098,6 @@ pub(crate) struct CallableTypes<'db>(SmallVec<[CallableType<'db>; 1]>);
 impl<'db> CallableTypes<'db> {
     fn new(mut callables: SmallVec<[CallableType<'db>; 1]>) -> Self {
         assert!(!callables.is_empty(), "CallableTypes should not be empty");
-        // Repeated alternatives do not change a union. Removing them also lets recursive
-        // constructor queries converge when each iteration adds the same `__init__` callable.
         if callables.len() > 1 {
             let mut seen = FxHashSet::default();
             callables.retain(|callable| seen.insert(*callable));

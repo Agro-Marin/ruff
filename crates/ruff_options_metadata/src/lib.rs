@@ -457,14 +457,12 @@ mod serde {
 
     impl Visit for SerializeVisitor<'_> {
         fn record_set(&mut self, name: &str, set: OptionSet) {
-            // Collect the entries of the set.
             let mut entries = BTreeMap::new();
             let mut visitor = SerializeVisitor {
                 entries: &mut entries,
             };
             set.record(&mut visitor);
 
-            // Insert the set into the entries.
             for (key, value) in entries {
                 self.entries.insert(format!("{name}.{key}"), value);
             }

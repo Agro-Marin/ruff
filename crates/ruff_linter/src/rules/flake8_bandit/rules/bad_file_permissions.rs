@@ -89,9 +89,6 @@ pub(crate) fn bad_file_permissions(
             DANGEROUS_BITS_STABLE
         };
 
-        // Prefer `Invalid` over `Permissive` to match the legacy behavior
-        // where an out-of-range integer short-circuited the permissiveness
-        // check.
         if known.oversized || known.ones & !VALID_BITS != 0 {
             checker.report_diagnostic(
                 BadFilePermissions {

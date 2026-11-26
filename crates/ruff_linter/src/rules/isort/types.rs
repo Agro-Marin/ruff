@@ -83,18 +83,10 @@ pub(crate) struct ImportFromStatement<'a> {
 
 #[derive(Debug, Default)]
 pub(crate) struct ImportBlock<'a> {
-    // Set of (name, asname), used to track regular imports.
-    // Ex) `import module`
     pub(crate) import: FxHashMap<AliasData<'a>, ImportCommentSet<'a>>,
-    // Map from (module, level) to `AliasData`, used to track 'from' imports.
-    // Ex) `from module import member`
     pub(crate) import_from: FxHashMap<ImportFromData<'a>, ImportFromStatement<'a>>,
-    // Set of (module, level, name, asname), used to track re-exported 'from' imports.
-    // Ex) `from module import member as member`
     pub(crate) import_from_as:
         FxHashMap<(ImportFromData<'a>, AliasData<'a>), ImportFromStatement<'a>>,
-    // Map from (module, level) to `AliasData`, used to track star imports.
-    // Ex) `from module import *`
     pub(crate) import_from_star: FxHashMap<ImportFromData<'a>, ImportFromStatement<'a>>,
 }
 

@@ -25,7 +25,7 @@ from typing import Final
 
 MODULE_CRATE = "ruff_python_stdlib"
 MODULE_PATH = Path("crates") / MODULE_CRATE / "src" / "sys" / "builtin_modules.rs"
-PYTHON_VERSIONS: Final = range(8, 16)  # Python 3.8 through 3.15
+PYTHON_VERSIONS: Final = range(8, 16)
 
 
 def run(command: list[str]) -> str:
@@ -93,7 +93,6 @@ def generate_module() -> None:
             for minor_version in PYTHON_VERSIONS
         }
 
-        # First, add a case for the modules that are in all versions.
         ubiquitous_modules = set.intersection(*modules_by_version.values())
 
         print("(_, ")
@@ -103,7 +102,6 @@ def generate_module() -> None:
             print(f'"{module}"')
         print(")")
 
-        # Next, add any version-specific modules.
         for minor_version in PYTHON_VERSIONS:
             version_modules = set.difference(
                 modules_by_version[minor_version],

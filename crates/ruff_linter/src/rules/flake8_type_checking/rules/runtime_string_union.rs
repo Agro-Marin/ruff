@@ -93,13 +93,10 @@ pub(crate) fn runtime_string_union(
     expr: &Expr,
     annotation_expr: &ast::ExprStringLiteral,
 ) {
-    // The union is only problematic at runtime. Even though stub files are never
-    // executed, some of the nodes still end up having a runtime execution context
     if checker.source_type.is_stub() || !checker.semantic().execution_context().is_runtime() {
         return;
     }
 
-    // Are we actually part of a union?
     let Some(Expr::BinOp(ast::ExprBinOp {
         op: Operator::BitOr,
         ..

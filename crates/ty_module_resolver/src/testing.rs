@@ -21,9 +21,6 @@ pub(crate) struct TestCase<T> {
     pub(crate) db: TestDb,
     pub(crate) src: SystemPathBuf,
     pub(crate) stdlib: T,
-    // Most test cases only ever need a single `site-packages` directory,
-    // so this is a single directory instead of a `Vec` of directories,
-    // like it is in `SearchPaths`.
     pub(crate) site_packages: SystemPathBuf,
     pub(crate) python_version: PythonVersion,
 }
@@ -111,8 +108,6 @@ pub(crate) struct TestCaseBuilder<T> {
     first_party_files: Vec<FileSpec>,
     site_packages_files: Vec<FileSpec>,
     extra_paths: Vec<(SystemPathBuf, Vec<FileSpec>)>,
-    // Additional file roots (beyond site_packages, src and stdlib)
-    // that should be registered with the `Db` abstraction.
     roots: Vec<SystemPathBuf>,
 }
 
@@ -169,7 +164,6 @@ impl<T> TestCaseBuilder<T> {
         files: impl IntoIterator<Item = FileSpec>,
     ) -> SystemPathBuf {
         let root = location.as_ref().to_path_buf();
-        // Make sure to create the directory even if the list of files is empty:
         db.memory_file_system().create_directory_all(&root).unwrap();
         db.write_files(
             files
@@ -260,9 +254,6 @@ impl TestCaseBuilder<MockedTypeshed> {
 
         db = db.with_search_paths(search_paths);
 
-        // Roots for other search paths are added as part of
-        // search path initialization in `SearchPaths::from_settings`,
-        // and any remaining are added below.
         db.files()
             .try_add_root(&db, SystemPath::new("/src"), FileRootKind::Project);
 
@@ -361,18 +352,12 @@ impl std::fmt::Debug for ModuleDebugSnapshot<'_> {
                 write!(f, "Module::Namespace({name:?})", name = pkg.name(self.db))
             }
             Module::File(module) => {
-                // For snapshots, just normalize all paths to using
-                // Unix slashes for simplicity.
                 let path_components = match module.file(self.db).path(self.db) {
                     FilePath::System(path) => path.components(),
                     FilePath::Vendored(path) => path.components(),
                     FilePath::SystemVirtual(path) => Utf8Path::new(path.as_str()).components(),
                 };
                 let nice_path = path_components
-                    // Avoid including a root component, since that
-                    // results in a platform dependent separator.
-                    // Convert to an empty string so that we get a
-                    // path beginning with `/` regardless of platform.
                     .map(|component| {
                         if let Utf8Component::RootDir = component {
                             Utf8Component::Normal("")

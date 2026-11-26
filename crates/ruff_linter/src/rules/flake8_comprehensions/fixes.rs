@@ -41,7 +41,6 @@ pub(crate) fn fix_unnecessary_generator_dict(expr: &Expr, checker: &Checker) -> 
     let call = match_call_mut(&mut tree)?;
     let arg = match_arg(call)?;
 
-    // Extract the (k, v) from `(k, v) for ...`.
     let generator_exp = match_generator_exp(&arg.value)?;
     let tuple = match_tuple(&generator_exp.elt)?;
     let [
@@ -52,10 +51,6 @@ pub(crate) fn fix_unnecessary_generator_dict(expr: &Expr, checker: &Checker) -> 
         bail!("Expected tuple to contain two elements");
     };
 
-    // Insert whitespace before the `for`, since we're removing parentheses, as in:
-    // ```python
-    // dict((x, x)for x in range(3))
-    // ```
     let mut for_in = generator_exp.for_in.clone();
     if for_in.whitespace_before == ParenthesizableWhitespace::default() {
         for_in.whitespace_before =
@@ -115,10 +110,6 @@ pub(crate) fn fix_unnecessary_list_comprehension_dict(
         bail!("Expected tuple with two elements");
     };
 
-    // Insert whitespace before the `for`, since we're removing parentheses, as in:
-    // ```python
-    // dict((x, x)for x in range(3))
-    // ```
     let mut for_in = list_comp.for_in.clone();
     if for_in.whitespace_before == ParenthesizableWhitespace::default() {
         for_in.whitespace_before =
@@ -157,7 +148,6 @@ pub(crate) fn fix_unnecessary_literal_dict(expr: &Expr, checker: &Checker) -> Re
     let locator = checker.locator();
     let stylist = checker.stylist();
 
-    // Expr(Call(List|Tuple)))) -> Expr(Dict)))
     let module_text = locator.slice(expr);
     let mut tree = match_expression(module_text)?;
     let call = match_call_mut(&mut tree)?;
@@ -228,24 +218,16 @@ pub(crate) fn fix_unnecessary_collection_call(
     let locator = checker.locator();
     let stylist = checker.stylist();
 
-    // Expr(Call("dict")))) -> Expr(Dict)
     let module_text = locator.slice(expr);
     let mut tree = match_expression(module_text)?;
     let call = match_call(&tree)?;
 
-    // Arena allocator used to create formatted strings of sufficient lifetime,
-    // below.
     let mut arena: Vec<String> = vec![];
 
     let quote = checker
         .interpolated_string_quote_style()
         .unwrap_or(stylist.quote());
 
-    // Quote each argument.
-    //
-    // Python normalizes identifiers to NFKC, but string literals are not normalized. Emitting the
-    // raw source text of a keyword argument would change the dictionary key at runtime, so the
-    // name has to be normalized. See https://github.com/astral-sh/ruff/issues/16234.
     for arg in &call.args {
         let quoted = format!(
             "{}{}{}",
@@ -329,13 +311,9 @@ fn pad_expression(
         return content;
     }
 
-    // If the expression is immediately preceded by an opening brace, then
-    // we need to add a space before the expression.
     let prefix = locator.up_to(range.start());
     let left_pad = matches!(prefix.chars().next_back(), Some('{'));
 
-    // If the expression is immediately preceded by an opening brace, then
-    // we need to add a space before the expression.
     let suffix = locator.after(range.end());
     let right_pad = matches!(suffix.chars().next(), Some('}'));
 
@@ -361,8 +339,6 @@ pub(crate) fn pad_start(
         return content.into();
     }
 
-    // If the expression is immediately preceded by an opening brace, then
-    // we need to add a space before the expression.
     let prefix = locator.up_to(range.start());
     if matches!(prefix.chars().next_back(), Some('{')) {
         format!(" {content}")
@@ -382,8 +358,6 @@ pub(crate) fn pad_end(
         return content.into();
     }
 
-    // If the expression is immediately preceded by an opening brace, then
-    // we need to add a space before the expression.
     let suffix = locator.after(range.end());
     if matches!(suffix.chars().next(), Some('}')) {
         format!("{content} ")
@@ -398,7 +372,6 @@ pub(crate) fn fix_unnecessary_list_call(
     locator: &Locator,
     stylist: &Stylist,
 ) -> Result<Edit> {
-    // Expr(Call(List|Tuple)))) -> Expr(List|Tuple)))
     let module_text = locator.slice(expr);
     let mut tree = match_expression(module_text)?;
     let call = match_call_mut(&mut tree)?;
@@ -442,7 +415,6 @@ pub(crate) fn fix_unnecessary_call_around_sorted(
                 tree = tree.with_parens(LeftParen::default(), RightParen::default());
             }
         } else {
-            // If the `reverse` argument is used...
             let args = if inner_call.args.iter().any(|arg| {
                 matches!(
                     arg.keyword,
@@ -452,7 +424,6 @@ pub(crate) fn fix_unnecessary_call_around_sorted(
                     })
                 )
             }) {
-                // Negate the `reverse` argument.
                 inner_call
                     .args
                     .clone()
@@ -473,15 +444,6 @@ pub(crate) fn fix_unnecessary_call_around_sorted(
             } else {
                 let mut args = inner_call.args.clone();
 
-                // If necessary, parenthesize a generator expression, as a generator expression must
-                // be parenthesized if it's not a solitary argument. For example, given:
-                // ```python
-                // reversed(sorted(i for i in range(42)))
-                // ```
-                // Rewrite as:
-                // ```python
-                // sorted((i for i in range(42)), reverse=True)
-                // ```
                 if let [arg] = args.as_mut_slice() {
                     if matches!(arg.value, Expression::GeneratorExp(_)) {
                         if arg.value.lpar().is_empty() && arg.value.rpar().is_empty() {
@@ -493,7 +455,6 @@ pub(crate) fn fix_unnecessary_call_around_sorted(
                     }
                 }
 
-                // Add the `reverse=True` argument.
                 args.push(Arg {
                     value: Expression::Name(Box::new(Name {
                         value: "True",
@@ -691,17 +652,13 @@ pub(crate) fn fix_unnecessary_map(
         _ => bail!("Expected a call or lambda"),
     };
 
-    // Format the lambda target.
     let target = match lambda.params.params.as_slice() {
-        // Ex) `lambda: x`
         [] => AssignTargetExpression::Name(Box::new(Name {
             value: "_",
             lpar: vec![],
             rpar: vec![],
         })),
-        // Ex) `lambda x: y`
         [param] => AssignTargetExpression::Name(Box::new(param.name.clone())),
-        // Ex) `lambda x, y: z`
         params => AssignTargetExpression::Tuple(Box::new(Tuple {
             elements: params
                 .iter()
@@ -715,10 +672,6 @@ pub(crate) fn fix_unnecessary_map(
         })),
     };
 
-    // Parenthesize the iterator, if necessary, as in:
-    // ```python
-    // map(lambda x: x, y if y else z)
-    // ```
     let iter = iter.clone();
     let iter = if iter.lpar().is_empty()
         && iter.rpar().is_empty()
@@ -806,8 +759,6 @@ pub(crate) fn fix_unnecessary_map(
 
     let mut content = tree.codegen_stylist(stylist);
 
-    // If the expression is embedded in an interpolated string, surround it with spaces to avoid
-    // syntax errors.
     if matches!(object_type, ObjectType::Set | ObjectType::Dict) {
         if parent.is_some_and(|expr| expr.is_f_string_expr() || expr.is_t_string_expr()) {
             content = format!(" {content} ");
@@ -823,7 +774,6 @@ pub(crate) fn fix_unnecessary_comprehension_in_call(
     locator: &Locator,
     stylist: &Stylist,
 ) -> Result<Fix> {
-    // Expr(ListComp) -> Expr(GeneratorExp)
     let module_text = locator.slice(expr);
     let mut tree = match_expression(module_text)?;
     let call = match_call_mut(&mut tree)?;
@@ -858,32 +808,11 @@ pub(crate) fn fix_unnecessary_comprehension_in_call(
         ..
     }) = &whitespace_after
     {
-        // If there's a comment on the line after the opening bracket, we need
-        // to preserve it. The way we do this is by adding a new empty line
-        // with the same comment.
-        //
-        // Example:
-        // ```python
-        // any(
-        //     [  # comment
-        //         ...
-        //     ]
-        // )
-        //
-        // # The above code will be converted to:
-        // any(
-        //     # comment
-        //     ...
-        // )
-        // ```
         if let TrailingWhitespace {
             comment: Some(comment),
             ..
         } = first_line
         {
-            // The indentation should be same as that of the opening bracket,
-            // but we don't have that information here. This will be addressed
-            // before adding these new nodes.
             new_empty_lines.push(EmptyLine {
                 comment: Some(comment.clone()),
                 ..EmptyLine::default()
@@ -902,8 +831,6 @@ pub(crate) fn fix_unnecessary_comprehension_in_call(
                 last_line,
                 ..
             }) => {
-                // Add the indentation of the opening bracket to all the new
-                // empty lines.
                 for empty_line in &mut new_empty_lines {
                     empty_line.whitespace = last_line.clone();
                 }
@@ -914,16 +841,6 @@ pub(crate) fn fix_unnecessary_comprehension_in_call(
                     last_line: last_line.clone(),
                 })
             }
-            // This is a rare case, but it can happen if the opening bracket
-            // is on the same line as the function call.
-            //
-            // Example:
-            // ```python
-            // any([
-            //         ...
-            //     ]
-            // )
-            // ```
             ParenthesizableWhitespace::SimpleWhitespace(whitespace) => {
                 for empty_line in &mut new_empty_lines {
                     empty_line.whitespace = whitespace.clone();
@@ -1003,12 +920,6 @@ pub(crate) fn fix_unnecessary_comprehension_in_call(
         _ => whitespace_after_arg,
     };
 
-    // Remove trailing comma, if any.
-    //
-    // This relies on the fact that
-    // there is only one argument,
-    // which is already checked beforehand
-    // by both of this function's callers.
     call.args[0].comma = None;
 
     Ok(Fix::unsafe_edit(Edit::range_replacement(

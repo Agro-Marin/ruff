@@ -73,7 +73,6 @@ pub(crate) fn error_suffix_on_exception_name(
         return;
     }
 
-    // Ignore any explicitly-allowed names.
     if ignore_names.matches(name) {
         return;
     }

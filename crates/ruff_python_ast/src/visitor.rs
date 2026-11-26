@@ -656,9 +656,6 @@ pub fn walk_except_handler<'a, V: Visitor<'a> + ?Sized>(
 }
 
 pub fn walk_arguments<'a, V: Visitor<'a> + ?Sized>(visitor: &mut V, arguments: &'a Arguments) {
-    // Note that there might be keywords before the last arg, e.g. in
-    // f(*args, a=2, *args2, **kwargs)`, but we follow Python in evaluating first `args` and then
-    // `keywords`. See also [Arguments::arguments_source_order`].
     for arg in &*arguments.args {
         visitor.visit_expr(arg);
     }
@@ -668,7 +665,6 @@ pub fn walk_arguments<'a, V: Visitor<'a> + ?Sized>(visitor: &mut V, arguments: &
 }
 
 pub fn walk_parameters<'a, V: Visitor<'a> + ?Sized>(visitor: &mut V, parameters: &'a Parameters) {
-    // Defaults are evaluated before annotations.
     for default in parameters
         .iter_non_variadic_params()
         .filter_map(|param| param.default.as_deref())

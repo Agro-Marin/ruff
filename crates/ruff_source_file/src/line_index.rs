@@ -37,7 +37,6 @@ impl LineIndex {
         assert!(u32::try_from(bytes.len()).is_ok());
 
         for i in memchr::memchr2_iter(b'\n', b'\r', bytes) {
-            // Skip `\r` in `\r\n` sequences (only count the `\n`).
             if bytes[i] == b'\r' && bytes.get(i + 1) == Some(&b'\n') {
                 continue;
             }
@@ -46,10 +45,6 @@ impl LineIndex {
             line_starts.push(TextSize::from(i as u32) + TextSize::from(1));
         }
 
-        // Determine whether the source text is ASCII.
-        //
-        // Empirically, this simple loop is auto-vectorized by LLVM and benchmarks faster than both
-        // `str::is_ascii()` and hand-written SIMD.
         let mut has_non_ascii = false;
         for byte in bytes {
             has_non_ascii |= !byte.is_ascii();
@@ -117,7 +112,6 @@ impl LineIndex {
     pub fn line_column(&self, offset: TextSize, content: &str) -> LineColumn {
         let location = self.source_location(offset, content, PositionEncoding::Utf32);
 
-        // Don't count the BOM character as a column, but only on the first line.
         let column = if location.line.to_zero_indexed() == 0 && content.starts_with('\u{feff}') {
             location.character_offset.saturating_sub(1)
         } else {
@@ -248,7 +242,6 @@ impl LineIndex {
     /// If the offset is out of bounds.
     pub fn line_index(&self, offset: TextSize) -> OneIndexed {
         match self.line_starts().binary_search(&offset) {
-            // Offset is at the start of a line
             Ok(row) => OneIndexed::from_zero_indexed(row),
             Err(row) => {
                 // SAFETY: Safe because the index always contains an entry for the offset 0
@@ -262,7 +255,6 @@ impl LineIndex {
         let row_index = line.to_zero_indexed();
         let starts = self.line_starts();
 
-        // If start-of-line position after last line
         if row_index == starts.len() {
             contents.text_len()
         } else {
@@ -276,7 +268,6 @@ impl LineIndex {
         let row_index = line.to_zero_indexed();
         let starts = self.line_starts();
 
-        // If start-of-line position after last line
         if row_index.saturating_add(1) >= starts.len() {
             contents.text_len()
         } else {
@@ -290,7 +281,6 @@ impl LineIndex {
         let row_index = line.to_zero_indexed();
         let starts = self.line_starts();
 
-        // If start-of-line position after last line
         if row_index.saturating_add(1) >= starts.len() {
             contents.text_len()
         } else {
@@ -485,7 +475,6 @@ impl LineIndex {
         text: &str,
         position_encoding: PositionEncoding,
     ) -> TextSize {
-        // If start-of-line position after last line
         if position.line.to_zero_indexed() > self.line_starts().len() {
             return text.text_len();
         }
@@ -511,7 +500,6 @@ impl LineIndex {
                             break;
                         }
 
-                        // Count characters encoded as two 16 bit words as 2 characters.
                         byte_offset += c.text_len();
                         utf16_code_unit_offset += c.len_utf16();
                     }
@@ -658,9 +646,6 @@ impl OneIndexed {
     /// ```
     pub const fn digits(self) -> NonZeroUsize {
         // Safety: the 1+ ensures this is always non-zero, and
-        // `usize::MAX.ilog10()` << `usize::MAX`, so the result is always safe
-        // to cast to a usize, even though it's returned as a u32
-        // (u64::MAX.ilog10() is 19).
         NonZeroUsize::new(1 + self.0.ilog10() as usize).unwrap()
     }
 }
@@ -732,7 +717,6 @@ mod tests {
         let contents = "x = 1\ny = 2";
         let index = LineIndex::from_source_text(contents);
 
-        // First row.
         let loc = index.line_column(TextSize::from(2), contents);
         assert_eq!(
             loc,
@@ -742,7 +726,6 @@ mod tests {
             }
         );
 
-        // Second row.
         let loc = index.line_column(TextSize::from(6), contents);
         assert_eq!(
             loc,
@@ -899,7 +882,6 @@ mod tests {
             &[TextSize::from(0), TextSize::from(11)]
         );
 
-        // Second '
         assert_eq!(
             index.line_column(TextSize::from(9), contents),
             LineColumn {
@@ -933,7 +915,6 @@ mod tests {
             &[TextSize::from(0), TextSize::from(12)]
         );
 
-        // Second '
         assert_eq!(
             index.line_column(TextSize::from(9), contents),
             LineColumn {
@@ -966,7 +947,6 @@ mod tests {
             &[TextSize::from(0), TextSize::from(10)]
         );
 
-        // First row.
         let loc = index.line_column(TextSize::from(0), contents);
         assert_eq!(
             loc,
@@ -994,7 +974,6 @@ mod tests {
             }
         );
 
-        // Second row.
         let loc = index.line_column(TextSize::from(10), contents);
         assert_eq!(
             loc,
@@ -1004,7 +983,6 @@ mod tests {
             }
         );
 
-        // One-past-the-end.
         let loc = index.line_column(TextSize::from(15), contents);
         assert_eq!(
             loc,

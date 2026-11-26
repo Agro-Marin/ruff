@@ -159,7 +159,6 @@ pub(crate) fn shared_clock_mock(checker: &Checker, call: &ExprCall) {
 
 /// `shared-clock-mock`
 pub(crate) fn shared_clock_attribute(checker: &Checker, attribute: &ExprAttribute) {
-    // An annotation without a value does not write to the attribute.
     if let Stmt::AnnAssign(assignment) = checker.semantic().current_statement()
         && assignment.value.is_none()
         && assignment.target.range() == attribute.range()

@@ -72,13 +72,8 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let definition = alias_definition.definition;
         let parameters = legacy_type_alias_parameters(db, definition);
         let inference = infer_legacy_type_alias(db, definition, parameters);
-        // Preserve cycle errors even when recovery removes every recursive reference. Both
-        // runtime-value inference and enclosing aliases need the fallback type to converge.
         let ty = inference.ty.unwrap_or_else(|error| error.fallback_type);
 
-        // An ordinary assignment whose value is not a valid type expression remains a
-        // variable. Keep recursive recovery types, which can preserve useful structure even
-        // when part of an alias is invalid, and validate PEP 613 aliases at their definitions.
         if alias_definition.is_implicit
             && inference.ty.is_ok()
             && inference.context.has_invalid_type_form
@@ -86,10 +81,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 matches!(ty, Type::Recursive(_))
             })
         {
-            // Reject an invalid definition before converting its runtime value to a type.
-            // For example, `Number = 1 + 2` is invalid because of its right-hand side,
-            // independently of the resulting `Literal[3]` value. Generic subscriptions with
-            // invalid arguments, such as `list[1]`, can still recover as `list[Unknown]`.
             return if self.reject_non_alias_reference(value_ty, Some(definition), reference) {
                 LegacyTypeAliasReference::Invalid
             } else {
@@ -100,7 +91,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             self.context.mark_invalid_type_form();
         }
 
-        // Diagnostics and suppression usage belong to the file defining the alias.
         if definition.program_file(db) == self.program_file()
             && self.context.should_collect_diagnostics()
         {
@@ -223,7 +213,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             .inference_flags
             .replace(InferenceFlags::IN_TYPE_EXPRESSION, true);
 
-        // Annotation expressions are always deferred in stub files.
         if self.in_stub() {
             self.replace_deferred_state(DeferredExpressionState::Deferred);
         }
@@ -317,7 +306,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             self.typevar_binding_context,
             self.inference_flags(),
         );
-        // Do not add alias diagnostics when value-to-type conversion is still incomplete.
         if result.as_ref().is_ok_and(|result| !result.is_todo())
             && self.reject_non_alias_reference(ty, definition, annotation)
         {
@@ -362,7 +350,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         definition: Option<Definition<'db>>,
         reference: &ast::Expr,
     ) -> bool {
-        // Unknown and provisional cycle types may come from incomplete inference or an error.
         if !ty.is_unknown()
             && !ty.is_divergent()
             && definition
@@ -403,8 +390,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         ty: Type<'db>,
         definition: Option<Definition<'db>>,
     ) -> Option<&'db TypeCheckDiagnostics> {
-        // Explain the original definition once, without recursively expanding errors from
-        // other variables mentioned in its right-hand side.
         if self.context.is_type_expression_explanation()
             || !self.context.is_lint_enabled(&INVALID_TYPE_FORM)
         {
@@ -441,7 +426,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 || matches!(builder.scope.scope(db).kind(), ScopeKind::TypeAlias)
         };
 
-        // https://typing.python.org/en/latest/spec/annotations.html#grammar-token-expression-grammar-type_expression
         match expression {
             ast::Expr::Name(name) => match name.ctx {
                 ast::ExprContext::Load => {
@@ -484,7 +468,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
             ast::Expr::NoneLiteral(_literal) => Type::none(db, env),
 
-            // https://typing.python.org/en/latest/spec/annotations.html#string-annotations
             ast::Expr::StringLiteral(string) => self.infer_string_type_expression(string),
 
             ast::Expr::Subscript(subscript) => {
@@ -500,8 +483,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     let (value_ty, definition) = self.infer_type_expression_reference(value);
                     let value_ty =
                         self.finish_expression_type(value, value_ty, TypeContext::default());
-                    // Preserve the flag for another `Unpack` so that nested unpacking emits a
-                    // diagnostic. Other subscripts are no longer the direct unpack operand.
                     let previously_in_unpack_type_argument =
                         if value_ty == Type::SpecialForm(SpecialFormType::Unpack) {
                             None
@@ -542,7 +523,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
             ast::Expr::BinOp(binary) => {
                 match binary.op {
-                    // PEP-604 unions are okay, e.g., `int | str`
                     ast::Operator::BitOr if self.should_check_runtime_errors(binary) => {
                         self.infer_eager_union_type_expression(binary, false)
                             .annotation
@@ -563,8 +543,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                         let right_ty = self.infer_type_expression(&binary.right);
 
                         if !ignore_experimental_runtime_errors(self) {
-                            // Infer the operands as values to report the types used by the runtime
-                            // operation rather than their interpretation as type expressions.
                             let mut speculative_builder = self.speculate_without_diagnostics();
                             let left_value = speculative_builder
                                 .infer_expression(&binary.left, TypeContext::default());
@@ -591,11 +569,7 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
                         IntersectionType::from_two_elements(db, env, left_ty, right_ty)
                     }
-                    // anything else is an invalid annotation:
                     op => {
-                        // Avoid inferring the types of invalid binary expressions that have been
-                        // parsed from a string annotation, as they are not present in the semantic
-                        // index.
                         if !self.in_string_annotation() {
                             self.infer_binary_expression(binary, TypeContext::default());
                         }
@@ -612,11 +586,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 }
             }
 
-            // =====================================================================================
-            // Forms which are invalid in the context of annotation expressions: we infer their
-            // nested expressions as normal expressions, but the type of the top-level expression is
-            // always `Type::unknown` in these cases.
-            // =====================================================================================
             ast::Expr::BytesLiteral(bytes) => {
                 if let Some(mut diagnostic) = self.report_invalid_type_expression(
                     expression,
@@ -1229,14 +1198,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 Type::unknown()
             }
 
-            // =================================================================================
-            // Branches where we probably should emit diagnostics in some context, but don't yet
-            // =================================================================================
-            // TODO: When this case is implemented and the `todo!` usage
-            // is removed, consider adding `todo = "warn"` to the Clippy
-            // lint configuration in `Cargo.toml`. At time of writing,
-            // 2025-08-22, this was the only usage of `todo!` in ruff/ty.
-            // ---AG
             ast::Expr::IpyEscapeCommand(_) => todo!("Implement Ipy escape command support"),
 
             ast::Expr::EllipsisLiteral(_) => {
@@ -1255,7 +1216,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
     }
 
     fn infer_eager_union_operand(&mut self, expr: &ast::Expr) -> InferredUnionOperand<'db> {
-        // Overload resolution can share expression inference that also needs diagnostics.
         if self.expression_cache.is_some() || self.cycle_recovery.is_some() {
             return InferredUnionOperand {
                 annotation: self.infer_type_expression(expr),
@@ -1266,14 +1226,12 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let parent_flags = self.inference_flags();
         let operand = self.with_type_expression_context(|builder| match expr {
             ast::Expr::BinOp(binary) if binary.op == ast::Operator::BitOr => {
-                // Entering a nested type expression can change how type arguments are interpreted.
                 builder.infer_eager_union_type_expression(
                     binary,
                     builder.inference_flags() == parent_flags,
                 )
             }
             ast::Expr::Name(name) if name.ctx.is_load() => {
-                // A bare name has the same runtime value under either set of flags.
                 let (value, definition) = builder.infer_type_expression_reference(expr);
                 InferredUnionOperand {
                     annotation: builder
@@ -1312,8 +1270,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let right_value = operand_value(&binary.right, right.runtime_value);
         self.check_union_operator(binary, left_value, right_value);
 
-        // Ordinary value inference can use the TypedDict on one side of `|` to infer
-        // a dictionary literal on the other, even when the annotation is invalid.
         let runtime_value = if need_runtime_value
             && speculative.cycle_recovery.is_none()
             && !binary.left.is_dict_expr()
@@ -1353,12 +1309,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         )
         .is_err();
 
-        // As well as trying the normal dunder lookup,
-        // we also check for the case where one of the operands is a class-literal type
-        // or generic-alias type and the other is a string literal. The normal dunder lookup
-        // fails to catch this error, since typeshed annotates `type.__(r)or__` as accepting `Any`.
-        // ABCMeta and _ProtocolMeta inherit these operators unchanged. The typeshed
-        // protocol fallback does not establish a custom operator either.
         let should_emit_error = if dunder_fails {
             true
         } else {
@@ -1534,9 +1484,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             }
             return Type::unknown();
         }
-        // In annotations, the builtin classes `type` and `tuple` share their subscript
-        // handlers with `typing.Type` and `typing.Tuple`. Use the special forms as
-        // dispatch keys so each equivalent pair of bindings is checked once.
         let annotation_operand =
             |ty: Type<'db>| match ty.as_class_literal().and_then(|class| class.known(db)) {
                 Some(KnownClass::Type) => Type::SpecialForm(SpecialFormType::Type),
@@ -1545,8 +1492,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             };
         match value_ty {
             Type::Union(union) => {
-                // Deduplicate by dispatch key. Rebuilding the union could discard a valid
-                // operand based on the runtime type of its special form.
                 let operands = union
                     .elements(db)
                     .iter()
@@ -1568,7 +1513,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             Some(parsed) => {
                 self.string_annotations
                     .insert(ruff_python_ast::ExprRef::StringLiteral(string).into());
-                // String annotations are always evaluated in the deferred context.
                 let parsed_expr = parsed.expr();
                 let string_was_nested = self
                     .inference_flags()
@@ -1679,7 +1623,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                         InferenceFlags::IN_VALID_UNPACK_CONTEXT,
                         previously_in_valid_unpack_context,
                     );
-                    // Determine if this element unpacks a tuple: either `*expr` or `Unpack[expr]`
                     let is_unpack = matches!(element, ast::Expr::Starred(_))
                         || matches!(
                             element,
@@ -1728,13 +1671,11 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                             report_too_many_unpacked_tuples();
                             element_types = element_types.concat_variadic_typevar(db, env, typevar);
                         } else {
-                            // TODO: emit a diagnostic
                         }
                     } else if self
                         .type_expression_flags(element)
                         .contains(TypeExpressionFlags::INVALID_BARE_TYPE_VAR_TUPLE)
                     {
-                        // Do not count recovery as another explicit unpack.
                         element_types =
                             element_types.concat(db, env, &TupleSpec::homogeneous(Type::unknown()));
                     } else {
@@ -1744,9 +1685,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
                 let ty = TupleType::new(db, env, &element_types.build());
 
-                // Here, we store the type for the inner `int, str` tuple-expression,
-                // while the type for the outer `tuple[int, str]` slice-expression is
-                // stored in the surrounding `infer_type_expression` call:
                 self.store_expression_type(&tuple.slice, Type::tuple(ty));
 
                 ty
@@ -2043,11 +1981,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
         match value_ty {
             Type::Never => {
-                // This case can be entered when we use a type annotation like `Literal[1]`
-                // in unreachable code, since we infer `Never` for `Literal`.  We call
-                // `infer_expression` (instead of `infer_type_expression`) here to avoid
-                // false-positive `invalid-type-form` diagnostics (`1` is not a valid type
-                // expression).
                 if !self.in_string_annotation() {
                     self.infer_expression(slice, TypeContext::default());
                 }
@@ -2206,13 +2139,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     Type::unknown()
                 }
                 KnownInstanceType::TypeVar(typevar) => {
-                    // The type variable designated as a generic type alias by `typing.TypeAlias` can be explicitly specialized.
-                    // ```py
-                    // from typing import TypeVar, TypeAlias
-                    // T = TypeVar('T')
-                    // Annotated: TypeAlias = T
-                    // _: Annotated[int] = 1  # valid
-                    // ```
                     if typevar.identity(self.db()).kind(self.db()) == TypeVarKind::Pep613Alias {
                         self.infer_explicit_type_alias_specialization(subscript, value_ty, false)
                     } else {
@@ -2309,9 +2235,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 self.infer_explicit_type_alias_specialization(subscript, value_ty, true)
             }
             Type::Dynamic(_) | Type::Divergent(_) => {
-                // Infer slice as a value expression to avoid false-positive
-                // `invalid-type-form` diagnostics, when we have e.g.
-                // `MyCallable[[int, str], None]` but `MyCallable` is dynamic.
                 if !self.in_string_annotation() {
                     self.infer_expression(slice, TypeContext::default());
                 }
@@ -2347,7 +2270,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             }
             Type::LiteralValue(literal) if literal.is_string() => {
                 self.infer_expression(slice, TypeContext::default());
-                // For stringified TypeAlias; remove once properly supported
                 todo_type!("string literal subscripted in type expression")
             }
             Type::Union(union) => self.infer_union_subscript_type_expression(
@@ -2535,8 +2457,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 }
             };
 
-            // `Signature` / `Parameters` are not a `Type` variant, so we're storing
-            // the outer callable type on these expressions instead.
             builder.store_expression_type(arguments_slice, callable_type);
             if let Some(first_argument) = first_argument {
                 builder.store_expression_type(first_argument, callable_type);
@@ -2545,10 +2465,7 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             callable_type
         }
 
-        // There is disagreement among type checkers about whether `Callable` annotations
         // in the global scope or similar should be considered to create an implicit generic context.
-        // For now, we do not report unbound type variables in any `Callable` contexts, but we may
-        // decide to revisit this in the future.
         let previous_check_unbound_typevars = self
             .context
             .inference_flags
@@ -2597,8 +2514,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 UnionType::from_two_elements_leave_aliases(db, env, param_type, Type::none(db, env))
             }
             SpecialFormType::Union => {
-                // TODO: Support the union of a `TypeVarTuple`'s elements. Until then, reject
-                // `Union[*Ts]` and recover to `object` rather than treating `Ts` as one member.
                 let arguments = if let ast::Expr::Tuple(tuple) = arguments_slice {
                     &*tuple.elts
                 } else {
@@ -2659,7 +2574,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 self.infer_callable_type(subscript)
             }
 
-            // `ty_extensions` special forms
             SpecialFormType::Not => {
                 let arguments = if let ast::Expr::Tuple(tuple) = arguments_slice {
                     &*tuple.elts
@@ -2766,7 +2680,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 };
                 let num_arguments = arguments.len();
                 let type_of_type = if num_arguments == 1 {
-                    // N.B. This uses `infer_expression` rather than `infer_type_expression`
                     self.infer_expression(&arguments[0], TypeContext::default())
                 } else {
                     if !self.in_string_annotation() {
@@ -2975,8 +2888,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
                 for (i, argument) in arguments.iter().enumerate() {
                     if argument.is_ellipsis_literal_expr() {
-                        // The trailing `...` in `Concatenate[int, str, ...]` is valid;
-                        // store without going through type-expression inference.
                         self.store_expression_type(argument, Type::unknown());
                     } else if i < arguments.len() - 1 {
                         let previously_allowed_paramspec = self
@@ -3032,8 +2943,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 let inner_ty = if self.in_string_annotation()
                     && (is_nested_unpack || is_nested_kwargs || is_invalid_context)
                 {
-                    // Invalid string annotations never execute, so their operands must not
-                    // produce runtime errors even though their inferred types are still needed.
                     let mut speculative = self.speculate_without_diagnostics();
                     let inner_ty = speculative.infer_type_expression(arguments_slice);
                     self.extend(speculative);
@@ -3085,8 +2994,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
                 let inner_ty = inner_ty.resolve_type_alias(db);
 
-                // Preserve valid unpack targets so that `Unpack[...]` follows the same
-                // argument-binding path as an equivalent starred annotation.
                 if inner_ty.exact_tuple_instance_spec(db).is_some()
                     || inner_ty.is_typevartuple_or_instance(db)
                 {
@@ -3206,8 +3113,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 if matches!(value_ty, Type::SpecialForm(SpecialFormType::Literal)) {
                     let ty = self.infer_literal_parameter_type(slice)?;
 
-                    // This branch deals with annotations such as `Literal[Literal[1]]`.
-                    // Here, we store the type for the inner `Literal[1]` expression:
                     self.store_expression_type(parameters, ty);
                     ty
                 } else {
@@ -3233,8 +3138,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 if errors.is_empty() {
                     let union_type = builder.build();
 
-                    // This branch deals with annotations such as `Literal[1, 2]`. Here, we
-                    // store the type for the inner `1, 2` tuple-expression:
                     self.store_expression_type(parameters, union_type);
 
                     union_type
@@ -3253,7 +3156,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 self.infer_expression(literal, TypeContext::default())
             }
 
-            // for negative and positive numbers
             ast::Expr::UnaryOp(unary @ ast::ExprUnaryOp { op, operand, .. })
                 if matches!(op, ast::UnaryOp::USub | ast::UnaryOp::UAdd)
                     && matches!(
@@ -3268,11 +3170,9 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 self.store_expression_type(parameters, ty);
                 ty
             }
-            // enum members and aliases to literal types
             ast::Expr::Name(_) | ast::Expr::Attribute(_) => {
                 let subscript_ty = self.infer_expression(parameters, TypeContext::default());
                 match subscript_ty {
-                    // type aliases to literal types
                     Type::KnownInstance(KnownInstanceType::TypeAliasType(type_alias)) => {
                         let value_ty = type_alias.value_type(db);
                         if value_ty.is_literal_or_union_of_literals(db, env) {
@@ -3282,17 +3182,12 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     Type::KnownInstance(KnownInstanceType::Literal(ty)) => {
                         return Ok(ty.inner(self.db()));
                     }
-                    // `Literal[SomeEnum.Member]`
                     Type::LiteralValue(literal) if literal.is_enum() => {
-                        // Avoid promoting values originating from an explicitly annotated literal type.
                         return Ok(Type::LiteralValue(literal.to_unpromotable()));
                     }
-                    // `Literal[SingletonEnum.Member]`, where `SingletonEnum.Member` simplifies to
-                    // just `SingletonEnum`.
                     Type::NominalInstance(_) if subscript_ty.is_enum(db, env) => {
                         return Ok(subscript_ty);
                     }
-                    // suppress false positives for e.g. members of functional-syntax enums
                     Type::Dynamic(DynamicType::Todo(_)) => {
                         return Ok(subscript_ty);
                     }
@@ -3309,7 +3204,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         };
 
         Ok(if let Type::LiteralValue(literal) = ty {
-            // Avoid promoting values originating from an explicitly annotated literal type.
             Type::LiteralValue(literal.to_unpromotable())
         } else {
             ty
@@ -3332,7 +3226,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             }
             ast::Expr::List(ast::ExprList { elts: params, .. }) => {
                 if let [ast::Expr::EllipsisLiteral(_)] = &params[..] {
-                    // Return `None` here so that we emit a specific diagnostic at the callsite.
                     return None;
                 }
 
@@ -3389,7 +3282,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
 
                 self.infer_subscript_type_expression(subscript, value_ty);
 
-                // Non-Concatenate subscript (e.g. Unpack): fall back to todo
                 return Some(Parameters::todo());
             }
             ast::Expr::Name(_) | ast::Expr::Attribute(_) => {
@@ -3397,9 +3289,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     .as_name_expr()
                     .is_some_and(ast::ExprName::is_invalid)
                 {
-                    // This is a special case to avoid raising the error suggesting what the first
-                    // argument should be. This only happens when there's already a syntax error like
-                    // `Callable[]`.
                     return None;
                 }
                 let previously_allowed_paramspec = self
@@ -3417,10 +3306,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     return Some(Parameters::paramspec(db, tvar));
                 }
                 if parameters_type == Type::Dynamic(DynamicType::InvalidConcatenateUnknown) {
-                    // Avoid emitting a confusing error here saying that the first argument to
-                    // `Callable` must be "Concatenate, `...`, a parameter list or a ParamSpec"
-                    // if the first argument *was* in fact `Concatenate` -- it was just used
-                    // incorrectly. We'll have emitted an error elsewhere about the invalid use.
                     return Some(Parameters::unknown());
                 }
             }
@@ -3520,8 +3405,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             .map(|tail| Parameters::concatenate(db, prefix_params, tail));
 
         if arguments_slice.is_tuple_expr() {
-            // TODO: What type to store for the argument slice in `Concatenate` because
-            // `Parameters` is not a `Type` variant?
             self.store_expression_type(arguments_slice, Type::unknown());
         }
 
@@ -3554,10 +3437,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                     previously_allowed_paramspec,
                 );
                 let Type::TypeVar(typevar) = expr_type else {
-                    // `Concatenate` *is* allowed inside `Concatenate`, so avoid emitting here a diagnostic
-                    // saying that the argument is invalid if the inner type is an invalid use of the
-                    // `Concatenate` special form (we'll already have complained about the invalid use
-                    // elsewhere)
                     if expr_type != Type::Dynamic(DynamicType::InvalidConcatenateUnknown) {
                         report_invalid_concatenate_last_arg(&self.context, expr, expr_type);
                     }
@@ -3656,8 +3535,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                 .info("See https://typing.python.org/en/latest/spec/constructors.html#init-method");
         }
 
-        // Legacy aliases introduce independent type parameters. PEP 695 aliases can instead
-        // capture their enclosing class's parameters.
         if let Type::TypeVar(typevar) = ty
             && self
                 .inference_flags()
@@ -3681,8 +3558,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let Type::KnownInstance(KnownInstanceType::TypeVar(typevar)) = ty else {
             return ty;
         };
-        // In a PEP 695 pack default, an earlier parameter of the same generic can still
-        // appear as its declaration object. A parameter declared elsewhere is out of scope.
         let unbound_in_pack_default = match self.region {
             InferenceRegion::Deferred(default)
                 if matches!(default.kind(db), DefinitionKind::TypeVarTuple(_)) =>

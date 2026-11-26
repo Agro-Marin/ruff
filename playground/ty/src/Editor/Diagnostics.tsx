@@ -135,9 +135,8 @@ function Items({
                 </span>
               </button>
             )}
-            {/* Some subdiagnostics use whitespace to align types in columns, so
-                we use a monospace font. See
-                https://github.com/astral-sh/ruff/pull/25860#pullrequestreview-4475222305 */}
+            {
+}
             {secondaryAnnotations.length > 0 ||
             diagnostic.subDiagnostics.length > 0 ? (
               <ul className="pl-3 font-mono text-gray-500 whitespace-pre-wrap">

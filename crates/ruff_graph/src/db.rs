@@ -45,7 +45,6 @@ pub fn resolve_search_paths(
     venv_path: Option<SystemPathBuf>,
 ) -> Result<SearchPaths> {
     let mut search_path_settings = SearchPathSettings::new(src_roots);
-    // TODO: Consider calling `PythonEnvironment::discover` if the `venv_path` is not provided.
     if let Some(venv_path) = venv_path {
         let environment =
             PythonEnvironment::new(venv_path, SysPrefixPathOrigin::PythonCliFlag, system)?;

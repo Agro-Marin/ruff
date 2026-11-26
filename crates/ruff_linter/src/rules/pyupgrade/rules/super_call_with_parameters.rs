@@ -71,12 +71,9 @@ impl Violation for SuperCallWithParameters {
 
 /// UP008
 pub(crate) fn super_call_with_parameters(checker: &Checker, call: &ast::ExprCall) {
-    // Only bother going through the super check at all if we're in a `super` call.
-    // (We check this in `super_args` too, so this is just an optimization.)
     if !is_super_call_with_arguments(call, checker) {
         return;
     }
-    // Check: are we in a callable scope (function or lambda)?
     let callable_scope = match &checker.semantic().current_scope().kind {
         ScopeKind::Function(_) | ScopeKind::Lambda(_) => Some(checker.semantic().current_scope()),
         ScopeKind::DunderClassCell => checker
@@ -90,14 +87,10 @@ pub(crate) fn super_call_with_parameters(checker: &Checker, call: &ast::ExprCall
     };
 
     let mut parents = checker.semantic().current_statements();
-    // For a `super` invocation to be unnecessary, the first argument needs to match
-    // the enclosing class, and the second argument needs to match the first
-    // argument to the enclosing function.
     let [first_arg, second_arg] = &*call.arguments.args else {
         return;
     };
 
-    // Find the enclosing callable and extract the name of its first parameter.
     let (parent_arg_name, has_local_dunder_class_var_ref) = match &callable_scope.kind {
         ScopeKind::Function(_) => {
             let Some(
@@ -151,7 +144,6 @@ pub(crate) fn super_call_with_parameters(checker: &Checker, call: &ast::ExprCall
         Some(*class_def)
     });
 
-    // Find the enclosing class definition (if any).
     let Some(ast::StmtClassDef {
         name: parent_name,
         decorator_list,
@@ -172,9 +164,6 @@ pub(crate) fn super_call_with_parameters(checker: &Checker, call: &ast::ExprCall
         return;
     }
 
-    // Verify the first argument matches the enclosing class chain.
-    // For `super(__class__, self)` or `super(ClassName, self)`, just check the immediate class.
-    // For `super(Outer.Inner, self)`, verify each segment matches the enclosing class nesting.
     match first_arg {
         Expr::Name(ast::ExprName { id, .. }) => {
             if callable_scope.has(id) {
@@ -191,11 +180,9 @@ pub(crate) fn super_call_with_parameters(checker: &Checker, call: &ast::ExprCall
         }
         Expr::Attribute(_) => {
             let chain = collect_attribute_chain(first_arg);
-            // The innermost name must match the immediately enclosing class.
             if chain.last() != Some(&parent_name.as_str()) {
                 return;
             }
-            // Each preceding name must match the next enclosing class.
             for name in chain.iter().rev().skip(1) {
                 let Some(ast::StmtClassDef {
                     name: enclosing_name,
@@ -218,9 +205,6 @@ pub(crate) fn super_call_with_parameters(checker: &Checker, call: &ast::ExprCall
     drop(parents);
 
     // If the class is an `@dataclass` with `slots=True`, calling `super()` without arguments raises
-    // a `TypeError`.
-    //
-    // See: https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass
     if decorator_list.iter().any(|decorator| {
         let Expr::Call(ast::ExprCall {
             func, arguments, ..
@@ -248,7 +232,6 @@ pub(crate) fn super_call_with_parameters(checker: &Checker, call: &ast::ExprCall
 
     let mut diagnostic = checker.report_diagnostic(SuperCallWithParameters, call.arguments.range());
 
-    // Only provide a fix if there are no keyword arguments, since super() doesn't accept keyword arguments
     if call.arguments.keywords.is_empty() {
         let applicability = if checker.comment_ranges().intersects(call.arguments.range()) {
             Applicability::Unsafe

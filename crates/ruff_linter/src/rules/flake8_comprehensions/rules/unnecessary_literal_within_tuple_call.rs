@@ -99,7 +99,6 @@ pub(crate) fn unnecessary_literal_within_tuple_call(checker: &Checker, call: &as
 
     match argument {
         Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }) => {
-            // Convert `tuple([1, 2])` to `(1, 2)`
             diagnostic.set_fix({
                 let needs_trailing_comma = if let [item] = elts.as_slice() {
                     SimpleTokenizer::new(
@@ -111,13 +110,11 @@ pub(crate) fn unnecessary_literal_within_tuple_call(checker: &Checker, call: &as
                     false
                 };
 
-                // Replace `[` with `(`.
                 let elt_start = Edit::replacement(
                     "(".into(),
                     call.start(),
                     argument.start() + TextSize::from(1),
                 );
-                // Replace `]` with `)` or `,)`.
                 let elt_end = Edit::replacement(
                     if needs_trailing_comma {
                         ",)".into()

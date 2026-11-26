@@ -173,7 +173,7 @@ mod tests {
                         "*allowed*".to_string(),
                         "*Allowed*".to_string(),
                         "*ALLOWED*".to_string(),
-                        "BA".to_string(), // For N817.
+                        "BA".to_string(),
                     ])
                     .unwrap(),
                     ..Default::default()

@@ -502,8 +502,6 @@ assert_type(x, str)
 ";
     let notebook_main = notebook.add_python_cell_with_version(notebook_main_content, 1);
     notebook.open(&mut server);
-    // Opening the notebook publishes diagnostics for both notebook cells:
-    // `src/notebook.ipynb#0` and `src/notebook.ipynb#1`.
     server.collect_publish_diagnostic_notifications(2);
 
     server.change_text_document(
@@ -517,16 +515,10 @@ assert_type(x, str)
         ],
         2,
     );
-    // Drain the diagnostics for `src/lib.py` triggered by `textDocument/didChange`
-    // before asserting on the diagnostics triggered by `textDocument/didSave`.
     server.await_notification::<PublishDiagnosticsNotification>();
 
     server.save_text_document(lib);
 
-    // Saving `src/lib.py` publishes four diagnostic notifications:
-    // - one for `src/lib.py`,
-    // - one for `src/main.py`, and
-    // - two for `src/notebook.ipynb`, one per notebook cell (`#0` and `#1`).
     let diagnostics = collect_publish_diagnostic_notifications_with_versions(&mut server, 4);
     assert_eq!(diagnostics[&notebook_import].version, Some(0));
     assert_eq!(diagnostics[&notebook_main].version, Some(1));
@@ -765,12 +757,6 @@ def foo() -> str:
         .remove(&foo_uri)
         .with_context(|| format!("Expected diagnostics for {foo_uri}"))?;
 
-    // Note how ty reports no diagnostics here. This is because
-    // the contents received by didOpen/didChange take precedence over the file
-    // content on disk. Or, more specifically, because the revision
-    // of the file is not bumped, because it still uses the version
-    // from the `didOpen` notification but we don't have any notification
-    // that we can use here.
     insta::assert_json_snapshot!(diagnostics);
 
     Ok(())
@@ -1084,7 +1070,6 @@ package = "invalid"
 
         server.assert_work_done_progress("Refreshing example metadata")?;
 
-        // The existing warning is republished while the refresh is pending, then cleared.
         assert_eq!(
             server.collect_publish_diagnostic_notifications(1),
             diagnostics
@@ -1119,7 +1104,6 @@ package = "invalid"
 
         server.open_text_document(script, source, 1);
 
-        // An attempted synchronization would replace this with a `project-manager` error.
         let diagnostics = server.await_notification::<PublishDiagnosticsNotification>();
         assert_eq!(diagnostics.uri, server.file_uri(script));
         assert_eq!(
@@ -1154,8 +1138,6 @@ package = "invalid"
         let mut server = TestServerBuilder::new()?
             .with_workspace(workspace_root, None)?
             .with_file(script, &source)?
-            // Exclude the script from discovery so `didOpen` starts its first sync.
-            // `didOpen` publishes before the main loop can apply the sync result.
             .with_file(
                 "src/ty.toml",
                 r"

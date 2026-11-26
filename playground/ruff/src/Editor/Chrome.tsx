@@ -146,7 +146,6 @@ export default function Chrome() {
   );
 }
 
-// Run once during startup. Initializes monaco, loads the wasm file, and restores the previous editor state.
 async function startPlayground(): Promise<{
   sourceCode: string;
   settings: string;

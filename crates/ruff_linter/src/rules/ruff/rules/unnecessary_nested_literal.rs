@@ -80,10 +80,8 @@ impl Violation for UnnecessaryNestedLiteral {
 pub(crate) fn unnecessary_nested_literal<'a>(checker: &Checker, literal_expr: &'a Expr) {
     let mut is_nested = false;
 
-    // Traverse the type expressions in the `Literal`.
     traverse_literal(
         &mut |_: &'a Expr, parent: &'a Expr| {
-            // If the parent is not equal to the `literal_expr` then we know we are traversing recursively.
             if !AnyNodeRef::ptr_eq(parent.into(), literal_expr.into()) {
                 is_nested = true;
             }
@@ -96,7 +94,6 @@ pub(crate) fn unnecessary_nested_literal<'a>(checker: &Checker, literal_expr: &'
         return;
     }
 
-    // Collect the literal nodes for the fix
     let mut nodes: Vec<&Expr> = Vec::new();
 
     traverse_literal(
@@ -109,7 +106,6 @@ pub(crate) fn unnecessary_nested_literal<'a>(checker: &Checker, literal_expr: &'
 
     let mut diagnostic = checker.report_diagnostic(UnnecessaryNestedLiteral, literal_expr.range());
 
-    // Create a [`Fix`] that flattens all nodes.
     if let Expr::Subscript(subscript) = literal_expr {
         let subscript = Expr::Subscript(ExprSubscript {
             slice: Box::new(if let [elt] = nodes.as_slice() {

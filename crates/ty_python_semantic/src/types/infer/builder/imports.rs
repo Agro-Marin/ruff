@@ -48,7 +48,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         qualifiers: TypeQualifiers,
         provenance: Provenance<'db>,
     ) {
-        // Check the imported value before assignment recovery can replace its type.
         if definition.kind(self.db()).as_star_import().is_none() {
             self.check_deprecated(alias, ty);
         }
@@ -165,13 +164,10 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 let resolver_environment = self.program_environment().program(db);
                 let typeshed_versions = resolver_environment.search_paths(db).typeshed_versions();
 
-                // Loop over ancestors in case we have info on the parent module but not submodule
                 for module_name in module_name.ancestors() {
                     if let Some(version_range) = typeshed_versions.exact(&module_name) {
-                        // We know it is a stdlib module on *some* Python versions...
                         let python_version = self.program_environment().python_version(db);
                         if !version_range.contains(python_version) {
-                            // ...But not on *this* Python version.
                             diagnostic.info(format_args!(
                                 "The stdlib module `{module_name}` is only available on Python {version_range}",
                                 version_range = version_range.diagnostic_display(),
@@ -184,7 +180,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                             );
                             return;
                         }
-                        // We found the most precise answer we could, stop searching
                         break;
                     }
                 }
@@ -216,8 +211,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }
         }
 
-        // Add search paths information to the diagnostic
-        // Use the same search paths function that is used in actual module resolution
         let verbose = db.verbose();
         let search_paths = search_paths(
             db,
@@ -265,7 +258,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             asname,
         } = alias;
 
-        // The name of the module being imported
         let Some(full_module_name) = ModuleName::new(name) else {
             tracing::debug!("Failed to resolve import due to invalid syntax");
             self.add_binding(alias.into(), definition)
@@ -284,7 +276,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             return;
         }
 
-        // Resolve the module being imported.
         let Some(full_module_ty) = self.module_type_from_name(&full_module_name) else {
             self.report_import_not_found(alias.range(), 0, Some(name), Some(&full_module_name));
             self.add_binding(alias.into(), definition)
@@ -297,13 +288,8 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         }
 
         let binding_ty = if asname.is_some() {
-            // If we are renaming the imported module via an `as` clause, then we bind the resolved
-            // module's type to that name, even if that module is nested.
             full_module_ty
         } else if full_module_name.contains('.') {
-            // If there's no `as` clause and the imported module is nested, we're not going to bind
-            // the resolved module itself into the current scope; we're going to bind the top-most
-            // parent package of that module.
             let topmost_parent_name =
                 ModuleName::new(full_module_name.components().next().unwrap()).unwrap();
             let Some(topmost_parent_ty) = self.module_type_from_name(&topmost_parent_name) else {
@@ -313,8 +299,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             };
             topmost_parent_ty
         } else {
-            // If there's no `as` clause and the imported module isn't nested, then the imported
-            // module _is_ what we bind into the current scope.
             full_module_ty
         };
 
@@ -363,12 +347,8 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 }
 
                 let inferred = infer_definition_types(self.db(), *definition);
-                // Check non-star imports for missing direct dependencies.
                 if definition.kind(db).as_star_import().is_none() {
-                    // Cycle recovery can omit bindings; the fallback below checks the parent module.
                     for (_, ty) in inferred.bindings(*definition) {
-                        // `from namespace import child` can import a distribution other than the
-                        // namespace's other children. Use inference's attribute-versus-submodule
                         // decision, and do not follow values re-exported from unrelated modules.
                         if self.context.is_lint_enabled(&MISSING_DIRECT_DEPENDENCY)
                             && let Some(parent) = module
@@ -391,7 +371,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 self.extend_definition(*definition, inferred);
             }
 
-            // Star imports can have no definitions, and cycle recovery can omit bindings.
             if !checked_dependency && let Some(parent) = module {
                 self.check_direct_dependency(parent, import_range);
             }
@@ -413,8 +392,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
         let db = self.db();
 
-        // For diagnostics, we want to highlight the unresolvable
-        // module and not the entire `from ... import ...` statement.
         let module_ref = module
             .as_ref()
             .map(ast::AnyNodeRef::from)
@@ -436,7 +413,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             Ok(module_name) => module_name,
             Err(ModuleNameResolutionError::InvalidSyntax) => {
                 tracing::debug!("Failed to resolve import due to invalid syntax");
-                // Invalid syntax diagnostics are emitted elsewhere.
                 return None;
             }
             Err(ModuleNameResolutionError::TooManyDots) => {
@@ -519,21 +495,13 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             &alias.name.id
         };
 
-        // Avoid looking up attributes on a module if a module imports from itself
         // at the module-global scope, where the import definition itself is one of the
-        // bindings for the symbol being looked up, which would cause a query cycle.
-        //
-        // In nested scopes (e.g. function bodies), the module's global-scope definitions
-        // are resolved independently, so there is no cycle risk and the lookup is safe.
         let skip_self_referential_member_lookup = Some(self.file())
             == module_literal.module(db).file(db)
             && self.scope().file_scope_id(db).is_global();
 
-        // Although it isn't the runtime semantics, we go to some trouble to prioritize a submodule
-        // over module `__getattr__`, because that's what other type checkers do.
         let mut from_module_getattr = None;
 
-        // First try loading the requested attribute from the module.
         if !skip_self_referential_member_lookup {
             let result = module_literal.static_member(db, self.program_environment(), name);
             let error = result.err();
@@ -551,8 +519,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 .member(db)
             {
                 if &alias.name != "*" && boundness == Definedness::PossiblyUndefined {
-                    // TODO: Consider loading _both_ the attribute and any submodule and unioning them
-                    // together if the attribute exists but is possibly-unbound.
                     if let Some(builder) = self
                         .context
                         .report_lint(&POSSIBLY_MISSING_IMPORT, ast::AnyNodeRef::Alias(alias))
@@ -571,30 +537,12 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }
         }
 
-        // Evaluate whether `X.Y` would constitute a valid submodule name,
-        // given a `from X import Y` statement. If it is valid, this will be `Some()`;
-        // else, it will be `None`.
         let full_submodule_name = ModuleName::new(name).map(|final_part| {
             let mut ret = module_name.clone();
             ret.extend(&final_part);
             ret
         });
 
-        // If the module doesn't bind the symbol, check if it's a submodule.  This won't get
-        // handled by the `Type::member` call because it relies on the semantic index's
-        // `imported_modules` set.  The semantic index does not include information about
-        // `from...import` statements because there are two things it cannot determine while only
-        // inspecting the content of the current file:
-        //
-        //   - whether the imported symbol is an attribute or submodule
-        //   - whether the containing file is in a module or a package (needed to correctly resolve
-        //     relative imports)
-        //
-        // The first would be solvable by making it a _potentially_ imported modules set.  The
-        // second is not.
-        //
-        // Regardless, for now, we sidestep all of that by repeating the submodule-or-attribute
-        // check here when inferring types for a `from...import` statement.
         if let Some(submodule_type) = full_submodule_name
             .as_ref()
             .and_then(|submodule_name| self.module_type_from_name(submodule_name))
@@ -604,8 +552,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             return;
         }
 
-        // We've checked for a submodule, so now we can go ahead and use a type from module
-        // `__getattr__`.
         if let Some((ty, qualifiers, source_provenance, error)) = from_module_getattr {
             if let Some(error) = error {
                 error.report_module_getattr_import_diagnostic(
@@ -695,7 +641,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             self.program_environment().resolver_environment(db),
         );
 
-        // Get this package's absolute module name by resolving `.`, and make sure it exists
         let Ok(thispackage_name) = ModuleName::package_for_file(db, importing_file) else {
             self.add_binding(import_from.into(), definition)
                 .insert(self, Type::unknown());
@@ -708,10 +653,7 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             return;
         };
 
-        // We have `from whatever.thispackage.x.y ...` or `from .x.y ...`
-        // and we want to extract `x` (to ultimately construct `whatever.thispackage.x`):
 
-        // First we normalize to `whatever.thispackage.x.y`
         let Some(final_part) = ModuleName::from_identifier_parts(
             db,
             importing_file,
@@ -719,9 +661,7 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             import_from.level,
         )
         .ok()
-        // `whatever.thispackage.x.y` => `x.y`
         .and_then(|submodule_name| submodule_name.relative_to(&thispackage_name))
-        // `x.y` => `x`
         .and_then(|relative_submodule_name| {
             relative_submodule_name
                 .components()
@@ -733,23 +673,15 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             return;
         };
 
-        // `x` => `whatever.thispackage.x`
         let mut full_submodule_name = thispackage_name.clone();
         full_submodule_name.extend(&final_part);
 
-        // Try to actually resolve the import `whatever.thispackage.x`
         if let Some(submodule_type) = self.module_type_from_name(&full_submodule_name) {
-            // Success, introduce a binding!
-            //
-            // We explicitly don't introduce a *declaration* because it's actual ok
-            // (and fairly common) to overwrite this import with a function or class
-            // and we don't want it to be a type error to do so.
             self.add_binding(import_from.into(), definition)
                 .insert(self, submodule_type);
             return;
         }
 
-        // That didn't work, try to produce diagnostics
         self.add_binding(import_from.into(), definition)
             .insert(self, Type::unknown());
 

@@ -45,7 +45,6 @@ impl<'db> MemberVariance<'db> {
         receiver: Type<'db>,
     ) -> Self {
         if let Type::SlotDescriptor(descriptor) = ty {
-            // The built-in descriptor's untyped `__set__` loses the slot's stored value type.
             let value_ty = descriptor.value_type(db);
             return Self {
                 read_ty: value_ty,
@@ -94,7 +93,6 @@ impl<'db> VarianceInferable<'db> for MemberVariance<'db> {
             DescriptorSetterDomain::Known(ty) => ty
                 .with_polarity(TypeVarVariance::Contravariant)
                 .variance_of(db, env, typevar),
-            // An unresolved write domain does not erase a known read requirement.
             DescriptorSetterDomain::Missing | DescriptorSetterDomain::Deferred => {
                 VarianceTerm::BIVARIANT
             }
@@ -112,7 +110,6 @@ pub enum TypeVarVariance {
 }
 
 impl TypeVarVariance {
-    // supremum
     #[must_use]
     pub(crate) const fn join(self, other: Self) -> Self {
         use TypeVarVariance::{Bivariant, Contravariant, Covariant, Invariant};
@@ -210,13 +207,11 @@ impl TypeVarVariance {
 impl std::iter::FromIterator<Self> for TypeVarVariance {
     fn from_iter<T: IntoIterator<Item = Self>>(iter: T) -> Self {
         use std::ops::ControlFlow;
-        // TODO: use `into_value` when control_flow_into_value is stable
         let (ControlFlow::Break(variance) | ControlFlow::Continue(variance)) = iter
             .into_iter()
             .try_fold(TypeVarVariance::Bivariant, |acc, variance| {
                 let supremum = acc.join(variance);
                 match supremum {
-                    // short circuit at top
                     TypeVarVariance::Invariant => ControlFlow::Break(supremum),
                     TypeVarVariance::Bivariant
                     | TypeVarVariance::Covariant

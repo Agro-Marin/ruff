@@ -39,7 +39,6 @@ impl BackgroundDocumentRequestHandler for SemanticTokensRangeRequestHandler {
             return Ok(None);
         };
 
-        // Convert LSP range to text offsets
         let Some(requested_range) =
             params
                 .range

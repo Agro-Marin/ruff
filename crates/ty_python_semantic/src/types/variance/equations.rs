@@ -192,8 +192,6 @@ impl<'db> VarianceVariable<'db> {
     fn equation(self, db: &'db dyn Db) -> VarianceTerm<'db> {
         let typevar = self.typevar(db);
         match self.origin(db) {
-            // Checking structural support opens the protocol's interface. Defer that work until
-            // validation needs the equation; ordinary evaluation only needs the declaration.
             VarianceOrigin::ProtocolParameter(class, declared)
                 if class
                     .into_protocol_class(db)
@@ -265,8 +263,6 @@ impl<'db> VarianceComponent<'db> {
         let mut values = vec![TypeVarVariance::Bivariant; variables.len()];
         let mut pending: VecDeque<_> = (0..variables.len()).collect();
         let mut queued = vec![true; variables.len()];
-        // Join and composition are monotone. Each value can move from bivariance to a polarity
-        // and then to invariance, so even negative cycles need only finitely many updates.
         while let Some(index) = pending.pop_front() {
             queued[index] = false;
             let variance = equations[index].evaluate_with(db, &|dependency| {
@@ -334,8 +330,6 @@ pub(crate) fn infer_protocol_variance<'db>(
         variables.push(variable);
     }
 
-    // Every visited variable is reachable from the root. Those with a path back to the root
-    // therefore form exactly its strongly connected component.
     let mut component = FxHashSet::default();
     pending.push(root);
     while let Some(variable) = pending.pop() {

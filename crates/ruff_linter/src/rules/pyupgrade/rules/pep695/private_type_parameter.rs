@@ -124,8 +124,6 @@ pub(crate) fn private_type_parameter(checker: &Checker, binding: &Binding) {
         return;
     }
 
-    // Sunder `_T_`, dunder `__T__`, and all all-under `_` or `__` cases should all be skipped, as
-    // these are not "private" names
     if old_name.ends_with('_') {
         return;
     }
@@ -134,8 +132,6 @@ pub(crate) fn private_type_parameter(checker: &Checker, binding: &Binding) {
 
     let new_name = old_name.trim_start_matches('_');
 
-    // if the new name would shadow another variable, keyword, or builtin, emit a diagnostic without
-    // a suggested fix
     if ShadowedKind::new(binding, new_name, checker).shadows_any() {
         return;
     }

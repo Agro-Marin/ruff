@@ -118,10 +118,8 @@ pub(crate) fn lazy_import_immediately_resolved(checker: &Checker, name: &ExprNam
         return;
     }
 
-    // Ignore imports that are required to be lazy.
     let require_lazy = &checker.settings().flake8_tidy_imports.require_lazy;
     for (policy, node) in &BannedModuleImportPolicies::new(import, checker) {
-        // An `all` selector matches a `from` import's module, not its individual members.
         if require_lazy.includes_all() && import.is_import_from_stmt() && node.is_alias() {
             break;
         }
@@ -182,23 +180,6 @@ fn is_immediate_resolution_context(semantic: &SemanticModel, source_type: PySour
         return false;
     }
 
-    // Imports can only be lazy on Python 3.15+, where ordinary annotations are deferred, even if an
-    // older target version makes the model treat them as runtime-evaluated. For example, this
-    // import is runtime-evaluated on 3.9 in our semantic model but would be deferred on 3.15, where
-    // `__lazy_modules__` actually has an effect:
-    //
-    // ```toml
-    // target-version = "py39"
-    // ```
-    //
-    // ```
-    // __lazy_modules__ = ["pathlib"]
-    //
-    // from pathlib import Path
-    //
-    // class C:
-    //     path: Path
-    // ```
     if semantic.in_runtime_evaluated_annotation() && !semantic.in_runtime_required_annotation() {
         return false;
     }

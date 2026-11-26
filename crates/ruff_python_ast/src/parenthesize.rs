@@ -20,17 +20,6 @@ fn parentheses_iterator<'a>(
     source: &'a str,
 ) -> impl Iterator<Item = TextRange> + 'a {
     let right_tokenizer = if let Some(parent) = parent {
-        // If the parent is a node that brings its own parentheses, exclude the closing parenthesis
-        // from our search range. Otherwise, we risk matching on calls, like `func(x)`, for which
-        // the open and close parentheses are part of the `Arguments` node.
-        //
-        // There are a few other nodes that may have their own parentheses, but are fine to exclude:
-        // - `Parameters`: The parameters to a function definition. Any expressions would represent
-        //   default arguments, and so must be preceded by _at least_ the parameter name. As such,
-        //   we won't mistake any parentheses for the opening and closing parentheses on the
-        //   `Parameters` node itself.
-        // - `Tuple`: The elements of a tuple. The only risk is a single-element tuple (e.g., `(x,)`),
-        //    which must have a trailing comma anyway.
         let exclusive_parent_end = if parent.is_arguments() {
             parent.end() - ")".text_len()
         } else {
@@ -49,9 +38,6 @@ fn parentheses_iterator<'a>(
         .skip_trivia()
         .take_while(|token| token.kind == SimpleTokenKind::LParen);
 
-    // Zip closing parenthesis with opening parenthesis. The order is intentional, as testing for
-    // closing parentheses is cheaper, and `zip` will avoid progressing the `left_tokenizer` if
-    // the `right_tokenizer` is exhausted.
     right_tokenizer
         .zip(left_tokenizer)
         .map(|(right, left)| TextRange::new(left.start(), right.end()))

@@ -52,7 +52,6 @@ impl Diagnostics {
             return None;
         }
 
-        // Generate the base result ID from filtered diagnostic content.
         let mut hasher = DefaultHasher::new();
 
         diagnostic_count.hash(&mut hasher);
@@ -62,12 +61,6 @@ impl Diagnostics {
         unnecessary_hints.hash(&mut hasher);
 
         if client_capabilities.supports_full_diagnostic_output() {
-            // The rendered output includes source snippets that aren't part of the raw diagnostic.
-            // Hash each referenced file's source once so that source-only changes invalidate the
-            // result without eagerly rendering every diagnostic.
-            // TODO: Hash only the source snippets used by the rendered output. Hashing the entire
-            // file is deliberately conservative: an edit outside the rendered context can cause a
-            // full report, but an edit inside it can never leave stale rendered output on the client.
             let mut hashed_files = FxHashSet::default();
 
             for diagnostic in diagnostics {
@@ -113,8 +106,6 @@ impl Diagnostics {
         if let Some(notebook_document) = db.notebook_document(self.file_or_notebook) {
             let mut cell_diagnostics: FxHashMap<Uri, Vec<Diagnostic>> = FxHashMap::default();
 
-            // Populates all relevant URIs with an empty diagnostic list. This ensures that documents
-            // without diagnostics still get updated.
             for cell_uri in notebook_document.cell_uris() {
                 cell_diagnostics.entry(cell_uri.clone()).or_default();
             }
@@ -250,7 +241,6 @@ pub(super) fn publish_diagnostics(
         session.global_settings(),
     );
 
-    // Sends a notification to the client with the diagnostics for the document.
     let publish_diagnostics_notification =
         |uri: Uri, version: Option<i32>, diagnostics: Vec<Diagnostic>| {
             client.send_notification::<PublishDiagnosticsNotification>(PublishDiagnosticsParams {
@@ -293,11 +283,6 @@ pub(crate) fn publish_settings_diagnostics(
     client: &Client,
     path: SystemPathBuf,
 ) {
-    // Don't publish settings diagnostics for workspace that are already doing full diagnostics.
-    //
-    // Note we DO NOT respect the fact that clients support pulls because these are
-    // files they *specifically* won't pull diagnostics from us for, because we don't
-    // claim to be an LSP for them.
     match session.global_settings().diagnostic_mode() {
         DiagnosticMode::Workspace | DiagnosticMode::Off => {
             return;
@@ -316,15 +301,12 @@ pub(crate) fn publish_settings_diagnostics(
         let project = db.project();
         let settings_diagnostics = project.check_settings(db);
 
-        // We need to send diagnostics if we have non-empty ones, or we have ones to clear.
-        // These will both almost always be empty so this function will almost always be a no-op.
         if settings_diagnostics.is_empty()
             && state.untracked_files_with_pushed_diagnostics.is_empty()
         {
             return;
         }
 
-        // Group diagnostics by URI
         let mut diagnostics_by_uri: FxHashMap<Uri, Vec<_>> = FxHashMap::default();
         for diagnostic in settings_diagnostics {
             if let Some(span) = diagnostic.primary_span() {
@@ -337,8 +319,6 @@ pub(crate) fn publish_settings_diagnostics(
             }
         }
 
-        // Record the URIs we're sending non-empty diagnostics for, so we know to clear them
-        // the next time we publish settings diagnostics!
         let old_untracked = std::mem::replace(
             &mut state.untracked_files_with_pushed_diagnostics,
             diagnostics_by_uri.keys().cloned().collect(),
@@ -347,8 +327,6 @@ pub(crate) fn publish_settings_diagnostics(
         (diagnostics_by_uri, old_untracked)
     };
 
-    // Add empty diagnostics for any files that had diagnostics before but don't now.
-    // This will clear them (either the file is no longer relevant to us or fixed!)
     for uri in old_untracked {
         diagnostics_by_uri.entry(uri).or_default();
     }
@@ -356,13 +334,11 @@ pub(crate) fn publish_settings_diagnostics(
     let db = session.project_db(&project_path);
     let global_settings = session.global_settings();
 
-    // Send the settings diagnostics!
     #[expect(
         clippy::iter_over_hash_type,
         reason = "diagnostic notifications for distinct document URIs are independent"
     )]
     for (uri, file_diagnostics) in diagnostics_by_uri {
-        // Convert diagnostics to LSP format
         let lsp_diagnostics = file_diagnostics
             .into_iter()
             .filter(|diagnostic| global_settings.should_show_diagnostic(diagnostic))
@@ -516,8 +492,6 @@ pub(super) fn to_lsp_diagnostic(
     );
 
     let mut message = if supports_related_information {
-        // Show both the primary and annotation messages if available,
-        // because we don't create a related information for the primary message.
         if let Some(annotation_message) = diagnostic
             .primary_annotation()
             .and_then(|annotation| annotation.get_message())
@@ -530,8 +504,6 @@ pub(super) fn to_lsp_diagnostic(
         diagnostic.concise_message().to_string()
     };
 
-    // Append info sub-diagnostics that have no location (and thus
-    // can't be shown as "related information") to the message.
     let mut first = true;
     for sub_diagnostic in diagnostic.sub_diagnostics() {
         if sub_diagnostic.primary_annotation().is_none() {
@@ -655,11 +627,6 @@ impl DiagnosticData {
                         &(db as &dyn ruff_db::Db),
                         &DisplayDiagnosticConfig::new("ty")
                             .color(true)
-                            // The styled renderer can enable OSC-8 hyperlinks based on the process
-                            // environment, even though this output is sent over LSP rather than to a
-                            // terminal. The ANSI parser used by ty-vscode does not strip OSC-8
-                            // sequences, so their escape codes would appear in the virtual diagnostic
-                            // document.
                             .hyperlinks(HyperlinkMode::Never),
                     )
                     .to_string(),

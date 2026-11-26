@@ -548,9 +548,6 @@ fn check_values(checker: &Checker, names: &Expr, values: &Expr) {
                     values.range(),
                 );
                 diagnostic.set_fix({
-                    // Determine whether the last element has a trailing comma. Single-element
-                    // tuples _require_ a trailing comma, so this is a single-element list
-                    // _without_ a trailing comma, we need to insert one.
                     let needs_trailing_comma = if let [item] = elts.as_slice() {
                         SimpleTokenizer::new(
                             checker.locator().contents(),
@@ -561,13 +558,11 @@ fn check_values(checker: &Checker, names: &Expr, values: &Expr) {
                         false
                     };
 
-                    // Replace `[` with `(`.
                     let values_start = Edit::replacement(
                         "(".into(),
                         values.start(),
                         values.start() + TextSize::from(1),
                     );
-                    // Replace `]` with `)` or `,)`.
                     let values_end = Edit::replacement(
                         if needs_trailing_comma {
                             ",)".into()
@@ -596,28 +591,15 @@ fn check_values(checker: &Checker, names: &Expr, values: &Expr) {
                     values.range(),
                 );
                 diagnostic.set_fix({
-                    // Determine whether a trailing comma is present due to the _requirement_
-                    // that a single-element tuple must have a trailing comma, e.g., `(1,)`.
-                    //
-                    // If the trailing comma is on its own line, we intentionally ignore it,
-                    // since the expression is already split over multiple lines, as in:
-                    // ```python
                     // @pytest.mark.parametrize(
-                    //     (
-                    //         "x",
-                    //     ),
-                    // )
-                    // ```
                     let has_trailing_comma = elts.len() == 1
                         && checker.locator().up_to(values.end()).chars().rev().nth(1) == Some(',');
 
-                    // Replace `(` with `[`.
                     let values_start = Edit::replacement(
                         "[".into(),
                         values.start(),
                         values.start() + TextSize::from(1),
                     );
-                    // Replace `)` or `,)` with `]`.
                     let start = if has_trailing_comma {
                         values.end() - TextSize::from(2)
                     } else {
@@ -701,40 +683,10 @@ fn handle_single_name(checker: &Checker, argnames: &Expr, value: &Expr, argvalue
         },
         argnames.range(),
     );
-    // If `argnames` and all items in `argvalues` are single-element sequences,
-    // they all should be unpacked. Here's an example:
-    //
-    // ```python
     // @pytest.mark.parametrize(("x",), [(1,), (2,)])
-    // def test_foo(x):
-    //     assert isinstance(x, int)
-    // ```
-    //
-    // The code above should be transformed into:
-    //
-    // ```python
     // @pytest.mark.parametrize("x", [1, 2])
-    // def test_foo(x):
-    //     assert isinstance(x, int)
-    // ```
-    //
-    // Only unpacking `argnames` would break the test:
-    //
-    // ```python
     // @pytest.mark.parametrize("x", [(1,), (2,)])
-    // def test_foo(x):
-    //     assert isinstance(x, int)  # fails because `x` is a tuple, not an int
-    // ```
-    //
-    // In some cases, it's not possible to unpack all `argvalues`:
-    //
-    // ```python
     // @pytest.mark.parametrize(("x",), [(1,), variable])
-    // def test_foo(x):
-    //     assert isinstance(x, int)
-    //
-    // In this case, it is left unchanged.
-    // ```
     let Some(argvalues_edits) = unpack_single_element_items(checker, argvalues) else {
         return;
     };
@@ -818,25 +770,12 @@ fn handle_value_rows(
                     elt.range(),
                 );
                 diagnostic.set_fix({
-                    // Determine whether a trailing comma is present due to the _requirement_
-                    // that a single-element tuple must have a trailing comma, e.g., `(1,)`.
-                    //
-                    // If the trailing comma is on its own line, we intentionally ignore it,
-                    // since the expression is already split over multiple lines, as in:
-                    // ```python
                     // @pytest.mark.parametrize(
-                    //     (
-                    //         "x",
-                    //     ),
-                    // )
-                    // ```
                     let has_trailing_comma = elts.len() == 1
                         && checker.locator().up_to(elt.end()).chars().rev().nth(1) == Some(',');
 
-                    // Replace `(` with `[`.
                     let elt_start =
                         Edit::replacement("[".into(), elt.start(), elt.start() + TextSize::from(1));
-                    // Replace `)` or `,)` with `]`.
                     let start = if has_trailing_comma {
                         elt.end() - TextSize::from(2)
                     } else {
@@ -858,9 +797,6 @@ fn handle_value_rows(
                     elt.range(),
                 );
                 diagnostic.set_fix({
-                    // Determine whether the last element has a trailing comma. Single-element
-                    // tuples _require_ a trailing comma, so this is a single-element list
-                    // _without_ a trailing comma, we need to insert one.
                     let needs_trailing_comma = if let [item] = elts.as_slice() {
                         SimpleTokenizer::new(
                             checker.locator().contents(),
@@ -871,10 +807,8 @@ fn handle_value_rows(
                         false
                     };
 
-                    // Replace `[` with `(`.
                     let elt_start =
                         Edit::replacement("(".into(), elt.start(), elt.start() + TextSize::from(1));
-                    // Replace `]` with `)` or `,)`.
                     let elt_end = Edit::replacement(
                         if needs_trailing_comma {
                             ",)".into()

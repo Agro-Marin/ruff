@@ -74,13 +74,11 @@ pub(crate) fn starmap_zip(checker: &Checker, call: &ExprCall, qualified_name: &Q
     let keywords = &iterable_call.arguments.keywords;
 
     match checker.target_version().cmp(&PythonVersion::PY314) {
-        // Keyword arguments not supported for `map` before Python 3.14
         std::cmp::Ordering::Less => {
             if !keywords.is_empty() {
                 return;
             }
         }
-        // Only supported keyword argument is `strict` starting in 3.14
         std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => {
             if keywords.len() > 1 {
                 return;
@@ -93,7 +91,6 @@ pub(crate) fn starmap_zip(checker: &Checker, call: &ExprCall, qualified_name: &Q
 
     let positionals = &iterable_call.arguments.args;
 
-    // `zip(*a)` where `a` is empty is valid, but `map(_, *a)` isn't.
     if !positionals.is_empty() && positionals.iter().all(Expr::is_starred_expr) {
         return;
     }
@@ -126,7 +123,6 @@ fn replace_with_map(starmap: &ExprCall, zip: &ExprCall, checker: &Checker) -> Op
     let full_zip_range =
         parenthesized_range(zip.into(), starmap.into(), checker.tokens()).unwrap_or(zip.range());
 
-    // Delete any parentheses around the `zip` call to prevent that the argument turns into a tuple.
     remove_zip.push(Edit::range_deletion(TextRange::new(
         full_zip_range.start(),
         zip.start(),
@@ -135,31 +131,24 @@ fn replace_with_map(starmap: &ExprCall, zip: &ExprCall, checker: &Checker) -> Op
     let full_zip_func_range = parenthesized_range((&zip.func).into(), zip.into(), checker.tokens())
         .unwrap_or(zip.func.range());
 
-    // Delete the `zip` callee
     remove_zip.push(Edit::range_deletion(full_zip_func_range));
 
-    // Delete the `(` from the `zip(...)` call
     remove_zip.push(Edit::range_deletion(zip.arguments.l_paren_range()));
 
-    // `zip` can be called without arguments but `map` can't.
     if zip.arguments.is_empty() {
         remove_zip.push(Edit::insertion("[]".to_string(), zip.arguments.start()));
     }
 
     let after_zip = checker.tokens().after(full_zip_range.end());
 
-    // Remove any trailing commas after the `zip` call to avoid multiple trailing commas
-    // if the iterable has a trailing comma.
     if let Some(trailing_comma) = after_zip.iter().find(|token| !token.kind().is_trivia()) {
         if trailing_comma.kind() == TokenKind::Comma {
             remove_zip.push(Edit::range_deletion(trailing_comma.range()));
         }
     }
 
-    // Delete the `)` from the `zip(...)` call
     remove_zip.push(Edit::range_deletion(zip.arguments.r_paren_range()));
 
-    // Delete any trailing parentheses wrapping the `zip` call.
     remove_zip.push(Edit::range_deletion(TextRange::new(
         zip.end(),
         full_zip_range.end(),

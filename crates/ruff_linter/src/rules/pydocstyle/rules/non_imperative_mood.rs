@@ -85,13 +85,11 @@ pub(crate) fn non_imperative_mood(checker: &Checker, docstring: &Docstring, sett
 
     let body = docstring.body();
 
-    // Find first line, disregarding whitespace.
     let first_line = match body.trim().universal_newlines().next() {
         Some(line) => line.as_str().trim(),
         None => return,
     };
 
-    // Find the first word on that line and normalize it to lower-case.
     let first_word_norm = match first_line.split_whitespace().next() {
         Some(word) => normalize_word(word),
         None => return,

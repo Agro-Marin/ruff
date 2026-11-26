@@ -204,12 +204,10 @@ fn check_function_parameters(checker: &Checker, function_def: &StmtFunctionDef) 
 fn check_call_arguments(checker: &Checker, qualified_name: &QualifiedName, arguments: &Arguments) {
     match qualified_name.segments() {
         ["airflow", .., "DAG" | "dag"] => {
-            // with replacement
             diagnostic_for_argument(checker, arguments, "concurrency", Some("max_active_tasks"));
             diagnostic_for_argument(checker, arguments, "fail_stop", Some("fail_fast"));
             diagnostic_for_argument(checker, arguments, "schedule_interval", Some("schedule"));
             diagnostic_for_argument(checker, arguments, "timetable", Some("schedule"));
-            // without replacement
             diagnostic_for_argument(checker, arguments, "default_view", None);
             diagnostic_for_argument(checker, arguments, "orientation", None);
         }
@@ -320,7 +318,6 @@ fn check_class_attribute(checker: &Checker, attribute_expr: &ExprAttribute) {
         _ => return,
     };
 
-    // Create the `Fix` first to avoid cloning `Replacement`.
     let fix = if let Replacement::AttrName(name) = replacement {
         Some(Fix::safe_edit(Edit::range_replacement(
             name.to_string(),
@@ -346,7 +343,6 @@ fn check_deprecated_context_key_value_access(
     value: &Expr,
     range: TextRange,
 ) -> bool {
-    // access context["inlet_events"] via a string key is deprecated.
     if is_value_from_context_key(checker, value, "inlet_events") {
         checker.report_diagnostic(
             Airflow3Removal {
@@ -616,7 +612,6 @@ fn check_method(checker: &Checker, call_expr: &ExprCall) {
             }
         }
     };
-    // Create the `Fix` first to avoid cloning `Replacement`.
     let fix = if let Replacement::AttrName(name) = replacement {
         Some(Fix::safe_edit(Edit::range_replacement(
             name.to_string(),
@@ -660,13 +655,11 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
     };
 
     let replacement = match qualified_name.segments() {
-        // airflow.PY\d{1,2}
         [
             "airflow",
             "PY36" | "PY37" | "PY38" | "PY39" | "PY310" | "PY311" | "PY312",
         ] => Replacement::Message("Use `sys.version_info` instead"),
 
-        // airflow.api_connexion.security
         ["airflow", "api_connexion", "security", "requires_access"] => Replacement::Message(
             "Use `airflow.api_fastapi.core_api.security.requires_access_*` instead",
         ),
@@ -680,7 +673,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             name: "requires_access_asset",
         },
 
-        // airflow.auth.managers
         [
             "airflow",
             "auth",
@@ -703,7 +695,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             name: "AssetDetails",
         },
 
-        // airflow.configuration
         [
             "airflow",
             "configuration",
@@ -714,12 +705,10 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             name: format!("conf.{rest}"),
         },
 
-        // airflow.contrib.*
         ["airflow", "contrib", ..] => {
             Replacement::Message("The whole `airflow.contrib` module has been removed.")
         }
 
-        // airflow.datasets.manager
         ["airflow", "datasets", "manager", rest] => match *rest {
             "DatasetManager" => Replacement::Rename {
                 module: "airflow.assets.manager",
@@ -735,7 +724,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             },
             _ => return,
         },
-        // airflow.datasets
         ["airflow", "datasets", "DatasetAliasEvent"] => Replacement::None,
         ["airflow", "datasets", "DatasetEvent"] => Replacement::Message(
             "`DatasetEvent` has been made private in Airflow 3. \
@@ -743,7 +731,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
              An `AssetEvent` type will be added to the apache-airflow-task-sdk in a future version.",
         ),
 
-        // airflow.hooks
         ["airflow", "hooks", "base_hook", "BaseHook"] => {
             Replacement::SourceModuleMovedWithMessage {
                 module: "airflow.hooks.base",
@@ -753,13 +740,11 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             }
         }
 
-        // airflow.lineage.hook
         ["airflow", "lineage", "hook", "DatasetLineageInfo"] => Replacement::Rename {
             module: "airflow.lineage.hook",
             name: "AssetLineageInfo",
         },
 
-        // airflow.listeners.spec
         ["airflow", "listeners", "spec", "dataset", rest] => match *rest {
             "on_dataset_created" => Replacement::Rename {
                 module: "airflow.listeners.spec.asset",
@@ -772,7 +757,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             _ => return,
         },
 
-        // airflow.metrics.validators
         ["airflow", "metrics", "validators", rest] => match *rest {
             "AllowListValidator" => Replacement::Rename {
                 module: "airflow.metrics.validators",
@@ -785,7 +769,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             _ => return,
         },
 
-        // airflow.notifications
         ["airflow", "notifications", "basenotifier", "BaseNotifier"] => {
             Replacement::SourceModuleMovedToSDK {
                 module: "airflow.sdk.bases.notifier",
@@ -794,7 +777,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             }
         }
 
-        // airflow.operators
         ["airflow", "operators", "subdag", ..] => {
             Replacement::Message("The whole `airflow.subdag` module has been removed.")
         }
@@ -807,19 +789,16 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             }
         }
 
-        // airflow.secrets
         ["airflow", "secrets", "local_filesystem", "load_connections"] => Replacement::Rename {
             module: "airflow.secrets.local_filesystem",
             name: "load_connections_dict",
         },
 
-        // airflow.security
         ["airflow", "security", "permissions", "RESOURCE_DATASET"] => Replacement::Rename {
             module: "airflow.security.permissions",
             name: "RESOURCE_ASSET",
         },
 
-        // airflow.sensors
         [
             "airflow",
             "sensors",
@@ -831,7 +810,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             version: "1.0.0",
         },
 
-        // airflow.timetables
         [
             "airflow",
             "timetables",
@@ -842,18 +820,13 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             name: "AssetTriggeredTimetable",
         },
 
-        // airflow.triggers
         ["airflow", "triggers", "external_task", "TaskStateTrigger"] => Replacement::None,
 
-        // airflow.utils
         ["airflow", "utils", rest @ ..] => match &rest {
-            // airflow.utils.dag_cycle_tester
             ["dag_cycle_tester", "test_cycle"] => Replacement::None,
 
-            // airflow.utils.db
             ["db", "create_session"] => Replacement::None,
 
-            // airflow.utils.dates
             ["dates", "date_range"] => Replacement::None,
             ["dates", "days_ago"] => {
                 Replacement::Message("Use `pendulum.today('UTC').add(days=-N, ...)` instead")
@@ -863,14 +836,12 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
                 "parse_execution_date" | "round_time" | "scale_time_units" | "infer_time_unit",
             ] => Replacement::None,
 
-            // airflow.utils.file
             ["file", "TemporaryDirectory"] => Replacement::Rename {
                 module: "tempfile",
                 name: "TemporaryDirectory",
             },
             ["file", "mkdirs"] => Replacement::Message("Use `pathlib.Path({path}).mkdir` instead"),
 
-            // airflow.utils.helpers
             ["helpers", "chain"] => Replacement::SourceModuleMovedToSDK {
                 module: "airflow.sdk",
                 name: "chain".to_string(),
@@ -882,22 +853,18 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
                 version: "1.0.0",
             },
 
-            // airflow.utils.log.secrets_masker
             ["log", "secrets_masker"] => Replacement::SourceModuleMovedToSDK {
                 module: "airflow.sdk.execution_time",
                 name: "secrets_masker".to_string(),
                 version: "1.0.0",
             },
 
-            // airflow.utils.state
             ["state", "SHUTDOWN" | "terminating_states"] => Replacement::None,
 
-            // airflow.utils.trigger_rule
             ["trigger_rule", "TriggerRule", "DUMMY"] => Replacement::None,
             _ => return,
         },
 
-        // airflow.www
         [
             "airflow",
             "www",
@@ -911,7 +878,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             "get_sensitive_variables_fields" | "should_hide_value_for_key",
         ] => Replacement::None,
 
-        // airflow.providers.amazon
         [
             "airflow",
             "providers",
@@ -950,8 +916,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             name: "AvpEntities.ASSET",
         },
 
-        // airflow.providers.common.io
-        // airflow.providers.common.io.datasets.file
         [
             "airflow",
             "providers",
@@ -976,8 +940,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             _ => return,
         },
 
-        // airflow.providers.google
-        // airflow.providers.google.datasets
         ["airflow", "providers", "google", "datasets", rest @ ..] => match &rest {
             ["bigquery", "create_dataset"] => Replacement::Rename {
                 module: "airflow.providers.google.assets.bigquery",
@@ -999,7 +961,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             _ => return,
         },
 
-        // airflow.providers.mysql
         [
             "airflow",
             "providers",
@@ -1012,7 +973,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             name: "sanitize_uri",
         },
 
-        // airflow.providers.postgres
         [
             "airflow",
             "providers",
@@ -1025,8 +985,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             name: "sanitize_uri",
         },
 
-        // airflow.providers.openlineage
-        // airflow.providers.openlineage.utils.utils
         [
             "airflow",
             "providers",
@@ -1047,7 +1005,6 @@ fn check_name(checker: &Checker, expr: &Expr, range: TextRange) {
             _ => return,
         },
 
-        // airflow.providers.trino
         [
             "airflow",
             "providers",
@@ -1261,7 +1218,6 @@ fn is_context_variable(checker: &Checker, expr: &Expr) -> bool {
 /// accesses the given `key` from an Airflow context variable via either subscript or
 /// `.get()` method.
 fn is_context_key_access(checker: &Checker, expr: &Expr, key: &str) -> bool {
-    // context["key"]
     if let Expr::Subscript(ExprSubscript { value, slice, .. }) = expr {
         if let Some(ExprStringLiteral {
             value: slice_key, ..
@@ -1272,7 +1228,6 @@ fn is_context_key_access(checker: &Checker, expr: &Expr, key: &str) -> bool {
             }
         }
     }
-    // context.get("key")
     if let Expr::Call(ExprCall {
         func, arguments, ..
     }) = expr
@@ -1393,7 +1348,6 @@ fn check_trigger_rule_argument_value(checker: &Checker, arguments: &Arguments) {
         return;
     };
 
-    // Check for string literal value
     if let Some(value) = keyword.value.as_string_literal_expr() {
         if value.value.to_str() == "none_failed_or_skipped" {
             let mut diagnostic = checker.report_diagnostic(
@@ -1411,7 +1365,6 @@ fn check_trigger_rule_argument_value(checker: &Checker, arguments: &Arguments) {
         return;
     }
 
-    // Check for TriggerRule enum value
     if let Some(qualified_name) = checker.semantic().resolve_qualified_name(&keyword.value) {
         if matches!(
             qualified_name.segments(),

@@ -47,9 +47,6 @@ pub(crate) fn check_function_definition<'db>(
     if last_definition.has_known_decorator(db, FunctionDecorators::NO_TYPE_CHECK) {
         return;
     }
-    // The checks below read parameter kinds and the public generic context. A function's
-    // ordinary callable signature already has both, including for async functions whose
-    // public return type is wrapped in a coroutine.
     let raw_signature;
     let signature = if last_definition.is_overload(db) {
         last_definition.public_overload_signature(db)
@@ -82,12 +79,6 @@ pub(super) fn check_class_method_typevar_variance<'db>(
         return;
     }
 
-    // Protocols require declared variance to match the inferred variance, including for explicitly
-    // invariant type variables. Nominal classes can be more conservative, so they only reject uses
-    // incompatible with a declared covariance or contravariance. Both checks share recursive
-    // variance inference, but only nominal classes currently skip overloads and independently
-    // generic methods to avoid false positives.
-    // TODO: Handle these cases in shared variance inference so both checks can account for them.
     let Some(generic_context) = class.generic_context(db) else {
         return;
     };
@@ -110,7 +101,6 @@ pub(super) fn check_class_method_typevar_variance<'db>(
         if matches!(member.name.as_str(), "__init__" | "__new__") {
             continue;
         }
-        // The iterator lists declarations and bindings separately; lookup combines their types.
         let Some(ty) =
             class_member(db, class.body_scope(db), &member.name).ignore_possibly_undefined()
         else {
@@ -118,8 +108,6 @@ pub(super) fn check_class_method_typevar_variance<'db>(
         };
         member.ty = ty.resolve_type_alias(db);
         if let Type::PropertyInstance(property) = member.ty {
-            // Each retained accessor has its own exclusions. Checking bound accessor signatures
-            // includes the setter's input, which an ordinary property read would not expose.
             for (accessor, function) in property.accessors_with_functions(db) {
                 if function.definition(db).scope(db) == class.body_scope(db)
                     && !exclude_from_variance(db, function)
@@ -153,19 +141,12 @@ pub(super) fn check_class_method_typevar_variance<'db>(
 /// Whether a source method is exempt from declared-variance validation.
 fn exclude_from_variance<'db>(db: &'db dyn Db, function: FunctionType<'db>) -> bool {
     let last_definition = function.literal(db).last_definition;
-    // Variance depends on the complete overload set: a broader overload can cover an otherwise
-    // incompatible signature.
-    // TODO: Account for that coverage in shared variance inference before
-    // checking overloaded methods here.
     if function.has_known_decorator(db, FunctionDecorators::OVERLOAD)
         || last_definition.has_known_decorator(db, FunctionDecorators::NO_TYPE_CHECK)
     {
         return true;
     }
 
-    // Independent method type parameters can make an occurrence of a class parameter redundant.
-    // TODO: Account for those relationships instead of just composing each occurrence's variance.
-    // Use the lexical context so that type parameters moved into a returned callable also count.
     let lexical_signature = last_definition.raw_signature(db, ReturnCallableTypeVarScope::Lexical);
     lexical_signature.generic_context.is_some_and(|context| {
         context
@@ -222,7 +203,6 @@ fn check_method_typevar_variance<'db>(
                         .iter()
                         .nth(parameter.source_parameter_index()?)?
                         .annotation()?;
-                    // `P.args` and `P.kwargs` both consume `P`, despite having distinct identities.
                     let parameter_type = match parameter.annotated_type() {
                         Type::TypeVar(typevar) if typevar.paramspec_attr(db).is_some() => {
                             Type::TypeVar(typevar.without_paramspec_attr(db))
@@ -352,8 +332,6 @@ fn check_legacy_positional_only_convention<'db>(
     let node = last_definition.node(db, context.file(), context.module());
     let ast_parameters = &node.parameters;
 
-    // If the function has any PEP-570 positional-only parameters,
-    // assume that `__`-prefixed parameters are not meant to be positional-only
     if !ast_parameters.posonlyargs.is_empty() {
         return;
     }
@@ -368,9 +346,6 @@ fn check_legacy_positional_only_convention<'db>(
             continue;
         }
 
-        // Valid uses of the PEP-484 positional-only convention will have been detected as such
-        // in the first iteration over this scope, so `param.is_positional_only()` will return `true`
-        // for those. We only get here for invalid uses of the PEP-484 positional-only convention.
         if param_node.uses_pep_484_positional_only_convention() {
             let Some(builder) =
                 context.report_lint(&INVALID_LEGACY_POSITIONAL_PARAMETER, param_node.name())
@@ -425,8 +400,6 @@ fn check_legacy_typevar_defaults<'db>(
         .map(|bound_tvar| bound_tvar.typevar(db));
 
     for (i, typevar) in typevars.clone().enumerate() {
-        // Only check legacy TypeVars; PEP 695 type parameters are already validated
-        // by `check_default_for_outer_scope_typevars` in the type parameter scope.
         if !matches!(
             typevar.kind(db),
             TypeVarKind::LegacyTypeVar
@@ -557,7 +530,6 @@ fn check_legacy_typevar_ordering<'db>(
     for bound_typevar in generic_context.variables(db) {
         let typevar = bound_typevar.typevar(db);
 
-        // Only check legacy TypeVars; PEP 695 ordering is validated by the parser.
         if !matches!(
             typevar.kind(db),
             TypeVarKind::LegacyTypeVar

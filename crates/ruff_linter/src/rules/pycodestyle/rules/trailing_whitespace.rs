@@ -100,7 +100,6 @@ pub(crate) fn trailing_whitespace(
         .sum();
     if whitespace_len > TextSize::from(0) {
         let range = TextRange::new(line.end() - whitespace_len, line.end());
-        // Removing trailing whitespace is not safe inside multiline strings.
         let applicability = if indexer.multiline_ranges().contains_range(range) {
             Applicability::Unsafe
         } else {
@@ -109,8 +108,6 @@ pub(crate) fn trailing_whitespace(
         if range == line.range() {
             if context.is_rule_enabled(Rule::BlankLineWithWhitespace) {
                 let mut diagnostic = context.report_diagnostic(BlankLineWithWhitespace, range);
-                // Remove any preceding continuations, to avoid introducing a potential
-                // syntax error.
                 diagnostic.set_fix(Fix::applicable_edit(
                     Edit::range_deletion(TextRange::new(
                         indexer

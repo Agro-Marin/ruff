@@ -94,7 +94,6 @@ pub(crate) fn any_eq_ne_annotation(checker: &Checker, name: &str, parameters: &P
         },
         annotation.range(),
     );
-    // Ex) `def __eq__(self, obj: Any): ...`
     diagnostic.try_set_fix(|| {
         let (import_edit, binding) = checker.importer().get_or_import_builtin_symbol(
             "object",

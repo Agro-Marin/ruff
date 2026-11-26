@@ -57,8 +57,6 @@ impl Violation for NonlocalAndGlobal {
 
 /// PLE0115
 pub(crate) fn nonlocal_and_global(checker: &Checker, nonlocal: &ast::StmtNonlocal) {
-    // Determine whether any of the newly declared `nonlocal` variables are already declared as
-    // `global`.
     for name in &nonlocal.names {
         if let Some(global) = checker.semantic().global(name) {
             checker.report_diagnostic(

@@ -124,7 +124,6 @@ impl AstIdsBuilder {
             {
                 page.mask |= bit;
             } else {
-                // Each set bit accounts for one distinct node in the use array.
                 let first_use = pages
                     .last()
                     .map_or(0, |last| last.first_use + last.mask.count_ones());
