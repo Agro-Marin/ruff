@@ -56,24 +56,52 @@ class Partner(models.Model):
 
     def helpers(self, value):
         self.env.cr.execute("SELECT id FROM %s" % self._helper_table())  # OK: returns a constant
-        self.env.cr.execute("SELECT id FROM %s" % self._bad_helper(value))  # reported at _bad_helper
-        self.env.cr.execute(late_query(value))  # OK: looked up as Partner.late_query, which does not exist
+        self.env.cr.execute("SELECT id FROM %s" % self._bad_helper(value))  # E8501: _bad_helper returns its argument
+        self.env.cr.execute(late_query(value))  # E8501: a bare name is the module's function, not a method
 
     def _helper_table(self):
         return "res_partner"
 
-    def _bad_helper(self, value):  # E8501: used to build a query in helpers()
+    def _bad_helper(self, value):
         return value
 
     def early(self, value):
-        self.env.cr.execute("SELECT %s" % self._later(value))  # OK here, reported at _later
+        self.env.cr.execute("SELECT %s" % self._later(value))  # E8501: _later, defined below, is judged here
 
-    def _later(self, value):  # E8501: used to build a query in early()
+    def _later(self, value):
         return "x" + value
 
     def params(self, value):
         self.env.cr.execute("SELECT %s" % self._echo("constant"))  # OK: constant arguments
-        self.env.cr.execute("SELECT %s" % self._echo(value))  # reported at _echo
+        self.env.cr.execute("SELECT %s" % self._echo(value))  # E8501: a non-constant argument
 
-    def _echo(self, argument):  # E8501: used with a non-constant argument in params()
+    def _echo(self, argument):
         return argument
+
+    def _columns_above(self):
+        return [name for name in self._fields if self[name]]
+
+    def through_a_builder(self):
+        self.env.cr.execute(build_query(self._columns_above()))  # OK: a call the module does not define is trusted
+        self.env.cr.execute(build_query(self._columns_below()))  # OK: the same, whatever the order
+
+    def _columns_below(self):
+        return [name for name in self._fields if self[name]]
+
+
+def cast_by(cast):
+    return SQL("CAST(NULL AS %s)" % cast("x"))  # OK: cast is this parameter, not the function cast_owner defines
+
+
+def cast_owner():
+    def cast(name):
+        return name
+
+    return cast
+
+
+def wrapped(value):
+    def wrap(text):
+        return text
+
+    return SQL("SELECT %s" % wrap(value))  # E8501: the nested function returns its argument

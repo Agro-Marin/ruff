@@ -8,12 +8,12 @@ use ruff_macros::{ViolationMetadata, derive_message_formats};
 use ruff_python_ast::statement_visitor::{StatementVisitor, walk_stmt};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Operator, Pattern, Stmt, Suite};
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::Ranged;
 
 use crate::Violation;
 use crate::checkers::ast::Checker;
 use crate::codes::Category;
-use crate::rules::odoo::helpers::{def_start, is_test_path};
+use crate::rules::odoo::helpers::is_test_path;
 use crate::rules::odoo::strings::{JoinedValue, joined_values};
 
 /// ## What it does
@@ -28,25 +28,20 @@ use crate::rules::odoo::strings::{JoinedValue, joined_values};
 /// A value is constant when it is a literal, a name every binding of which is
 /// constant (or that a guard asserts on), a `%d` substitution, an identifier
 /// attribute such as `_table` or `field.name`, or the result of a function of
-/// the module whose every return is constant. A call to a function the module
-/// defines later is judged when the definition is reached, and reported there.
+/// the module whose every return is constant for the arguments it is given.
+/// `self._helper()` is looked up among the methods of the enclosing class, and
+/// `helper()` as Python resolves the name: a parameter or assignment in a
+/// scope hides the functions outside it. Either is found wherever it is
+/// defined, before or after the call that builds the query, which is where it
+/// is reported.
 #[derive(ViolationMetadata)]
 #[violation_metadata(stable_since = "0.16.7", category = Category::Security)]
-pub(crate) struct SqlInjection {
-    function: Option<(String, String)>,
-}
+pub(crate) struct SqlInjection;
 
 impl Violation for SqlInjection {
     #[derive_message_formats]
     fn message(&self) -> String {
-        match &self.function {
-            None => "Query built by interpolating a value not known to be constant".to_string(),
-            Some((name, sites)) => {
-                format!(
-                    "`{name}` returns a value not known to be constant, and builds a query at {sites}"
-                )
-            }
-        }
+        "Query built by interpolating a value not known to be constant".to_string()
     }
 
     fn fix_title(&self) -> Option<String> {
@@ -104,19 +99,23 @@ struct Place<'a> {
     class: Option<&'a str>,
 }
 
-/// The place of every expression and every function of the module.
+/// The place of every expression and every function of the module, every
+/// function under the key a call finds it by, and every call in walk order.
 struct Places<'a> {
     current: Place<'a>,
+    in_class_body: bool,
     expressions: FxHashMap<usize, Place<'a>>,
     functions: FxHashMap<usize, Place<'a>>,
-    definitions: Vec<Visit<'a>>,
+    definitions: FxHashMap<FunctionKey<'a>, Vec<&'a ast::StmtFunctionDef>>,
+    calls: Vec<&'a ast::ExprCall>,
 }
 
-/// A node the check visits, in walk order: a call, or a function definition.
-#[derive(Clone, Copy)]
-enum Visit<'a> {
-    Call(&'a ast::ExprCall),
-    Function(&'a ast::StmtFunctionDef),
+/// Where a function is reached from: the class whose methods it is among, or
+/// the scope whose body defines it.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Owner<'a> {
+    Class(&'a str),
+    Scope(usize),
 }
 
 impl<'a> Visitor<'a> for Places<'a> {
@@ -124,17 +123,26 @@ impl<'a> Visitor<'a> for Places<'a> {
         match stmt {
             Stmt::FunctionDef(function) => {
                 self.functions.insert(address(function), self.current);
-                self.definitions.push(Visit::Function(function));
-                let outer = self.current;
+                let owner = match self.current.class {
+                    Some(class) if self.in_class_body => Owner::Class(class),
+                    _ => Owner::Scope(self.current.scope.id()),
+                };
+                self.definitions
+                    .entry((owner, function.name.as_str()))
+                    .or_default()
+                    .push(function);
+                let outer = (self.current, self.in_class_body);
                 self.current.scope = Scope::Function(function);
+                self.in_class_body = false;
                 visitor::walk_stmt(self, stmt);
-                self.current = outer;
+                (self.current, self.in_class_body) = outer;
             }
             Stmt::ClassDef(class) => {
-                let outer = self.current;
+                let outer = (self.current, self.in_class_body);
                 self.current.class = Some(class.name.as_str());
+                self.in_class_body = true;
                 visitor::walk_stmt(self, stmt);
-                self.current = outer;
+                (self.current, self.in_class_body) = outer;
             }
             _ => visitor::walk_stmt(self, stmt),
         }
@@ -143,7 +151,7 @@ impl<'a> Visitor<'a> for Places<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         self.expressions.insert(address(expr), self.current);
         if let Expr::Call(call) = expr {
-            self.definitions.push(Visit::Call(call));
+            self.calls.push(call);
         }
         visitor::walk_expr(self, expr);
     }
@@ -319,25 +327,15 @@ impl<'a> Visitor<'a> for NameCollector<'a> {
     }
 }
 
-type FunctionKey<'a> = (Option<&'a str>, &'a str);
-
-/// A call made to a function before its definition was reached: the position
-/// of the value asked for, whether its arguments were constant, and the query
-/// call it was reached from.
-#[derive(Clone, Copy)]
-struct Callsite<'a> {
-    position: Option<usize>,
-    const_args: bool,
-    root: &'a ast::ExprCall,
-}
+/// A function's owner and name: `self.name()` finds a method under its
+/// class, a bare `name()` a function under a scope it can see.
+type FunctionKey<'a> = (Owner<'a>, &'a str);
 
 struct SqlInjectionCheck<'a> {
     suite: &'a Suite,
     places: Places<'a>,
     module_constants: FxHashMap<&'a str, &'a Expr>,
     function_defs: FxHashMap<FunctionKey<'a>, Vec<&'a ast::StmtFunctionDef>>,
-    callsites: FxHashMap<FunctionKey<'a>, Vec<Callsite<'a>>>,
-    root_call: Option<&'a ast::ExprCall>,
     const_def_cache: FxHashMap<(usize, Option<usize>, bool), bool>,
     assign_cache: FxHashMap<usize, Rc<FxHashMap<&'a str, Vec<Binding<'a>>>>>,
     assert_cache: FxHashMap<usize, Rc<FxHashSet<&'a str>>>,
@@ -352,11 +350,14 @@ impl<'a> SqlInjectionCheck<'a> {
                 scope: Scope::Module,
                 class: None,
             },
+            in_class_body: false,
             expressions: FxHashMap::default(),
             functions: FxHashMap::default(),
-            definitions: Vec::new(),
+            definitions: FxHashMap::default(),
+            calls: Vec::new(),
         };
         places.visit_body(suite);
+        let function_defs = std::mem::take(&mut places.definitions);
         let mut module_constants = FxHashMap::default();
         for statement in suite {
             match statement {
@@ -383,9 +384,7 @@ impl<'a> SqlInjectionCheck<'a> {
             suite,
             places,
             module_constants,
-            function_defs: FxHashMap::default(),
-            callsites: FxHashMap::default(),
-            root_call: None,
+            function_defs,
             const_def_cache: FxHashMap::default(),
             assign_cache: FxHashMap::default(),
             assert_cache: FxHashMap::default(),
@@ -560,13 +559,7 @@ impl<'a> SqlInjectionCheck<'a> {
                             );
                     }
                 }
-                let outer = self.root_call;
-                if self.root_call.is_none() {
-                    self.root_call = Some(call);
-                }
-                let result = self.evaluate_function_call(node, call, args_allowed, position);
-                self.root_call = outer;
-                result
+                self.evaluate_function_call(node, call, args_allowed, position)
             }
             Expr::If(if_exp) => {
                 self.is_constexpr(&if_exp.body, args_allowed, None)
@@ -625,6 +618,7 @@ impl<'a> SqlInjectionCheck<'a> {
         args_allowed: bool,
         position: Option<usize>,
     ) -> bool {
+        let place = self.place(node);
         let name = match &*call.func {
             Expr::Attribute(attribute) => attribute.attr.as_str(),
             Expr::Name(name) => name.id.as_str(),
@@ -633,7 +627,6 @@ impl<'a> SqlInjectionCheck<'a> {
         if name == "SQL" {
             return true;
         }
-        let place = self.place(node);
         if let Scope::Function(function) = place.scope
             && !function.is_async
             && function.name.as_str() == name
@@ -641,18 +634,38 @@ impl<'a> SqlInjectionCheck<'a> {
             return true;
         }
         let const_args = self.all_const(&call.arguments.args, args_allowed, None);
-        let key = (place.class, name);
-        if let Some(root) = self.root_call {
-            self.callsites.entry(key).or_default().push(Callsite {
-                position,
-                const_args,
-                root,
-            });
-        }
-        let functions = self.function_defs.get(&key).cloned().unwrap_or_default();
+        let functions = match &*call.func {
+            Expr::Attribute(_) => place.class.map_or_else(Vec::new, |class| {
+                self.function_defs
+                    .get(&(Owner::Class(class), name))
+                    .cloned()
+                    .unwrap_or_default()
+            }),
+            _ => self.visible_functions(place.scope, name),
+        };
         functions
             .into_iter()
             .all(|function| self.is_const_def(function, position, const_args))
+    }
+
+    /// The functions a bare `name()` called in `scope` reaches: those defined
+    /// in the nearest scope that binds the name, if a `def` binds it there.
+    fn visible_functions(
+        &mut self,
+        scope: Scope<'a>,
+        name: &'a str,
+    ) -> Vec<&'a ast::StmtFunctionDef> {
+        let mut current = Some(scope);
+        while let Some(scope) = current {
+            if let Some(functions) = self.function_defs.get(&(Owner::Scope(scope.id()), name)) {
+                return functions.clone();
+            }
+            if self.assignments(scope).contains_key(name) {
+                return Vec::new();
+            }
+            current = self.outer_scope(scope);
+        }
+        Vec::new()
     }
 
     fn is_const_def(
@@ -800,26 +813,6 @@ impl<'a> SqlInjectionCheck<'a> {
         };
         self.check_concatenation(query).unwrap_or(true)
     }
-
-    /// A function definition, now that it is reached: the calls already made to
-    /// it that built a query are judged against it.
-    fn visit_function(&mut self, function: &'a ast::StmtFunctionDef) -> Vec<TextSize> {
-        let class = self
-            .places
-            .functions
-            .get(&address(function))
-            .and_then(|place| place.class);
-        let key = (class, function.name.as_str());
-        self.function_defs.entry(key).or_default().push(function);
-        let sites = self.callsites.get(&key).cloned().unwrap_or_default();
-        let mut offending: Vec<TextSize> = Vec::new();
-        for site in sites {
-            if !self.is_const_def(function, site.position, site.const_args) {
-                offending.push(site.root.start());
-            }
-        }
-        offending
-    }
 }
 
 /// `a.b.c` for the receiver of `a.b.c.execute`, as far as it is a chain of
@@ -910,37 +903,10 @@ pub(crate) fn sql_injection(checker: &Checker, suite: &Suite) {
         return;
     }
     let mut check = SqlInjectionCheck::new(suite);
-    let visits = std::mem::take(&mut check.places.definitions);
-    for visit in visits {
-        match visit {
-            Visit::Call(call) => {
-                if check.is_risky(call) {
-                    checker.report_diagnostic(SqlInjection { function: None }, call.range());
-                }
-            }
-            Visit::Function(function) => {
-                let mut offending = check.visit_function(function);
-                if offending.is_empty() {
-                    continue;
-                }
-                offending.sort_unstable();
-                offending.dedup_by_key(|offset| checker.compute_source_row(*offset).to_string());
-                let mut shown: Vec<String> = offending
-                    .iter()
-                    .take(3)
-                    .map(|offset| checker.compute_source_row(*offset).to_string())
-                    .collect();
-                if offending.len() > 3 {
-                    shown.push(format!("{} more", offending.len() - 3));
-                }
-                let start = def_start(function, checker.source());
-                checker.report_diagnostic(
-                    SqlInjection {
-                        function: Some((function.name.to_string(), shown.join(", "))),
-                    },
-                    TextRange::new(start, function.name.end()),
-                );
-            }
+    let calls = std::mem::take(&mut check.places.calls);
+    for call in calls {
+        if check.is_risky(call) {
+            checker.report_diagnostic(SqlInjection, call.range());
         }
     }
 }

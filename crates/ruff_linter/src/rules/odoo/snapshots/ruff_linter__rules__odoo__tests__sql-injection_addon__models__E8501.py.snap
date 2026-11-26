@@ -142,35 +142,57 @@ E8501 Query built by interpolating a value not known to be constant
    |
 help: Build the query with `SQL()` so the value is passed as a parameter
 
-E8501 `_bad_helper` returns a value not known to be constant, and builds a query at line 59
-  --> E8501.py:65:5
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:59:9
    |
-63 |         return "res_partner"
-64 |
-65 |     def _bad_helper(self, value):  # E8501: used to build a query in helpers()
-   |     ^^^^^^^^^^^^^^^
-66 |         return value
+57 |     def helpers(self, value):
+58 |         self.env.cr.execute("SELECT id FROM %s" % self._helper_table())  # OK: returns a constant
+59 |         self.env.cr.execute("SELECT id FROM %s" % self._bad_helper(value))  # E8501: _bad_helper returns its argument
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+60 |         self.env.cr.execute(late_query(value))  # E8501: a bare name is the module's function, not a method
    |
 help: Build the query with `SQL()` so the value is passed as a parameter
 
-E8501 `_later` returns a value not known to be constant, and builds a query at line 69
-  --> E8501.py:71:5
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:60:9
    |
-69 |         self.env.cr.execute("SELECT %s" % self._later(value))  # OK here, reported at _later
+58 |         self.env.cr.execute("SELECT id FROM %s" % self._helper_table())  # OK: returns a constant
+59 |         self.env.cr.execute("SELECT id FROM %s" % self._bad_helper(value))  # E8501: _bad_helper returns its argument
+60 |         self.env.cr.execute(late_query(value))  # E8501: a bare name is the module's function, not a method
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+61 |
+62 |     def _helper_table(self):
+   |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:69:9
+   |
+68 |     def early(self, value):
+69 |         self.env.cr.execute("SELECT %s" % self._later(value))  # E8501: _later, defined below, is judged here
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 70 |
-71 |     def _later(self, value):  # E8501: used to build a query in early()
-   |     ^^^^^^^^^^
-72 |         return "x" + value
+71 |     def _later(self, value):
    |
 help: Build the query with `SQL()` so the value is passed as a parameter
 
-E8501 `_echo` returns a value not known to be constant, and builds a query at line 76
-  --> E8501.py:78:5
+E8501 Query built by interpolating a value not known to be constant
+  --> E8501.py:76:9
    |
-76 |         self.env.cr.execute("SELECT %s" % self._echo(value))  # reported at _echo
+74 |     def params(self, value):
+75 |         self.env.cr.execute("SELECT %s" % self._echo("constant"))  # OK: constant arguments
+76 |         self.env.cr.execute("SELECT %s" % self._echo(value))  # E8501: a non-constant argument
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 77 |
-78 |     def _echo(self, argument):  # E8501: used with a non-constant argument in params()
-   |     ^^^^^^^^^
-79 |         return argument
+78 |     def _echo(self, argument):
    |
+help: Build the query with `SQL()` so the value is passed as a parameter
+
+E8501 Query built by interpolating a value not known to be constant
+   --> E8501.py:107:12
+    |
+105 |         return text
+106 |
+107 |     return SQL("SELECT %s" % wrap(value))  # E8501: the nested function returns its argument
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 help: Build the query with `SQL()` so the value is passed as a parameter
