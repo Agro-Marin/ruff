@@ -111,140 +111,57 @@ class ConstraintSet:
     def lower_bound(
         lower_bound: TypeForm[object],
         typevar: TypeForm[object],
-    ) -> ConstraintSet:
-        """Returns a constraint set requiring `typevar` to be a supertype of `lower_bound`."""
-
+    ) -> ConstraintSet: ...
     @staticmethod
     def upper_bound(
         typevar: TypeForm[object],
         upper_bound: TypeForm[object],
-    ) -> ConstraintSet:
-        """Returns a constraint set requiring `typevar` to be a subtype of `upper_bound`."""
-
+    ) -> ConstraintSet: ...
     @staticmethod
     def equality(
         typevar: TypeForm[object],
         value: TypeForm[object],
-    ) -> ConstraintSet:
-        """Returns a constraint set requiring `typevar` to specialize exactly to `value`."""
-
+    ) -> ConstraintSet: ...
     @staticmethod
     def range(
         lower_bound: TypeForm[object],
         typevar: TypeForm[object],
         upper_bound: TypeForm[object],
-    ) -> ConstraintSet:
-        """
-        Returns a constraint set that requires `typevar` to specialize to a type
-        that is a supertype of `lower_bound` and a subtype of `upper_bound`.
-        """
-
+    ) -> ConstraintSet: ...
     @staticmethod
-    def always() -> ConstraintSet:
-        """Returns a constraint set that is always satisfied"""
-
+    def always() -> ConstraintSet: ...
     @staticmethod
-    def never() -> ConstraintSet:
-        """Returns a constraint set that is never satisfied"""
-
-    def implies_subtype_of(self, ty: TypeForm[object], of: TypeForm[object]) -> Self:
-        """
-        Returns a constraint set that is satisfied when `ty` is a `subtype`_ of
-        `of`, assuming that all of the constraints in `self` hold.
-
-        .. _subtype: https://typing.python.org/en/latest/spec/concepts.html#subtype-supertype-and-type-equivalence
-        """
-
-    def satisfies(self, other: Self) -> Self:
-        """
-        Returns whether this constraint set satisfies another — that is, whether
-        every specialization that satisfies this constraint set also satisfies
-        `other`.
-        """
-
-    def exists(self, typevars: TypeForm[tuple[object, ...]]) -> Self:
-        """
-        Existentially abstracts the given type variables from this constraint set.
-        """
-
-    def for_all(self, typevars: TypeForm[tuple[object, ...]]) -> Self:
-        """
-        Universally abstracts the given type variables from this constraint set.
-        """
-
-    def is_always_satisfied(self, *, inferable: TypeForm[tuple[object, ...]]) -> bool:
-        """
-        Returns whether this constraint set always holds with the given inferable
-        type variables, without checking their declared bounds or constraints.
-
-        If the computation budget is exceeded, the result has type `bool` rather
-        than a known literal value.
-        """
-
-    def is_never_satisfied(self, *, inferable: TypeForm[tuple[object, ...]]) -> bool:
-        """
-        Returns whether this constraint set never holds with the given inferable
-        type variables, without checking their declared bounds or constraints.
-
-        If the computation budget is exceeded, the result has type `bool` rather
-        than a known literal value.
-        """
-
-    def is_trivially_always_satisfied(self) -> bool:
-        """
-        Returns whether this constraint set is the true terminal BDD.
-
-        A nonterminal BDD returns `False` even if it is semantically always satisfied.
-        """
-
-    def is_trivially_never_satisfied(self) -> bool:
-        """
-        Returns whether this constraint set is the false terminal BDD.
-
-        A nonterminal BDD returns `False` even if it is semantically never satisfied.
-        """
-
+    def never() -> ConstraintSet: ...
+    def implies_subtype_of(
+        self, ty: TypeForm[object], of: TypeForm[object]
+    ) -> Self: ...
+    def satisfies(self, other: Self) -> Self: ...
+    def exists(self, typevars: TypeForm[tuple[object, ...]]) -> Self: ...
+    def for_all(self, typevars: TypeForm[tuple[object, ...]]) -> Self: ...
+    def is_always_satisfied(
+        self, *, inferable: TypeForm[tuple[object, ...]]
+    ) -> bool: ...
+    def is_never_satisfied(
+        self, *, inferable: TypeForm[tuple[object, ...]]
+    ) -> bool: ...
+    def is_trivially_always_satisfied(self) -> bool: ...
+    def is_trivially_never_satisfied(self) -> bool: ...
     def solutions_for(
         self,
         typevar: TypeForm[object],
         *,
         inferable: TypeForm[tuple[object, ...]],
-    ) -> tuple[ConstraintSetSolution, ...] | None:
-        """
-        Returns the explicit solutions inferred for `typevar` across all paths.
-
-        `inferable` specifies all typevars that should be solved for. Every
-        solution path is preserved, with its bindings filtered to `typevar`.
-        Returns `None` if the constraint set is unsatisfiable.
-        """
-
+    ) -> tuple[ConstraintSetSolution, ...] | None: ...
     def solutions(
         self, *, inferable: TypeForm[tuple[object, ...]]
-    ) -> tuple[ConstraintSetSolution, ...] | None:
-        """
-        Returns all explicit solutions, preserving path and binding order.
-
-        `inferable` specifies all typevars that should be solved for. Each
-        solution contains the bindings inferred on one satisfying path.
-        Returns `None` if the constraint set is unsatisfiable.
-        """
-
+    ) -> tuple[ConstraintSetSolution, ...] | None: ...
     def __bool__(self) -> bool: ...
     def __eq__(self, other: ConstraintSet) -> bool: ...
     def __ne__(self, other: ConstraintSet) -> bool: ...
     def __and__(self, other: ConstraintSet) -> ConstraintSet: ...
     def __or__(self, other: ConstraintSet) -> ConstraintSet: ...
     def __invert__(self) -> ConstraintSet: ...
-    def with_detailed_display(self) -> ConstraintSet:
-        """
-        Returns a copy of this constraint set that will display the full
-        constraint formula when rendered as a string.
-
-        Typically we only display "bool" for a non-trivial constraint set, to
-        help ensure that we do not write test cases that depend on how
-        constraint sets are rendered. But it can be useful to see the full
-        detail for debugging purposes.
-        """
+    def with_detailed_display(self) -> ConstraintSet: ...
 
 class GenericContext:
     """

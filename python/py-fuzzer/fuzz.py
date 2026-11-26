@@ -201,7 +201,6 @@ class ReportKind(enum.Enum):
     PULL_REQUEST_COMMENT = "pull request comment"
 
     def template_name(self) -> str:
-        """Return the Jinja template filename for this report kind."""
         match self:
             case ReportKind.DAILY_FUZZ_ISSUE:
                 return "daily_fuzz_issue.md.jinja"
@@ -220,7 +219,6 @@ class DetectedFailure:
 
     @classmethod
     def read(cls, path: Path) -> DetectedFailure | None:
-        """Read a JSON failure record, returning `None` if the file does not exist."""
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
@@ -230,15 +228,10 @@ class DetectedFailure:
         )
 
     def write(self, path: Path) -> None:
-        """Save the failure kind and baseline duration as JSON."""
         data = {"kind": self.kind.value, "baseline_seconds": self.baseline_seconds}
         path.write_text(json.dumps(data), encoding="utf-8")
 
     def describe(self, executable: Executable) -> str:
-        """Format the recorded failure as Markdown.
-
-        For a timeout, include the cutoff and any recorded baseline duration.
-        """
         if self.kind is Failure.TIMEOUT:
             tool_name = "Ruff" if executable is Executable.RUFF else "ty"
             description = f"{tool_name} **timed out** on this seed ({CHECK_TIMEOUT_SECONDS} s cutoff)."
@@ -274,7 +267,6 @@ class FuzzResult:
     minimization_timed_out: bool
 
     def print_description(self, index: int, num_seeds: int) -> None:
-        """Print the result of checking this seed."""
         progress = f"[{index}/{num_seeds}]"
         msg = (
             colored(f"Ran fuzzer on seed {self.seed}", "red")

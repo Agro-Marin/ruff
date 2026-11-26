@@ -116,11 +116,6 @@ class IncrementalEdit(NamedTuple):
     """The new code snippet to insert in place of `replace_text`"""
 
     def apply_to(self, text: str) -> str | None:
-        """Applies the edit to the given text.
-
-        Returns:
-            The modified text or None if the edit couldn't be applied"""
-
         if self.replace_text not in text:
             return None
 

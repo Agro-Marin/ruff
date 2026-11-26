@@ -55,9 +55,6 @@ class Diff(Serializable):
 
     @classmethod
     def from_pair(cls, baseline: Sequence[str], comparison: Sequence[str]):
-        """
-        Construct a diff from before and after.
-        """
         return cls(difflib.ndiff(baseline, comparison), leading_spaces=1)
 
     def without_unchanged_lines(self) -> Diff:

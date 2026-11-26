@@ -34,12 +34,10 @@ class Venv:
 
     @property
     def name(self) -> str:
-        """The name of the virtual environment directory."""
         return self.path.name
 
     @property
     def python(self) -> Path:
-        """Returns the path to the python executable"""
         return self.script("python")
 
     @property
@@ -53,8 +51,6 @@ class Venv:
 
     @staticmethod
     def create(*, project: str, parent: Path, python_version: str) -> Venv:
-        """Creates a new, empty virtual environment."""
-
         command = [
             "uv",
             "venv",
@@ -75,8 +71,6 @@ class Venv:
         return Venv(project_name=project, project_path=parent)
 
     def install(self, pip_install_args: list[str]) -> None:
-        """Installs the dependencies required to type check the project."""
-
         logger.debug(f"Installing dependencies: {', '.join(pip_install_args)}")
         command = [
             "uv",

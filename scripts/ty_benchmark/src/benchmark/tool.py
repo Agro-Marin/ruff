@@ -41,20 +41,12 @@ class Tool(abc.ABC):
     def name(self) -> str: ...
 
     def write_config(self, project: Project, venv: Venv) -> None:
-        """Write the tool's configuration file."""
-
         if config := self.config(project, venv):
             config_name, config_text = config
             config_path = venv.project_path / config_name
             config_path.write_text(dedent(config_text))
 
     def config(self, project: Project, venv: Venv) -> tuple[Path, str] | None:
-        """Returns the path to the tool's configuration file with the configuration
-        content or `None` if the tool requires no configuration file.
-
-        We write a configuration over using CLI arguments because
-        most LSPs don't accept per CLI.
-        """
         return None
 
     @contextmanager
@@ -69,11 +61,11 @@ class Tool(abc.ABC):
 
     @abc.abstractmethod
     def command(self, project: Project, venv: Venv, single_threaded: bool) -> Command:
-        """Generate a command to benchmark a given tool."""
+        pass
 
     @abc.abstractmethod
     def lsp_command(self, project: Project, venv: Venv) -> list[str] | None:
-        """Generate command to start LSP server, or None if not supported."""
+        pass
 
 
 class Ty(Tool):

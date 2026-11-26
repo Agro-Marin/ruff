@@ -107,12 +107,6 @@ class LSPClient(LanguageClient):
         return diagnostic_provider is not None
 
     async def text_document_diagnostics_async(self, path: Path) -> list[lsp.Diagnostic]:
-        """
-        Returns the diagnostics for `path`
-
-        Uses pull diagnostics if the server supports it or waits for a publish diagnostics
-        notification if not.
-        """
         if self.server_supports_pull_diagnostics:
             pull_diagnostics = await self.text_document_diagnostic_async(
                 lsp.DocumentDiagnosticParams(

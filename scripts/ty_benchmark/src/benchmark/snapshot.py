@@ -52,7 +52,6 @@ class SnapshotRunner(NamedTuple):
     """Whether to accept snapshot changes."""
 
     def run(self, *, cwd: Path, env: Mapping[str, str]):
-        """Run commands and snapshot their output."""
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
 
         all_passed = True

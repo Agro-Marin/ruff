@@ -236,7 +236,6 @@ class ExpectedError:
 
     @property
     def key(self) -> str:
-        """Key to group expected errors by path and beginning line or path and tag."""
         return (
             f"{self.location.path.as_posix()}:{self.location.positions.begin.line}"
             if self.tag is None
@@ -290,7 +289,6 @@ class TestCase:
 
     @property
     def path(self) -> Path:
-        """Return the source file path for this test case."""
         for diags in (self.new, self.old, self.expected):
             if diags:
                 return diags[0].location.path

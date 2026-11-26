@@ -90,7 +90,6 @@ class Hyperfine(NamedTuple):
     """Whether to export results to JSON."""
 
     def run(self, *, cwd: Path | None = None, env: Mapping[str, str]) -> None:
-        """Run the benchmark using `hyperfine`."""
         args = [
             "hyperfine",
             # ty: https://docs.astral.sh/ty/reference/exit-codes/

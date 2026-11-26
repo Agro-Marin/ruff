@@ -153,13 +153,6 @@ class MDTestRunner:
 
     @staticmethod
     def _md_file_for_snapshot(snapshot_path: Path) -> tuple[str, Path] | None:
-        """Given a deleted .snap.new path, find the source .md file it belongs to.
-
-        Snapshot filenames follow the pattern:
-            <md_filename>_-_<Section_title>_-_…_(<hash>).snap.new
-        where <md_filename> may be truncated to 20 characters with a trailing
-        Unicode ellipsis (U+2026).
-        """
         snapshot_name = snapshot_path.name.removesuffix(".new").removesuffix(".snap")
 
         md_filename = snapshot_name.split("_-_", 1)[0]

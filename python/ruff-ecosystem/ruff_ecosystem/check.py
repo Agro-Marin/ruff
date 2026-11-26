@@ -302,9 +302,6 @@ class RuleChanges:
         return sum(self.removed_fixes.values())
 
     def total_changes_by_rule(self) -> Iterator[tuple[str, int]]:
-        """
-        Yields the sum of changes for each rule
-        """
         totals = Counter()
         totals.update(self.added_violations)
         totals.update(self.removed_violations)
@@ -314,9 +311,6 @@ class RuleChanges:
 
     @classmethod
     def from_diff(cls: type[Self], diff: CheckDiff) -> Self:
-        """
-        Parse a diff from `ruff check` to determine the additions and removals for each rule
-        """
         rule_changes = cls()
 
         for line in diff.parsed_lines:
@@ -358,9 +352,6 @@ class DiagnosticLine:
     message: str
 
     def to_string(self) -> str:
-        """
-        Construct the line from the components
-        """
         line = ""
         if self.is_added:
             line += "+ "
@@ -385,9 +376,6 @@ class DiagnosticLine:
 
     @classmethod
     def try_from_string(cls: type[Self], line: str) -> Self | None:
-        """
-        Parse the rule code from a diagnostic line string
-        """
         match = CHECK_DIAGNOSTIC_LINE_RE.match(line)
 
         if match is None:
@@ -422,9 +410,6 @@ class CheckDiff(Diff):
 
     @classmethod
     def from_simple_diff(cls, diff: Diff) -> CheckDiff:
-        """
-        Parse a simple diff to include check-specific analyses.
-        """
         diff = diff.without_unchanged_lines()
 
         sorted_lines = sorted(diff, key=lambda line: line[2:])

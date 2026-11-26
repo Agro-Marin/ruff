@@ -58,7 +58,6 @@ class MemoryReport:
 
     @classmethod
     def from_json(cls, path: Path) -> Self:
-        """Load a memory report from a JSON file."""
         with open(path) as f:
             data = json.load(f)
         return cls(
