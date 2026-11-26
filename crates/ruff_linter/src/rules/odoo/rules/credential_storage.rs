@@ -120,7 +120,7 @@ const JUDGED_NOT_SECRET: &[&str] = &[
     "document.access_token",
     "frontdesk.access_token",
     "hr_contract_salary.access_token",
-    "iot.token",
+    "device_iot.token",
     "mail.access_token",
     "planning.access_token",
     "pos.access_token",
@@ -149,8 +149,8 @@ const JUDGED_NOT_SECRET: &[&str] = &[
 const JUDGED_PARAMETERS_NOT_SECRET: &[&str] = &[
     "auth_signup.reset_password",
     "database.secret",
+    "device_iot.iot_token",
     "hr_contract_salary.access_token_validity",
-    "iot.iot_token",
     "mail.chat_from_token",
     "portal.allow_api_keys",
     "pos_tyro.api_key",
