@@ -362,7 +362,6 @@ fn todo_types() {
     assert!(todo1.is_assignable_to(db, &env, int));
 
 
-    // A union of several `Todo` types collapses to a single `Todo` type:
     assert!(UnionType::from_elements(db, &env, [todo1, todo2]).is_todo());
 
     assert!(IntersectionType::from_elements(db, &env, [todo1, todo2]).is_todo());

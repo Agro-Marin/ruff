@@ -2465,7 +2465,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             callable_type
         }
 
-        // in the global scope or similar should be considered to create an implicit generic context.
         let previous_check_unbound_typevars = self
             .context
             .inference_flags

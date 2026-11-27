@@ -92,7 +92,6 @@ pub(crate) fn too_many_positional_arguments(
         return;
     }
 
-    // Allow excessive arguments in `@override` or `@overload` methods, since they're required
     if visibility::is_override(&function_def.decorator_list, semantic)
         || visibility::is_overload(&function_def.decorator_list, semantic)
     {

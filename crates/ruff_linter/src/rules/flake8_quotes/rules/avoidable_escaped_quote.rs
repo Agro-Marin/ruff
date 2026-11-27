@@ -119,7 +119,6 @@ impl Visitor<'_> for AvoidableEscapedQuoteChecker<'_, '_> {
     }
 
     fn visit_f_string(&mut self, f_string: &'_ ast::FString) {
-        // implicitly global in that we avoid recursing into this f-string if this is the case.
         if !self.supports_pep701 {
             let contains_any_string = {
                 let mut visitor = ContainsAnyString::default();

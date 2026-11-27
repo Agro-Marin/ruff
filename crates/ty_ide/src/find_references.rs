@@ -63,7 +63,6 @@ fn explicit_fixture_name_at_offset<'db>(
         return None;
     };
 
-    // @pytest.fixture(name="resource")
     let mut ancestors = covering.ancestors();
     let mut in_name_argument = false;
     let function = loop {

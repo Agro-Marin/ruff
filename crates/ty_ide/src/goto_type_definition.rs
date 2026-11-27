@@ -1661,7 +1661,6 @@ def function():
 "#,
         );
 
-        // Should find the global variable declaration, not the global statement
         assert_snapshot!(test.goto_type_definition(), @"
         info[goto-type definition]: Go to type definition
           --> main.py:LL:12
@@ -1689,7 +1688,6 @@ def function():
 "#,
         );
 
-        // Should find the global variable declaration, not the global statement
         assert_snapshot!(test.goto_type_definition(), @"No goto target found");
     }
 

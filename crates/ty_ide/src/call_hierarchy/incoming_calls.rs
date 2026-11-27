@@ -208,7 +208,6 @@ impl<'a> SourceOrderVisitor<'a> for CallSitesFinder<'a, '_> {
                 }
             }
             AnyNodeRef::Decorator(decorator) => {
-                // `@foo` without parens is a runtime call; `@foo()` is handled
                 if let Some(leaf) = CalleeLeaf::from_expr(&decorator.expression)
                     && self.leaf_matches_needle(leaf)
                 {
@@ -737,7 +736,6 @@ def invoke(value: Callable) -> int:
 
     #[test]
     fn decorator_application() {
-        // `@foo` (no parens) is a runtime call to `foo`.
         let test = cursor_test(
             r#"
             def f<CURSOR>oo(f):
@@ -884,8 +882,6 @@ def make() -> C:
           |     ^^^^
         ");
     }
-
-    // Beyond `ExprCall` and `Decorator`, a `@property` access is an implicit
 
     #[test]
     fn property_getter_read() {

@@ -115,7 +115,6 @@ impl fmt::Display for KnownDecorator {
 fn classify_decorator(checker: &Checker, decorator: &Decorator) -> Option<KnownDecorator> {
     let callable = map_callable(&decorator.expression);
 
-    // `@x.setter` / `.getter` / `.deleter` return a `property` object.
     if let Expr::Attribute(ast::ExprAttribute { attr, .. }) = callable
         && matches!(attr.as_str(), "setter" | "getter" | "deleter")
     {
@@ -123,7 +122,6 @@ fn classify_decorator(checker: &Checker, decorator: &Decorator) -> Option<KnownD
     }
 
     let qualified_name = checker.semantic().resolve_qualified_name(callable)?;
-    // with `@abstractmethod` is redundant but not an error.
     match qualified_name.segments() {
         ["abc", "abstractmethod"] => Some(KnownDecorator::AbstractMethod),
         ["" | "builtins", "property"] => Some(KnownDecorator::Property),
@@ -141,12 +139,10 @@ fn classify_decorator(checker: &Checker, decorator: &Decorator) -> Option<KnownD
 /// Returns `true` if `outer` above `inner` is a known-bad ordering.
 fn is_incorrect_order(outer: KnownDecorator, inner: KnownDecorator, checker: &Checker) -> bool {
     match (outer, inner) {
-        // @abstractmethod must be innermost when combined with descriptors
         (
             KnownDecorator::AbstractMethod,
             KnownDecorator::Property | KnownDecorator::ClassMethod | KnownDecorator::StaticMethod,
         ) => true,
-        // @contextmanager / @asynccontextmanager must wrap the raw function,
         (
             KnownDecorator::ContextManager | KnownDecorator::AsyncContextManager,
             KnownDecorator::ClassMethod,
@@ -157,9 +153,7 @@ fn is_incorrect_order(outer: KnownDecorator, inner: KnownDecorator, checker: &Ch
             | KnownDecorator::ClassMethod
             | KnownDecorator::FunctoolsCachedProperty,
         ) => true,
-        // @cached_property outside @abstractmethod silently empties `__abstractmethods__`
         (KnownDecorator::FunctoolsCachedProperty, KnownDecorator::AbstractMethod) => true,
-        // CPython 3.13 fixed `@classmethod` outside `@cached_property`; earlier
         (KnownDecorator::ClassMethod, KnownDecorator::FunctoolsCachedProperty)
             if checker.target_version() < PythonVersion::PY313 =>
         {

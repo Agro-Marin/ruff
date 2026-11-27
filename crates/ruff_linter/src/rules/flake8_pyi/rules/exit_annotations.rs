@@ -369,9 +369,6 @@ fn check_positional_args_for_overloaded_method(
         function_overloads.contains(&semantic.current_statement().as_function_def_stmt().unwrap())
     );
 
-    // @overload
-    // @overload
-
     if non_self_positional_args.iter().all(|parameter| {
         parameter_annotation_loosely_matches_predicate(
             parameter,

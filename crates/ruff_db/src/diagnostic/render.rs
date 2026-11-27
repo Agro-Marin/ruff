@@ -307,7 +307,6 @@ impl<'a> ResolvedDiagnostic<'a> {
                 });
                 let in_different_cells = prev_cell_index != this_cell_index;
 
-                // should fall through below to add this annotation to
                 if in_different_cells || this_context_begins.saturating_sub(prev_context_ends) > 1 {
                     snippet_by_path
                         .entry(path)

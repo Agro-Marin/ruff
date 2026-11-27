@@ -206,7 +206,6 @@ fn check_inherited_conflicts<'db>(
         let Some((literal, _)) = candidate_owner.static_class_literal(db) else {
             continue;
         };
-        // @total_ordering
         let candidates = inherited_member_candidates(db, literal);
         let mut owners_by_name = LazyCell::new(|| {
             let mut owners: FxHashMap<&Name, smallvec::SmallVec<[usize; 4]>> = FxHashMap::default();
@@ -244,7 +243,6 @@ fn check_inherited_conflicts<'db>(
                 owners.split_first().expect("the candidate was inserted");
             let owner = contracts[owner_index];
 
-            // A generated member on an earlier base must not expose an older method.
             if configuration.check_method_liskov_violations()
                 && owner_index == index
                 && let Some(definition) = definition
@@ -1011,8 +1009,6 @@ fn check_class_declaration<'db>(
                 && let Some((superclass_scope, superclass_symbol_id)) = superclass_symbol
                 && let Some(ty) = own_class_member.ignore_possibly_undefined()
             {
-                // TODO: `@final` should be more like a type qualifier:
-                // we should also recognise `@final`-decorated methods that don't end up
                 let underlying_functions = extract_underlying_functions(db, ty);
                 if underlying_functions
                     .iter()
@@ -1104,7 +1100,6 @@ fn check_class_declaration<'db>(
                 }
             }
 
-            // binding and `@override` checks to the method checker below.
             if !is_constructor_like_method(&member.name) {
                 match attributes::check_override(
                     db,
@@ -1141,7 +1136,6 @@ fn check_class_declaration<'db>(
                 continue;
             };
 
-            // Constructor signatures may differ unless `@override` requests compatibility.
             if is_constructor_like_method(&member.name)
                 && !subclass_function.has_known_decorator(db, FunctionDecorators::OVERRIDE)
             {
@@ -1595,7 +1589,6 @@ pub(super) fn effective_superclass_variable_kind<'db>(
     };
 
     if has_own_member {
-        // resolving an abstract `@property def f(self) -> int` through instance-member lookup would
         if superclass_symbol_id.is_some_and(|id| is_function_definition(db, superclass_scope, id)) {
             return inherited_variable_kind();
         }

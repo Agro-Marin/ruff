@@ -2032,7 +2032,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 self.always()
             }
 
-            // In some specific situations, `Any`/`Unknown`/`@Todo` can be simplified out of unions and intersections,
             (Type::Divergent(_), _) | (_, Type::Divergent(_)) => {
                 ConstraintSet::from_bool(self.constraints, self.relation.is_assignability())
             }
@@ -2333,7 +2332,6 @@ impl<'a, 'c, 'db> TypeRelationChecker<'a, 'c, 'db> {
                 if self.relation.is_assignability()
                     && intersection.positive(db).iter().any(Type::is_dynamic) =>
             {
-                // If the intersection contains `Any`/`Unknown`/`@Todo`, it is assignable to any type.
                 self.always()
             }
             (Type::Intersection(intersection), _)
@@ -3828,7 +3826,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                 })
             }
 
-            //     @property
             (
                 ty @ (Type::LiteralValue(..)
                 | Type::ClassLiteral(..)
@@ -4163,9 +4160,6 @@ impl<'a, 'c, 'db> DisjointnessChecker<'a, 'c, 'db> {
                         && a_function.has_known_decorator(db, FunctionDecorators::FINAL)
                         && b_function.has_known_decorator(db, FunctionDecorators::FINAL)
                     {
-                        // If *both* methods are `@final` (and they're not literally the same
-                        // Note that we can't establish disjointness when only one side is `@final`,
-                        //      @final
                         self.always()
                     } else {
                         self.check_type_pair(db, a.self_instance(db), b.self_instance(db))

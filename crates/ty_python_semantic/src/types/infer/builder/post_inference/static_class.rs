@@ -250,7 +250,6 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
     }
 
-    // Check for invalid `@dataclass` applications.
     if class.dataclass_params(db).is_some() {
         if class.has_named_tuple_class_in_mro(db) {
             if let Some(builder) = context.report_lint(&INVALID_DATACLASS, class.header_range(db)) {
@@ -296,7 +295,6 @@ pub(crate) fn check_static_class_definitions<'db>(
 
     let class_definition = index.expect_single_definition(class_node);
 
-    //     - Check for inheritance from a `@final` classes
     let expanded_base_entries =
         expanded_class_base_entries(db, class.known(db), class_node, class_definition);
     let check_explicit_base_variance = context.is_lint_enabled(&INVALID_GENERIC_CLASS);
@@ -608,9 +606,7 @@ pub(crate) fn check_static_class_definitions<'db>(
         }
     }
 
-    // Check that `@total_ordering` has a valid ordering method in the MRO
     if class.total_ordering(db) && !class.has_ordering_method_in_mro(db, None) {
-        // Find the `@total_ordering` decorator to report the diagnostic at its location
         if let Some(decorator) = class_node.decorator_list.iter().find(|decorator| {
             file_expression_type(&decorator.expression)
                 .as_function_literal()
@@ -1418,7 +1414,6 @@ fn check_final_class_abstract_methods<'db>(
         return;
     }
 
-    // without subclassing it, so an `@final` `Protocol` class with unimplemented abstract
     if class.is_protocol(db) {
         return;
     }
@@ -1499,7 +1494,6 @@ fn check_class_final_without_value<'db>(
     let use_def = index.use_def_map(body_scope_id);
     let place_table = index.place_table(body_scope_id);
 
-    // In dataclasses (and similar code-generated classes), Final fields without
     if CodeGeneratorKind::from_class(db, class.into()).is_some() || class.is_protocol(db) {
         return;
     }

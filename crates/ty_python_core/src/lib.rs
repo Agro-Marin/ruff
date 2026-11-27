@@ -515,7 +515,6 @@ impl<'db> SemanticIndex<'db> {
         let name = symbol.name();
         for (visible_scope_id, _) in self.visible_ancestor_scopes(scope) {
             if visible_scope_id.is_global() {
-                // We return `true` here even if the global variable isn't actually defined. That
                 return true;
             }
             let place_table = self.place_table(visible_scope_id);

@@ -56,7 +56,6 @@ impl<'a> DotDelimitedIdentifier<'a> {
 
 impl Format<PyFormatContext<'_>> for DotDelimitedIdentifier<'_> {
     fn fmt(&self, f: &mut PyFormatter) -> FormatResult<()> {
-        //     .bar
         if f.context().source()[self.0.range()]
             .chars()
             .any(|c| is_python_whitespace(c) || matches!(c, '\n' | '\r' | '\\'))

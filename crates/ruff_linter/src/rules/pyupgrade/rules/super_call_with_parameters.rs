@@ -204,7 +204,6 @@ pub(crate) fn super_call_with_parameters(checker: &Checker, call: &ast::ExprCall
 
     drop(parents);
 
-    // If the class is an `@dataclass` with `slots=True`, calling `super()` without arguments raises
     if decorator_list.iter().any(|decorator| {
         let Expr::Call(ast::ExprCall {
             func, arguments, ..

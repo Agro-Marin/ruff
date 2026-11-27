@@ -266,7 +266,6 @@ fn generate_with_statement(
             keywords: match_arg
                 .map(|expr| ast::Keyword {
                     node_index: AtomicNodeIndex::NONE,
-                    // argument is generated after positional arguments
                     range: expr.range(),
                     arg: Some(ast::Identifier::new("match", TextRange::default())),
                     value: expr.clone(),

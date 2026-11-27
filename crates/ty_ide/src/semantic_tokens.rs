@@ -926,7 +926,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 }
             }
             ast::Stmt::Global(global_stmt) => {
-                // Handle global statements - classify identifiers as variables
                 for identifier in &global_stmt.names {
                     self.add_token(
                         identifier.range(),
@@ -1166,7 +1165,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
     fn visit_decorator(&mut self, decorator: &ast::Decorator) {
         match &decorator.expression {
             ast::Expr::Name(name) => {
-                // Simple decorator like @staticmethod - use Decorator token type
                 self.add_token(
                     name.range(),
                     SemanticTokenType::Decorator,
@@ -1174,7 +1172,6 @@ impl SourceOrderVisitor<'_> for SemanticTokenVisitor<'_> {
                 );
             }
             _ => {
-                // Complex decorator like @app.route("/path") - use normal expression rules
                 self.visit_expr(&decorator.expression);
             }
         }

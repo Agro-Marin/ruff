@@ -335,8 +335,6 @@ pub(super) struct TypeInferenceBuilder<'db, 'ast> {
     type_expression_flags: FxHashMap<ExpressionNodeKey, TypeExpressionFlags>,
 
     /// The constraints on any collection initializers that are accessed in this region.
-    // (for example, `list.sort` constrains `T@list` using `SupportsRichComparisonT@sort`). A
-    // leaking `SupportsRichComparisonT@sort` into the inferred list element type.
     collection_use_constraints: FxHashMap<Definition<'db>, FxIndexSet<Type<'db>>>,
 
     /// Expressions that are string annotations
@@ -1502,14 +1500,12 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             if let Type::FunctionLiteral(function) = decorator_type
                 && let Some(KnownFunction::NoTypeCheck) = function.known(self.db())
             {
-                // `@no_type_check`, including later decorators.
                 self.context.inference_flags |= InferenceFlags::IN_NO_TYPE_CHECK;
             }
         }
     }
 
     fn infer_region_deferred(&mut self, definition: Definition<'db>) {
-
         match definition.kind(self.db()) {
             DefinitionKind::Function(function) => {
                 self.infer_function_annotations(definition, function.node(self.module()));
@@ -1660,7 +1656,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             place_and_quals = inherited.member;
         }
 
-        // Fall back to implicit module globals for (possibly) unbound names
         if !place_and_quals.place.is_definitely_bound()
             && let PlaceExprRef::Symbol(symbol) = place
         {
@@ -1770,7 +1765,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
 
         if scoped_symbol.is_global() {
             let global_scope = FileScopeId::global();
-            // the global scope, return `None` so the caller can fall back to the local scope.
             return self
                 .index
                 .place_table(global_scope)
@@ -1781,7 +1775,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         debug_assert!(scoped_symbol.is_nonlocal());
 
         for (enclosing_scope, enclosing) in self.index.ancestor_scopes(scope).skip(1) {
-            // Ignore class scopes and the global scope.
             if !enclosing.kind().is_function_like() {
                 continue;
             }
@@ -1845,7 +1838,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         .place
         .with_qualifiers(TypeQualifiers::empty())
         .or_fall_back_to(db, env, || {
-            // Fallback to bindings declared on `types.ModuleType` if it's a global symbol
             let scope = self.scope().file_scope_id(self.db());
             let place = self
                 .index
@@ -2196,7 +2188,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                         Some(KnownFunction::Overload | KnownFunction::AbstractMethod)
                     ),
                     Type::Never => {
-                        // `@overload`ed functions without a body in unreachable code.
                         true
                     }
                     Type::Divergent(_) => true,
@@ -5448,10 +5439,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
     }
 
     fn infer_global_statement(&mut self, global: &ast::StmtGlobal) {
-        // CPython allows examples like this, where a global variable is never explicitly defined
-        // in the global scope:
-        //     global x
-        // in the global scope.
         let ast::StmtGlobal {
             node_index: _,
             range: _,
@@ -5462,7 +5449,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             if let Some(symbol_id) = global_place_table.symbol_id(name) {
                 let symbol = global_place_table.symbol(symbol_id);
                 if symbol.is_bound() || symbol.is_declared() {
-                    // This name is explicitly defined in the global scope (not just in function
                     continue;
                 }
             }
@@ -5470,11 +5456,8 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 .place
                 .is_undefined()
             {
-                // This name is an implicit global like `__file__` (but not a built-in like `int`).
                 continue;
             }
-            // This variable isn't explicitly defined in the global scope, nor is it an
-            // implicit global from `types.ModuleType`, so we consider this `global` statement invalid.
             let Some(builder) = self.context.report_lint(&UNRESOLVED_GLOBAL, name) else {
                 return;
             };
@@ -5678,7 +5661,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
     }
 
     fn defer_decorator_call(&mut self, decorator: &ast::Decorator, input_ty: Type<'db>) {
-        // such as incompatible argument types or missing arguments. `@no_type_check` suppresses
         if !self
             .inference_flags()
             .contains(InferenceFlags::IN_NO_TYPE_CHECK)
@@ -6786,8 +6768,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         let env = self.program_environment();
         let ty = Type::ClassLiteral(class);
 
-        // to `Callable[[], list[str]]` when `_T@list = str`. However, when
-        // away its typevars, transforming `∃ _T@list . _T@list = str` into
 
         let exactly_one_callable = |union: UnionType<'db>| {
             union

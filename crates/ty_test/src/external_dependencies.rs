@@ -120,7 +120,6 @@ dependencies = [
         );
     }
 
-    // In upgrade mode, copy the generated lockfile back to the source location
     if upgrade_lockfile {
         let temp_lockfile = temp_path.join("uv.lock");
         let temp_lockfile = temp_lockfile.as_std_path();

@@ -317,7 +317,6 @@ mod tests {
 
     #[test]
     fn prepare_on_overloaded_function() {
-        // resolution covers the whole group rather than a single `@overload`.
         let test = cursor_test(
             r#"
             from typing import overload

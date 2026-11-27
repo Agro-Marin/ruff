@@ -2297,7 +2297,6 @@ impl<'db> ClassType<'db> {
         receiver: Type<'db>,
     ) -> CallableTypes<'db> {
         let env = &ProgramEnvironment::from_file(self.class_literal(db).program_file(db));
-        // TODO: This mimics a lot of the logic in Type::try_call_from_constructor. Can we
 
         let class_generic_context = self
             .static_class_literal(db)

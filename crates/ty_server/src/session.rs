@@ -596,15 +596,6 @@ impl Session {
         client: &Client,
         workspace_folders: Vec<(Uri, ClientOptions)>,
     ) {
-        // global options. In theory, these can have different
-        // of what settings are global and which aren't.
-        // We used to try and combine these global options across
-        // This in turn means that global options can change based
-        // Should we try to merge the existing global options with
-        // we try to update our global options based on that?
-        // choice is to find a way to get rid of global options
-        // most recent global options received (after being combined
-        // with the global options received at initialization time).
         let mut global_options: Option<GlobalOptions> = None;
 
         for (uri, options) in workspace_folders {

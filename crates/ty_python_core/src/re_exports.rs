@@ -385,8 +385,6 @@ impl<'db> Visitor<'db> for WalrusFinder<'_, 'db> {
                 }
             }
 
-            // as even a walrus inside a comprehension inside a comprehension in the global scope
-            // will leak out into the global scope
             ast::Expr::DictComp(_)
             | ast::Expr::SetComp(_)
             | ast::Expr::ListComp(_)

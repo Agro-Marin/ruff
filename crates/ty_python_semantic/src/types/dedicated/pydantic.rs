@@ -119,7 +119,6 @@ impl<'db> ModelMetadata<'db> {
                 KnownClass::Int.to_instance(db, env),
             ),
         );
-        // Pydantic replaces a disabled, default, or previously generated hash. It leaves
         (inherited.is_none(db)
             || inherited == generated
             || Some(inherited)

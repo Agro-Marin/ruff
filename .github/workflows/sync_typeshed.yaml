@@ -308,7 +308,6 @@ jobs:
             contents: write
             pull_requests: write
       - name: Commit and push snapshot changes
-        # Treat generated changes as unreviewed contributions, including when running CI.
         if: ${{ needs.update-snapshots.outputs.artifact-id != '' }}
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}

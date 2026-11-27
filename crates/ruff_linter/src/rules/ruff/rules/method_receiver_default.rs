@@ -90,7 +90,6 @@ pub(crate) fn method_receiver_default(checker: &Checker, scope: &Scope) {
         return;
     };
 
-    // makes it a `@classmethod`; any other single decorator (e.g. `@staticmethod`, `@override`,
     let has_receiver = match decorator_list.as_slice() {
         [] => true,
         [decorator] => is_class_method(

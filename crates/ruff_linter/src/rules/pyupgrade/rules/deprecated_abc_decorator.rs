@@ -75,7 +75,6 @@ impl AlwaysFixableViolation for DeprecatedAbcDecorator {
 /// UP051
 pub(crate) fn deprecated_abc_decorator(checker: &Checker, decorator_list: &[Decorator]) {
     for decorator in decorator_list {
-        // Look for, e.g., `import abc; @abc.abstractclassmethod`, etc.
         for (from, to) in [
             ("abstractclassmethod", "classmethod"),
             ("abstractstaticmethod", "staticmethod"),

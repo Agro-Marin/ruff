@@ -408,11 +408,6 @@ impl<'a> MultilineStringSequenceValue<'a> {
             ),
         };
 
-        //  - Prelude == the region of source code from the opening parenthesis,
-        //  - Postlude == the region of source code from the end of the last
-        // - The prelude in the above example is the source code region
-        //   (an "item" being a region of source code that all moves as one unit
-        // - The postlude in the above example is the source code region starting
         let newline = stylist.line_ending().as_str();
         let start_offset = self.start();
         let leading_indent = leading_indentation(locator.full_line_str(start_offset));

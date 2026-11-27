@@ -33,7 +33,6 @@ pub fn resolve(
         });
     }
 
-    // current working directory. (This matches ESLint's behavior.)
     if let Some(pyproject) = config_arguments.config_file() {
         let resolved = resolve_root_settings(
             pyproject,

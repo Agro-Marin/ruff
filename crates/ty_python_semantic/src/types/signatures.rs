@@ -808,7 +808,6 @@ pub(crate) enum ReturnTypeConsistency<'db> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct SignatureRelationKey<'db> {
-    // break that active cycle, while synthetic `Callable[...]` signatures still fall through to
     source_definition: Definition<'db>,
     target_definition: Definition<'db>,
     relation: TypeRelation,

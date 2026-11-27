@@ -302,7 +302,6 @@ pub(crate) fn is_airflow_task(function_def: &StmtFunctionDef, semantic: &Semanti
     function_def.decorator_list.iter().any(|decorator| {
         let expr = map_callable(&decorator.expression);
 
-        // Match `@task` and `@task()` directly.
         if semantic
             .resolve_qualified_name(expr)
             .is_some_and(|qn| matches!(qn.segments(), ["airflow", "decorators" | "sdk", "task"]))
@@ -310,7 +309,6 @@ pub(crate) fn is_airflow_task(function_def: &StmtFunctionDef, semantic: &Semanti
             return true;
         }
 
-        // Match `@task.<variant>` (e.g., `@task.branch`, `@task.short_circuit`).
         if let Expr::Attribute(ExprAttribute { value, .. }) = expr {
             return semantic.resolve_qualified_name(value).is_some_and(|qn| {
                 matches!(qn.segments(), ["airflow", "decorators" | "sdk", "task"])

@@ -265,8 +265,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
             }
 
             if let Type::FunctionLiteral(f) = decorator_ty {
-                // We do not yet detect or flag `@dataclass_transform` applied to more than one
-                // params of the last seen usage of `@dataclass_transform`.
                 let transformer_params = f
                     .iter_overloads_and_implementation(db)
                     .rev()

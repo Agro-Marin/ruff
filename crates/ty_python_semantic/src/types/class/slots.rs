@@ -298,7 +298,6 @@ impl<'db> StaticClassLiteral<'db> {
                 return SlotDefinition::DynamicOrNone;
             }
 
-            //     @dataclass(slots=True, weakref_slot=True)
             let Some(field_policy @ CodeGeneratorKind::DataclassLike(_)) =
                 CodeGeneratorKind::from_class(db, self.into())
             else {

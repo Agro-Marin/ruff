@@ -812,7 +812,6 @@ impl GotoTarget<'_> {
                 definitions_for_expression(&model_to_use, expr_to_use, alias_resolution)
             }
 
-            // nonlocal and global are essentially loads, but again they're statements,
             GotoTarget::NonLocal { identifier } | GotoTarget::Globals { identifier } => {
                 Some(definitions_for_name(
                     model,

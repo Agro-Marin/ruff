@@ -2029,7 +2029,6 @@ impl<'db> Bindings<'db> {
                         let alias = get_argument_type("alias", true);
                         let validation_alias = get_argument_type("validation_alias", true);
                         let converter = get_argument_type("converter", true);
-                        // `Field(strict=None)` inherits the model-global strictness configuration,
                         let strict = get_argument_type("strict", false).map_or(
                             ConfigBoolean::Unspecified,
                             |strict| {
@@ -6671,7 +6670,6 @@ impl<'db> CallInference<'_, 'db> {
                             continue;
                         }
 
-                        // `T@h | list[T@h]` from an outer generic scope) don't provide
                         let concrete_content = inferred_ty
                             .filter_union(db, self.env, |ty| !ty.has_typevar(db, self.env));
                         if concrete_content.is_never() && inferred_ty.has_typevar(db, self.env) {
@@ -7301,8 +7299,6 @@ impl<'a, 'db> ArgumentTypeChecker<'a, 'db> {
             return;
         }
 
-        // @overload
-        // @overload
         let constructor_receiver = matches!(argument, Argument::Synthetic)
             && self.constructor_kind == Some(ConstructorCallableKind::New)
             && matches!(

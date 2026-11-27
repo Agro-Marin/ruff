@@ -122,7 +122,6 @@ impl<'db, 'a> PlaceLoadResolver<'db, 'a> {
                 PlaceLoadResolutionStep::Exhausted(_) => break,
             };
 
-            // Deprecation checks use the lexical result, before implicit globals and builtins.
             if source.is_excluded_from_deprecation() && deprecation_target.is_none() {
                 deprecation_target = Some(place);
             }
@@ -155,7 +154,6 @@ impl<'db, 'a> PlaceLoadResolver<'db, 'a> {
             PlaceLoadSourceKind::Bindings(bindings) => {
                 let mut place = self.resolve_bindings(bindings.clone());
 
-                // reached through a class-body global fallback as definitely bound. At runtime,
                 if source.is_class_body_global_fallback()
                     && let Place::Defined(defined) = place
                 {
@@ -470,8 +468,6 @@ impl<'db> Iterator for PlaceLoadResolutionProcedure<'db, '_> {
                             symbol.is_bound() || symbol.is_declared()
                         });
 
-                    // Nested global assignments create synthetic module bindings even when the
-                    // implicit global or builtin when the forwarded assignment did not run.
                     self.next_node = Some(if has_explicit_global {
                         PlaceLoadResolutionNode::ExplicitGlobalSource(PlaceLoadSourceRole::Ordinary)
                     } else {
@@ -653,7 +649,6 @@ impl<'db, 'ast> PlaceLoadResolutionProcedure<'db, 'ast> {
             let place_expr = self.place_expr;
             let enclosing_place_id = enclosing_place_table.place_id(place_expr);
             let enclosing_place = enclosing_place_id.map(|id| enclosing_place_table.place(id));
-            // enclosing scope its owner. A possibly-unbound snapshot must still fall through.
             let forwards_to_global = is_lexically_visible
                 && enclosing_place
                     .is_some_and(|place| place.as_symbol().is_some_and(Symbol::is_global));

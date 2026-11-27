@@ -4931,7 +4931,6 @@ Answer.<CURSOR>
         );
 
         insta::with_settings!({
-            // See above: filter out some members which contain @Todo types that are
             filters => [(r"(?m)\s*__(call|reduce_ex|annotate|signature)__.+$", "")]},
             {
                 assert_snapshot!(
@@ -6838,7 +6837,6 @@ from os.<CURSOR>
 
     #[test]
     fn type_check_only_is_type_check_only() {
-        // `@typing.type_check_only` is a function that's unavailable at runtime
         let builder = completion_test_builder("from typing import t<CURSOR>");
         let test = builder.build();
         let completions = test.completions();

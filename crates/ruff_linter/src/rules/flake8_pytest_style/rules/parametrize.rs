@@ -591,7 +591,6 @@ fn check_values(checker: &Checker, names: &Expr, values: &Expr) {
                     values.range(),
                 );
                 diagnostic.set_fix({
-                    // @pytest.mark.parametrize(
                     let has_trailing_comma = elts.len() == 1
                         && checker.locator().up_to(values.end()).chars().rev().nth(1) == Some(',');
 
@@ -683,10 +682,6 @@ fn handle_single_name(checker: &Checker, argnames: &Expr, value: &Expr, argvalue
         },
         argnames.range(),
     );
-    // @pytest.mark.parametrize(("x",), [(1,), (2,)])
-    // @pytest.mark.parametrize("x", [1, 2])
-    // @pytest.mark.parametrize("x", [(1,), (2,)])
-    // @pytest.mark.parametrize(("x",), [(1,), variable])
     let Some(argvalues_edits) = unpack_single_element_items(checker, argvalues) else {
         return;
     };
@@ -770,7 +765,6 @@ fn handle_value_rows(
                     elt.range(),
                 );
                 diagnostic.set_fix({
-                    // @pytest.mark.parametrize(
                     let has_trailing_comma = elts.len() == 1
                         && checker.locator().up_to(elt.end()).chars().rev().nth(1) == Some(',');
 

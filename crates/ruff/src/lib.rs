@@ -146,7 +146,6 @@ pub fn run(args: Args) -> Result<ExitStatus> {
         }));
     }
 
-    // and setting the global logger can only be done once.
     if !matches!(args.command, Command::Server { .. }) {
         set_up_logging(args.global_options.log_level())?;
     }
@@ -347,7 +346,6 @@ pub fn check(args: CheckCommand, global_options: GlobalConfigArgs) -> Result<Exi
         printer_flags,
     );
 
-    // TODO: this should reference the global preview mode once https://github.com/astral-sh/ruff/issues/8232
     let preview = root_settings.resolved.settings.linter.preview;
     let prefer_rule_codes = root_settings.resolved.settings.output_prefer_rule_codes;
 

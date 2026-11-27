@@ -116,7 +116,6 @@ pub(super) fn dataclass_kind<'a>(
         match qualified_name.segments() {
             ["attrs" | "attr", func @ ("define" | "frozen" | "mutable")]
             | ["attr", func @ ("s" | "attributes" | "attrs")] => {
-                // whereas `@attr.s` implicitly sets `auto_attribs=False`.
                 let Expr::Call(ExprCall { arguments, .. }) = &decorator.expression else {
                     let auto_attribs = if *func == "s" {
                         AttrsAutoAttribs::False

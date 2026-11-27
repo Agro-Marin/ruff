@@ -1,5 +1,4 @@
 #!/bin/bash
-# This is @konstin's setup for checking an entire checkout of ~3k packages for
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 

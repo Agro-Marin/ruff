@@ -172,7 +172,6 @@ pub(crate) fn multi_line_summary_start(checker: &Checker, docstring: &Docstring)
             }
         }
     } else if first_line.as_str().ends_with('\\') {
-        // "
     } else {
         if checker.is_rule_enabled(Rule::MultiLineSummarySecondLine) {
             let mut diagnostic =

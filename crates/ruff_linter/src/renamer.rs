@@ -118,7 +118,6 @@ impl Renamer {
     ) -> Result<(Edit, Vec<Edit>)> {
         let mut edits = vec![];
 
-        //     global x
         let scope_id = scope.get_all(name).find_map(|binding_id| {
             let binding = semantic.binding(binding_id);
             match binding.kind {
@@ -133,8 +132,6 @@ impl Renamer {
             name, target, scope, semantic, stylist,
         ));
 
-        //     global x
-        //     global x
         for scope_id in scope
             .get_all(name)
             .filter_map(|binding_id| semantic.rebinding_scopes(binding_id))

@@ -1070,7 +1070,7 @@ fn infer_binary_type_comparison_inner<'db>(
                     }
                     Some(Ok(builder.build()))
                 }
-                None => None, // Fall through to default handling
+                None => None,
             }
         }
         (Type::TypeVar(typevar), other) | (other, Type::TypeVar(typevar))

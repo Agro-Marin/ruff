@@ -3357,7 +3357,6 @@ impl Parameters {
             kwarg,
         } = self;
         // Safety: a Python function can have an arbitrary number of parameters,
-        // is extremely unlikely outside of generated code, however, and it's even
         posonlyargs
             .len()
             .checked_add(args.len())

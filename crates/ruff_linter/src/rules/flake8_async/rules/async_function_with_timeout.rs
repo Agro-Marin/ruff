@@ -109,7 +109,6 @@ pub(crate) fn async_function_with_timeout(checker: &Checker, function_def: &ast:
         return;
     };
 
-    // Ignore methods decorated with `@typing.override`, since changing the signature
     if visibility::is_override(&function_def.decorator_list, checker.semantic()) {
         return;
     }

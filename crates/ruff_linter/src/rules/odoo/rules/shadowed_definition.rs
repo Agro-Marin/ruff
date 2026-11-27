@@ -81,7 +81,6 @@ fn is_legitimate(definitions: &[&ast::StmtFunctionDef]) -> bool {
     {
         return true;
     }
-    // `@other.setter` above a second `f` re-decorates `other`, not `f`: the first
     (decorators[0].contains("property") || decorators[0].contains("cached_property"))
         && definitions[1..]
             .iter()
@@ -125,7 +124,6 @@ pub(crate) fn shadowed_definition(checker: &Checker, class: &ast::StmtClassDef) 
     let mut definitions: Vec<(&str, Vec<&ast::StmtFunctionDef>)> = Vec::new();
     for function in functions {
         let name = function.name.as_str();
-        // `@f.register` hands back the plain function, so an implementation takes
         if !dispatchers.contains(name)
             && registers_on(function).any(|owner| dispatchers.contains(owner))
         {

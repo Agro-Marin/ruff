@@ -208,7 +208,6 @@ pub fn before_main() {
         fn __wasm_call_ctors();
     }
 
-    // Salsa uses the `inventory` crate, which registers global constructors that may need to be
     unsafe {
         __wasm_call_ctors();
     }

@@ -112,7 +112,6 @@ impl<'a> BlockBuilder<'a> {
 
 impl<'a> StatementVisitor<'a> for BlockBuilder<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        // Track manual splits (e.g., `# isort: split`).
         if self
             .splits
             .next_if(|split| stmt.start() >= **split)

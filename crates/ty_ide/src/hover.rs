@@ -3879,7 +3879,6 @@ def function():
 "#,
         );
 
-        // Should find the global variable declaration, not the global statement
         assert_snapshot!(test.hover(), @r#"
         Literal["modified"]
         ---------------------------------------------
@@ -3911,7 +3910,6 @@ def function():
 "#,
         );
 
-        // Should find the global variable declaration, not the global statement
         assert_snapshot!(test.hover(), @"Hover provided no content");
     }
 
@@ -4242,7 +4240,6 @@ def function():
             "#,
         );
 
-        // TODO: This should just be `**AB@Alias2 (<variance>)`
         assert_snapshot!(test.hover(), @"
         (**AB@Alias2) -> tuple[Unknown]
         ---------------------------------------------

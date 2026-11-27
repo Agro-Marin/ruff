@@ -830,7 +830,6 @@ impl<'db> SymbolVisitor<'db> {
 
     /// Adds a symbol introduced via an assignment.
     fn add_assignment(&mut self, stmt: &ast::Stmt, name: &Name, name_range: TextRange) {
-        // Include assignments only when we're in global or class scope.
         if self.in_function {
             return;
         }
@@ -892,7 +891,6 @@ impl<'db> SymbolVisitor<'db> {
     ///
     /// If the assignment isn't for `__all__`, then this is a no-op.
     fn add_all_assignment(&mut self, targets: &[ast::Expr], value: Option<&ast::Expr>) {
-        // specifically looking for exported symbols.
         if !self.exports_only {
             return;
         }
@@ -1153,7 +1151,6 @@ impl<'db> SymbolVisitor<'db> {
             return true;
         }
 
-        // if a name should be part of the exported API of a module
         if self.all_origin.is_some() && !self.all_invalid {
             return self.all_names.contains(&*symbol.name);
         }
@@ -1259,7 +1256,6 @@ impl<'db> SymbolVisitor<'db> {
                 self.in_class = was_in_class;
             }
             ast::Stmt::TypeAlias(type_alias) => {
-                // Include assignments only when we're in global or class scope
                 if self.in_function {
                     return;
                 }
@@ -1287,7 +1283,6 @@ impl<'db> SymbolVisitor<'db> {
                 }
                 self.visit_expr(value);
 
-                // specifically looking for exported symbols.
                 if !self.exports_only {
                     return;
                 }
@@ -1309,7 +1304,6 @@ impl<'db> SymbolVisitor<'db> {
             ast::Stmt::Expr(expr) => {
                 source_order::walk_stmt(self, stmt);
 
-                // specifically looking for exported symbols.
                 if !self.exports_only {
                     return;
                 }
@@ -1340,11 +1334,9 @@ impl<'db> SymbolVisitor<'db> {
                 }
             }
             ast::Stmt::Import(import) => {
-                // set of exported symbols.
                 if !self.exports_only {
                     return;
                 }
-                // We only consider imports in global scope.
                 if self.in_function {
                     return;
                 }
@@ -1354,11 +1346,9 @@ impl<'db> SymbolVisitor<'db> {
                 }
             }
             ast::Stmt::ImportFrom(import_from) => {
-                // set of exported symbols.
                 if !self.exports_only {
                     return;
                 }
-                // We only consider imports in global scope.
                 if self.in_function {
                     return;
                 }
@@ -1408,7 +1398,6 @@ impl<'db> SourceOrderVisitor<'db> for SymbolVisitor<'db> {
                     return;
                 }
 
-                // specifically looking for exported symbols.
                 if !self.exports_only {
                     return;
                 }
@@ -2074,7 +2063,6 @@ __all__ += ['defaultdict']
 
     #[test]
     fn exports_from_import_all_reexport_star_equals() {
-        // symbols as exported when `__all__` isn't present.
         insta::assert_snapshot!(
             public_test("\
 from collections import defaultdict
@@ -2158,7 +2146,6 @@ class X:
             .source("foo.py", "import collections")
             .source("test.py", "from foo import *")
             .build();
-        // of the exported interface of `foo`.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"",
@@ -2183,7 +2170,6 @@ class X:
             .source("foo.py", "from collections import defaultdict")
             .source("test.py", "from foo import *")
             .build();
-        // of the exported interface of `foo`.
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"",
@@ -2256,7 +2242,6 @@ class X:
             )
             .source("test.py", "from foo import *")
             .build();
-        // Nothing is exported because `__all__` is defined
         insta::assert_snapshot!(
             test.exports_for("test.py"),
             @"",

@@ -200,7 +200,6 @@ fn extract_isort_directives(locator: &Locator, comment_ranges: &CommentRanges) -
     for range in comment_ranges {
         let comment_text = locator.slice(range);
 
-        // `isort` allows for `# isort: skip` and `# isort: skip_file` to include or
         let comment_text = comment_text.trim_end();
         if matches!(comment_text, "# isort: split" | "# ruff: isort: split") {
             splits.push(range.start());

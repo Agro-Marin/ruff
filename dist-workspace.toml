@@ -37,7 +37,6 @@ github-release = "announce"
 github-attestations = true
 github-attestations-phase = "announce"
 github-attestations-filters = ["*.json", "*.sh", "*.ps1", "*.zip", "*.tar.gz"]
-# Whether CI should include auto-generated code to build local artifacts
 build-local-artifacts = false
 local-artifacts-jobs = ["./build-binaries", "./build-docker", "./build-wasm"]
 publish-jobs = ["./publish-pypi", "./publish-wasm", "./publish-crates"]

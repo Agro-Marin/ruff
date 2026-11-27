@@ -658,7 +658,6 @@ fn workspace_diagnostic_caching_settings_changed() -> Result<()> {
     let first_response = server.workspace_diagnostic_request(None, None);
     let previous_result_ids = extract_result_ids_from_response(&first_response);
 
-    // Adding a workspace can change global settings for existing workspaces, without edits.
     server.add_workspace_folder(
         extra,
         Some(ClientOptions::default().with_show_syntax_errors(false)),

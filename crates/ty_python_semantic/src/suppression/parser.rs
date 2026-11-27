@@ -28,7 +28,6 @@ impl<'src> SuppressionParser<'src> {
 
         self.eat_whitespace();
 
-        // type: ignore[code]
         let Some(kind) = self.eat_kind() else {
             return Err(ParseError::new(
                 ParseErrorKind::NotASuppression,
@@ -38,7 +37,6 @@ impl<'src> SuppressionParser<'src> {
 
         let has_trailing_whitespace = self.eat_whitespace();
 
-        // type: ignore[code1, code2]
         let codes = self.eat_codes(kind)?;
 
         if self.cursor.is_eof() || codes.is_some() || has_trailing_whitespace {

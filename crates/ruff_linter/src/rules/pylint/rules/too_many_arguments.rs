@@ -89,7 +89,6 @@ pub(crate) fn too_many_arguments(checker: &Checker, function_def: &ast::StmtFunc
         return;
     }
 
-    // Allow excessive arguments in `@override` or `@overload` methods, since they're required
     if visibility::is_override(&function_def.decorator_list, checker.semantic())
         || visibility::is_overload(&function_def.decorator_list, checker.semantic())
     {

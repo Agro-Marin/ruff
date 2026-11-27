@@ -552,8 +552,6 @@ fn arbitrary_type(g: &mut Gen, size: u32, fully_static: bool) -> Ty {
                 },
                 returns: Box::new(arbitrary_type(g, size - 1, fully_static)),
             },
-            // 4 => Ty::FixedLengthTuple(
-            // 5 => Ty::VariableLengthTuple(
             _ => unreachable!(),
         }
     }
@@ -564,7 +562,6 @@ fn arbitrary_parameter_list(g: &mut Gen, size: u32, fully_static: bool) -> Vec<P
     let mut used_names = FxHashSet::default();
 
     for _ in 0..*g.choose(&[0, 1, 2, 3, 4, 5]).unwrap() {
-        // Next, choose the kind of parameters that can be generated based on the last parameter.
         let next_kind = match params.last().map(|p| p.kind) {
             None | Some(ParamKind::PositionalOnly) => *g
                 .choose(&[

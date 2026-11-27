@@ -384,7 +384,6 @@ impl<'db, 'ast> InferContext<'db, 'ast> {
 
         let scope_id = self.scope.file_scope_id(self.db());
 
-        // if any is decorated with `@no_type_check`. We use the undecorated type
         index
             .ancestor_scopes(scope_id)
             .filter_map(|(_, scope)| scope.node().as_function())

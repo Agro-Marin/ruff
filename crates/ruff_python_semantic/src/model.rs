@@ -1571,13 +1571,8 @@ impl<'a> SemanticModel<'a> {
 
     /// Set the [`Globals`] for the current [`Scope`].
     pub fn set_globals(&mut self, globals: Globals<'a>) {
-        // If any global bindings don't already exist in the global scope, add them, unless we are
-        // also in the global scope, where we don't want these to count as definitions for rules
-        // global x
-        //     global foo
         if !self.at_top_level() {
             for (name, range) in globals.iter() {
-                // Global pre-scanning synthesizes an assignment when no global binding exists.
                 self.materialize_builtin_binding(name);
                 if self
                     .global_scope()

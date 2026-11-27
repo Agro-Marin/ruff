@@ -1169,13 +1169,11 @@ mod tests {
 
     #[test]
     fn magic_globals_file() {
-        // Use of the C{__file__} magic global should not emit an undefined name
         flakes("__file__", &[]);
     }
 
     #[test]
     fn magic_globals_builtins() {
-        // Use of the C{__builtins__} magic global should not emit an undefined
         flakes("__builtins__", &[]);
     }
 
@@ -1196,7 +1194,6 @@ mod tests {
 
     #[test]
     fn magic_globals_name() {
-        // Use of the C{__name__} magic global should not emit an undefined name
         flakes("__name__", &[]);
     }
 
@@ -1277,7 +1274,6 @@ mod tests {
         ",
             &[],
         );
-        // TODO(charlie): Extract globals recursively (such that we don't raise F821).
         flakes(
             r"
         def c(): bar
@@ -1302,7 +1298,6 @@ mod tests {
 
     #[test]
     fn global_in_global_scope() {
-        // A global statement in the global scope is ignored.
         flakes(
             r"
         global x
@@ -1315,7 +1310,6 @@ mod tests {
 
     #[test]
     fn global_reset_name_only() {
-        // A global statement does not prevent other names being undefined.
         flakes(
             r"
         def f1():
@@ -1335,7 +1329,6 @@ mod tests {
 
     #[test]
     fn del_global() {
-        // Del a global binding from a function.
         flakes(
             r"
         a = 1
@@ -1464,7 +1457,6 @@ mod tests {
 
     #[test]
     fn global_from_nested_scope() {
-        // Global names are available from nested scopes.
         flakes(
             r"
         a = 1
@@ -1492,7 +1484,6 @@ mod tests {
 
     #[test]
     fn later_redefined_global_from_nested_scope2() {
-        // global declared in an enclosing scope, before it is defined, generates
         flakes(
             r"
             a = 1
@@ -2184,7 +2175,6 @@ mod tests {
 
     #[test]
     fn redefined_in_nested_function() {
-        // Test that shadowing a global name with a nested function definition
         flakes(
             r"
         import fu
@@ -2199,7 +2189,6 @@ mod tests {
 
     #[test]
     fn redefined_in_nested_function_twice() {
-        // Test that shadowing a global name with a nested function definition
         flakes(
             r"
         import fu
@@ -2220,7 +2209,6 @@ mod tests {
 
     #[test]
     fn redefined_but_used_later() {
-        // Test that a global import which is redefined locally,
         flakes(
             r"
         import unittest, transport
@@ -2263,7 +2251,6 @@ mod tests {
 
     #[test]
     fn redefined_in_class() {
-        // Test that shadowing a global with a class attribute does not produce a
         flakes(
             r"
         import fu
@@ -2474,7 +2461,6 @@ mod tests {
 
     #[test]
     fn shadowed_by_for() {
-        // Test that shadowing a global name with a for loop variable generates a
         flakes(
             r"
         import fu
@@ -2488,7 +2474,6 @@ mod tests {
 
     #[test]
     fn shadowed_by_for_deep() {
-        // Test that shadowing a global name with a for loop variable nested in a
         flakes(
             r"
         import fu
@@ -2732,7 +2717,6 @@ mod tests {
 
     #[test]
     fn assigned_to_global() {
-        // Binding an import to a declared global should not cause it to be
         flakes(
             r"
             def f(): global foo; import foo
@@ -3407,14 +3391,12 @@ lambda: fu
 
     #[test]
     fn used_in_gen_exp() {
-        // Using a global in a generator expression results in no warnings.
         flakes("import fu; (fu for _ in range(1))", &[]);
         flakes("import fu; (1 for _ in range(1) if fu)", &[]);
     }
 
     #[test]
     fn redefined_by_gen_exp() {
-        // Reusing a global name as the loop variable for a generator
         flakes(
             "import fu; (1 for fu in range(1))",
             &[Rule::UnusedImport, Rule::RedefinedWhileUnused],
@@ -3423,7 +3405,6 @@ lambda: fu
 
     #[test]
     fn used_as_decorator() {
-        // Using a global name in a decorator statement results in no warnings,
         flakes(
             r#"
         from interior import decorate
@@ -3479,7 +3460,6 @@ lambda: fu
     /// See: <https://github.com/PyCQA/pyflakes/blob/04ecb0c324ef3b61124e2f80f9e1af6c3a4c7b26/pyflakes/test/test_type_annotations.py>
     #[test]
     fn typing_overload() {
-        // Allow intentional redefinitions via @typing.overload.
         flakes(
             r"
         import typing
@@ -3513,7 +3493,6 @@ lambda: fu
 
     #[test]
     fn typing_extensions_overload() {
-        // Allow intentional redefinitions via @typing_extensions.overload.
         flakes(
             r"
         import typing_extensions
@@ -3547,7 +3526,6 @@ lambda: fu
 
     #[test]
     fn typing_overload_async() {
-        // Allow intentional redefinitions via @typing.overload (async).
         flakes(
             r"
         from typing import overload
@@ -3635,7 +3613,6 @@ lambda: fu
 
     #[test]
     fn not_a_typing_overload() {
-        // regression test for @typing.overload detection bug in 2.1.0.
         flakes(
             r"
             def foo(x):

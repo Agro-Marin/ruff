@@ -902,7 +902,6 @@ impl<'db, 'ast> SemanticIndexBuilder<'db, 'ast> {
                         }
                         false
                     } else {
-                        // because we already know they refer to the global scope, and also because
                         true
                     }
                 });
@@ -1597,7 +1596,6 @@ impl<'db, 'ast> SemanticIndexBuilder<'db, 'ast> {
         let place = definition.place(self.db);
         let is_loop_header = definition.kind(self.db).is_loop_header();
 
-        //     global x  # [invalid-syntax] if `x` is already used or bound
         if !is_loop_header {
             self.mark_place_bound(place);
             self.invalidate_narrowing_aliases_for(place);
@@ -1802,7 +1800,6 @@ impl<'db, 'ast> SemanticIndexBuilder<'db, 'ast> {
                 false,
             );
 
-            //         global x
             self.invalidate_narrowing_aliases_for(place);
 
             self.current_use_def_map_mut().record_binding(
@@ -3672,7 +3669,6 @@ impl<'db, 'ast> SemanticIndexBuilder<'db, 'ast> {
                     self.visit_decorator(decorator);
                 }
 
-                //     global x
                 for default in parameters
                     .iter_non_variadic_params()
                     .filter_map(|param| param.default.as_deref())
@@ -3798,8 +3794,6 @@ impl<'db, 'ast> SemanticIndexBuilder<'db, 'ast> {
             ast::Stmt::ImportFrom(node) => {
                 self.record_exception_checkpoint();
 
-                // * And we're in the global scope
-                // `x` as a variable in the global scope of `thispackage`.
                 let mut is_self_import = false;
                 let source_file = self.file.file(self.db);
                 let resolver_environment = self.resolver_environment;
@@ -3857,7 +3851,6 @@ impl<'db, 'ast> SemanticIndexBuilder<'db, 'ast> {
                     self.record_exception_checkpoint();
 
                     if &alias.name == "*" {
-                        // - If the `*` import refers to a module that has 0 exported names.
                         self.add_entry_for_definition_key(alias.into());
 
                         if found_star {
@@ -3933,7 +3926,6 @@ impl<'db, 'ast> SemanticIndexBuilder<'db, 'ast> {
 
                     let (symbol_name, is_reexported) = if let Some(asname) = &alias.asname {
                         self.ast_ids.record_expression(asname, self.current_scope());
-                        // It's re-exported if it's `from ... import x as x`
                         (&asname.id, asname.id == alias.name.id)
                     } else {
                         (&alias.name.id, is_self_import)
@@ -4927,7 +4919,6 @@ impl<'db, 'ast> SemanticIndexBuilder<'db, 'ast> {
                             range: name.range,
                             python_version: self.python_version(),
                         });
-                        // Never mark a symbol both global and nonlocal, even in this error case.
                         continue;
                     }
                     let scope_id = self.current_scope();
@@ -4973,7 +4964,6 @@ impl<'db, 'ast> SemanticIndexBuilder<'db, 'ast> {
                             range: name.range,
                             python_version: self.python_version(),
                         });
-                        // Never mark a symbol both global and nonlocal, even in this error case.
                         continue;
                     }
                     let scope_id = self.current_scope();

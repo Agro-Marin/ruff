@@ -191,13 +191,11 @@ pub(crate) fn scoped_definitions_for_name<'db>(
 
         let use_def_map = index.use_def_map(scope_id);
 
-        // Check if this place is marked as global or nonlocal
         let place_expr = place_table.symbol(symbol_id);
         let is_global = place_expr.is_global();
         let is_nonlocal = place_expr.is_nonlocal();
 
         if is_global || is_nonlocal {
-            // walrus bindings exported from comprehensions.
             all_definitions.extend(user_visible_definitions(
                 db,
                 use_def_map
@@ -213,9 +211,6 @@ pub(crate) fn scoped_definitions_for_name<'db>(
             ));
         }
 
-        // this name using a nonlocal or global binding. The semantic analyzer
-
-        // If marked as global, skip to global scope
         if is_global {
             let global_scope_id = global_scope(db, file);
             let global_place_table = ty_python_core::place_table(db, global_scope_id);
@@ -708,7 +703,6 @@ pub(crate) fn resolve_from_import_definitions<'db>(
         ));
     };
 
-    // Find the definition of this symbol in the imported module's global scope
     let global_scope = global_scope(db, module_file);
     let definitions_in_module = find_symbol_in_scope(db, global_scope, symbol_name);
 

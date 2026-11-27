@@ -477,7 +477,6 @@ pub(crate) fn can_omit_optional_parentheses(expr: &Expr, context: &PyFormatConte
     } else if visitor.max_precedence == OperatorPrecedence::None {
         true
     } else if visitor.max_precedence == OperatorPrecedence::Attribute {
-        //      encoding="ascii",
         true
     } else {
         fn is_parenthesized(expr: &Expr, context: &PyFormatContext) -> bool {

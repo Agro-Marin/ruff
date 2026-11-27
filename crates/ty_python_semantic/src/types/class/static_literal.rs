@@ -1192,8 +1192,6 @@ impl<'db> StaticClassLiteral<'db> {
     /// Whether dataclass-transform inheritance permits both frozen and non-frozen children.
     /// Unlike an ordinary non-dataclass, this class explicitly imposes neither frozen status.
     pub(crate) fn is_neutral_dataclass(self, db: &'db dyn Db) -> bool {
-        // attached to it (because it is itself decorated with `@dataclass_transform`), or if this class
-        // has an explicit metaclass that is decorated with `@dataclass_transform`.
         self.dataclass_transformer_params(db).is_some()
             || self
                 .try_metaclass(db)
@@ -1472,7 +1470,6 @@ impl<'db> StaticClassLiteral<'db> {
         name: &str,
         policy: MemberLookupPolicy,
     ) -> PlaceAndQualifiers<'db> {
-        // An unspecialized MRO retains mappings such as `Parent[T@Child]`, so ordinary members
         if specialization.is_none()
             && let Some(generic_context) = self.generic_context(db)
         {
@@ -1646,7 +1643,6 @@ impl<'db> StaticClassLiteral<'db> {
                 ty
             };
 
-            // to any method with a `@classmethod` decorator. (`__init__` would remain a special
             match (inherited_generic_context, ty, specialization, name) {
                 (
                     Some(generic_context),
@@ -1685,7 +1681,6 @@ impl<'db> StaticClassLiteral<'db> {
             if let Some(hash) = self.implicit_hash(db, env, name) {
                 return Member { inner: hash };
             }
-            // The symbol was not found in the class scope. It might still be implicitly defined in `@classmethod`s.
             return sources.implicit_attribute(db, name, MethodDecorator::ClassMethod);
         }
 
@@ -1799,8 +1794,6 @@ impl<'db> StaticClassLiteral<'db> {
             return Some(member);
         }
 
-        // Handle `@functools.total_ordering`: synthesize comparison methods
-        // for classes that have `@total_ordering` and define at least one
         if matches!(name, "__lt__" | "__le__" | "__gt__" | "__ge__")
             && self.total_ordering(db)
             && !self
@@ -1821,8 +1814,6 @@ impl<'db> StaticClassLiteral<'db> {
             let synthesized_callables = callables.map(|callable| {
                 let signatures = CallableSignature::from_overloads(
                     callable.signatures(db).iter().map(|signature| {
-                        // The generated methods return a union of the root method's return type
-                        // and `bool`. This is because `@total_ordering` synthesizes methods like:
                         let return_ty =
                             UnionType::from_two_elements(db, env, signature.return_ty, bool_ty);
                         Signature::new_generic(
@@ -1838,7 +1829,6 @@ impl<'db> StaticClassLiteral<'db> {
             return Some(synthesized_callables.to_type(db, env));
         }
 
-        // generated `__setattr__` and `__delattr__`, which reject assignments and deletions of
         if let Some(method) = FrozenDataclassMethod::from_name(name)
             && let Some(synthesized_method) =
                 self.own_frozen_dataclass_subclass_method(db, env, specialization, method)
@@ -2383,8 +2373,6 @@ impl<'db> StaticClassLiteral<'db> {
                 break;
             };
 
-            // Stop if another class in the MRO replaces the relevant generated frozen method:
-            //   @dataclass(frozen=True)
             //   class Frozen: x: int
             if class_member(db, base_class.body_scope(db), method)
                 .ignore_possibly_undefined()

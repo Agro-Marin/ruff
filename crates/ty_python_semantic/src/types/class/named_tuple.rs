@@ -369,7 +369,6 @@ impl<'db> DynamicNamedTupleLiteral<'db> {
                     let signature = Signature::new(Parameters::gradual_form(), instance_ty);
                     return Some(Type::function_like_callable(db, signature));
                 }
-                // For other field-specific methods, fall through to NamedTupleFallback.
                 "__match_args__" | "_fields" | "_replace" | "__replace__" => {
                     return KnownClass::NamedTupleFallback
                         .to_class_literal(db, env)

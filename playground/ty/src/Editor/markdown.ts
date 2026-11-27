@@ -13,23 +13,10 @@ function getLanguageTag(filename: string): string {
   }
 }
 
-/**
- * Generate a markdown link to the playground.
- *
- * @param shareUrl - The shareable playground URL
- * @returns Formatted markdown link string
- */
 export function generatePlaygroundMarkdownLink(shareUrl: string): string {
   return `[Playground](${shareUrl})`;
 }
 
-/**
- * Generate markdown representation of playground files with a shareable link.
- *
- * @param files - Object mapping filenames to their content
- * @param shareUrl - The shareable playground URL
- * @returns Formatted markdown string
- */
 export function generatePlaygroundMarkdown(
   files: { [name: string]: string },
   shareUrl: string,

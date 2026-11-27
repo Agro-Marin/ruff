@@ -109,8 +109,6 @@ pub(crate) fn builtin_attribute_shadowing(
                 return;
             }
 
-            //     @staticmethod
-            //     @staticmethod
             let consider_reference = |reference_scope_id: ScopeId| {
                 reference_scope_id == scope_id
                     || checker

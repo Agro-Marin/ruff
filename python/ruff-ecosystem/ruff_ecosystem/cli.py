@@ -177,7 +177,6 @@ def get_executable_path(name: str) -> Path | None:
     if os.path.exists(path):
         return Path(path)
 
-    # The executable in the global environment.
     environment_path = shutil.which(name)
     if environment_path:
         return Path(environment_path)

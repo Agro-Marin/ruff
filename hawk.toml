@@ -1175,7 +1175,6 @@ kind = "reexport"
 level = "expect"
 reason = "the public auto-import API re-exports its query function"
 
-# Keep the generated AST and its hand-written companion APIs consistent across
 
 [[exclude]]
 crate = "ruff_python_ast"
@@ -1299,7 +1298,6 @@ crate = "ty_wasm"
 file = "crates/ty_wasm/src/lib.rs"
 reason = "public exports are consumed by JavaScript"
 
-# Keep generated and upstream-compatible APIs in sync with their sources.
 
 [[exclude]]
 crate = "ruff_notebook"

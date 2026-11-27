@@ -624,7 +624,6 @@ fn collect_unsupported_syntax_errors(
         let node_id = visitor.node_id(error.range);
         let mut error_fingerprint = fingerprint_unsupported_syntax_error(error, node_id, 0);
 
-        // by adding in the previously generated one.
         loop {
             match collected.entry(error_fingerprint) {
                 Entry::Occupied(_) => {

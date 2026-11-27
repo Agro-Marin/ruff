@@ -128,7 +128,6 @@ fn duplicate_entry_in_dunder_all(checker: &Checker, target: &ast::Expr, value: &
         return;
     }
 
-    // We're only interested in `__all__` in the global scope
     if !checker.semantic().current_scope().kind.is_module() {
         return;
     }

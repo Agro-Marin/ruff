@@ -686,7 +686,6 @@ fn comparison_truthiness_widens_across_sparse_cycle_results() -> anyhow::Result<
             (Type::unknown(), Some(Truthiness::AlwaysFalse)),
             Truthiness::Ambiguous,
         ),
-        // with the current type: subsequent type widening can make that fallback ambiguous again.
         (
             (Type::unknown(), Some(Truthiness::AlwaysFalse)),
             (Type::bool_literal(false), None),

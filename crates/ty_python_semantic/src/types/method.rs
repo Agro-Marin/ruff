@@ -569,8 +569,6 @@ impl<'db> KnownBoundMethodType<'db> {
                     .try_upcast_to_callable(db, env)
                     .map(|callables| callables.map(|callable| callable.into_regular(db)));
             }
-            //     @overload
-            //     @overload
             KnownBoundMethodType::FunctionTypeDunderGet(_)
             | KnownBoundMethodType::PropertyDunderGet(_)
             | KnownBoundMethodType::MethodTypeDunderGet(_) => Either::Left(

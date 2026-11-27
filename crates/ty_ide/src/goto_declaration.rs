@@ -1357,7 +1357,6 @@ def function():
 "#,
         );
 
-        // Should find the global variable declaration, not the global statement
         assert_snapshot!(test.goto_declaration(), @r#"
         info[goto-declaration]: Go to declaration
          --> main.py:7:12
@@ -1385,7 +1384,6 @@ def function():
 "#,
         );
 
-        // Should find the global variable declaration, not the global statement
         assert_snapshot!(test.goto_declaration(), @r#"
         info[goto-declaration]: Go to declaration
          --> main.py:5:12

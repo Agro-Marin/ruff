@@ -1,9 +1,3 @@
-# GitHub code owners file. For more info: https://help.github.com/articles/about-codeowners/
-#
-# - Comment lines begin with `#` character.
-# - Each line is a file pattern optionally followed by one or more owners.
-# - The '*' pattern is global owners.
-# - Order is important. The last matching pattern has the most precedence.
 
 /crates/ruff_notebook/ @dhruvmanila
 /crates/ruff_formatter/ @MichaReiser
@@ -11,15 +5,8 @@
 /crates/ruff_python_parser/ @MichaReiser @dhruvmanila
 /crates/ruff_annotate_snippets/ @BurntSushi
 
-# Script for fuzzing the parser/ty etc.
 /python/py-fuzzer/ @AlexWaygood
 
-# ty
-#
-# CODEOWNERS teams in ty are for notifications only. When adding a new ty crate,
-# create or update the relevant *_notified team, use that team here, and
-# update .github/pr-reviewer-pools.toml separately to control individual
-# reviewer selection.
 /crates/ty* @astral-sh/ty_notified
 /crates/ruff_db/ @astral-sh/ruff_db_notified
 /crates/ty_project/ @astral-sh/ty_project_notified
@@ -33,7 +20,6 @@
 /crates/ty_module_resolver/ @astral-sh/ty_module_resolver_notified
 
 # Ruff releases update crate manifests and generated README version sections.
-# Leave these files unowned to avoid notifying the crate teams for release PRs.
 /crates/ty*/Cargo.toml
 /crates/ty*/README.md
 /crates/ruff_annotate_snippets/Cargo.toml

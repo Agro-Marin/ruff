@@ -241,7 +241,6 @@ impl<'ast> SourceOrderVisitor<'ast> for FindEnclosingNode<'_, 'ast> {
         let mut iter = body.iter();
 
         while let Some(stmt) = iter.next() {
-            // <RANGE_START>x=1<RANGE_END>;x=2 # fmt: skip
             if let Some(verbatim_range) = skip_range(stmt, iter.as_slice(), self.context)
                 && verbatim_range.intersect(self.range).is_some()
             {

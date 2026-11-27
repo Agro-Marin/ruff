@@ -765,7 +765,6 @@ impl<'a> Printer<'a> {
                     }
                 }
                 _ => {
-                    // Fall through
                 }
             }
 

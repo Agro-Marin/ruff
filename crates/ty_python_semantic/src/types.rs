@@ -312,7 +312,6 @@ pub(crate) fn may_exist_at_runtime<'db>(db: &'db dyn Db, definition: Definition<
     let inference = infer_definition_types(db, definition);
     let ty = inference.binding_type(definition);
 
-    // A class or function decorated with `@type_check_only` never exists at runtime.
     if ty.is_type_check_only(db)
         || inference
             .undecorated_type()
@@ -3451,7 +3450,6 @@ impl<'db> Type<'db> {
             | Type::NominalInstance(_) => true,
             Type::TypedDict(_) | Type::ProtocolInstance(_) => true,
             Type::Callable(_) => true,
-            // `Unknown` and `@Todo` are nonstandard extensions,
             Type::Dynamic(_) => true,
             Type::TypeVar(_) | Type::SubclassOf(_) => true,
             Type::TypeAlias(_) | Type::Recursive(_) => true,
@@ -3517,7 +3515,6 @@ impl<'db> Type<'db> {
             | Type::GenericAlias(_)
             | Type::KnownInstance(_) => false,
 
-            // but also could just be the result of us inferring an unreachable region.
             Type::Never => false,
 
             Type::Callable(_) => false,
@@ -4068,7 +4065,6 @@ impl<'db> Type<'db> {
             },
 
             Type::ProtocolInstance(..) => {
-                //     @property
                 false
             }
 
@@ -4243,8 +4239,6 @@ impl<'db> Type<'db> {
                 .to_class_literal(db, env)
                 .find_name_in_mro_with_policy(db, env, name, policy),
 
-            // We eagerly normalize type[object], i.e. Type::SubclassOf(object) to `type`,
-            // i.e. Type::NominalInstance(type). So looking up a name in the MRO of
             Type::NominalInstance(instance) if instance.has_known_class(db, KnownClass::Type) => {
                 if policy.mro_no_object_fallback() {
                     Some(Place::Undefined.into())
@@ -6955,7 +6949,6 @@ impl<'db> Type<'db> {
                 CallableBinding::from_overloads(self, wrapper_descriptor.signatures(db, env)).into()
             }
 
-            // that was decorated with `@dataclass_transform`, to see if it is consistent with
             Type::DataclassTransformer(_) => Binding::single(
                 self,
                 Signature::new(
@@ -7371,9 +7364,6 @@ impl<'db> Type<'db> {
             }
 
             KnownClass::Super => {
-                //     @overload
-                //     @overload
-                //     @overload
                 Some(
                     CallableBinding::from_overloads(
                         self,
@@ -7607,8 +7597,6 @@ impl<'db> Type<'db> {
                     TypeVarVariance::Covariant,
                 );
 
-                //     @overload
-                //     @overload
                 Some(
                     CallableBinding::from_overloads(
                         self,
@@ -7677,7 +7665,6 @@ impl<'db> Type<'db> {
         ) -> Bindings<'db> {
             bindings.map(|binding| {
                 let mut binding = binding;
-                // Note: This intentionally preserves `type.__call__` behavior for `@classmethod __new__`,
                 binding.bake_bound_type_into_overloads(db, env);
                 binding = binding.with_bound_type(self_type);
                 binding.bind_unused_self(db, env, instance_type);
@@ -12146,7 +12133,6 @@ impl<'db> ModuleLiteralType<'db> {
         name: &str,
     ) -> MemberLookupResult<'db> {
         let module = self.module(db);
-        // never in the global scope of the module.
         if name == "__dict__" {
             return KnownClass::ModuleType
                 .to_instance(db, env)

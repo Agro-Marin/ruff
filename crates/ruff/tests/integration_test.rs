@@ -1828,7 +1828,6 @@ fn check_input_from_argfile() -> Result<()> {
 
 #[test]
 fn check_existing_at_paths_are_literal() -> Result<()> {
-    // Preserve existing @-prefixed paths so filenames from integrations cannot inject options.
     let tempdir = TempDir::new()?;
     fs::write(tempdir.path().join("@list.py"), "import os\n")?;
     fs::create_dir(tempdir.path().join("@package"))?;

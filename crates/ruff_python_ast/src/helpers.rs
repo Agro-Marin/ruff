@@ -877,10 +877,8 @@ pub fn extract_handled_exceptions(handlers: &[ExceptHandler]) -> Vec<&Expr> {
 /// callable.
 pub fn map_callable(decorator: &Expr) -> &Expr {
     if let Expr::Call(ast::ExprCall { func, .. }) = decorator {
-        // Ex) `@decorator()`
         func
     } else {
-        // Ex) `@decorator`
         decorator
     }
 }

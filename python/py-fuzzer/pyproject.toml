@@ -84,7 +84,6 @@ select = [
 ]
 ignore = [
     "assert-false",
-    # These are enforced by, or incompatible with, the ruff formatter:
     "whitespace-before-punctuation",
     "line-too-long",
 ]

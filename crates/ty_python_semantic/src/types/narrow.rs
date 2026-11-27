@@ -1793,7 +1793,6 @@ impl<'db, 'ast> NarrowingConstraintsBuilder<'db, 'ast> {
         }
 
         let alias_key = ExpressionNodeKey::from(alias.expression.node_ref(db).node(self.module));
-        // to a different binding, such as a global with the same name in a class body.
         let unbound_is_terminal = scope.node(db).scope_kind().is_function_like()
             && index
                 .place_table(scope.file_scope_id(db))
@@ -1816,7 +1815,6 @@ impl<'db, 'ast> NarrowingConstraintsBuilder<'db, 'ast> {
                     return false;
                 }
 
-                // outcome: `if not check: check = x is None` still narrows `x` when `check` is false.
                 let ty = binding.narrowing_constraint.narrow(
                     db,
                     &self.env,

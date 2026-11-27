@@ -1,5 +1,3 @@
-# Configuration for the actionlint tool, which we run via prek
-
 self-hosted-runner:
   # Various runners we use that aren't recognized out-of-the-box by actionlint:
   labels:
@@ -23,21 +21,16 @@ self-hosted-runner:
 paths:
   ".github/workflows/*.{yml,yaml}":
     ignore:
-      # https://github.com/rhysd/actionlint/issues/711
       - '^reusable workflow call "\$/\.github/workflows/[^"/]+\.ya?ml" at "uses" is not following the format '
       - '^specifying action "\$/\.github/actions/setup-ruff-workspace" in invalid format because ref is missing\.'
       - '^specifying action "\$/python/py-fuzzer" in invalid format because ref is missing\.'
   ".github/workflows/pull-request-reviewers.yml":
     ignore:
-      # actionlint doesn't yet support concurrency queues. The schema hook validates them.
       - '^unexpected key "queue" for "concurrency" section\.'
   ".github/workflows/publish-pull-request-report.yml":
     ignore:
-      # actionlint doesn't yet support concurrency queues. The schema hook validates them.
       - '^unexpected key "queue" for "concurrency" section\.'
-      # actionlint doesn't yet recognize the reusable workflow's own revision context.
       - 'property "workflow_(repository|sha)" is not defined in object type'
   ".github/workflows/{ty-ecosystem-analyzer,memory_report,sync_typeshed}.yaml":
     ignore:
-      # actionlint doesn't yet support the cache-mode feature.
       - '^unexpected key "cache-mode" for "workflow" section\.'

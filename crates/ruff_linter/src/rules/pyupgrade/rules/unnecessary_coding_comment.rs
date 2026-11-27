@@ -144,7 +144,6 @@ impl Iterator for CodingCommentIterator<'_> {
         let comment = self.comments.next()?;
         let line_range = self.locator.full_line_range(comment.start());
 
-        // print(x) # coding=utf8
         // # -*- coding: utf-8 -*-
         let last_trivia_end = self.last_trivia_end.take()?;
         let before_hash_sign = self

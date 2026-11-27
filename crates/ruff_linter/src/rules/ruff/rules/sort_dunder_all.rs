@@ -182,7 +182,6 @@ fn sort_dunder_all(checker: &Checker, target: &ast::Expr, node: &ast::Expr) {
         return;
     }
 
-    // We're only interested in `__all__` in the global scope
     if !checker.semantic().current_scope().kind.is_module() {
         return;
     }

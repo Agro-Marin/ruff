@@ -224,8 +224,6 @@ impl<'a> SourceOrderVisitor<'a> for OutgoingCallsFinder<'a, '_> {
                 }
             }
             AnyNodeRef::Decorator(decorator) => {
-                // A bare `@foo` decorator with no parens is a runtime call. If
-                // the user wrote `@foo()` we'll pick it up via the `ExprCall`
                 if let Some(leaf) = CalleeLeaf::from_expr(&decorator.expression) {
                     self.record_callee(leaf);
                 }

@@ -75,7 +75,6 @@ pub(crate) fn invalid_function_name(
         return;
     }
 
-    // Ignore any functions that are explicitly `@override` or `@overload`.
     if visibility::is_override(decorator_list, semantic)
         || visibility::is_overload(decorator_list, semantic)
     {

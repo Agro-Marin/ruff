@@ -881,8 +881,6 @@ fn benchmark_pydantic_core_schema_dict(criterion: &mut Criterion) {
 
     setup_rayon();
 
-    // per union element for `_VT@dict`. Combined with `_KT@dict = Hashable`,
-    // `TypedDictSchema <= _VT@dict <= Hashable`. This benchmark tracks the cost until constraint
     let mut code = "from collections.abc import Hashable\nfrom typing import Literal, NotRequired, TypedDict\n\n"
         .to_string();
     for i in 0..NUM_CORE_SCHEMA_VARIANTS {

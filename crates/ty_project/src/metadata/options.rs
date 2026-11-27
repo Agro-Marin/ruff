@@ -2019,7 +2019,6 @@ fn build_module_glob_set(
     for glob in patterns {
         if let Err(error) = builder.add(glob) {
             if context == AnalysisOptionsContext::Override {
-                // Overrides inherit global patterns. Both sets were checked before merging.
                 return Err(None);
             }
             let diagnostic =
@@ -2334,7 +2333,6 @@ impl OverrideOptions {
 
         let files = IncludeExcludeFilter::new(include, exclude);
 
-        // Merge global rules with override rules, with override rules taking precedence
         let mut merged_rules = self.rules.clone().unwrap_or_default();
 
         if let Some(global_rules) = global_rules {

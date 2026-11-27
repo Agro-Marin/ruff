@@ -1173,7 +1173,6 @@ impl<'db, L: SolutionLimits> SolutionWalker<'db, L> {
                     path,
                     constraints,
                     &|_this, _storage, _path| {
-                        // will catch the failure when we fall through to the full family solution
                         satisfied.set(true);
                         ControlFlow::Continue(())
                     },
@@ -1248,13 +1247,11 @@ impl<'db, L: SolutionLimits> SolutionWalker<'db, L> {
                     },
                 )?;
 
-                // need to fall through and find individual solutions
                 if has_family_solution.into_inner() && !individual_solution_is_required.into_inner()
                 {
                     return ControlFlow::Continue(());
                 }
 
-                // didn't find any family solutions at all, we have to fall through and look for
                 self.pending.truncate(previously_pending);
             }
         }

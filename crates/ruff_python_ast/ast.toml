@@ -1,4 +1,3 @@
-#   type field uses a special syntax to describe the rust type:
 
 [Mod]
 anynode_is_label = "module"
@@ -191,7 +190,6 @@ doc = "See also [Continue](https://docs.python.org/3/library/ast.html#ast.Contin
 fields = []
 
 [Stmt.nodes.StmtIpyEscapeCommand]
-# TODO: remove crate:: prefix from IpyEscapeKind after it's auto generated
 doc = """An AST node used to represent a IPython escape command at the statement level.
 
 For example,

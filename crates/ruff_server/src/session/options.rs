@@ -51,7 +51,6 @@ pub(crate) struct GlobalOptions {
     #[serde(flatten)]
     client: ClientOptions,
 
-    // These settings are only needed for tracing, and are only read from the global configuration.
     #[serde(flatten)]
     pub(crate) tracing: TracingOptions,
 }

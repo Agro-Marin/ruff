@@ -354,7 +354,6 @@ impl<'a> FoldingRangeVisitor<'a> {
             let comment = &self.source[comment_range];
             let text = comment.strip_prefix('#').unwrap_or(comment).trim_start();
 
-            // Check if this is a comment line (but not a region marker)
             let is_non_region_comment =
                 !text.starts_with("region") && !text.starts_with("endregion");
 

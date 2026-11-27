@@ -133,7 +133,6 @@ pub(crate) fn boolean_default_value_positional_argument(
                 return;
             }
 
-            // Allow Boolean defaults in `@override` methods, since they're required to adhere to
             if visibility::is_override(decorator_list, checker.semantic()) {
                 return;
             }

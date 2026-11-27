@@ -1424,7 +1424,6 @@ impl<'db> FmtDetailed<'db> for DisplayRepresentation<'_, 'db> {
                     }
                     signatures => {
                         if !self.settings.multiline {
-                            // don't have a type for @overload (we just detect the decorator)
                             f.write_str("Overload")?;
                             f.write_char('[')?;
                         }
@@ -2061,7 +2060,6 @@ impl<'db> FmtDetailed<'db> for DisplayFunctionType<'_, 'db> {
             }
             signatures => {
                 if !settings.multiline {
-                    // don't have a type for @overload (we just detect the decorator)
                     f.write_str("Overload")?;
                     f.write_char('[')?;
                 }
@@ -2515,7 +2513,6 @@ impl<'db> FmtDetailed<'db> for DisplayCallableType<'_, 'db> {
             }
             signatures => {
                 if !self.settings.multiline {
-                    // don't have a type for @overload (we just detect the decorator)
                     f.write_str("Overload")?;
                     f.write_char('[')?;
                 }

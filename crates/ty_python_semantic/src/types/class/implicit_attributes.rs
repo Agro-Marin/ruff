@@ -151,7 +151,6 @@ impl<'db> StaticClassLiteral<'db> {
                 return true;
             };
 
-            // final evaluated type, which may be wrapped by other decorators like @cache.
             let function_node = method_def.node(&module);
             if initializer_only && !is_final_attribute_initializer(db, index, function_node) {
                 return false;

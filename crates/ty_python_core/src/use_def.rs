@@ -3483,7 +3483,6 @@ impl<'db> UseDefMapBuilder<'db> {
     > {
         let mut interned_ids_by_definition = Vec::with_capacity(definitions_by_definition.len());
 
-        // stable iteration here, where insertion order determines the generated interned IDs.
         let mut definitions_by_definition =
             definitions_by_definition.into_iter().collect::<Vec<_>>();
         definitions_by_definition.sort_unstable_by_key(|(definition, _)| *definition);

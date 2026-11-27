@@ -526,10 +526,8 @@ pub(crate) fn should_insert_blank_line_after_class_in_stub_file(
     let comments = context.comments();
     match preceding.as_stmt_class_def() {
         Some(class) if contains_only_an_ellipsis(&class.body, comments) => {
-            //     @decorator
             let preceding_has_decorators = !class.decorator_list.is_empty();
 
-            //     @decorator
             let following_is_class_without_only_ellipsis_or_has_decorators =
                 following.as_stmt_class_def().is_some_and(|following| {
                     !contains_only_an_ellipsis(&following.body, comments)
@@ -556,7 +554,6 @@ pub(crate) fn should_insert_blank_line_after_class_in_stub_file(
 
 /// Only a function to compute it lazily
 fn stub_suite_can_omit_empty_line(preceding: &Stmt, following: &Stmt, f: &PyFormatter) -> bool {
-    // @decorator
     let class_sequences_with_ellipsis_only = preceding
         .as_class_def_stmt()
         .is_some_and(|class| contains_only_an_ellipsis(&class.body, f.context().comments()))

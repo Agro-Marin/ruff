@@ -36,7 +36,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
         let env = self.program_environment();
         let db = self.db();
 
-        // - Would have all the generated methods included on the `NamedTupleLike` protocol
         let fallback = || {
             IntersectionType::from_elements(
                 db,

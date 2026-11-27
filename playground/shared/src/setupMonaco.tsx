@@ -54,7 +54,6 @@ export function setupMonaco(
 }
 
 function defineAyuThemes(monaco: Monaco) {
-  // Generated via `monaco-vscode-textmate-theme-converter`.
   monaco.editor.defineTheme("Ayu-Light", {
     inherit: false,
     base: "vs",
@@ -330,7 +329,6 @@ function defineAyuThemes(monaco: Monaco) {
     encodedTokensColors: [],
   });
 
-  // Generated via `monaco-vscode-textmate-theme-converter`.
   monaco.editor.defineTheme("Ayu-Dark", {
     inherit: false,
     base: "vs-dark",

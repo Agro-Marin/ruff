@@ -83,7 +83,6 @@ impl Serialize for SerializedMessages<'_> {
 
             let mut message_fingerprint = fingerprint(diagnostic, &location.path, 0);
 
-            // by adding in the previously generated one.
             while fingerprints.contains(&message_fingerprint) {
                 message_fingerprint = fingerprint(diagnostic, &location.path, message_fingerprint);
             }

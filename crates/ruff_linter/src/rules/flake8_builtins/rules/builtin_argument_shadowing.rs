@@ -83,7 +83,6 @@ pub(crate) fn builtin_argument_shadowing(checker: &Checker, parameter: &Paramete
         {
             return;
         }
-        // Ignore `@override` and `@overload` decorated functions.
         if checker
             .semantic()
             .current_statement()

@@ -5603,7 +5603,6 @@ pub(super) fn report_overridden_final_method<'db>(
 
     diagnostic.sub(sub);
 
-    // but you'd want to delete the `@my_property.deleter` as well as the getter and the setter,
     if let Type::FunctionLiteral(function) = subclass_type
         && function.contains_definition(db, subclass_definition)
     {

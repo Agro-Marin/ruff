@@ -455,8 +455,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             decorator_types_and_nodes.clear();
         }
 
-        // Check for `@final` applied to non-method functions.
-        // `@final` is only meaningful on methods and classes.
         if let Some(final_decorator) = final_decorator
             && !self
                 .index

@@ -124,7 +124,6 @@ fn matching_task_decorator<'a>(
 fn is_supported_task_decorator(decorator: &Decorator, semantic: &SemanticModel) -> bool {
     let expr = map_callable(&decorator.expression);
 
-    // `@task` or `@task()`.
     if semantic
         .resolve_qualified_name(expr)
         .is_some_and(|qn| matches!(qn.segments(), ["airflow", "decorators" | "sdk", "task"]))
@@ -132,7 +131,6 @@ fn is_supported_task_decorator(decorator: &Decorator, semantic: &SemanticModel) 
         return true;
     }
 
-    // `@task.<variant>` or `@task.<variant>()`. `task.sensor` is intentionally
     if let Expr::Attribute(ExprAttribute { value, attr, .. }) = expr {
         if !matches!(
             attr.as_str(),
@@ -261,7 +259,6 @@ fn build_fix(decorator: &Decorator, annotation_is_mapping: bool, checker: &Check
 
     let edit = match &decorator.expression {
         Expr::Call(call) => add_argument(kwarg, &call.arguments, checker.tokens()),
-        // Bare `@task` / `@task.branch` — convert to call form.
         other => Edit::insertion(format!("({kwarg})"), other.range().end()),
     };
 

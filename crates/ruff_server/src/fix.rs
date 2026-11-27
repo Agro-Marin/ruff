@@ -62,7 +62,6 @@ pub(crate) fn fix_all(
         None
     };
 
-    // If we simply generated the diagnostics with `check_path` and then applied fixes individually,
     let FixerResult {
         transformed,
         result,

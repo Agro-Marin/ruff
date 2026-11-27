@@ -457,7 +457,6 @@ pub struct Options {
     )]
     pub src: Option<Vec<String>>,
 
-    // Global Formatting options
     /// The line length to use when enforcing long-lines violations (like `E501`)
     /// and at which `isort` and the formatter prefers to wrap lines.
     ///
@@ -678,7 +677,6 @@ impl schemars::JsonSchema for DeprecatedTopLevelLintOptions {
     }
 }
 
-// global settings.
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[derive(
     Clone, Debug, PartialEq, Eq, Default, OptionsMetadata, CombineOptions, Serialize, Deserialize,

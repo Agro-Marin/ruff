@@ -348,7 +348,6 @@ impl<'db> ClassType<'db> {
                 }
             }
 
-            // Slot descriptors override abstract properties. Dataclass-generated slots can also
             abstract_methods.retain(|name, _| !class_literal.has_own_slot_descriptor(db, name));
         }
 

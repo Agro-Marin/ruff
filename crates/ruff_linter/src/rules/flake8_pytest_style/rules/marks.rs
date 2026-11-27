@@ -209,9 +209,7 @@ fn check_useless_usefixtures(checker: &Checker, decorator: &Decorator, marker: &
     }
 
     match &decorator.expression {
-        // @pytest.mark.usefixtures
         Expr::Attribute(..) => {}
-        // @pytest.mark.usefixtures(...)
         Expr::Call(ast::ExprCall {
             arguments: Arguments { args, keywords, .. },
             ..

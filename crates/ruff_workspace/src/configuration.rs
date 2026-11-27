@@ -173,7 +173,6 @@ impl ResolvedRuleSelection {
 
 #[derive(Debug, Default, Clone)]
 pub struct Configuration {
-    // Global options
     pub cache_dir: Option<PathBuf>,
     pub extend: Option<PathBuf>,
     pub fix: Option<bool>,
@@ -199,7 +198,6 @@ pub struct Configuration {
     pub target_version: Option<ast::PythonVersion>,
     pub per_file_target_version: Option<Vec<PerFileTargetVersion>>,
 
-    // Global formatting options
     pub line_length: Option<LineLength>,
     pub indent_width: Option<IndentWidth>,
 
@@ -690,7 +688,6 @@ pub struct LintConfiguration {
     pub extend_unsafe_fixes: Vec<UnresolvedRuleSelector>,
     pub extend_safe_fixes: Vec<UnresolvedRuleSelector>,
 
-    // Global lint settings
     pub allowed_confusables: Option<Vec<char>>,
     pub dummy_variable_rgx: Option<Regex>,
     pub external: Option<Vec<String>>,

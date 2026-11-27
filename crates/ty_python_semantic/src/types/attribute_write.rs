@@ -156,7 +156,6 @@ pub(super) fn attribute_setattr_member<'db>(
 ) -> PlaceAndQualifiers<'db> {
     let lookup_ty = frozen_dataclass_dispatch
         .map_or(object_ty, |dispatch| dispatch.receiver(db, env, object_ty));
-    // A generated frozen setter delegates with an explicit `super().__setattr__` call.
     let policy = if matches!(lookup_ty, Type::BoundSuper(_)) {
         MemberLookupPolicy::MRO_NO_OBJECT_FALLBACK
     } else {

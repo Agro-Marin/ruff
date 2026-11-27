@@ -70,7 +70,6 @@ repos:
           https://raw.githubusercontent.com/SchemaStore/schemastore/a1bfb2b17627062b6a938153c065cb58baef6fe7/src/schemas/json/github-workflow.json
         priority: 0
 
-  # Some additional configuration for `actionlint` can be found in `.github/actionlint.yaml`.
   - repo: https://github.com/rhysd/actionlint
     rev: 914e7df21a07ef503a81201c76d2b11c789d3fca # frozen: v1.7.12
     hooks:
@@ -79,13 +78,10 @@ repos:
           # To run *just* this hook, use `uv run --only-group dev --locked prek run actionlint --all-files --hook-stage=manual`.
           - manual
         args:
-          - "-ignore=SC2129" # ignorable stylistic lint from shellcheck
-          - "-ignore=SC2016" # another shellcheck lint: seems to have false positives?
+          - "-ignore=SC2129"
+          - "-ignore=SC2016"
         language: golang
         additional_dependencies:
-          # actionlint has a shellcheck integration which extracts shell scripts in `run:` steps from GitHub Actions
-          # and checks these with shellcheck. This is arguably its most useful feature,
-          # but the integration only works if shellcheck is installed
           - "github.com/wasilibs/go-shellcheck/cmd/shellcheck@v0.11.1"
         priority: 0
 

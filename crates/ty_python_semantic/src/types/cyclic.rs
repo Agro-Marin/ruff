@@ -94,7 +94,6 @@ impl<'db> Type<'db> {
     #[inline(always)]
     fn recursive_identity(self, db: &'db dyn Db) -> Option<TypeIdentity<'db>> {
         match self {
-            // We can create a self-referential function type: e.g. `def f(x: "TypeOf[f]"): reveal_type(x)`
             Type::FunctionLiteral(function) => {
                 Some(TypeIdentity::FunctionLiteral(function.literal(db)))
             }

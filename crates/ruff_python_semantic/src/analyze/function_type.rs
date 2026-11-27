@@ -99,7 +99,6 @@ fn is_static_method(
         return true;
     }
 
-    // `@someproperty.setter`. Instead, match on the last element.
     if !staticmethod_decorators.is_empty() {
         if UnqualifiedName::from_expr(decorator).is_some_and(|name| {
             name.segments().last().is_some_and(|tail| {
@@ -138,7 +137,6 @@ pub fn is_class_method(
         return true;
     }
 
-    // `@someproperty.setter`. Instead, match on the last element.
     if !classmethod_decorators.is_empty() {
         if UnqualifiedName::from_expr(decorator).is_some_and(|name| {
             name.segments().last().is_some_and(|tail| {

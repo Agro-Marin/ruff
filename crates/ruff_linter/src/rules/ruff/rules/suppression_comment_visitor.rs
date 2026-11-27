@@ -111,8 +111,6 @@ where
             let line_position = CommentLinePosition::for_range(range, self.locator.contents());
             if range.start() >= node_end {
                 let between = TextRange::new(node_end, range.start());
-                //     pass # fmt: skip
-                // We want to make sure that `# fmt: skip` is associated with the `pass` statement,
                 if SimpleTokenizer::new(self.locator.contents(), between)
                     .skip_trivia()
                     .next()
@@ -122,7 +120,6 @@ where
                 }
                 //     # fmt: off
                 //     # fmt: on
-                // We want `# fmt: on` to be considered a trailing comment of `func(x)` instead of a leading comment
                 if line_position.is_own_line() {
                     let comment_indent =
                         comment_indentation_after(node, range, self.locator.contents());

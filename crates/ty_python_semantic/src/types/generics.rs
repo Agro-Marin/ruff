@@ -2909,9 +2909,6 @@ impl<'db, 'c> SpecializationBuilder<'db, 'c> {
             );
         }
 
-        // so the invariant `_VT@dict = CoreSchema` constraint expands to many lower-bound
-        // constraints; combined with `_KT@dict = Hashable`, PathAssignments/SequentMap traversal
-        // derives cross-typevar facts such as `TypedDictSchema <= _VT@dict <= Hashable`.
         let mut inference = match project(self, choose) {
             Ok(SolutionProjection::Unsatisfiable) => return Err(()),
             Ok(SolutionProjection::Unconstrained) => {

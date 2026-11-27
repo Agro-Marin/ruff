@@ -94,7 +94,6 @@ pub(crate) fn ends_with_punctuation(checker: &Checker, docstring: &Docstring) {
         let trimmed = line.trim_end();
 
         if trimmed.ends_with('\\') {
-            // "
             return;
         }
 

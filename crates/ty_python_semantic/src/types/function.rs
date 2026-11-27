@@ -943,7 +943,6 @@ impl<'db> FunctionLiteral<'db> {
     /// a cross-module dependency directly on the full AST which will lead to cache
     /// over-invalidation.
     fn signature(self, db: &'db dyn Db) -> CallableSignature<'db> {
-        // We only include an implementation (i.e. a definition not decorated with `@overload`) if
         let (overloads, implementation) = self.overloads_and_implementation(db);
         if let Some(implementation) = implementation
             && overloads.is_empty()
@@ -1704,11 +1703,12 @@ impl<'db> FunctionType<'db> {
         };
 
         if !overload.return_ty.is_unknown()
-            || !db.analysis_settings(self.file(db)).return_type_inference.is_active()
+            || !db
+                .analysis_settings(self.file(db))
+                .return_type_inference
+                .is_active()
             || self.has_explicit_return_annotation(db)
             || self.file(db).is_stub(db)
-            // An (invalid) function with a single `@overload` could still fall through the filter above.
-            // We should not replace the `@overload`'s return type with the inferred type from the implementation.
             || !self.overloads_and_implementation(db).0.is_empty()
         {
             return Cow::Borrowed(signature);

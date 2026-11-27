@@ -547,9 +547,6 @@ pub(crate) fn imported_symbol<'db>(
         debug_assert_eq!(file.program(db), env.program(db));
     }
 
-    // If it's not found in the global scope, check if it's present as an instance on
-    //   it isn't available as a global from inside the module
-    //   available as globals from inside the module.
     file.map_or_default(|file| {
         let requires_explicit_reexport = requires_explicit_reexport.unwrap_or_else(|| {
             if file.file(db).is_stub(db) {
@@ -1365,7 +1362,6 @@ pub(crate) fn place_by_id<'db>(
                 )
             });
 
-            // Module-level globals can be mutated externally, and strict application of the
             let is_module_global = scope.node(db).scope_kind().is_module();
 
             let scope_has_private_visibility = scope.scope(db).visibility().is_private();
@@ -1472,7 +1468,6 @@ fn symbol_impl<'db>(
                     return Place::bound(Type::string_literal(db, platform.as_str())).into();
                 }
                 crate::PythonPlatform::All => {
-                    // Fall through to the looked up type
                 }
             },
             _ => {}
@@ -1486,7 +1481,6 @@ fn symbol_impl<'db>(
                 return Place::bound(Type::string_literal(db, os_name)).into();
             }
             crate::PythonPlatform::All => {
-                // Fall through to the looked up type
             }
         }
     }
@@ -2121,7 +2115,6 @@ fn is_non_exported<'db>(
     requires_explicit_reexport.is_yes() && !is_reexported(db, declaration)
 }
 
-// exported via `__all__`.
 fn is_reexported(db: &dyn Db, definition: Definition<'_>) -> bool {
     if definition.is_reexported(db) {
         return true;
@@ -2291,7 +2284,6 @@ pub(crate) mod implicit_globals {
             )
             .into(),
 
-            // if at least one global symbol is annotated in the module.
             "__annotate__" if env.python_version(db) >= PythonVersion::PY314 => {
                 let signature = Signature::new(
                     Parameters::standard([Parameter::positional_only(Some(Name::new_static(
@@ -2399,7 +2391,6 @@ pub(crate) mod implicit_globals {
         db: &'db dyn Db,
         file: ProgramFile<'db>,
     ) -> impl Iterator<Item = (Name, Type<'db>)> + 'db {
-        // Special-cased implicit globals that are not in `module_type_symbols`
         let special_cased = ["__builtins__", "__debug__", "__warningregistry__"]
             .into_iter()
             .map(Name::new_static);

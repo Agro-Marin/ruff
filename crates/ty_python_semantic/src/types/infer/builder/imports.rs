@@ -349,7 +349,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 let inferred = infer_definition_types(self.db(), *definition);
                 if definition.kind(db).as_star_import().is_none() {
                     for (_, ty) in inferred.bindings(*definition) {
-                        // decision, and do not follow values re-exported from unrelated modules.
                         if self.context.is_lint_enabled(&MISSING_DIRECT_DEPENDENCY)
                             && let Some(parent) = module
                         {
@@ -495,7 +494,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             &alias.name.id
         };
 
-        // at the module-global scope, where the import definition itself is one of the
         let skip_self_referential_member_lookup = Some(self.file())
             == module_literal.module(db).file(db)
             && self.scope().file_scope_id(db).is_global();

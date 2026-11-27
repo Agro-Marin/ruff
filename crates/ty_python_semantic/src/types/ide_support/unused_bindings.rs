@@ -189,7 +189,6 @@ pub fn unused_bindings(db: &dyn Db, file: ProgramFile<'_>) -> Box<[UnusedBinding
                 continue;
             }
 
-            // Global and nonlocal assignments target bindings from outer scopes.
             let is_local_comprehension_named_expression = scope_kind == ScopeKind::Comprehension
                 && matches!(kind, DefinitionKind::NamedExpression(_))
                 && comprehension_named_expression_is_local(index, file_scope_id, name);

@@ -205,7 +205,6 @@ fn remove_comment_fix(suppression: &Suppression, source: &str, tokens: &Tokens) 
 
         if indentation_at_offset(comment_start, source).is_some() {
             // Removing `# ty: ignore` from `# ty: ignore # fmt: off` would promote
-            // `# fmt: off` to the primary own-line comment.
             return Fix::unsafe_edit(edit);
         }
 

@@ -122,7 +122,6 @@ fn match_consecutive_assignments<'a>(
     let stmt = binding.statement(semantic)?;
     let stmt_a = VarToVarAssignment::from_stmt(stmt)?;
 
-    // For the global scope, use the module body; otherwise, find the parent statement.
     let suite = if scope_id.is_global() {
         traversal::EnclosingSuite::new(semantic.definitions.python_ast()?, stmt.into())
     } else {

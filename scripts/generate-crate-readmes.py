@@ -128,7 +128,6 @@ def main() -> None:
     )
     readme_path.write_text(readme_content)
 
-    # Track all generated README paths for formatting at the end.
     generated_paths = [readme_path]
 
     for workspace_member in content["workspace_members"]:
@@ -145,7 +144,6 @@ def main() -> None:
         member_readme_path = crate_dir / "README.md"
 
         handwritten_readme = None
-        # Preserve hand-written crate READMEs unless they opt in to a generated versioning section.
         if member_readme_path.exists():
             existing_content = member_readme_path.read_text()
             if not existing_content.startswith(GENERATED_HEADER):
@@ -183,7 +181,6 @@ def main() -> None:
 
         print(f"Generated README for {name}")
 
-    # Format all generated READMEs once at the end.
     subprocess.run(
         ["npx", "--yes", f"prettier@{PRETTIER_VERSION}", "--write"]
         + [str(path) for path in generated_paths],

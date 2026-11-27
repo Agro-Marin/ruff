@@ -16,7 +16,6 @@ impl SuppressionKind {
     /// Attempts to identify the `kind` of a `comment`.
     /// The comment string should be the full line with the comment on it.
     pub fn from_comment(comment: &str) -> Option<Self> {
-        // Match against `# fmt: on`, `# fmt: off`, `# yapf: disable`, and `# yapf: enable`, which
         let trimmed = comment
             .strip_prefix('#')
             .unwrap_or(comment)
@@ -36,8 +35,6 @@ impl SuppressionKind {
             }
         }
 
-        // Search for `# fmt: skip` comments, which can be interspersed with other comments (e.g.,
-        // `# fmt: skip # noqa: E501`).
         for segment in comment.split('#') {
             let trimmed = segment.trim_whitespace();
             if let Some(command) = trimmed.strip_prefix("fmt:") {

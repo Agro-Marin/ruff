@@ -425,7 +425,6 @@ impl<'db> SemanticModel<'db> {
             }
 
             node => match node.as_expr_ref() {
-                // fall back to the global scope.
                 None => Some(FileScopeId::global()),
                 Some(expr) => index.try_expression_scope_id(&expr),
             },

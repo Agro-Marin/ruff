@@ -381,7 +381,6 @@ fn extract_typeddict_name<'a>(stmt: &'a Stmt, semantic: &SemanticModel) -> Optio
                 None
             }
         }
-        // which is an accepted alternative way of creating a TypedDict type:
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
             let [target] = targets.as_slice() else {
                 return None;

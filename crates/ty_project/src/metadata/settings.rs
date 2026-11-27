@@ -156,7 +156,6 @@ pub(crate) fn file_settings(db: &dyn Db, file: File) -> FileSettings {
         .filter(|over| over.matches_file(path));
 
     let Some(first) = matching_overrides.next() else {
-        // If the file matches no override, it uses the global settings.
         return FileSettings::Global;
     };
 

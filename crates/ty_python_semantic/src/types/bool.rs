@@ -120,7 +120,6 @@ impl<'db> Type<'db> {
                     Ok(tuple_spec.truthiness())
                 }
 
-                // We only consider `__len__` for tuples and `@final` types,
                 Err(CallDunderError::MethodNotAvailable)
                     if let Type::NominalInstance(instance) = self
                         && instance.class(db, env).is_final(db) =>
@@ -144,7 +143,6 @@ impl<'db> Type<'db> {
                                 Ok(Truthiness::Ambiguous)
                             }
                         }
-                        // if a `@final` type does not define `__bool__` or `__len__`, it is always truthy
                         Err(CallDunderError::MethodNotAvailable) => Ok(Truthiness::AlwaysTrue),
                         Err(_) => Ok(Truthiness::Ambiguous),
                     }

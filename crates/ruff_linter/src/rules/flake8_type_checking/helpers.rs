@@ -195,9 +195,7 @@ fn decorator_runtime_semantics(
     for decorator in decorator_list {
         let expression = map_callable(&decorator.expression);
         match semantic
-            // @app.get(...)
             .resolve_qualified_name(expression)
-            // @app.get(...)
             .or_else(|| analyze::typing::resolve_assignment(expression, semantic))
             .and_then(|qualified_name| {
                 decorators.iter().find(|(decorator, ..)| {
@@ -227,7 +225,6 @@ pub(crate) fn is_dataclass_meta_annotation(annotation: &Expr, semantic: &Semanti
         return false;
     }
 
-    // Determine whether the assignment is in a `@dataclass` class definition.
     if let ScopeKind::Class(class_def) = semantic.current_scope().kind {
         if class_def.decorator_list.iter().any(|decorator| {
             semantic.matches_qualified_name(

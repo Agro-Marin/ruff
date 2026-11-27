@@ -68,8 +68,6 @@ impl Violation for BuiltinOpen {
 }
 
 pub(crate) fn builtin_open(checker: &Checker, call: &ExprCall, segments: &[&str]) {
-    //   encoding=None, 3
-    // Path.open(mode='r', buffering=-1, encoding=None, errors=None, newline=None)
     let file_arg = call.arguments.find_argument_value("file", 0);
 
     if call

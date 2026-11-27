@@ -299,9 +299,6 @@ impl KnownClass {
     /// depends on its spec.
     pub(crate) const fn bool(self) -> Option<Truthiness> {
         match self {
-            // class is `@final`.
-            // E.g. `ModuleType.__bool__` always returns `True`, but `ModuleType` is not `@final`.
-            // Equally, `range` is `@final`, but its `__bool__` method can return `False`.
             Self::EllipsisType
             | Self::NoDefaultType
             | Self::MethodType
@@ -2135,7 +2132,6 @@ impl KnownClass {
                 // @deprecated("message")
                 // @deprecated("message", category = DeprecationWarning, stacklevel = 1)
                 let [Some(message), ..] = overload.parameter_types() else {
-                    // Checking in Type::bindings will complain about this for us
                     return;
                 };
 

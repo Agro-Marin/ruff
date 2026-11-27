@@ -682,7 +682,6 @@ fn explicit_path_overrides_exclude() -> anyhow::Result<()> {
         ),
     ])?;
 
-    // dist is excluded by default and `tests/generated` is excluded in the project, so only src/main.py should be checked
     assert_cmd_snapshot!(case.command(), @"
     success: false
     exit_code: 1
@@ -1219,7 +1218,6 @@ fn invalid_exclude_pattern() -> anyhow::Result<()> {
 
 #[test]
 fn response_files_preserve_literal_at_paths() -> anyhow::Result<()> {
-    // Preserve existing @-prefixed paths so filenames from integrations cannot select unrelated files.
     let case = CliTest::with_files([
         ("@list.py", "value: int = 'literal'"),
         ("list.py", "other.py\n"),

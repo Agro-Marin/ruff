@@ -80,7 +80,6 @@ pub(crate) fn enumerate_for_loop(checker: &Checker, for_stmt: &ast::StmtFor) {
                 continue;
             }
 
-            // If the variable is global or nonlocal, ignore it.
             if initial_binding.is_global() || initial_binding.is_nonlocal() {
                 continue;
             }

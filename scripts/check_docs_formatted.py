@@ -282,12 +282,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     static_docs = [Path("docs") / f for f in os.listdir("docs") if f.endswith(".md")]
 
-    # Check rules generated
     if not Path("docs/rules").exists():
         print("Please generate rules first.")
         return 1
 
-    # Get generated rules
     generated_docs = [
         Path("docs/rules") / f for f in os.listdir("docs/rules") if f.endswith(".md")
     ]

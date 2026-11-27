@@ -770,7 +770,6 @@ fn write_suppressed_clause(
         ]
     )?;
 
-    // starting at the _colon_ and ending at the `# fmt: skip`
     header.visit(&mut |child| {
         for comment in comments.leading_trailing(child) {
             comment.mark_formatted();

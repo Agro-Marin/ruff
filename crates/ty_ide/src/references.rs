@@ -60,11 +60,9 @@ pub enum ReferencesMode {
 impl ReferencesMode {
     pub(super) fn to_import_alias_resolution(self) -> ImportAliasResolution {
         match self {
-            // @my_deprecated
             Self::References | Self::ReferencesSkipDeclaration => {
                 ImportAliasResolution::ResolveAliases
             }
-            // @my_deprecated
             Self::Rename | Self::RenameMultiFile | Self::DocumentHighlights => {
                 ImportAliasResolution::PreserveAliases
             }
@@ -480,7 +478,6 @@ fn fixture_reference_resolution_for_definition<'db>(
             DefinitionKind::Assignment(_) | DefinitionKind::AnnotatedAssignment(_)
         ) && definition.file(db).is_stub(db)) =>
         {
-            // @pytest.fixture(name="public_name")
             fixture_exposures_for_definition(db, definition)
                 .iter()
                 .filter(|exposure| {

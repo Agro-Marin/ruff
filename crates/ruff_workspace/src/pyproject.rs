@@ -127,7 +127,6 @@ fn check_required_version(value: &toml::de::DeTable, table_path: &[&str]) -> Res
         return Ok(());
     };
 
-    // If it doesn't parse, we just fall through to normal parsing; it will give a nicer error message.
     if let Ok(required_version) = required_version.parse::<RequiredVersion>() {
         validate_required_version(&required_version)?;
     }

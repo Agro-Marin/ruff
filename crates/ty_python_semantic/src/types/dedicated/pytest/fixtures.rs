@@ -666,8 +666,6 @@ impl<'db, 'ast> FixtureRequestContext<'db, 'ast> {
         let function_definition = index.expect_single_definition(function_ref);
         let function = function_ref.node(module);
 
-        // @pytest.fixture
-        // @pytest.fixture
         let is_fixture_dependency = !function.decorator_list.is_empty()
             && fixture_declaration(db, function_definition).is_some();
 
@@ -1253,9 +1251,6 @@ pub(super) fn fixture_declaration<'db>(
             inference.expression_type(first_decorator),
             Some(Type::ClassLiteral(class)) if class.is_known(db, KnownClass::Staticmethod)
         ) {
-        //     @staticmethod
-        //     @fixture
-        // Accessing `LegacyTmpdirPlugin.tmpdir` invokes the `@staticmethod` descriptor and exposes
         let fixture_decorator = function.decorator_list.get(1)?;
         &fixture_decorator.expression
     } else {

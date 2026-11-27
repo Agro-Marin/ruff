@@ -590,7 +590,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                             },
                         )
                     }
-                    // For bounded TypeVars or unconstrained TypeVars, fall through to the default handling.
                     _ => self.infer_binary_dunder(state, left_ty, op, right_ty),
                 }
             }
@@ -610,7 +609,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                             },
                         )
                     }
-                    // For bounded TypeVars or unconstrained TypeVars, fall through to the default handling.
                     _ => self.infer_binary_dunder(state, left_ty, op, right_ty),
                 }
             }
@@ -630,7 +628,6 @@ impl<'db> TypeInferenceBuilder<'db, '_> {
                             },
                         )
                     }
-                    // For bounded TypeVars or unconstrained TypeVars, fall through to the default handling.
                     _ => self.infer_binary_dunder(state, left_ty, op, right_ty),
                 }
             }

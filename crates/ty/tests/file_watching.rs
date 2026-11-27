@@ -2672,7 +2672,6 @@ mod unix {
             std::fs::write(baz_original.as_std_path(), "def baz(): ...")
                 .context("Failed to write baz.py")?;
 
-            // Symlink the site packages in the venv to the global site packages
             let venv_site_packages =
                 context.join_project_path(".venv/lib/python3.12/site-packages");
             std::fs::create_dir_all(venv_site_packages.parent().unwrap())

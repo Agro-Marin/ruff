@@ -1226,8 +1226,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             ),
         );
 
-        //       @property
-        //       @property
         if is_materialized
             && (target_alias
                 .specialization(db)
@@ -1749,8 +1747,6 @@ impl<'db> ProtocolInstanceType<'db> {
                 SubclassOfType::from_protocol(self)
             }
 
-            //     reveal_type(type(x))                 # mypy: "type[def (builtins.int) -> builtins.str]"
-            //     reveal_type(type(x).__call__)        # mypy: "def (*args: Any, **kwds: Any) -> Any"
             Protocol::Synthesized(_) => KnownClass::Type.to_instance(db, env),
         }
     }

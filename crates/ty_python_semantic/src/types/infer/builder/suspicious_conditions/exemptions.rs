@@ -210,7 +210,6 @@ impl RedundantConditionContext {
                 }
             }
 
-            // For these checks, fall through to the exemptions below
             ConditionKind::ContainsWalrus | ConditionKind::Value => {}
         }
 

@@ -404,7 +404,6 @@ impl get_size2::GetSize for StarImportPlaceholderPredicate<'_> {}
 
 impl<'db> StarImportPlaceholderPredicate<'db> {
     pub fn scope(self, db: &'db dyn Db) -> ScopeId<'db> {
-        // valid `*`-import definitions can only take place in the global scope.
         global_scope(db, self.importing_file(db))
     }
 }

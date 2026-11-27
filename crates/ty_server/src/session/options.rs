@@ -481,8 +481,6 @@ impl DiagnosticMode {
 
 impl Combine for DiagnosticMode {
     fn combine_with(&mut self, other: Self) {
-        // Diagnostic mode is a global option but as it can be updated without a server restart,
-        // `workspace` in the global options.
         if other != DiagnosticMode::default() {
             *self = other;
         }

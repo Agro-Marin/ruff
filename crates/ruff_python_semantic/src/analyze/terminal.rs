@@ -120,12 +120,10 @@ impl Terminal {
                     }));
 
                     if orelse.is_empty() {
-                        // If there's no `else`, we may fall through, so only mark that this can't
                         if branch_terminal.has_any_return() {
                             terminal = terminal.and_then(Terminal::ConditionalReturn);
                         }
                     } else {
-                        // If there's an `else`, we won't fall through. If all the handlers and
                         terminal = terminal.and_then(
                             branch_terminal.branch(Terminal::from_body(orelse, semantic)),
                         );

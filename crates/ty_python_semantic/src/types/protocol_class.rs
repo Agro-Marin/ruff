@@ -2733,7 +2733,6 @@ impl<'c, 'db> TypeRelationChecker<'_, 'c, 'db> {
             return self.never();
         };
 
-        // method on a class object names instances of that class: a `@classmethod` returning
         let protocol_self_binding_ty = ty.literal_fallback_instance(db, env).unwrap_or(ty);
         if !member.is_method() {
             return required

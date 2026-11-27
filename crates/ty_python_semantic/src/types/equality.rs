@@ -235,7 +235,6 @@ fn evaluate_type_comparison<'db>(
             .is_some_and(|narrowed| {
                 equality_truthiness(db, env, narrowed, *constraint, soundness_policy)
                     == Truthiness::AlwaysTrue
-                    // Equal values need not have the same type: `False == 0` does not make
                     && IntersectionBuilder::new(db, env)
                         .add_positive(left)
                         .add_positive(narrowed)

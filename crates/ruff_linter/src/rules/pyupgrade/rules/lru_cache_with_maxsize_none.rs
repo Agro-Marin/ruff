@@ -79,7 +79,6 @@ pub(crate) fn lru_cache_with_maxsize_none(checker: &Checker, decorator_list: &[D
             continue;
         };
 
-        // Look for, e.g., `import functools; @functools.lru_cache(maxsize=None)`.
         if args.is_empty()
             && keywords.len() == 1
             && checker

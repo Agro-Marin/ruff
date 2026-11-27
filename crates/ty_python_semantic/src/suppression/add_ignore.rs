@@ -218,7 +218,6 @@ fn add_end_of_line_suppression(source: &str, codes: &[LintName], line_end: TextS
     Fix::safe_edit(if trailing_whitespace_len == TextSize::ZERO {
         Edit::insertion(insertion, line_end)
     } else {
-        // `expr # fmt: off<trailing_whitespace>`
         Edit::replacement(insertion, line_end - trailing_whitespace_len, line_end)
     })
 }

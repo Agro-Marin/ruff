@@ -348,7 +348,6 @@ fn foreign_key_id_type<'db>(
         return None;
     }
 
-    // resulting ID type: for example, an integer primary key becomes `int | None`.
     let related_model = field_ty
         .member(db, env, "related_model")
         .place

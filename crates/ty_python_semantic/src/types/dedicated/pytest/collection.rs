@@ -378,7 +378,6 @@ fn pytest_test_class_kind<'db>(
         return None;
     }
 
-    // metaclass; @abstractmethod alone does not make a class abstract at runtime.
     if Type::ClassLiteral(class).is_subtype_of(db, &env, KnownClass::ABCMeta.to_instance(db, &env))
         && class
             .identity_specialization(db)

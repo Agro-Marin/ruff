@@ -1972,8 +1972,6 @@ impl SysPrefixPath {
     fn from_executable_home_path_real(system: &dyn System, path: &PythonHomePath) -> Option<Self> {
         let mut home_path = path.0.clone();
 
-        // `/opt/homebrew/opt/python@3.13/bin` and indeed if you look for `../lib/python3.13/`
-        // However if you look at `/opt/homebrew/opt/python@3.13/bin/python3.13` (the actual
         if let Ok(dir) = system.read_directory(&home_path) {
             for entry_result in dir {
                 let Ok(entry) = entry_result else {

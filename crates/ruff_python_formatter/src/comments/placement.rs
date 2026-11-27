@@ -85,8 +85,6 @@ fn handle_parenthesized_comment<'a>(
         return CommentPlacement::Default(comment);
     };
 
-    // @deco
-
     let range = TextRange::new(preceding.end(), comment.start());
     let tokenizer = SimpleTokenizer::new(source, range);
     if tokenizer
