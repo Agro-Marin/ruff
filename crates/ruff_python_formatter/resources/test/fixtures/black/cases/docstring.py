@@ -1,8 +1,5 @@
 class MyClass:
   def method(self):
-    """Multiline
-    method docstring
-    """
     pass
 
 

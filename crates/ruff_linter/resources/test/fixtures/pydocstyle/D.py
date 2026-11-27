@@ -32,11 +32,9 @@ class class_:
 
     @overload
     def overloaded_method(self, a: str) -> str:
-        """Foo bar documentation."""
         ...
 
     def overloaded_method(a):
-        """Foo bar documentation."""
         return str(a)
 
     expect('overloaded_method',
@@ -49,7 +47,6 @@ class class_:
 
     @property
     def foo(self):
-        """The foo of the thing, which isn't in imperative mood."""
         return "hello"
 
     @expect('D102: Missing docstring in public method')

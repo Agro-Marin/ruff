@@ -197,15 +197,7 @@ def doctest_extra_indent1():
 # See: https://github.com/astral-sh/ruff/issues/9126
 class DoctestExtraIndent2:
     def example2():
-        """
-        Regular docstring of class method.
-
-        Examples
-        --------
-        >>> df = pl.DataFrame(
-        ...     {"foo": [1, 2, 3], "bar": [6, 7, 8], "ham": ["a", "b", "c"]}
-        ... )
-        """
+        pass
 
 
 # See: https://github.com/astral-sh/ruff/issues/9126

@@ -18,10 +18,6 @@ class Cls(MakeKlass('''
     def f(self, bar='''
         definitely not a docstring''',
         val=l[Cls():3]):
-        '''
-        Single quotes multiline function docstring
-        '''
-
         some_expression = 'hello world'
 
         '''

@@ -181,11 +181,9 @@ from typing import Protocol
 
 class Repro(Protocol):
     def func(self) -> str:
-        """Docstring"""
         ...
 
     def impl(self) -> str:
-        """Docstring"""
         return self.func()
 
 
@@ -195,35 +193,28 @@ import abc
 class Repro:
     @abc.abstractmethod
     def func(self) -> str:
-        """Docstring"""
         ...
 
     def impl(self) -> str:
-        """Docstring"""
         return self.func()
 
     def stub(self) -> str:
-        """Docstring"""
         ...
 
 
 class Repro(Protocol[int]):
     def func(self) -> str:
-        """Docstring"""
         ...
 
     def impl(self) -> str:
-        """Docstring"""
         return self.func()
 
 
 class Repro[int](Protocol):
     def func(self) -> str:
-        """Docstring"""
         ...
 
     def impl(self) -> str:
-        """Docstring"""
         return self.func()
 
 

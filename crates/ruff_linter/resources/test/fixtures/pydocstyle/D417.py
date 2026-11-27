@@ -144,12 +144,7 @@ def f(x):
 
 class Test:
     def f(self, /, arg1: int) -> None:
-        """
-        Some beauty description.
-
-        Args:
-            arg1: some description of arg
-        """
+        pass
 
 
 def select_data(

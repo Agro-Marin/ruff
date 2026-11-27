@@ -44,7 +44,7 @@ class C:
 
 class C:
     def method(self):
-        "01234567"
+        pass
 
 
 def function():

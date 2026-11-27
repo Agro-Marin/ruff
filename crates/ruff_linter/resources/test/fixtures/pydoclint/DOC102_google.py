@@ -139,55 +139,22 @@ def process_order(order_id):
 class Calculator:
     # DOC102
     def __init__(self):
-        """
-        Initializes the calculator with an initial value.
-
-        Args:
-            value (int, optional): The initial value of the calculator. Defaults to 0.
-        """
         self.value = value
 
     # DOC102
     def add(self, number2):
-        """
-        Adds a number to the current value.
-
-        Args:
-            number (int or float): The number to add to the current value.
-
-        Returns:
-            int or float: The updated value after addition.
-        """
         self.value += number + number2
         return self.value
 
     # DOC102
     @classmethod
     def from_string(cls):
-        """
-        Creates a Calculator instance from a string representation of a number.
-
-        Args:
-            value_str (str): The string representing the initial value.
-
-        Returns:
-            Calculator: A new instance of Calculator initialized with the value from the string.
-        """
         value = float(value_str)
         return cls(value)
 
     # DOC102
     @staticmethod
     def is_valid_number():
-        """
-        Checks if a given number is valid (int or float).
-
-        Args:
-            number (any): The value to check.
-
-        Returns:
-            bool: True if the number is valid, False otherwise.
-        """
         return isinstance(number, (int, float))
 
 # OK

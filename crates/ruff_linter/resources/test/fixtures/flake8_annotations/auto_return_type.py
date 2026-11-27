@@ -160,7 +160,7 @@ class Foo(abc.ABC):
 
     @abc.abstractmethod
     def method(self):
-        """Docstring."""
+        pass
 
     @abc.abstractmethod
     def method(self):

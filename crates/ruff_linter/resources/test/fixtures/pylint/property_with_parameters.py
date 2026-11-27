@@ -20,12 +20,12 @@ class MyClassBase(metaclass=ABCMeta):
     @property
     @abstractmethod
     def example(self):
-        """Getter."""
+        pass
 
     @example.setter
     @abstractmethod
     def example(self, value):
-        """Setter."""
+        pass
 
 
 class VariadicParameters:

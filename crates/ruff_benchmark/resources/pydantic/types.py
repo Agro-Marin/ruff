@@ -608,9 +608,6 @@ class PaymentCardNumber(str):
 
     @classmethod
     def validate_luhn_check_digit(cls, card_number: str) -> str:
-        """
-        Based on: https://en.wikipedia.org/wiki/Luhn_algorithm
-        """
         sum_ = int(card_number[-1])
         length = len(card_number)
         parity = length % 2
@@ -628,10 +625,6 @@ class PaymentCardNumber(str):
 
     @staticmethod
     def validate_brand(card_number: str) -> PaymentCardBrand:
-        """
-        Validate length based on BIN for major brands:
-        https://en.wikipedia.org/wiki/Payment_card_number#Issuer_identification_number_(IIN)
-        """
         if card_number[0] == '4':
             brand = PaymentCardBrand.visa
         elif 51 <= int(card_number[:2]) <= 55:

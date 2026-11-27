@@ -92,10 +92,9 @@ class C:
         ...
 
     def f(self, x):
-        """Docstring."""
+        pass
 
     def f(self, x):
-        """Docstring."""
         ...
 
     def f(self, x):
@@ -124,7 +123,6 @@ class C:
         raise NotImplementedError(msg)
 
     def f(self, x, y):
-        """Docstring."""
         msg = f"{x}..."
         raise NotImplementedError(msg)
 
@@ -253,7 +251,6 @@ class C:
 ###
 class C:
     def f(self, x, y):
-        """Docstring."""
         msg = t"{x}..."
         raise NotImplementedError(msg)
     

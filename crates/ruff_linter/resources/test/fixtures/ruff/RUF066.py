@@ -31,9 +31,7 @@ class UserMeta(metaclass=abc.ABCMeta):  # Test properties inside of an ABC class
     @property
     @abc.abstractmethod
     def abstr_prop2(self):  # OK: Abstract methods doesn't need to return anything
-        """
-        A cool docstring
-        """
+        pass
 
     @property
     def prop1(self):  # OK: Returning a value

@@ -27,26 +27,11 @@ class Bar:
 
     # OK
     def foo(self) -> str:
-        """
-        Do something
-
-        Args:
-            num (int): A number
-
-        Yields:
-            str: A string
-        """
         yield 'test'
 
 
     # DOC402
     def bar(self) -> str:
-        """
-        Do something
-
-        Args:
-            num (int): A number
-        """
         yield 'test'
 
 

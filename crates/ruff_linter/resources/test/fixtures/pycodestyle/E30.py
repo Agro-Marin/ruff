@@ -318,7 +318,6 @@ async def function(data: None) -> None:
 # no error
 class Class:
     def method():
-        """docstring"""
         # comment
         def function():
             pass

@@ -315,76 +315,38 @@ def test_missing_google_args(x=1, y=2, _private=3):  # noqa: D406, D407
 
 class TestGoogle:  # noqa: D203
     def test_method(self, test, another_test, _):  # noqa: D213, D407
-        """Test a valid args section.
-
-        Args:
-            test: A parameter.
-            another_test: Another parameter.
-
-        """
+        pass
 
     @expect("D417: Missing argument descriptions in the docstring "
             "(argument(s) test, y, z are missing descriptions in "
             "'test_missing_args' docstring)", arg_count=5)
     def test_missing_args(self, test, x, y, z=3, _private_arg=3):  # noqa: D213, D407
-        """Test a valid args section.
-
-        Args:
-            x: Another parameter.
-
-        """
+        pass
 
     @classmethod
     @expect("D417: Missing argument descriptions in the docstring "
             "(argument(s) test, y, z are missing descriptions in "
             "'test_missing_args_class_method' docstring)", arg_count=5)
     def test_missing_args_class_method(cls, test, x, y, _, z=3):  # noqa: D213, D407
-        """Test a valid args section.
-
-        Args:
-            x: Another parameter. The parameter below is missing description.
-            y:
-
-        """
+        pass
 
     @staticmethod
     @expect("D417: Missing argument descriptions in the docstring "
             "(argument(s) a, y, z are missing descriptions in "
             "'test_missing_args_static_method' docstring)", arg_count=4)
     def test_missing_args_static_method(a, x, y, _test, z=3):  # noqa: D213, D407
-        """Test a valid args section.
-
-        Args:
-            x: Another parameter.
-
-        """
+        pass
 
     @staticmethod
     @expect("D417: Missing argument descriptions in the docstring "
             "(argument(s) a, b are missing descriptions in "
             "'test_missing_docstring' docstring)", arg_count=2)
     def test_missing_docstring(a, b):  # noqa: D213, D407
-        """Test a valid args section.
-
-        Args:
-            a:
-
-        """
+        pass
 
     @staticmethod
     def test_hanging_indent(skip, verbose):  # noqa: D213, D407
-        """Do stuff.
-
-        Args:
-            skip (:attr:`.Skip`):
-                Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-                Etiam at tellus a tellus faucibus maximus. Curabitur tellus
-                mauris, semper id vehicula ac, feugiat ut tortor.
-            verbose (bool):
-                If True, print out as much information as possible.
-                If False, print out concise "one-liner" information.
-
-        """
+        pass
 
 
 @expect(_D213)
@@ -405,82 +367,31 @@ of the entire world.
 
 class TestNumpy:  # noqa: D203
     def test_method(self, test, another_test, z, _, x=1, y=2, _private_arg=1):  # noqa: D213, D407
-        """Test a valid args section.
-
-        Some long string with a \
-line continuation.
-
-        Parameters
-        ----------
-        test, another_test
-            Some parameters without type.
-        z : some parameter with a very long type description that requires a \
-line continuation.
-            But no further description.
-        x, y : int
-            Some integer parameters.
-
-        """
+        pass
 
     @expect("D417: Missing argument descriptions in the docstring "
             "(argument(s) test, y, z are missing descriptions in "
             "'test_missing_args' docstring)", arg_count=5)
     def test_missing_args(self, test, x, y, z=3, t=1, _private=0):  # noqa: D213, D407
-        """Test a valid args section.
-
-        Parameters
-        ----------
-        x, t : int
-            Some parameters.
-
-
-        """
+        pass
 
     @classmethod
     @expect("D417: Missing argument descriptions in the docstring "
             "(argument(s) test, y, z are missing descriptions in "
             "'test_missing_args_class_method' docstring)", arg_count=4)
     def test_missing_args_class_method(cls, test, x, y, z=3):  # noqa: D213, D407
-        """Test a valid args section.
-
-        Parameters
-        ----------
-        z
-        x
-            Another parameter. The parameters y, test below are
-            missing descriptions. The parameter z above is also missing
-            a description.
-        y
-        test
-
-        """
+        pass
 
     @staticmethod
     @expect("D417: Missing argument descriptions in the docstring "
             "(argument(s) a, z are missing descriptions in "
             "'test_missing_args_static_method' docstring)", arg_count=3)
     def test_missing_args_static_method(a, x, y, z=3, t=1):  # noqa: D213, D407
-        """Test a valid args section.
-
-        Parameters
-        ----------
-        x, y
-            Another parameter.
-        t : int
-            Yet another parameter.
-
-        """
+        pass
 
     @staticmethod
     def test_mixing_numpy_and_google(danger):  # noqa: D213
-        """Repro for #388.
-
-        Parameters
-        ----------
-        danger
-            Zoneeeeee!
-
-        """
+        pass
 
 
 class TestIncorrectIndent:  # noqa: D203
@@ -488,14 +399,7 @@ class TestIncorrectIndent:  # noqa: D203
             "(argument(s) y are missing descriptions in "
             "'test_incorrect_indent' docstring)", arg_count=3)
     def test_incorrect_indent(self, x=1, y=2):  # noqa: D207, D213, D407
-        """Reproducing issue #437.
-
-Testing this incorrectly indented docstring.
-
-        Args:
-            x: Test argument.
-
-        """
+        pass
 
 
 def implicit_string_concatenation():

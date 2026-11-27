@@ -46,7 +46,6 @@ class Person:
 class Base(abc.ABC):
     @abstractmethod
     def abstract_method(self):
-        """abstract method could not be a function"""
         raise NotImplementedError
 
 
@@ -116,7 +115,6 @@ class Foo:
         raise NotImplementedError(msg)
 
     def docstring(self):
-        """Lorem ipsum dolor sit amet."""
         msg = ""
         raise NotImplementedError(msg)
 

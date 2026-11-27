@@ -1,23 +1,23 @@
 class A:
     def foo(self) -> None:
-        """Foo."""
+        pass
 
     bar = foo
 
     def bar(self) -> None:
-        """Bar."""
+        pass
 
 
 class B:
     def baz(self) -> None:
-        """Baz."""
+        pass
 
     baz = 1
 
 
 class C:
     def foo(self) -> None:
-        """Foo."""
+        pass
 
     bar = (foo := 1)
 

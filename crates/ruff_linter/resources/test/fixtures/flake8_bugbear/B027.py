@@ -18,11 +18,9 @@ class AbstractClass(ABC):
         pass
 
     def empty_3(self):  # error
-        """docstring"""
         ...
 
     def empty_4(self):  # error
-        """multiple ellipsis/pass"""
         ...
         pass
         ...

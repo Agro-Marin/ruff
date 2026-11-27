@@ -24,9 +24,5 @@ class DebugVisitor(Visitor[T]):
 
     @classmethod
     def show(cls, code: str) -> None:
-        """Pretty-prints a given string of `code`.
-
-        Convenience method for debugging.
-        """
         v: DebugVisitor[None] = DebugVisitor()
         list(v.visit(lib2to3_parse(code)))

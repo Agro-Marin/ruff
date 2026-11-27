@@ -1,7 +1,6 @@
 class PropertyWithSetter:
     @property
     def foo(self) -> str:
-        """Docstring for foo."""
         return "foo"
 
     @foo.setter

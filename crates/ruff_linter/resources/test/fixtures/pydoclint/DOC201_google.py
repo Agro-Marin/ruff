@@ -27,38 +27,17 @@ class Bar:
 
     # OK
     def foo(self) -> str:
-        """
-        Do something
-
-        Args:
-            num (int): A number
-
-        Returns:
-            str: A string
-        """
         return 'test'
 
 
     # DOC201
     def bar(self) -> str:
-        """
-        Do something
-
-        Args:
-            num (int): A number
-        """
         return 'test'
 
 
     # OK
     @property
     def baz(self) -> str:
-        """
-        Do something
-
-        Args:
-            num (int): A number
-        """
         return 'test'
 
 
@@ -79,12 +58,6 @@ class Baz:
     # OK
     @cached_property
     def baz(self) -> str:
-        """
-        Do something
-
-        Args:
-            num (int): A number
-        """
         return 'test'
 
 
@@ -117,7 +90,6 @@ class A(metaclass=abc.abcmeta):
     # DOC201
     @abc.abstractmethod
     def f(self):
-        """Lorem ipsum."""
         return True
 
 
@@ -212,5 +184,4 @@ def foo(s: str) -> str | None:
 class Spam:
     # OK
     def __new__(cls) -> 'Spam':
-        """New!!"""
         return cls()

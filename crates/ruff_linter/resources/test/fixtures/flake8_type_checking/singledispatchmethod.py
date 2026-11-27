@@ -24,7 +24,6 @@ class Foo2:
 
     @singledispatchmethod
     def process_path(self, a: Union[int, str]) -> int:
-        """Convert arg to array or leaves it as sparse matrix."""
         msg = f"Unhandled type {type(a)}"
         raise NotImplementedError(msg)
 

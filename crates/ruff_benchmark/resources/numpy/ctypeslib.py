@@ -152,20 +152,10 @@ class _ndptr(_ndptr_base):
 
 class _concrete_ndptr(_ndptr):
     def _check_retval_(self):
-        """
-        This method is called when this class is used as the .restype
-        attribute for a shared-library function, to automatically wrap the
-        pointer into an array.
-        """
         return self.contents
 
     @property
     def contents(self):
-        """
-        Get an ndarray viewing the data pointed to by this pointer.
-
-        This mirrors the `contents` attribute of a normal ctypes pointer
-        """
         full_dtype = _dtype((self._dtype_, self._shape_))
         full_ctype = ctypes.c_char * full_dtype.itemsize
         buffer = ctypes.cast(self, ctypes.POINTER(full_ctype)).contents

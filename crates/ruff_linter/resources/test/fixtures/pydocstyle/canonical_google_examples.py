@@ -76,7 +76,6 @@ class SampleClass:
     @expect("D401: First line should be in imperative mood "
             "(perhaps 'Init', not 'Inits')", arg_count=2)
     def __init__(self, likes_spam=False):
-        """Inits SampleClass with blah."""
         if self:  # added to avoid NameError when run via @expect decorator
             self.likes_spam = likes_spam
             self.eggs = 0
@@ -84,4 +83,4 @@ class SampleClass:
     @expect("D401: First line should be in imperative mood "
             "(perhaps 'Perform', not 'Performs')", arg_count=1)
     def public_method(self):
-        """Performs operation blah."""
+        pass

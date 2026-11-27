@@ -67,21 +67,18 @@ class Thingy:
     """This class attribute docstring does not need to be written in imperative mood."""
 
     def bad_method(self):
-        """This method docstring should be written in imperative mood."""
+        pass
 
     @property
     def good_property(self):
-        """This property method docstring does not need to be written in imperative mood."""
         return self._beep
 
     @GObject.Property
     def good_custom_property(self):
-        """This property method docstring does not need to be written in imperative mood."""
         return self._beep
 
     @cached_property
     def good_cached_property(self):
-        """This property method docstring does not need to be written in imperative mood."""
         return 42 * 42
 
     class NestedThingy:

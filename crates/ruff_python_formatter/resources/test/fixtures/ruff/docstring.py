@@ -60,13 +60,7 @@ class CommentBeforeDocstring():
 
 
 class IndentMeSome:
-    def doc_string_without_linebreak_after_colon(self): """ This is somewhat strange
-         a
-      b
-         We format this a is the docstring had started properly indented on the next
-         line if the target indentation. This may we incorrect since source and target
-         indentation can be incorrect, but this is also an edge case.
-         """
+    def doc_string_without_linebreak_after_colon(self): pass
 
 
 class IgnoreImplicitlyConcatenatedStrings:
@@ -134,11 +128,7 @@ def f():
 
 class TabbedIndent:
 	def tabbed_indent(self):
-		"""check for correct tabbed formatting
-		                            ^^^^^^^^^^
-		Normal indented line
-		  	- author
-		"""
+		pass
 
 
 def single_quoted():

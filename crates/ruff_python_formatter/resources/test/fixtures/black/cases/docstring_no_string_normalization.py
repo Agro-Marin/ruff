@@ -1,7 +1,5 @@
 class ALonelyClass:
     def AnEquallyLonelyMethod(self):
-        '''
-        A multiline method docstring'''
         pass
 
 

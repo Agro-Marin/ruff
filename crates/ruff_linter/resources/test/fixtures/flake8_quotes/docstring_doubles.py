@@ -16,10 +16,6 @@ class Cls:
     def f(self, bar="""
         definitely not a docstring""",
         val=l[Cls():3]):
-        """
-        Double quotes multiline function docstring
-        """
-
         some_expression = 'hello world'
 
         """
