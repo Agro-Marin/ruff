@@ -567,10 +567,6 @@ class PaymentCardBrand(str, Enum):
 
 
 class PaymentCardNumber(str):
-    """
-    Based on: https://en.wikipedia.org/wiki/Payment_card_number
-    """
-
     strip_whitespace: ClassVar[bool] = True
     min_length: ClassVar[int] = 12
     max_length: ClassVar[int] = 19

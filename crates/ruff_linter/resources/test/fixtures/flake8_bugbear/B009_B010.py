@@ -1,9 +1,3 @@
-"""
-Should emit:
-B009 - Lines 19-31
-B010 - Lines 40-45
-"""
-
 # Valid getattr usage
 getattr(foo, bar)
 getattr(foo, "bar", None)

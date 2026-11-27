@@ -9,7 +9,25 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tomllib
+from collections import defaultdict
+from collections.abc import Sequence, Set as AbstractSet
+from dataclasses import dataclass
+from enum import StrEnum, auto
+from itertools import chain, groupby
+from pathlib import Path
+from textwrap import dedent
+from typing import Any, Literal, Self, assert_never
+
+CLI_DESCRIPTION = """
 Run typing conformance tests and compare results between two ty versions.
 
 ty versions can be supplied as `uvx ty` or `uvx ty@version`
@@ -33,24 +51,6 @@ Examples:
     # Show a diff with local paths to the test directory instead of table of links
     %(prog)s --old-ty uvx ty@0.0.1a35 --new-ty uvx ty@0.0.7 --format diff
 """
-
-from __future__ import annotations
-
-import argparse
-import json
-import os
-import re
-import subprocess
-import sys
-import tomllib
-from collections import defaultdict
-from collections.abc import Sequence, Set as AbstractSet
-from dataclasses import dataclass
-from enum import StrEnum, auto
-from itertools import chain, groupby
-from pathlib import Path
-from textwrap import dedent
-from typing import Any, Literal, Self, assert_never
 
 CONFORMANCE_ERROR_PATTERN = re.compile(
     r"""
@@ -172,8 +172,6 @@ class Location:
 
 @dataclass(kw_only=True, slots=True)
 class TyDiagnostic:
-    """A diagnostic emitted by a ty version (old or new) during a conformance run."""
-
     check_name: str
     description: str
     severity: str
@@ -226,8 +224,6 @@ class TyDiagnostic:
 
 @dataclass(kw_only=True, slots=True)
 class ExpectedError:
-    """An error annotation parsed from a conformance test file (e.g. ``# E: ...``)."""
-
     description: str
     location: Location
     optional: bool
@@ -409,8 +405,6 @@ class Statistics:
 
 @dataclass(kw_only=True, slots=True)
 class DiagnosticEntry:
-    """A test case bound to the section title and source side it should be rendered under."""
-
     title: str
     test_case: TestCase
     source: Source | None
@@ -997,7 +991,7 @@ def get_test_cases(
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description=CLI_DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 

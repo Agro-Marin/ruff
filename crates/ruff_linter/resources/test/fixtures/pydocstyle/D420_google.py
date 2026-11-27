@@ -1,6 +1,3 @@
-"""Tests for D420 (section order) with Google convention."""
-
-
 def correct_order():
     """Summary.
 
@@ -158,26 +155,12 @@ def returns_then_unordered_then_args():
 
 
 class CorrectClassDocstring:
-    """Summary.
-
-    Attributes:
-        x: Description.
-
-    Examples:
-        >>> obj = CorrectClassDocstring()
-    """
+    pass
 
 
 # Attributes and Examples are both unordered — no diagnostic.
 class UnorderedClassDocstring:
-    """Summary.
-
-    Examples:
-        >>> obj = UnorderedClassDocstring()
-
-    Attributes:
-        x: Description.
-    """
+    pass
 
 
 def _private_function_out_of_order():

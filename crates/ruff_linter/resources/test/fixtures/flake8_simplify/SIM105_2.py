@@ -1,4 +1,3 @@
-"""Case: `contextlib` already imported."""
 import contextlib
 
 

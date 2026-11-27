@@ -89,11 +89,6 @@ def load_ast(root: Path) -> Ast:
 
 @dataclass
 class Ast:
-    """
-    The parsed representation of the `ast.toml` file. Defines all of the Python
-    AST syntax nodes, and which groups (`Stmt`, `Expr`, etc.) they belong to.
-    """
-
     groups: list[Group]
     ungrouped_nodes: list[Node]
     all_nodes: list[Node]

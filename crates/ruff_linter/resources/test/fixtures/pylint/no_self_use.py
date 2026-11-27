@@ -44,8 +44,6 @@ class Person:
 
 
 class Base(abc.ABC):
-    """abstract class"""
-
     @abstractmethod
     def abstract_method(self):
         """abstract method could not be a function"""

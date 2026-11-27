@@ -9,7 +9,20 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Final, Self
+
+CLI_DESCRIPTION = """
 Compare memory usage reports between two ty versions and generate a PR comment.
 
 This script can be used in two modes:
@@ -28,26 +41,11 @@ Examples:
     %(prog)s compare --old-dir old_reports/ --new-dir new_reports/ --output memory_diff.md
 """
 
-from __future__ import annotations
-
-import argparse
-import json
-import os
-import shlex
-import subprocess
-import sys
-import tempfile
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Final, Self
-
 KNOWN_PROJECTS: Final = ("flake8", "sphinx", "prefect", "trio")
 
 
 @dataclass(slots=True, kw_only=True)
 class MemoryReport:
-    """Memory report from a single ty run."""
-
     total_bytes: int
     struct_metadata_bytes: int
     struct_fields_bytes: int
@@ -73,8 +71,6 @@ class MemoryReport:
 
 @dataclass(slots=True, kw_only=True)
 class ProjectComparison:
-    """Comparison of memory usage between old and new ty versions for a project."""
-
     name: str
     old: MemoryReport
     new: MemoryReport
@@ -440,7 +436,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description=CLI_DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 

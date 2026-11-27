@@ -1,6 +1,3 @@
-"""Test case for fixing RUF059 violations."""
-
-
 def f():
     with foo() as x1:
         pass

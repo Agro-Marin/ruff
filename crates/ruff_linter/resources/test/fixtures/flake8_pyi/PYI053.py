@@ -46,7 +46,7 @@ qux: bytes = b"51 character byte stringggggggggggggggggggggggggggg\xff"
 
 
 class Demo:
-    """Docstrings are excluded from this rule. Some padding."""
+    pass
 
 
 def func() -> None:

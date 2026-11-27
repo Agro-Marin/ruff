@@ -9,7 +9,16 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Update ruff.json in schemastore.
+from __future__ import annotations
+
+import enum
+import json
+from pathlib import Path
+from subprocess import check_call, check_output
+from tempfile import TemporaryDirectory
+from typing import NamedTuple, assert_never
+
+CLI_DESCRIPTION = """Update ruff.json in schemastore.
 
 This script will clone `astral-sh/schemastore`, update the schema and push the changes
 to a new branch tagged with the ruff git hash. You should see a URL to create the PR
@@ -19,15 +28,6 @@ Usage:
 
     uv run --script scripts/update_schemastore.py
 """
-
-from __future__ import annotations
-
-import enum
-import json
-from pathlib import Path
-from subprocess import check_call, check_output
-from tempfile import TemporaryDirectory
-from typing import NamedTuple, assert_never
 
 RUFF_REPO = "https://github.com/astral-sh/ruff"
 
@@ -140,7 +140,8 @@ def determine_git_protocol(argv: list[str] | None = None) -> GitProtocol:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=CLI_DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--proto",

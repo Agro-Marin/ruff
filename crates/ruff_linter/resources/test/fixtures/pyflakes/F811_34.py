@@ -1,5 +1,3 @@
-"""Regression test for: https://github.com/astral-sh/ruff/issues/23802"""
-
 # F811: both annotated assignments, first unused
 bar: int = 1
 bar: int = 2  # F811

@@ -1,9 +1,4 @@
-"""Regression test for: https://github.com/astral-sh/ruff/issues/11828"""
-
-
 class A:
-    """A."""
-
     def foo(self) -> None:
         """Foo."""
 
@@ -14,7 +9,6 @@ class A:
 
 
 class B:
-    """B."""
     def baz(self) -> None:
         """Baz."""
 
@@ -22,7 +16,6 @@ class B:
 
 
 class C:
-    """C."""
     def foo(self) -> None:
         """Foo."""
 
@@ -30,7 +23,6 @@ class C:
 
 
 class D:
-    """D."""
     foo = 1
     foo = 2
     bar = (foo := 3)

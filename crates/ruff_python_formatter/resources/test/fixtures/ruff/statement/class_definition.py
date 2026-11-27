@@ -54,52 +54,48 @@ class TestTrailingComment4[T](A): # trailing comment
 
 
 class Test:
-    """Docstring"""
+    pass
 
 
 class Test:
     # comment
-    """Docstring"""
+    pass
 
 
 class Test:
-    """Docstring"""
     x = 1
 
 
 class Test:
-    """Docstring"""
     # comment
-    x = 1
-
-
-class Test:
-
-    """Docstring"""
-
-
-class Test:
-    # comment
-
-    """Docstring"""
-
-
-class Test:
-
-    # comment
-
-    """Docstring"""
-
-
-class Test:
-
-    """Docstring"""
     x = 1
 
 
 class Test:
 
-    """Docstring"""
+    pass
+
+
+class Test:
+    # comment
+
+    pass
+
+
+class Test:
+
+    # comment
+
+    pass
+
+
+class Test:
+
+    x = 1
+
+
+class Test:
+
     # comment
     x = 1
 
@@ -212,8 +208,6 @@ class TestTypeParams[A, B, C](meta=Aaaaaaaaaaaaaaaaaaaaaa):
 
 # Regression test for: https://github.com/astral-sh/ruff/pull/7001
 class QuerySet(AltersData):
-    """Represent a lazy database lookup for a set of objects."""
-
     def as_manager(cls):
         # Address the circular dependency between `Queryset` and `Manager`.
         from django.db.models.manager import Manager

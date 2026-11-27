@@ -1,7 +1,3 @@
-"""
-Should emit:
-B027 - on lines 13, 16, 19, 23
-"""
 import abc
 from abc import ABC
 from abc import (

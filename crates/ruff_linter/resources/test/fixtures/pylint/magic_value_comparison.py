@@ -1,5 +1,3 @@
-"""Check that magic values are not used in comparisons."""
-
 user_input = 10
 
 if 10 > user_input:  # [magic-value-comparison]

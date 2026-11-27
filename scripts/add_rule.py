@@ -10,18 +10,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Generate boilerplate for a new rule.
-
-Example usage:
-
-    python scripts/add_rule.py \
-        --name PreferListBuiltin \
-        --prefix PIE \
-        --code 807 \
-        --linter flake8-pie \
-        --category pedantic
-"""
-
 from __future__ import annotations
 
 import argparse

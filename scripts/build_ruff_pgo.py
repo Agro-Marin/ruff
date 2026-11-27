@@ -1,5 +1,3 @@
-"""Build Ruff with profile-guided optimization using pinned ecosystem projects."""
-
 # /// script
 # requires-python = ">=3.11"
 # dependencies = []
@@ -23,6 +21,10 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+CLI_DESCRIPTION = (
+    "Build Ruff with profile-guided optimization using pinned ecosystem projects."
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 EXCLUDED_DIRECTORIES = frozenset({"_tests", "_vendor", "test", "tests"})
@@ -124,7 +126,7 @@ CORPUS_PROJECTS = (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("--target", help="Host-native Rust target triple")
     parser.add_argument(
         "--debug",

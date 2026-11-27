@@ -1,7 +1,5 @@
 #! /usr/bin/python
 
-"""See CONTRIBUTING.md"""
-
 from __future__ import annotations
 
 import re

@@ -12,10 +12,6 @@ class OneAttributeClassRev:
 
 
 class DocstringClass:
-    """
-    My body only contains pass.
-    """
-
     pass  # PYI012 Class body must not contain `pass`
 
 

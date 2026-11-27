@@ -1,7 +1,4 @@
-"""
-Double quotes multiline module docstring
-"""
-
+pass
 """
 this is not a docstring
 """
@@ -9,9 +6,7 @@ this is not a docstring
 l = []
 
 class Cls:
-    """
-    Double quotes multiline class docstring
-    """
+    pass
 
     """
     this is not a docstring

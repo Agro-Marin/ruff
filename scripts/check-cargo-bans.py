@@ -8,8 +8,6 @@
 # require-build-hashes = true
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
-"""Supplement cargo-deny bans with workspace dependency policy checks."""
-
 from __future__ import annotations
 
 import json

@@ -1,5 +1,3 @@
-"""Test: ensure that we visit type definitions and lambdas recursively."""
-
 from __future__ import annotations
 
 from collections import Counter

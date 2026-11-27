@@ -1,7 +1,4 @@
 class ALonelyClass:
-    '''
-    A multiline class docstring.
-    '''
     def AnEquallyLonelyMethod(self):
         '''
         A multiline method docstring'''

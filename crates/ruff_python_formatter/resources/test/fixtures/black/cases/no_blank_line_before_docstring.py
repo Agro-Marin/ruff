@@ -5,12 +5,11 @@ def line_before_docstring():
 
 class LineBeforeDocstring:
 
-    """Please move me up"""
+    pass
 
 
 class EvenIfThereIsAMethodAfter:
 
-    """I'm the docstring"""
     def method(self):
         pass
 
@@ -18,16 +17,13 @@ class EvenIfThereIsAMethodAfter:
 class TwoLinesBeforeDocstring:
 
 
-    """I want to be treated the same as if I were closer"""
+    pass
 
 
 class MultilineDocstringsAsWell:
 
-    """I'm so far
-
-    and on so many lines...
-    """
+    pass
 
 class SingleQuotedDocstring:
 
-    "I'm a docstring but I don't even get triple quotes."
+    pass

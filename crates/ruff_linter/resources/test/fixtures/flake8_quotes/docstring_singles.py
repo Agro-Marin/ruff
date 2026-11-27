@@ -1,7 +1,4 @@
-'''
-Single quotes multiline module docstring
-'''
-
+pass
 '''
 this is not a docstring
 '''
@@ -11,9 +8,7 @@ l = []
 class Cls(MakeKlass('''
     class params \t not a docstring
 ''')):
-    '''
-    Single quotes multiline class docstring
-    '''
+    pass
 
     '''
     this is not a docstring

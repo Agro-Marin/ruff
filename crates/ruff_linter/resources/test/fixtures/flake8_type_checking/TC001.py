@@ -1,9 +1,3 @@
-"""Tests to determine first-party import classification.
-
-For typing-only import detection tests, see `TC002.py`.
-"""
-
-
 def f():
     import TYP001
 

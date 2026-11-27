@@ -1,5 +1,3 @@
-"""Test that shadowing a global with a nested function generates a warning."""
-
 import fu
 
 

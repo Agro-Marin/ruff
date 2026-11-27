@@ -1,5 +1,3 @@
-"""Check that magic values are not used in comparisons"""
-
 if 100 == 100: # [comparison-of-constants]
     pass
 

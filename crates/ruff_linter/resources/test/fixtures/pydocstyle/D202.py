@@ -1,5 +1,3 @@
-"""Test: blank-line-after-function special-cases around comment handling."""
-
 # OK
 def outer():
     """This is a docstring."""

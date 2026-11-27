@@ -1,12 +1,3 @@
-"""
-Should emit:
-B030:
- - line 12, column 8
- - line 17, column 9
- - line 22, column 21
- - line 27, column 37
-"""
-
 try:
     pass
 except 1:  # Error

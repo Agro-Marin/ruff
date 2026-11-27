@@ -1,4 +1,3 @@
-"""Patterns that don't just involve the call, but rather the parent expression"""
 import re
 
 s = "str"

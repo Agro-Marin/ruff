@@ -1,4 +1,3 @@
-"""Test: referencing an import via TypeAlias (with future annotations and quotes)."""
 from __future__ import annotations
 
 import sys

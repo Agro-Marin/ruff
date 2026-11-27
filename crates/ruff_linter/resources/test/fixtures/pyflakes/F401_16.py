@@ -1,5 +1,3 @@
-"""Test that `__all__` exports are respected even with multiple declarations."""
-
 import random
 
 

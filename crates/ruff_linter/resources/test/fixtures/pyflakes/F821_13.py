@@ -1,5 +1,3 @@
-"""Test case: ForwardRef."""
-
 from typing import ForwardRef, TypeVar
 
 X = ForwardRef("List[int]")

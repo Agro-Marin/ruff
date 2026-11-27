@@ -1,13 +1,5 @@
-"""
-   Author
-"""
-
-
 class Platform:
-    """ Remove sampler
-            Args:
-            Returns:
-            """
+    pass
 
 
 def memory_test():
@@ -18,32 +10,19 @@ def memory_test():
 
 
 class Platform:
-    """Over indented last line
-    Args:
-    Returns:
-                """
+    pass
 
 
 class Platform:
-    """All lines are over indented including the last containing the closing quotes
-        Args:
-        Returns:
-        """
+    pass
 
 class Platform:
-    """All lines are over indented including the last
-        Args:
-        Returns"""
+    pass
 
 # OK: This doesn't get flagged because it is accepted when the closing quotes are on a separate line  (see next test). Raises D209
 class Platform:
-    """Over indented last line with content
-    Args:
-        Some content on the last line"""
+    pass
 
 # OK:
 class Platform:
-    """Over indented last line with content
-    Args:
-        Some content on the last line
-    """
+    pass

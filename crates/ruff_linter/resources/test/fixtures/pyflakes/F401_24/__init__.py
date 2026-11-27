@@ -1,11 +1,3 @@
-"""__init__.py without __all__
-
-Unused stdlib and third party imports are unsafe removals
-
-Unused first party imports get changed to redundant aliases
-"""
-
-
 # stdlib
 
 import os  # Ok: is used

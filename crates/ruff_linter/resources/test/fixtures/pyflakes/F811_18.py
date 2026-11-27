@@ -1,5 +1,3 @@
-"""Test that a global import which is redefined locally, but used later in another scope does not generate a warning."""
-
 import unittest, transport
 
 

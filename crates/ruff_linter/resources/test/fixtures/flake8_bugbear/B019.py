@@ -1,7 +1,3 @@
-"""
-Should emit:
-B019 - on lines 73, 77, 81, 85, 89, 93, 97, 101
-"""
 import functools
 from functools import cache, cached_property, lru_cache
 

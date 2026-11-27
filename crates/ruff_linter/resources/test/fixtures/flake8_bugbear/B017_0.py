@@ -1,7 +1,3 @@
-"""
-Should emit:
-B017 - on lines 24, 28, 46, 49, 52, 58, 62, 68, and 71
-"""
 import asyncio
 import unittest
 import pytest, contextlib

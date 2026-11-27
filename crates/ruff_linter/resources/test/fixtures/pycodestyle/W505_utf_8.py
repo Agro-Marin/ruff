@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""Here's a top-level ß9💣2ℝing that's over theß9💣2ℝ."""
-
-
 def f1():
     """Here's a ß9💣2ℝing that's also over theß9💣2ℝ."""
 

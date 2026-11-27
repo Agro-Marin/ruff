@@ -1,5 +1,3 @@
-"""Render ecosystem changes as a searchable HTML report."""
-
 from __future__ import annotations
 
 import json

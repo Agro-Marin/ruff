@@ -1,5 +1,3 @@
-"""Test bindings created within annotations."""
-
 from typing import Annotated
 
 foo = [1, 2, 3, 4, 5]

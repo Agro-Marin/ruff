@@ -1,10 +1,8 @@
 class Foo1:
-    """abc"""
+    pass
 
 
 class Foo2:
-    """abc"""
-
     a = 2
     "str"  # Str (no raise)
     f"{int}"  # JoinedStr (no raise)

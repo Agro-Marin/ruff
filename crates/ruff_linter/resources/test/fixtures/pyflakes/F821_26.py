@@ -1,5 +1,3 @@
-"""Tests for constructs allowed in `.pyi` stub files but not at runtime"""
-
 from typing import Optional, TypeAlias, Union
 
 __version__: str

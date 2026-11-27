@@ -1,8 +1,3 @@
-"""
-Should emit:
-B020 - on lines 8, 21, and 36
-"""
-
 items = [1, 2, 3]
 
 for items in items:

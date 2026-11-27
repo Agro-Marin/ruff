@@ -26,13 +26,6 @@
 # mypy-primer = { git = "https://github.com/hauntsaninja/mypy_primer" }
 # ///
 
-"""Clone a mypy-primer project and set up a virtualenv with its dependencies installed.
-
-For ecosystem-report reproduction, always select the project's ecosystem-analyzer Python version and bypass the adjacent lock with the exact mypy-primer revision pinned by ecosystem-analyzer:
-
-uv run --python <version> --with "mypy-primer @ git+https://github.com/hauntsaninja/mypy_primer@<mypy-primer-revision>" --no-project python scripts/setup_primer_project.py <project-name> [directory] [options]
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -44,6 +37,13 @@ from typing import NoReturn
 
 from mypy_primer.model import Project
 from mypy_primer.projects import get_projects
+
+CLI_DESCRIPTION = """Clone a mypy-primer project and set up a virtualenv with its dependencies installed.
+
+For ecosystem-report reproduction, always select the project's ecosystem-analyzer Python version and bypass the adjacent lock with the exact mypy-primer revision pinned by ecosystem-analyzer:
+
+uv run --python <version> --with "mypy-primer @ git+https://github.com/hauntsaninja/mypy_primer@<mypy-primer-revision>" --no-project python scripts/setup_primer_project.py <project-name> [directory] [options]
+"""
 
 
 def find_project(name: str) -> Project:
@@ -119,7 +119,7 @@ def clone_project(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("project", help="Name of a mypy-primer project")
     parser.add_argument(
         "directory",

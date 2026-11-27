@@ -10,8 +10,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Check code snippets in docs are formatted by Ruff."""
-
 from __future__ import annotations
 
 import argparse
@@ -137,11 +135,11 @@ KNOWN_PARSE_ERRORS = [
 
 
 class CodeBlockError(Exception):
-    """A code block parse error."""
+    pass
 
 
 class InvalidInput(ValueError):
-    """Raised when ruff fails to parse file."""
+    pass
 
 
 def format_str(code: str, extension: Literal["py", "pyi"]) -> str:

@@ -14,7 +14,7 @@ def j() -> "int": ...  # Y020 Quoted annotations should never be used in stubs
 Alias: TypeAlias = list["int"]  # Y020 Quoted annotations should never be used in stubs
 
 class Child(list["int"]):  # Y020 Quoted annotations should never be used in stubs
-    """Documented and guaranteed useful."""  # Y021 Docstrings should not be included in stubs
+    pass  # Y021 Docstrings should not be included in stubs
 
 if sys.platform == "linux":
     f: "int"  # Y020 Quoted annotations should never be used in stubs

@@ -1,7 +1,3 @@
-"""__init__.py with empty __all__
-"""
-
-
 from . import unused  # F401: add to __all__
 
 

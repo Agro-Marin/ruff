@@ -1,4 +1,3 @@
-"""Test: typing_extensions module imports."""
 from foo import Literal
 
 # F821 Undefined name `Model`

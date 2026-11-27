@@ -1,15 +1,3 @@
-"""A one line summary of the module or program, terminated by a period.
-
-Leave one blank line.  The rest of this docstring should contain an
-overall description of the module or program.  Optionally, it may also
-contain a brief description of exported classes and functions and/or usage
-examples.
-
-  Typical usage example:
-
-  foo = ClassFoo()
-  bar = foo.FunctionBar()
-"""
 # above: "2.8.2 Modules" section example
 # https://google.github.io/styleguide/pyguide.html#382-modules
 
@@ -85,16 +73,6 @@ def fetch_bigtable_rows(big_table, keys, other_silly_variable=None, **kwargs):
 @expect("D407: Missing dashed underline after section ('Attributes')")
 @expect("D413: Missing blank line after last section ('Attributes')")
 class SampleClass:
-    """Summary of class here.
-
-    Longer class information....
-    Longer class information....
-
-    Attributes:
-        likes_spam: A boolean indicating if we like SPAM or not.
-        eggs: An integer count of the eggs we have laid.
-    """
-
     @expect("D401: First line should be in imperative mood "
             "(perhaps 'Init', not 'Inits')", arg_count=2)
     def __init__(self, likes_spam=False):

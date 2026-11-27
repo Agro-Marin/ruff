@@ -1,7 +1,3 @@
-"""
-Test for too many branches.
-Taken from the pylint source 2023-02-03
-"""
 from contextlib import suppress
 
 # pylint: disable=using-constant-test

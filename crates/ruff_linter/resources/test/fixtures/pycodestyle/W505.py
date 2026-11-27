@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""Here's a top-level docstring that's over the limit."""
-
-
 def f1():
     """Here's a docstring that's also over the limit."""
 

@@ -9,8 +9,6 @@ from dataclasses import dataclass
 
 @dataclass
 class Example():
-    """Class that uses ClassVar."""
-
     options: ClassVar[dict[str, str]] = {}
 
 

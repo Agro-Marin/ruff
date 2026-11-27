@@ -1,6 +1,3 @@
-"""Test case expected to be run with `ignore_fully_untyped = True`."""
-
-
 def ok_fully_untyped_1(a, b):
     pass
 

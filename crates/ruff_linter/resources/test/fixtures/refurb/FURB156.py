@@ -39,7 +39,7 @@ _ = "12" in "12345670"
 
 # No errors as the string is considered as a docstring
 class C:
-    "01234567"
+    pass
 
 
 class C:

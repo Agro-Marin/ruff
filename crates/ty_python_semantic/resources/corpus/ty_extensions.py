@@ -1,10 +1,3 @@
-"""
-Make sure that types are inferred for all subexpressions of the following
-annotations involving ty_extension `_SpecialForm`s.
-
-This is a regression test for https://github.com/astral-sh/ty/issues/366
-"""
-
 from ty_extensions import Intersection, Not
 from ty_extensions._internal import (
     CallableTypeOf,

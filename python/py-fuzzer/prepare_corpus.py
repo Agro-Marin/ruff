@@ -6,13 +6,6 @@
 # exclude-newer = "P7D"
 # ///
 
-"""Find a reusable corpus of Python sources for a fixed seed range in GitHub Actions.
-
-Print the artifact name and, on a hit, the ID of the run to download it from.
-On a miss, the workflow uses the name to publish a fresh corpus on `main`.
-Pull requests generate their inputs as they fuzz until that artifact is available.
-"""
-
 from __future__ import annotations
 
 import json

@@ -41,8 +41,5 @@ class I(int):
     pass
 
 class ActivityState(str, Enum, metaclass=CaseInsensitiveEnumMeta):
-    """Activity state. This is an optional property and if not provided, the state will be Active by
-    default.
-    """
     ACTIVE = "Active"
     INACTIVE = "Inactive"

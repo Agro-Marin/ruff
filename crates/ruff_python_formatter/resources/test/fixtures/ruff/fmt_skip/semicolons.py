@@ -87,12 +87,11 @@ class MultiLineSemicolonComments:
     ]; x=2    # 5   # fmt: skip    # 6
 
 class DocstringSkipped:
-    '''This is a docstring''' # fmt: skip
+    # fmt: skip
     x=1
 
 class MultilineDocstringSkipped:
-    '''This is a docstring
-    ''' # fmt: skip
+    # fmt: skip
     x=1
 
 class FirstStatementNewlines:

@@ -1,8 +1,3 @@
-"""
-Should emit:
-B003 - on line 9
-"""
-
 import os
 from os import environ
 

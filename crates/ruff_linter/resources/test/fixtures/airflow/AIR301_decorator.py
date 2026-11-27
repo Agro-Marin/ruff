@@ -1,4 +1,3 @@
-"""Test case for detecting @apply_defaults decorator usage in AIR301."""
 from airflow.models.baseoperator import BaseOperator
 from airflow.utils.decorators import apply_defaults
 

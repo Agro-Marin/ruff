@@ -10,13 +10,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Update script lockfiles.
-
-Run `uv run scripts/check-scripts.py` to update the lockfiles.
-Use `--write-ty-args-file <path>` to write the discovered scripts to an argument file for ty
-instead of updating lockfiles.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -26,6 +19,13 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from pathspec import GitIgnoreSpec
+
+CLI_DESCRIPTION = """Update script lockfiles.
+
+Run `uv run scripts/check-scripts.py` to update the lockfiles.
+Use `--write-ty-args-file <path>` to write the discovered scripts to an argument file for ty
+instead of updating lockfiles.
+"""
 
 ROOT = Path(__file__).resolve().parent.parent
 COMPLETION_FIXTURES = Path("crates/ty_completion_eval/truth")
@@ -77,7 +77,7 @@ def scripts() -> Iterator[Path]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION, allow_abbrev=False)
     parser.add_argument(
         "--write-ty-args-file",
         type=Path,

@@ -1,8 +1,4 @@
 class MyClass:
-  """ Multiline
-  class docstring
-  """
-
   def method(self):
     """Multiline
     method docstring

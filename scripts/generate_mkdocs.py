@@ -13,8 +13,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Generate an MkDocs-compatible `docs` and `mkdocs.yml` from the README.md."""
-
 from __future__ import annotations
 
 import argparse
@@ -31,8 +29,6 @@ import yaml
 
 
 class Section(NamedTuple):
-    """A section to include in the MkDocs documentation."""
-
     title: str
     filename: str
     generated: bool

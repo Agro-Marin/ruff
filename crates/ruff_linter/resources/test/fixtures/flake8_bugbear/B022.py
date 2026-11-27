@@ -1,8 +1,3 @@
-"""
-Should emit:
-B022 - on lines 8
-"""
-
 import contextlib
 from contextlib import suppress
 

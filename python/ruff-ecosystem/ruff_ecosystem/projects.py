@@ -1,7 +1,3 @@
-"""
-Abstractions and utilities for working with projects to run ecosystem checks on.
-"""
-
 from __future__ import annotations
 
 import abc
@@ -25,10 +21,6 @@ from ruff_ecosystem.types import Serializable
 
 @dataclass(frozen=True)
 class Project(Serializable):
-    """
-    An ecosystem target
-    """
-
     repo: Repository
     # ruff: disable[unnecessary-lambda] False positive on types defined later in the file
     check_options: CheckOptions = field(default_factory=lambda: CheckOptions())
@@ -147,15 +139,6 @@ def normalize_rule_selectors(config: dict[str, Any], executable: Path) -> None:
 
 @dataclass(frozen=True)
 class ConfigOverrides(Serializable):
-    """
-    A collection of key, value pairs to override in the Ruff configuration file.
-
-    The key describes a member to override in the toml file; '.' may be used to indicate a
-    nested value e.g. `format.quote-style`.
-
-    If a Ruff configuration file does not exist and overrides are provided, it will be created.
-    """
-
     always: dict[str, Any] = field(default_factory=dict)
     when_preview: dict[str, Any] = field(default_factory=dict)
     when_no_preview: dict[str, Any] = field(default_factory=dict)
@@ -269,10 +252,6 @@ class CommandOptions(Serializable, abc.ABC):
 
 @dataclass(frozen=True)
 class CheckOptions(CommandOptions):
-    """
-    Ruff check options
-    """
-
     select: str = ""
     ignore: str = ""
     exclude: str = ""
@@ -304,10 +283,6 @@ class CheckOptions(CommandOptions):
 
 @dataclass(frozen=True)
 class FormatOptions(CommandOptions):
-    """
-    Format ecosystem check options.
-    """
-
     preview: bool = False
     exclude: str = ""
 
@@ -327,15 +302,11 @@ class FormatOptions(CommandOptions):
 
 
 class ProjectSetupError(Exception):
-    """An error setting up a project."""
+    pass
 
 
 @dataclass(frozen=True)
 class Repository(Serializable):
-    """
-    A remote GitHub repository.
-    """
-
     owner: str
     name: str
     ref: str | None
@@ -435,10 +406,6 @@ class Repository(Serializable):
 
 @dataclass(frozen=True)
 class ClonedRepository(Repository, Serializable):
-    """
-    A cloned GitHub repository, which includes the hash of the current commit.
-    """
-
     commit_hash: str
     path: Path
 

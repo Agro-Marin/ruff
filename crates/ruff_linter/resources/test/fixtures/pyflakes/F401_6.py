@@ -1,5 +1,3 @@
-"""Test: explicit re-export."""
-
 # OK
 from .applications import FastAPI as FastAPI
 

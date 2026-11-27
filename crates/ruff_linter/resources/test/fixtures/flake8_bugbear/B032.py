@@ -1,8 +1,3 @@
-"""
-Should emit:
-B032 - on lines 9, 10, 12, 13, 16-19
-"""
-
 # Flag these
 dct = {"a": 1}
 

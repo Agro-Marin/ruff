@@ -1,6 +1,4 @@
-'''
-Double quotes multiline module docstring
-'''
+pass
 '''
 this is not a docstring
 '''

@@ -1,6 +1,3 @@
-"""Test: annotated global."""
-
-
 n: int
 
 

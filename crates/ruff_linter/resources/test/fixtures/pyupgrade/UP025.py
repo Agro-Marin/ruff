@@ -1,5 +1,3 @@
-u"Hello"
-
 x = u"Hello"  # UP025
 
 u'world'  # UP025

@@ -1,7 +1,3 @@
-"""Test that RUF055 can follow a single str assignment for both the pattern and
-the replacement argument to re.sub
-"""
-
 import re
 
 pat1 = "needle"

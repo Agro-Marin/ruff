@@ -7,8 +7,6 @@ import typing
 
 
 class Example():
-    """Class that uses ClassVar."""
-
     options: ClassVar[dict[str, str]] = {}
 
 

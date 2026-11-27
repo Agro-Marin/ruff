@@ -1,7 +1,3 @@
-"""
-Execution, comparison, and summary of `ruff format` ecosystem checks.
-"""
-
 from __future__ import annotations
 
 import time

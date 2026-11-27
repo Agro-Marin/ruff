@@ -1,5 +1,3 @@
-"""Regression test for https://github.com/astral-sh/ty/issues/3120"""
-
 from typing import Any, Literal, assert_never
 from typing_extensions import TypeIs
 

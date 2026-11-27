@@ -1,4 +1,34 @@
-"""
+from __future__ import annotations
+
+import argparse
+import ast
+import concurrent.futures
+import contextlib
+import dataclasses
+import enum
+import json
+import multiprocessing
+import operator
+import os
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from collections.abc import Collection, Sequence
+from dataclasses import KW_ONLY, dataclass
+from pathlib import Path
+from typing import Final, NamedTuple, NewType, NoReturn, assert_never
+
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from pysource_codegen import generate as generate_random_code
+from pysource_minimize import CouldNotMinimize, minimize as minimize_repro
+from rich_argparse import RawDescriptionRichHelpFormatter
+from termcolor import colored
+
+CLI_DESCRIPTION = """
 Run a Ruff executable on randomly generated (but syntactically valid)
 Python source-code files.
 
@@ -32,36 +62,6 @@ Example invocations of the script using `uv`:
   `uv run --project=./python/py-fuzzer fuzz --bin ruff $(shuf -i 0-1000000 -n 10000) --quiet
 """
 
-from __future__ import annotations
-
-import argparse
-import ast
-import concurrent.futures
-import contextlib
-import dataclasses
-import enum
-import json
-import multiprocessing
-import operator
-import os
-import re
-import signal
-import subprocess
-import sys
-import tempfile
-import threading
-import time
-from collections.abc import Collection, Sequence
-from dataclasses import KW_ONLY, dataclass
-from pathlib import Path
-from typing import Final, NamedTuple, NewType, NoReturn, assert_never
-
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
-from pysource_codegen import generate as generate_random_code
-from pysource_minimize import CouldNotMinimize, minimize as minimize_repro
-from rich_argparse import RawDescriptionRichHelpFormatter
-from termcolor import colored
-
 Seed = NewType("Seed", int)
 ExitCode = NewType("ExitCode", int)
 
@@ -78,7 +78,7 @@ OLDEST_SUPPORTED_PYTHON: Final = "3.10"
 
 
 class MinimizationTimedOut(Exception):
-    """The fuzzing deadline was reached or the run was cancelled during minimization."""
+    pass
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -212,8 +212,6 @@ class ReportKind(enum.Enum):
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class DetectedFailure:
-    """A failure on the test build and the baseline's elapsed time, if recorded."""
-
     kind: Failure
     baseline_seconds: float | None
 
@@ -247,11 +245,6 @@ class DetectedFailure:
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class Bug:
-    """A bug reproducer, its minimization status, and the original input's failure.
-
-    Older saved inputs may have no recorded failure.
-    """
-
     source: str
     minimization_succeeded: bool
     failure: DetectedFailure | None
@@ -425,8 +418,6 @@ def minimize_failure(
 
 
 class FuzzRunResult(NamedTuple):
-    """The bugs found and the seeds left unchecked in a fuzzing run."""
-
     bugs: list[FuzzResult]
     unchecked_seeds: list[Seed]
 
@@ -497,8 +488,6 @@ def run_fuzzer_sequentially(
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class RenderableReproducer:
-    """A bug and its seed, paired with a Markdown fence for its source."""
-
     seed: Seed
     bug: Bug
     fence: str
@@ -804,7 +793,7 @@ class ResolvedCliArgs:
 def parse_args() -> ResolvedCliArgs:
     """Parse command-line arguments"""
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=RawDescriptionRichHelpFormatter
+        description=CLI_DESCRIPTION, formatter_class=RawDescriptionRichHelpFormatter
     )
     parser.add_argument(
         "seeds",

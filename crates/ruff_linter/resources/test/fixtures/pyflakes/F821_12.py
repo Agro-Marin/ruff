@@ -1,5 +1,3 @@
-"""Test case: strings used within calls within type annotations."""
-
 from __future__ import annotations
 
 from typing import Callable

@@ -1,5 +1,5 @@
-"""
-# coding=utf8""" # empty comment
+pass
+# empty comment
 
 """
 Invalid coding declaration since it is nested inside a docstring

@@ -6,12 +6,6 @@
 # +------------------------------------------------------------+
 # This file should be used to test LSP functions that edit / fix a file.
 
-"""
-:mod:`pandas.io.html` is a module containing functionality for dealing with
-HTML IO.
-
-"""
-
 from __future__ import annotations
 
 from collections import abc
@@ -153,74 +147,6 @@ def _read(
 
 
 class _HtmlFrameParser:
-    """
-    Base class for parsers that parse HTML into DataFrames.
-
-    Parameters
-    ----------
-    io : str or file-like
-        This can be either a string path, a valid URL using the HTTP,
-        FTP, or FILE protocols or a file-like object.
-
-    match : str or regex
-        The text to match in the document.
-
-    attrs : dict
-        List of HTML <table> element attributes to match.
-
-    encoding : str
-        Encoding to be used by parser
-
-    displayed_only : bool
-        Whether or not items with "display:none" should be ignored
-
-    extract_links : {None, "all", "header", "body", "footer"}
-        Table elements in the specified section(s) with <a> tags will have their
-        href extracted.
-
-        .. versionadded:: 1.5.0
-
-    Attributes
-    ----------
-    io : str or file-like
-        raw HTML, URL, or file-like object
-
-    match : regex
-        The text to match in the raw HTML
-
-    attrs : dict-like
-        A dictionary of valid table attributes to use to search for table
-        elements.
-
-    encoding : str
-        Encoding to be used by parser
-
-    displayed_only : bool
-        Whether or not items with "display:none" should be ignored
-
-    extract_links : {None, "all", "header", "body", "footer"}
-        Table elements in the specified section(s) with <a> tags will have their
-        href extracted.
-
-        .. versionadded:: 1.5.0
-
-    Notes
-    -----
-    To subclass this class effectively you must override the following methods:
-        * :func:`_build_doc`
-        * :func:`_attr_getter`
-        * :func:`_href_getter`
-        * :func:`_text_getter`
-        * :func:`_parse_td`
-        * :func:`_parse_thead_tr`
-        * :func:`_parse_tbody_tr`
-        * :func:`_parse_tfoot_tr`
-        * :func:`_parse_tables`
-        * :func:`_equals_tag`
-    See each method's respective documentation for details on their
-    functionality.
-    """
-
     def __init__(
         self,
         io: FilePath | ReadBuffer[str] | ReadBuffer[bytes],
@@ -578,20 +504,6 @@ class _HtmlFrameParser:
 
 
 class _BeautifulSoupHtml5LibFrameParser(_HtmlFrameParser):
-    """
-    HTML to DataFrame parser that uses BeautifulSoup under the hood.
-
-    See Also
-    --------
-    pandas.io.html._HtmlFrameParser
-    pandas.io.html._LxmlFrameParser
-
-    Notes
-    -----
-    Documentation strings for this class are in the base class
-    :class:`pandas.io.html._HtmlFrameParser`.
-    """
-
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         from bs4 import SoupStrainer
@@ -700,24 +612,6 @@ _re_namespace = {"re": "http://exslt.org/regular-expressions"}
 
 
 class _LxmlFrameParser(_HtmlFrameParser):
-    """
-    HTML to DataFrame parser that uses lxml under the hood.
-
-    Warning
-    -------
-    This parser can only handle HTTP, FTP, and FILE urls.
-
-    See Also
-    --------
-    _HtmlFrameParser
-    _BeautifulSoupLxmlFrameParser
-
-    Notes
-    -----
-    Documentation strings for this class are in the base class
-    :class:`_HtmlFrameParser`.
-    """
-
     def _href_getter(self, obj) -> str | None:
         href = obj.xpath(".//a/@href")
         return None if not href else href[0]

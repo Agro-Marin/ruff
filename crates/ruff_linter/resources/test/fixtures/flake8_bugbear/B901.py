@@ -1,9 +1,3 @@
-"""
-Should emit:
-B901 - on lines 9, 36
-"""
-
-
 def broken():
     if True:
         return [1, 2, 3]

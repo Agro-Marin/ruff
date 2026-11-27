@@ -1,4 +1,4 @@
-"""foo"""  # OK, not in stub
+# OK, not in stub
 
 
 def foo():
@@ -6,7 +6,7 @@ def foo():
 
 
 class Bar:
-    """bar"""  # OK, doc strings are allowed in non-stubs
+    pass  # OK, doc strings are allowed in non-stubs
 
 
 def bar():

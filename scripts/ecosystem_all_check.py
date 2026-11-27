@@ -9,12 +9,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""This is @konstin's scripts for checking an entire checkout of ~2.1k packages for
-panics, fix errors and similar problems.
-
-It's a less elaborate, more hacky ecosystem checker.
-"""
-
 from __future__ import annotations
 
 import json
@@ -28,8 +22,6 @@ from tqdm import tqdm
 
 
 class Repository(NamedTuple):
-    """A GitHub repository at a specific ref."""
-
     org: str
     repo: str
     ref: str | None

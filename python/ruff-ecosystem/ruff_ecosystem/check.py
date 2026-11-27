@@ -1,7 +1,3 @@
-"""
-Execution, comparison, and summary of `ruff check` ecosystem checks.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -253,13 +249,6 @@ def markdown_check_result(result: Result) -> str:
 
 @dataclass(frozen=True)
 class RuleChanges:
-    """
-    The number of additions and removals by rule code.
-
-    While the attributes are frozen to avoid accidentally changing the value of an attribute,
-    the counters themselves are mutable and this class can be mutated with `+` and `update`.
-    """
-
     added_violations: Counter = field(default_factory=Counter)
     removed_violations: Counter = field(default_factory=Counter)
     added_fixes: Counter = field(default_factory=Counter)
@@ -394,10 +383,6 @@ class DiagnosticLine:
 
 
 class CheckDiff(Diff):
-    """
-    Extends the normal diff with diagnostic parsing
-    """
-
     def __init__(
         self,
         lines: Iterable[str],

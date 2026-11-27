@@ -1,4 +1,3 @@
-"""A runner for Markdown-based tests for ty"""
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [

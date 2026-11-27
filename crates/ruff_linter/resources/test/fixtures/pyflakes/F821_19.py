@@ -1,5 +1,3 @@
-"""Test bindings created within annotations under `__future__` annotations."""
-
 from __future__ import annotations
 
 from typing import Annotated

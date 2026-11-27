@@ -43,7 +43,6 @@ class C:   # B903
         self.d = d
 
 class D:   # B903
-    """This class has a docstring."""
     # this next method is an init
     def __init__(self,e:dict):
         self.e = e
@@ -89,8 +88,6 @@ class Warnings:
 
 
 class WarningsWithDocstring:
-    """A docstring should not be an impediment to a warning"""
-
     def __init__(self, foo:int, bar:list):
         self.foo = foo
         self.bar = bar

@@ -56,10 +56,7 @@ def comment_before_docstring():
 
 class CommentBeforeDocstring():
     # don't lose this class comment ...
-    """Empty class.
-
-    But it has comments
-    """  # ... neither lose this class comment
+    pass  # ... neither lose this class comment
 
 
 class IndentMeSome:
@@ -73,7 +70,7 @@ class IndentMeSome:
 
 
 class IgnoreImplicitlyConcatenatedStrings:
-    """""" ""
+    pass
 
 
 def docstring_that_ends_with_quote_and_a_line_break1():
@@ -98,7 +95,6 @@ class ByteDocstring:
     first_statement = 1
 
 class CommentAfterDocstring1:
-    """Browse module classes and functions in IDLE."""
     # This class is also the base class for pathbrowser.PathBrowser.
 
     def __init__(self):
@@ -106,8 +102,6 @@ class CommentAfterDocstring1:
 
 
 class CommentAfterDocstring2:
-    """Browse module classes and functions in IDLE."""
-
     # This class is also the base class for pathbrowser.PathBrowser.
 
     def __init__(self):
@@ -115,24 +109,19 @@ class CommentAfterDocstring2:
 
 
 class CommentAfterDocstring3:
-    """Browse module classes and functions in IDLE."""
-
     # This class is also the base class for pathbrowser.PathBrowser.
     def __init__(self):
         pass
 
 
 class CommentAfterDocstring4:
-    """Browse module classes and functions in IDLE."""
-
-
     # This class is also the base class for pathbrowser.PathBrowser.
     def __init__(self):
         pass
 
 
 class CommentAfterDocstring5:
-    """Browse module classes and functions in IDLE."""
+    pass
     # This class is also the base class for pathbrowser.PathBrowser.
 
 

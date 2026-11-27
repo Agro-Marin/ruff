@@ -1,5 +1,3 @@
-"""Test case expected to be run with `mypy_init_return = True`."""
-
 # Error
 class Foo:
     def __init__(self):

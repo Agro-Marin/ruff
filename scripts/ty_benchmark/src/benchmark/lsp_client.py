@@ -1,5 +1,3 @@
-"""Simple LSP client for benchmarking diagnostic response times."""
-
 import asyncio
 import logging
 from asyncio import Future
@@ -42,8 +40,6 @@ def _register_notebook_structure_hooks(converter):
 
 
 class LSPClient(LanguageClient):
-    """A minimal LSP client for benchmarking purposes."""
-
     server_capabilities: lsp.ServerCapabilities
     diagnostics: dict[str, Future[lsp.PublishDiagnosticsParams]]
 

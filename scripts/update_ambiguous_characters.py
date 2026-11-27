@@ -9,8 +9,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Generate the confusables.rs file from the VS Code ambiguous.json file."""
-
 from __future__ import annotations
 
 import itertools

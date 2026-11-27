@@ -4,7 +4,4 @@ class Plotter:
 
 class AnotherCase:
   \
-    """Some
-    \
-    Docstring
-    """
+    pass

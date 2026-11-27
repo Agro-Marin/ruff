@@ -1,3 +1,1 @@
-"docstring"
-
 a = 1

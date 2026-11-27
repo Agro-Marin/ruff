@@ -1,15 +1,3 @@
-"""A module-level docstring with a Sphinx directive containing section-like content.
-
-.. code-block:: yaml
-
-    references:
-      - ref: Bibliographic citation in your favorite format.
-        refType: open literature
-
-This is more text after the directive.
-"""
-
-
 def func():
     """A function-level docstring with a Sphinx directive.
 

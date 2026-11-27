@@ -1,8 +1,3 @@
-"""
-Should emit:
-B024 - on lines 18, 71, 82, 87, 92, 141
-"""
-
 import abc
 import abc as notabc
 from abc import ABC, ABCMeta

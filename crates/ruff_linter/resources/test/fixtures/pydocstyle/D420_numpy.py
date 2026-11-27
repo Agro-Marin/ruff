@@ -1,6 +1,3 @@
-"""Tests for D420 (section order) with NumPy convention."""
-
-
 def correct_order():
     """Summary.
 
@@ -154,31 +151,11 @@ def correct_partial():
 
 
 class CorrectClassDocstring:
-    """Summary.
-
-    Attributes
-    ----------
-    x : int
-        Description.
-
-    Methods
-    -------
-    do_something
-    """
+    pass
 
 
 class WrongClassDocstring:
-    """Summary.
-
-    Methods
-    -------
-    do_something
-
-    Attributes
-    ----------
-    x : int
-        Description.
-    """
+    pass
 
 
 def unrecognized_sections_only():

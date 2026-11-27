@@ -9,11 +9,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Script to generate `crates/ruff_python_stdlib/src/sys/builtin_modules.rs`.
-
-This script requires `uvx` to be available on PATH.
-"""
-
 from __future__ import annotations
 
 import builtins

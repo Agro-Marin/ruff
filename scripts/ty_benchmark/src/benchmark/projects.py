@@ -101,8 +101,6 @@ class Project(NamedTuple):
 
 
 class IncrementalEdit(NamedTuple):
-    """Description of an edit to measure incremental performance"""
-
     edited_file: str
     """The file to which to apply the edit."""
 

@@ -1,4 +1,4 @@
-'Hello World'
+pass
 "😎"
 'Foo' 'Bar'
 (

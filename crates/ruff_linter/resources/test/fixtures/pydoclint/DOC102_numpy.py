@@ -183,10 +183,6 @@ def process_order(order_id):
 
 
 class Calculator:
-    """
-    A simple calculator class that can perform basic arithmetic operations.
-    """
-
     # DOC102
     def __init__(self):
         """

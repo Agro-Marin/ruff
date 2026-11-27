@@ -1,10 +1,3 @@
-"""Fixtures for the errors E301, E302, E303, E304, E305 and E306.
-Since these errors are about new lines, each test starts with either "No error" or "# E30X".
-Each test's end is signaled by a "# end" line.
-There should be no E30X error outside of a test's bound.
-"""
-
-
 # No error
 class Class:
     pass
@@ -13,7 +6,6 @@ class Class:
 
 # No error
 class Class:
-    """Docstring"""
     def __init__(self) -> None:
         pass
 # end
@@ -123,7 +115,7 @@ try:
     from nonexistent import Bar
 except ImportError:
     class Bar(object):
-        """This is a Bar replacement"""
+        pass
 # end
 
 
@@ -156,8 +148,6 @@ def fn():
 
 
 class Foo():
-    """Class Foo"""
-
     def fn():
 
         pass
@@ -288,8 +278,6 @@ def f(
 # no error
 if True:
     class Class:
-        """Docstring"""
-
         def function(self):
             ...
 # end
@@ -439,8 +427,6 @@ def test():
 
 # no error
 class Foo:
-    """Demo."""
-
     @overload
     def bar(self, x: int) -> int: ...
     @overload
@@ -493,8 +479,6 @@ class Class:
 
 # E301
 class Class:
-    """Class for minimal repo."""
-
     columns = []
     @classmethod
     def cls_method(cls) -> None:
@@ -504,8 +488,6 @@ class Class:
 
 # E301
 class Class:
-    """Class for minimal repo."""
-
     def method(cls) -> None:
         pass
     @classmethod
@@ -516,8 +498,6 @@ class Class:
 
 # E301
 class Foo:
-    """Demo."""
-
     @overload
     def bar(self, x: int) -> int: ...
     @overload

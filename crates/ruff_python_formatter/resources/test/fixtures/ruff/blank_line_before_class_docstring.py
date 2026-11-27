@@ -1,30 +1,30 @@
 class NormalDocstring:
 
-    """This is a docstring."""
+    pass
 
 
 class DocstringWithComment0:
     # This is a comment
-    """This is a docstring."""
+    pass
 
 
 class DocstringWithComment1:
     # This is a comment
 
-    """This is a docstring."""
+    pass
 
 
 class DocstringWithComment2:
 
     # This is a comment
-    """This is a docstring."""
+    pass
 
 
 class DocstringWithComment3:
 
     # This is a comment
 
-    """This is a docstring."""
+    pass
 
 
 class DocstringWithComment4:
@@ -33,6 +33,6 @@ class DocstringWithComment4:
     # This is a comment
 
 
-    """This is a docstring."""
+    pass
 
 

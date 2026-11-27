@@ -1,5 +1,3 @@
-"""Test: noqa directives."""
-
 from typing_extensions import List, Sequence
 
 # This should ignore both errors.

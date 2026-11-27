@@ -1,4 +1,4 @@
-""" Double quotes singleline module docstring """
+pass
 """ this is not a docstring """
 
 def foo():

@@ -7,20 +7,20 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Add sidecar SHA-256 checksums to a cargo-dist local manifest.
-
-The release workflow builds archives outside cargo-dist. Its global installer
-generation needs their checksums in the manifest, so copy them from the sidecars
-uploaded by the binary build jobs. Require a checksum for every downloaded
-executable archive to avoid publishing installers with partial checksum coverage.
-"""
-
 from __future__ import annotations
 
 import argparse
 import json
 import re
 from pathlib import Path
+
+CLI_DESCRIPTION = """Add sidecar SHA-256 checksums to a cargo-dist local manifest.
+
+The release workflow builds archives outside cargo-dist. Its global installer
+generation needs their checksums in the manifest, so copy them from the sidecars
+uploaded by the binary build jobs. Require a checksum for every downloaded
+executable archive to avoid publishing installers with partial checksum coverage.
+"""
 
 
 def read_sha256(path: Path) -> str:
@@ -34,7 +34,7 @@ def read_sha256(path: Path) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--artifacts-dir", type=Path, required=True)
     args = parser.parse_args()

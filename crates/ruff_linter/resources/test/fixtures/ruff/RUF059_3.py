@@ -1,9 +1,3 @@
-"""Test fix for issue #8441.
-
-Ref: https://github.com/astral-sh/ruff/issues/8441
-"""
-
-
 def foo():
     ...
 

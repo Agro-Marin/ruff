@@ -2,8 +2,6 @@
 # requires-python = ">=3.10"
 # dependencies = []
 # ///
-"""Publish report artifacts without executing code from the producing workflow."""
-
 from __future__ import annotations
 
 import argparse
@@ -19,6 +17,10 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+CLI_DESCRIPTION = (
+    "Publish report artifacts without executing code from the producing workflow."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -393,7 +395,7 @@ def publish(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("--run-id", required=True, type=int)
     parser.add_argument("--run-attempt", required=True, type=int)
     parser.add_argument("--report", required=True)

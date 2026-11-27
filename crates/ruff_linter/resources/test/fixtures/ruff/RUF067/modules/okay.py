@@ -1,8 +1,3 @@
-"""
-The code here is not in an `__init__.py` file and should not trigger the
-lint.
-"""
-
 # convenience imports:
 import os
 from pathlib import Path

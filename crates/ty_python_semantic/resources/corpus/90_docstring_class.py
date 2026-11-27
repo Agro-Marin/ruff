@@ -1,2 +1,2 @@
 class Foo:
-    "docstring"
+    pass

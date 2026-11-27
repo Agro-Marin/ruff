@@ -15,7 +15,7 @@ def foo2():
 
 
 class bar1:
-    """hello world!"""
+    pass
 
 
 class bar2:
@@ -31,7 +31,7 @@ def foo2():
 
 
 class bar1:
-    """hello world!"""
+    pass
 
 
 class bar2:
@@ -47,7 +47,7 @@ def foo2():
 
 
 class bar1:
-    "hello world!"
+    pass
 
 
 class bar2:
@@ -63,7 +63,7 @@ def foo2():
 
 
 class bar1:
-    "hello world!"
+    pass
 
 
 class bar2:

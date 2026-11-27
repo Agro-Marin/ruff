@@ -1,4 +1,4 @@
-"""This is a docstring."""
+pass
 "This is not a docstring."
 "This is also not a docstring."
 

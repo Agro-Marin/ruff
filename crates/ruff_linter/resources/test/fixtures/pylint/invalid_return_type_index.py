@@ -2,8 +2,6 @@
 
 
 class Bool:
-    """pylint would not raise, but ruff does - see explanation in the docs"""
-
     def __index__(self):
         return True  # [invalid-index-return]
 

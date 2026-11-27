@@ -1,5 +1,3 @@
-"""Test: Mypy extensions."""
-
 from mypy_extensions import DefaultNamedArg
 
 # OK

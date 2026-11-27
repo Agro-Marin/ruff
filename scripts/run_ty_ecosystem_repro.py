@@ -8,8 +8,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Run a reproduction command with the recorded environment and a supplied deadline."""
-
 from __future__ import annotations
 
 import argparse
@@ -19,9 +17,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+CLI_DESCRIPTION = (
+    "Run a reproduction command with the recorded environment and a supplied deadline."
+)
+
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout-seconds", type=float, required=True)

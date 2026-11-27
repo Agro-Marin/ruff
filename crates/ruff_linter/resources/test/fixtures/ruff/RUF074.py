@@ -1,5 +1,3 @@
-"""Tests for RUF074 (incorrect-decorator-order)."""
-
 from abc import abstractmethod, abstractproperty, abstractclassmethod, abstractstaticmethod
 from contextlib import contextmanager, asynccontextmanager
 from functools import cache, cached_property, lru_cache, wraps

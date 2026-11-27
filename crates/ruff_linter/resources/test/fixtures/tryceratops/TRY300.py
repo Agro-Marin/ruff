@@ -1,9 +1,3 @@
-"""
-Violation:
-
-Returning a final value inside a try block may indicate you could use an else block
-instead to outline the success scenario
-"""
 import logging
 
 logger = logging.getLogger(__name__)

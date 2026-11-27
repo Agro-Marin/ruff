@@ -1,7 +1,3 @@
-"""
-Test: allowed-unused-imports
-"""
-
 # OK
 import hvplot.pandas
 import hvplot.pandas.plots

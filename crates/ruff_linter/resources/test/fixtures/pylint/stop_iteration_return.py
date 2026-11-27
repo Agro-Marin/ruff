@@ -1,6 +1,3 @@
-"""Test cases for PLR1708 stop-iteration-return."""
-
-
 # Valid cases - should not trigger the rule
 def normal_function():
     raise StopIteration  # Not a generator, should not trigger

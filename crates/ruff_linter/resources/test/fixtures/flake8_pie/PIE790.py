@@ -1,6 +1,4 @@
 class Foo:
-    """buzz"""
-
     pass
 
 

@@ -1,5 +1,3 @@
-"""Tests to ensure we correctly rename references inside `__all__`"""
-
 from collections.abc import Set
 
 __all__ = ["Set"]

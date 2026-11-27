@@ -1,5 +1,3 @@
-"""Test FAST002 ellipsis handling."""
-
 from fastapi import Body, Cookie, FastAPI, Header, Query
 
 app = FastAPI()

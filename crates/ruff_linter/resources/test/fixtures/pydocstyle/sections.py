@@ -1,5 +1,3 @@
-"""A valid module docstring."""
-
 from .expected import Expectation
 
 expectation = Expectation()
@@ -316,8 +314,6 @@ def test_missing_google_args(x=1, y=2, _private=3):  # noqa: D406, D407
 
 
 class TestGoogle:  # noqa: D203
-    """Test class."""
-
     def test_method(self, test, another_test, _):  # noqa: D213, D407
         """Test a valid args section.
 
@@ -408,8 +404,6 @@ of the entire world.
 
 
 class TestNumpy:  # noqa: D203
-    """Test class."""
-
     def test_method(self, test, another_test, z, _, x=1, y=2, _private_arg=1):  # noqa: D213, D407
         """Test a valid args section.
 
@@ -490,8 +484,6 @@ line continuation.
 
 
 class TestIncorrectIndent:  # noqa: D203
-    """Test class."""
-
     @expect("D417: Missing argument descriptions in the docstring "
             "(argument(s) y are missing descriptions in "
             "'test_incorrect_indent' docstring)", arg_count=3)

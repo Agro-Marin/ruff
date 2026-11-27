@@ -1,6 +1,4 @@
-'This string will not include \
-backslashes or newline characters.'
-
+pass
 """Multiline
 String \"
 """

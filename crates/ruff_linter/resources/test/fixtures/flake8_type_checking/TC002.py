@@ -1,6 +1,3 @@
-"""Tests to determine accurate detection of typing-only imports."""
-
-
 def f():
     import pandas as pd  # TC002
 

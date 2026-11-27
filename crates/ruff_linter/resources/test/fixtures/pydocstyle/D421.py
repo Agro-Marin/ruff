@@ -1,5 +1,3 @@
-"""Tests for D421 (property descriptions)."""
-
 from functools import cached_property
 
 

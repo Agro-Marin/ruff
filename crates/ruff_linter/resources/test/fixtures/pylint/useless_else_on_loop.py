@@ -1,6 +1,3 @@
-"""Check for else branches on loops with break and return only."""
-
-
 def test_return_for():
     """else + return is not acceptable."""
     for i in range(10):

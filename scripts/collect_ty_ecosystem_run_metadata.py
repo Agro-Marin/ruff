@@ -10,8 +10,6 @@
 # preview-features = ["build-dependency-hashes", "missing-exclude-newer-package-lock"]
 # ///
 
-"""Collect exact ecosystem-run inputs and preserve evidence for runtime inspection."""
-
 from __future__ import annotations
 
 import argparse
@@ -25,12 +23,16 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+CLI_DESCRIPTION = (
+    "Collect exact ecosystem-run inputs and preserve evidence for runtime inspection."
+)
+
 SHA = r"[0-9a-f]{40}"
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 class MetadataError(RuntimeError):
-    """Raised when historical run metadata is missing or inconsistent."""
+    pass
 
 
 CommandRunner = Callable[[Sequence[str]], str]
@@ -401,7 +403,7 @@ def write_metadata(metadata: dict[str, Any], output: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("run", help="Actions run ID or URL")
     parser.add_argument("projects", nargs="*", help="mypy-primer project names")
     parser.add_argument("--repo", default="astral-sh/ruff")

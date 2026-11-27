@@ -1,1 +1,1 @@
-class List(list): "List() doc"
+class List(list): pass

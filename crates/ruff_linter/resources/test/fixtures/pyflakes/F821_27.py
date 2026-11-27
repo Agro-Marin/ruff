@@ -1,4 +1,3 @@
-"""Tests for constructs allowed when `__future__` annotations are enabled but not otherwise"""
 from __future__ import annotations
 
 from typing import Optional, TypeAlias, Union

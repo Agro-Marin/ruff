@@ -1,8 +1,3 @@
-"""
-Should emit:
-B904 - on lines 10, 11, 16, 62, 64, 79, 81, 87, 88, 93 and 97
-"""
-
 try:
     raise ValueError
 except ValueError:

@@ -1,6 +1,3 @@
-"""Test for accessing class members within a generator."""
-
-
 class Class:
     items = []
 

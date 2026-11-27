@@ -3,17 +3,17 @@
 # requires-python = ">=3.13"
 # dependencies = []
 # ///
-"""Add each label whose patterns match every changed path.
-
-Prefix the PR title with [ty] when the paths match the ty label.
-"""
-
 from __future__ import annotations
 
 import argparse
 import json
 import subprocess
 from fnmatch import fnmatchcase
+
+CLI_DESCRIPTION = """Add each label whose patterns match every changed path.
+
+Prefix the PR title with [ty] when the paths match the ty label.
+"""
 
 LABEL_PATHS = {
     "ty": ("crates/ty*/*", "ty.schema.json"),
@@ -34,7 +34,7 @@ def gh_api(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("--pull-request", required=True, type=int)
     parser.add_argument("--head-sha", required=True)
     args = parser.parse_args()

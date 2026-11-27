@@ -49,11 +49,6 @@ class Foo:
 # RUF033
 @dataclass
 class Foo:
-    """A very helpful docstring.
-
-    Docstrings are very important and totally not a waste of time.
-    """
-
     ping = "pong"
 
     def __post_init__(self, bar: int = 11, baz: int = 12) -> None: ...

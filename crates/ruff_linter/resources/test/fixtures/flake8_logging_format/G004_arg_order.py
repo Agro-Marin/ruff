@@ -1,5 +1,3 @@
-"""Test f-string argument order."""
-
 import logging
 
 logger = logging.getLogger(__name__)

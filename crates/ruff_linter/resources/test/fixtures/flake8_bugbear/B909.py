@@ -1,8 +1,3 @@
-"""
-Should emit:
-B909 - on lines 11, 25, 26, 40, 46
-"""
-
 # lists
 
 some_list = [1, 2, 3]

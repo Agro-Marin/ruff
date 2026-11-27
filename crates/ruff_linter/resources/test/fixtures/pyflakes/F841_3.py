@@ -1,6 +1,3 @@
-"""Test case for fixing F841 violations."""
-
-
 def f():
     x = 1
     y = 2

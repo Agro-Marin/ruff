@@ -17,7 +17,7 @@ class class_:
     expect('meta', 'D419: Docstring is empty')
 
     class meta:
-        """"""
+        pass
 
     @expect('D102: Missing docstring in public method')
     def method(self=None):
@@ -158,7 +158,7 @@ expect('LeadingSpaceMissing',
 
 
 class LeadingSpaceMissing:
-    """Leading space missing."""
+    pass
 
 
 expect('WithLeadingSpace',
@@ -167,7 +167,7 @@ expect('WithLeadingSpace',
 
 class WithLeadingSpace:
 
-    """With leading space."""
+    pass
 
 
 expect('TrailingSpace',
@@ -178,7 +178,6 @@ expect('TrailingSpace',
 
 class TrailingSpace:
 
-    """TrailingSpace."""
     pass
 
 
@@ -189,7 +188,6 @@ expect('LeadingAndTrailingSpaceMissing',
 
 
 class LeadingAndTrailingSpaceMissing:
-    """Leading and trailing space missing."""
     pass
 
 
@@ -523,14 +521,6 @@ def bad_google_string():  # noqa: D400
 # This is reproducing a bug where AttributeError is raised when parsing class
 # parameters as functions for Google / Numpy conventions.
 class Blah:  # noqa: D203,D213
-    """A Blah.
-
-    Parameters
-    ----------
-    x : int
-
-    """
-
     def __init__(self, x):
         pass
 
@@ -636,7 +626,7 @@ def starts_with_space_then_this():
     """ This is a docstring that starts with a space."""  # noqa: D210
 
 
-class SameLine: """This is a docstring on the same line"""
+class SameLine: pass
 
 def same_line(): """This is a docstring on the same line"""
 
@@ -646,16 +636,16 @@ def single_line_docstring_with_an_escaped_backslash():
     "
 
 class StatementOnSameLineAsDocstring:
-    "After this docstring there's another statement on the same line separated by a semicolon." ; priorities=1
+    priorities=1
     def sort_services(self):
         pass
 
 class StatementOnSameLineAsDocstring:
-    "After this docstring there's another statement on the same line separated by a semicolon."; priorities=1
+    priorities=1
 
 
 class CommentAfterDocstring:
-    "After this docstring there's a comment."  # priorities=1
+    # priorities=1
     def sort_services(self):
         pass
 

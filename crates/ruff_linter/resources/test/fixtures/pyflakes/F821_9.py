@@ -1,4 +1,3 @@
-"""Test: match statements."""
 from dataclasses import dataclass
 
 

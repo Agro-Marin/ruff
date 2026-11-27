@@ -11,10 +11,6 @@ if TYPE_CHECKING:
 
 
 class Serializable:
-    """
-    Allows serialization of content by casting to a JSON-compatible type.
-    """
-
     def jsonable(self) -> Any:
         if is_dataclass(self) and not isinstance(self, type):
             return dataclasses.asdict(self)
@@ -66,23 +62,15 @@ class Diff(Serializable):
 
 @dataclass(frozen=True)
 class Result(Serializable):
-    """
-    The result of an ecosystem check for a collection of projects.
-    """
-
     errored: list[tuple[Project, BaseException]]
     completed: list[tuple[Project, Comparison]]
 
 
 @dataclass(frozen=True)
 class Comparison(Serializable):
-    """
-    The result of a completed ecosystem comparison for a single project.
-    """
-
     diff: Diff
     repo: ClonedRepository
 
 
 class ToolError(Exception):
-    """An error reported by the checked executable."""
+    pass

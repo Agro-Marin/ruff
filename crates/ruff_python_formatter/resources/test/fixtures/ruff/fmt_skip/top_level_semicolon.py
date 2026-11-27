@@ -1,6 +1,5 @@
     # 0
-'''Module docstring
-multiple lines'''      # 1 # fmt: skip # 2
+# 1 # fmt: skip # 2
 
 import a;import b; from c import (
         x,y,z

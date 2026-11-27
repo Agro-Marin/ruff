@@ -1,5 +1,3 @@
-"""Test: avoid marking a `KW_ONLY` annotation as typing-only."""
-
 from __future__ import annotations
 
 from dataclasses import KW_ONLY, dataclass, Field

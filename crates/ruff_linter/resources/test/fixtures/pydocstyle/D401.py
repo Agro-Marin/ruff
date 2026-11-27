@@ -1,5 +1,3 @@
-"""This module docstring does not need to be written in imperative mood."""
-
 from functools import cached_property
 
 from gi.repository import GObject
@@ -65,8 +63,6 @@ good_top_level_var = False
 # Classes and their members
 
 class Thingy:
-    """This class docstring does not need to be written in imperative mood."""
-
     _beep = "boop"
     """This class attribute docstring does not need to be written in imperative mood."""
 
@@ -89,7 +85,7 @@ class Thingy:
         return 42 * 42
 
     class NestedThingy:
-        """This nested class docstring does not need to be written in imperative mood."""
+        pass
 
 
 # Test functions

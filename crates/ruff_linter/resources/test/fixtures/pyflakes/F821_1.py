@@ -1,4 +1,3 @@
-"""Test: typing module imports."""
 from foo import cast
 
 # OK

@@ -1,9 +1,3 @@
-"""
-Benchmarks for LSP servers
-
-When debugging test failures, run pytest with `-s -v --log-cli-level=DEBUG`
-"""
-
 import asyncio
 import tempfile
 from abc import ABC, abstractmethod

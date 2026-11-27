@@ -17,8 +17,6 @@ class Cls:
 
 
 class MyClassBase(metaclass=ABCMeta):
-    """MyClassBase."""
-
     @property
     @abstractmethod
     def example(self):

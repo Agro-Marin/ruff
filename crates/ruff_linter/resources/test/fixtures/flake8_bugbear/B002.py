@@ -1,9 +1,3 @@
-"""
-Should emit:
-B002 - on lines 18, 19, and 24
-"""
-
-
 def this_is_all_fine(n):
     x = n + 1
     y = 1 + n

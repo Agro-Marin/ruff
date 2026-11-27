@@ -1,8 +1,3 @@
-"""
-Violation:
-
-Raising an exception using its assigned name is verbose and unrequired
-"""
 import logging
 
 logger = logging.getLogger(__name__)

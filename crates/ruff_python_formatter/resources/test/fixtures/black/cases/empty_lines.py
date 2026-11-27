@@ -1,6 +1,3 @@
-"""Docstring."""
-
-
 # leading comment
 def f():
     NO = ''

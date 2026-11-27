@@ -1,8 +1,3 @@
-"""
-Violation:
-
-Checks for uses of `raise` directly after a `rescue`.
-"""
 class MyException(Exception):
     pass
 

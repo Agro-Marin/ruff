@@ -1,5 +1,3 @@
-"""Test case expected to be run with `suppress_none_returning = True`."""
-
 # OK
 def foo():
     a = 2 + 2

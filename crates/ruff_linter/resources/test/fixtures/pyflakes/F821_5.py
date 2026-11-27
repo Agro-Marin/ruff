@@ -1,6 +1,3 @@
-"""Test: inner class annotation."""
-
-
 class RandomClass:
     def random_func(self) -> "InnerClass":
         pass

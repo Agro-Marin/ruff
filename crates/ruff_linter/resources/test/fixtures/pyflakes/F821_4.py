@@ -1,4 +1,3 @@
-"""Test: import alias tracking."""
 from typing import List
 
 _ = List["Model"]

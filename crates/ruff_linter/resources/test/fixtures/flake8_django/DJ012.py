@@ -3,8 +3,6 @@ from django.db.models import Model
 
 
 class StrBeforeRandomField(models.Model):
-    """Model with `__str__` before a random property."""
-
     class Meta:
         verbose_name = "test"
         verbose_name_plural = "tests"
@@ -16,8 +14,6 @@ class StrBeforeRandomField(models.Model):
 
 
 class StrBeforeFieldModel(models.Model):
-    """Model with `__str__` before fields."""
-
     class Meta:
         verbose_name = "test"
         verbose_name_plural = "tests"
@@ -29,8 +25,6 @@ class StrBeforeFieldModel(models.Model):
 
 
 class ManagerBeforeField(models.Model):
-    """Model with manager before fields."""
-
     objects = "manager"
 
     class Meta:
@@ -44,8 +38,6 @@ class ManagerBeforeField(models.Model):
 
 
 class CustomMethodBeforeStr(models.Model):
-    """Model with a custom method before `__str__`."""
-
     class Meta:
         verbose_name = "test"
         verbose_name_plural = "tests"
@@ -58,11 +50,6 @@ class CustomMethodBeforeStr(models.Model):
 
 
 class GetAbsoluteUrlBeforeSave(Model):
-    """Model with `get_absolute_url` method before `save` method.
-
-    Subclass this directly using the `Model` class.
-    """
-
     def get_absolute_url(self):
         pass
 
@@ -71,8 +58,6 @@ class GetAbsoluteUrlBeforeSave(Model):
 
 
 class ConstantsAreNotFields(models.Model):
-    """Model with an assignment to a constant after `__str__`."""
-
     first_name = models.CharField(max_length=32)
 
     class Meta:
@@ -86,8 +71,6 @@ class ConstantsAreNotFields(models.Model):
 
 
 class PerfectlyFine(models.Model):
-    """Model which has everything in perfect order."""
-
     first_name = models.CharField(max_length=32)
     last_name = models.CharField(max_length=32)
     objects = "manager"
@@ -114,9 +97,6 @@ class PerfectlyFine(models.Model):
 
 
 class MultipleConsecutiveFields(models.Model):
-    """Model that contains multiple out-of-order field definitions in a row."""
-
-
     class Meta:
         verbose_name = "test"
 
@@ -134,8 +114,6 @@ class BaseModel(models.Model):
 
 
 class StrBeforeFieldInheritedModel(BaseModel):
-    """Model with `__str__` before fields."""
-
     class Meta:
         verbose_name = "test"
         verbose_name_plural = "tests"

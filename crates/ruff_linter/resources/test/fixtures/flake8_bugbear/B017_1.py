@@ -1,7 +1,3 @@
-"""
-Should emit:
-B017 - on lines 20, 21, 25, and 26
-"""
 import unittest
 import pytest
 

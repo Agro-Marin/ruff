@@ -1,7 +1,3 @@
-"""__init__.py with mis-typed __all__
-"""
-
-
 from . import unused  # F401: recommend add to all w/o fix
 
 

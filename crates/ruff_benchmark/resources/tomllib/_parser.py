@@ -51,7 +51,7 @@ BASIC_STR_ESCAPE_REPLACEMENTS = MappingProxyType(
 
 
 class TOMLDecodeError(ValueError):
-    """An error raised if a document is not valid TOML."""
+    pass
 
 
 def load(fp: BinaryIO, /, *, parse_float: ParseFloat = float) -> dict[str, Any]:
@@ -133,8 +133,6 @@ def loads(s: str, /, *, parse_float: ParseFloat = float) -> dict[str, Any]:  # n
 
 
 class Flags:
-    """Flags that map to parsed keys/namespaces."""
-
     # Marks an immutable namespace (inline array or inline table).
     FROZEN = 0
     # Marks a nest that has been explicitly created and can no longer

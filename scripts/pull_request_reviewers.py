@@ -2,8 +2,6 @@
 # requires-python = ">=3.13"
 # dependencies = []
 # ///
-"""Request a reviewer from repository pools using shared round-robin credits."""
-
 from __future__ import annotations
 
 import argparse
@@ -18,6 +16,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+CLI_DESCRIPTION = (
+    "Request a reviewer from repository pools using shared round-robin credits."
+)
 
 REPOSITORY = "astral-sh/ruff"
 REPOSITORY_ID = 523043277
@@ -182,7 +184,7 @@ def assign_reviewer(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("--pull-request", required=True, type=int)
     parser.add_argument("--head-sha", required=True)
     parser.add_argument("--state", required=True, type=Path)

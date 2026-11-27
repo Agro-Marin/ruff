@@ -1,6 +1,3 @@
-"""
-https://github.com/PyCQA/pylint/blob/69eca9b3f9856c3033957b769358803ee48e8e47/tests/functional/t/too/too_many_return_statements.py
-"""
 def stupid_function(arg): # [too-many-return-statements]
     if arg == 1:
         return 1

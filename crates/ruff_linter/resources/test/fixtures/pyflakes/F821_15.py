@@ -1,5 +1,3 @@
-"""Test case: f-strings in future type annotations."""
-
 from __future__ import annotations
 
 from typing import List

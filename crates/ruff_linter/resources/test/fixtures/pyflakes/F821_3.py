@@ -1,5 +1,3 @@
-"""Test (edge case): accesses of object named `dict`."""
-
 # OK
 dict = {"parameters": {}}
 dict["parameters"]["userId"] = "userId"

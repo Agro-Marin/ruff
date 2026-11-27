@@ -1,14 +1,3 @@
-"""A module docstring with D214 violations
-
-    Returns
------
-    valid returns
-
-    Args
------
-    valid args
-"""
-
 import os
 from .expected import Expectation
 

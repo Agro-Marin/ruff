@@ -1,7 +1,3 @@
-"""
-Test: allowed-unused-imports-top-level-module
-"""
-
 # No errors
 
 def f():

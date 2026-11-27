@@ -1,5 +1,3 @@
-"""Test: avoid marking an `InitVar` as typing-only."""
-
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, InitVar, dataclass

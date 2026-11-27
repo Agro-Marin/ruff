@@ -1,4 +1,4 @@
-"""This is the module docstring."""  # ok in both modes
+# ok in both modes
 
 # convenience imports:
 import os

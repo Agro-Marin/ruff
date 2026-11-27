@@ -1,9 +1,3 @@
-"""
-Violation:
-
-Raising vanilla exception with custom message means it should be customized.
-"""
-
 from somewhere import exceptions
 
 

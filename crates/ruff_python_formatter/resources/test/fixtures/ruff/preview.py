@@ -1,6 +1,3 @@
-"""
-Black's `Preview.module_docstring_newlines`
-"""
 first_stmt_after_module_level_docstring = 1
 
 
@@ -29,7 +26,7 @@ def reference_docstring_newlines():
 
 class RemoveNewlineBeforeClassDocstring:
 
-    """Black's `Preview.no_blank_line_before_class_docstring`"""
+    pass
 
 
 def f():

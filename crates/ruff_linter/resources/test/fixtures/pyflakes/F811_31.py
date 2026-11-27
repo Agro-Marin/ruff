@@ -1,5 +1,3 @@
-"""Regression test for: https://github.com/astral-sh/ruff/issues/12309"""
-
 import contextlib
 
 foo = None

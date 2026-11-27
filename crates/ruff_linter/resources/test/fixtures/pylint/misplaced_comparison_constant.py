@@ -1,5 +1,3 @@
-"""Check that the constants are on the right side of the comparisons"""
-
 # pylint: disable=singleton-comparison, missing-docstring, too-few-public-methods
 # pylint: disable=comparison-of-constants
 

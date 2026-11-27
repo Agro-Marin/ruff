@@ -4,11 +4,6 @@
 #
 # Has many lines. Many, many lines.
 # Many, many, many lines.
-"""Module docstring.
-
-Possibly also many, many lines.
-"""
-
 import os.path
 import sys
 
@@ -56,8 +51,6 @@ GLOBAL_STATE = {"a": a(1), "b": a(2), "c": a(3)}
 
 
 class Foo:
-    """Docstring for class Foo.  Example from Sphinx docs."""
-
     #: Doc comment for class attribute Foo.bar.
     #: It can have multiple lines.
     bar = 1

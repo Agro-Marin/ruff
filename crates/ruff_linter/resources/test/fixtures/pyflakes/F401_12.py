@@ -1,5 +1,3 @@
-"""Test: module bindings are preferred over local bindings, for deferred annotations."""
-
 from __future__ import annotations
 
 import datetime

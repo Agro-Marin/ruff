@@ -35,7 +35,7 @@ class MyClassWithComplexLeadingComments:
 
 
 class ClassWithDocstring:
-    """A docstring."""
+    pass
 # Leading comment after a class with just a docstring
 class MyClassAfterAnotherClassWithDocstring:
     pass

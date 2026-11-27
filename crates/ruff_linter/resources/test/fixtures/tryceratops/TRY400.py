@@ -1,9 +1,3 @@
-"""
-Violation:
-Use '.exception' over '.error' inside except blocks
-"""
-
-
 def bad():
     import logging
 

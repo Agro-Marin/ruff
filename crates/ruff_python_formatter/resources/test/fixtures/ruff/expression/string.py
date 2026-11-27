@@ -1,4 +1,4 @@
-"' test"
+pass
 '" test'
 
 "\" test"

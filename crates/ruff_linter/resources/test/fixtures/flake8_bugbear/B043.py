@@ -1,8 +1,3 @@
-"""
-Should emit:
-B043 - Lines 16-20
-"""
-
 # Valid delattr usage
 delattr(foo, bar)
 delattr(foo, "bar{foo}".format(foo="a"))

@@ -1,5 +1,3 @@
-"""Test type parameters and aliases"""
-
 # Type parameters in type alias statements
 
 from some_module import Bar

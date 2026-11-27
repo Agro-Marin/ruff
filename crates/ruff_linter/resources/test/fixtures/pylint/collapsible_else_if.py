@@ -1,8 +1,3 @@
-"""
-Test for else-if-used
-"""
-
-
 def ok0():
     """Should not trigger on elif"""
     if 1:

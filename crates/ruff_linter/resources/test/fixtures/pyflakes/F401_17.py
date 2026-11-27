@@ -1,5 +1,3 @@
-"""Test that runtime typing references are properly attributed to scoped imports."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast

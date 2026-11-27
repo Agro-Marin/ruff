@@ -1,6 +1,3 @@
-"""Test: imports within `ModuleNotFoundError` and `ImportError` handlers."""
-
-
 def module_not_found_error():
     try:
         import orjson

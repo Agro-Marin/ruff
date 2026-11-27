@@ -14,10 +14,6 @@ class TwoEllipsesClass:
 
 
 class DocstringClass:
-    """
-    My body only contains an ellipsis.
-    """
-
     ...
 
 

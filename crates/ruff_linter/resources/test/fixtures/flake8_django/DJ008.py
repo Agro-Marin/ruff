@@ -189,7 +189,6 @@ from django_stubs_ext.db.models import TypedModelMeta
 
 
 class TypeAnnotatedAbstractModel1(models.Model):
-    """Model with type-annotated abstract = True - should not trigger DJ008"""
     new_field = models.CharField(max_length=10)
 
     class Meta(TypedModelMeta):
@@ -197,7 +196,6 @@ class TypeAnnotatedAbstractModel1(models.Model):
 
 
 class TypeAnnotatedAbstractModel2(models.Model):
-    """Model with type-annotated abstract = True using regular Meta - should not trigger DJ008"""  
     new_field = models.CharField(max_length=10)
 
     class Meta:
@@ -205,7 +203,6 @@ class TypeAnnotatedAbstractModel2(models.Model):
 
 
 class TypeAnnotatedAbstractModel3(models.Model):
-    """Model with type-annotated abstract = True but without ClassVar - should not trigger DJ008"""
     new_field = models.CharField(max_length=10)
 
     class Meta:
@@ -213,7 +210,6 @@ class TypeAnnotatedAbstractModel3(models.Model):
 
 
 class TypeAnnotatedNonAbstractModel(models.Model):
-    """Model with type-annotated abstract = False - should trigger DJ008"""
     new_field = models.CharField(max_length=10)
 
     class Meta:
@@ -221,7 +217,6 @@ class TypeAnnotatedNonAbstractModel(models.Model):
 
 
 class TypeAnnotatedAbstractModelWithStr(models.Model):
-    """Model with type-annotated abstract = True and __str__ method - should not trigger DJ008"""
     new_field = models.CharField(max_length=10)
 
     class Meta(TypedModelMeta):

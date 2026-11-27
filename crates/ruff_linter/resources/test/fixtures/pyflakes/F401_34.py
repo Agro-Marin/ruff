@@ -1,6 +1,3 @@
-"""Regression tests for https://github.com/astral-sh/ruff/issues/15812"""
-
-
 def f():
     from typing import Union
 

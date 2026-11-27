@@ -1,6 +1,6 @@
 class C:
 
-    r"""Raw"""
+    pass
 
 def f():
 
@@ -9,7 +9,7 @@ def f():
 class SingleQuotes:
 
 
-    r'''Raw'''
+    pass
 
 class UpperCaseR:
-    R"""Raw"""
+    pass

@@ -1,8 +1,3 @@
-"""
-Should emit:
-B025 - on lines 15, 22, 31, 40, 47, 56
-"""
-
 import pickle
 
 try:

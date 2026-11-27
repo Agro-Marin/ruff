@@ -1,10 +1,3 @@
-"""
-Violation:
-
-Prefer TypeError when relevant.
-"""
-
-
 def incorrect_basic(some_arg):
     if isinstance(some_arg, int):
         pass
